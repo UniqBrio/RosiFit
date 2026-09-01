@@ -4,6 +4,7 @@
   "main": "expo-router/entry",
   "dependencies": {
     "@expo/metro-runtime": "~57.0.14",
+    "@expo/vector-icons": "^15.1.1",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@supabase/supabase-js": "^2.112.4",
     "expo": "~57.0.18",
@@ -22,7 +23,9 @@
     "react-native-web": "^0.21.2"
   },
   "devDependencies": {
+    "@types/node": "^26.4.0",
     "@types/react": "~19.2.2",
+    "tsx": "^4.23.13",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -31,7 +34,10 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "export": "expo export --platform web",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p scripts/tsconfig.json",
+    "check:contrast": "tsx scripts/check-contrast.ts",
+    "check:icons": "tsx scripts/check-icons.ts",
+    "check": "npm run typecheck && npm run check:contrast && npm run check:icons"
   },
   "private": true
 }
