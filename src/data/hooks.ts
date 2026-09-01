@@ -30,6 +30,27 @@ export type Async<T> = {
   retry: () => void;
 };
 
+/**
+ * A request that never answers is worse than one that fails: the screen sits
+ * on a skeleton forever with nothing to retry. A hung network (captive
+ * portal, a blocked host, a dead tunnel) does exactly that, so every load
+ * gets a deadline and turns into the ordinary, retryable error state.
+ */
+const LOAD_TIMEOUT_MS = 12_000;
+
+function withTimeout<T>(work: Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error('This is taking too long. Check the connection and try again — nothing has been changed.')),
+      LOAD_TIMEOUT_MS,
+    );
+    work.then(
+      value => { clearTimeout(timer); resolve(value); },
+      err => { clearTimeout(timer); reject(err); },
+    );
+  });
+}
+
 export function useAsync<T>(load: () => Promise<T>, deps: unknown[], forced?: string): Async<T> {
   const [state, setState] = useState<ScreenState>('loading');
   const [data, setData] = useState<T | null>(null);
@@ -45,7 +66,7 @@ export function useAsync<T>(load: () => Promise<T>, deps: unknown[], forced?: st
       return;
     }
     setState('loading');
-    load()
+    withTimeout(load())
       .then(result => {
         if (cancelled) return;
         setData(result);

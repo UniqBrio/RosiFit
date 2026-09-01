@@ -22,8 +22,21 @@ import {
 
 export const dataSource: 'live' | 'fixtures' = isConfigured ? 'live' : 'fixtures';
 
-function fail(context: string, error: { message: string } | null): never {
-  throw new Error(`${context}: ${error?.message ?? 'unknown error'}`);
+/**
+ * What the person reading the screen is told, and what the developer needs,
+ * are different things. The technical detail goes to the console; the screen
+ * gets a sentence that says what failed and — just as importantly — that
+ * nothing was changed by it.
+ */
+function fail(context: string, error: { message?: string } | null): never {
+  const detail = error?.message ?? 'unknown error';
+  console.error(`${context}: ${detail}`);
+  const unreachable = /fetch|network|timeout|Failed to send/i.test(detail);
+  throw new Error(
+    unreachable
+      ? 'RosiFit could not reach the academy database. Check the connection and try again — nothing has been changed.'
+      : `${context}. Nothing has been changed.`
+  );
 }
 
 // ------------------------------------------------------------------ members

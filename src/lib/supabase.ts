@@ -28,15 +28,28 @@ if (!isConfigured && __DEV__) {
   );
 }
 
+/**
+ * `expo export` prerenders every route in Node, where there is no window and
+ * no AsyncStorage. GoTrue starts restoring a session the moment the client is
+ * constructed, so with storage attached during the prerender that restore
+ * throws and takes the whole export down. On the server the client is built
+ * storage-less and stateless; in the browser and on device it is the real
+ * one. Nothing is signed in during a prerender anyway -- the markup it
+ * produces is the signed-out first paint.
+ */
+const isServer = typeof window === 'undefined';
+
 export const supabase = createClient(url ?? 'http://localhost:54321', anonKey ?? 'anon', {
-  auth: {
-    storage: AsyncStorage,
-    autoRefreshToken: true,
-    persistSession: true,
-    // The app has no deep-link callback: sign-in is mobile + PIN through the
-    // auth-login Edge Function, not an OAuth redirect.
-    detectSessionInUrl: false,
-  },
+  auth: isServer
+    ? { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false }
+    : {
+        storage: AsyncStorage,
+        autoRefreshToken: true,
+        persistSession: true,
+        // The app has no deep-link callback: sign-in is mobile + PIN through
+        // the auth-login Edge Function, not an OAuth redirect.
+        detectSessionInUrl: false,
+      },
 });
 
 /** Calls an Edge Function, forwarding the caller's session automatically. */
