@@ -40,7 +40,8 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p scripts/tsconfig.json",
     "check:contrast": "tsx scripts/check-contrast.ts",
     "check:icons": "tsx scripts/check-icons.ts",
-    "check": "npm run typecheck && npm run check:contrast && npm run check:icons"
+    "check": "npm run typecheck && npm run check:contrast && npm run check:icons",
+    "build:web": "npm run export"
   },
   "private": true
 }
