@@ -1,97 +1,151 @@
 import { useState } from 'react';
-import { View } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Screen, Card, H1, H2, Body, Muted, Button, Pill, Row, Divider } from '../src/components/ui';
-import { Field, Choice } from '../src/components/Field';
+import { Screen, Muted, Label, Button } from '../src/components/ui';
+import { Field } from '../src/components/Field';
+import { Icon } from '../src/components/Icon';
+import { SearchPicker } from '../src/components/Sheet';
 import { useTheme } from '../src/theme/ThemeProvider';
-import { SPACE } from '../src/theme/tokens';
+import { useToast } from '../src/components/Toast';
+import { SPACE, RADIUS, TAP_MIN } from '../src/theme/tokens';
 import { SECURITY_QUESTIONS } from '../src/data/mock';
 
+const STEPS = ['Your details', 'Security questions'];
+
+/**
+ * Registration collects the recovery answers UP FRONT (C-97): they are the
+ * only way a PIN reset works later without a call, so they are part of
+ * creating the account, not an optional afterthought.
+ */
 export default function Register() {
   const { theme } = useTheme();
+  const { flash } = useToast();
   const router = useRouter();
+
   const [step, setStep] = useState(1);
   const [name, setName] = useState('');
-  const [academy, setAcademy] = useState('RosiFit Academy');
+  const [academy, setAcademy] = useState('');
   const [phone, setPhone] = useState('');
-  const [answers, setAnswers] = useState<Record<number, string>>({});
-  const [picked, setPicked] = useState<number[]>([0, 1, 2]);
+  const [email, setEmail] = useState('');
+  const [questions, setQuestions] = useState([SECURITY_QUESTIONS[0], SECURITY_QUESTIONS[1]]);
+  const [answers, setAnswers] = useState(['', '']);
+  const [picking, setPicking] = useState<number | null>(null);
 
-  const phoneOk = phone.replace(/\D/g, '').length === 10;
-  const step1Ok = name.trim().length >= 2 && academy.trim().length >= 2 && phoneOk;
-  const step2Ok = picked.every(i => (answers[i] ?? '').trim().length >= 2);
+  const ok1 = !!(name.trim() && academy.trim() && phone.replace(/\D/g, '').length >= 10);
+  const ok2 = answers.every(a => a.trim().length >= 3);
+  const valid = step === 1 ? ok1 : ok2;
+
+  const next = () => {
+    if (!valid) {
+      flash(step === 1 ? 'Name, academy and a 10-digit number are needed' : 'Both answers are needed', 'warn');
+      return;
+    }
+    if (step === 1) { setStep(2); return; }
+    flash('Registered · your PIN is on the next screen');
+    router.replace('/set-pin');
+  };
 
   return (
     <Screen>
-      <H1>Super admin registration</H1>
-      <Muted style={{ marginBottom: SPACE.lg }}>
-        Step {step} of 2 · this happens once, for the account that owns the academy
-      </Muted>
+      <Muted>{`Step ${step} of 2 · recovery answers on record`}</Muted>
+
+      <View style={{ flexDirection: 'row', gap: 6, marginTop: SPACE.md, marginBottom: SPACE.lg }}>
+        {STEPS.map((label, i) => {
+          const done = step >= i + 1;
+          return (
+            <View key={label} style={{ flex: 1, gap: 6 }}>
+              <View style={{ height: 4, borderRadius: 2, backgroundColor: done ? theme.accent : theme.line }} />
+              <Text style={{ fontSize: 10.5, fontWeight: '700', color: done ? theme.accentInk : theme.dim }}>
+                {label}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
 
       {step === 1 ? (
-        <Card>
-          <H2>Who owns this academy?</H2>
-          <View style={{ marginTop: SPACE.md }}>
-            <Field label="Your name" value={name} onChange={setName} placeholder="Full name"
-              error={name.length > 0 && name.trim().length < 2 ? 'Enter at least 2 characters.' : undefined} />
-            <Field label="Academy name" value={academy} onChange={setAcademy} />
-            <Field label="Mobile number" value={phone} onChange={setPhone} prefix="+91"
-              keyboardType="number-pad" placeholder="00000 00000"
-              hint="This becomes your sign-in number. It can be changed later, with verification."
-              error={phone.length > 0 && !phoneOk ? 'Enter a 10-digit mobile number.' : undefined} />
-          </View>
-          <Button label="Continue" disabled={!step1Ok} onPress={() => setStep(2)} />
-        </Card>
+        <>
+          <Field label="Full name" value={name} onChange={setName} placeholder="e.g. Priya Menon" />
+          <Field label="Academy you administer" value={academy} onChange={setAcademy} placeholder="e.g. RosiFit" />
+          <Field label="Mobile number" value={phone} onChange={setPhone} prefix="+91"
+            keyboardType="phone-pad" placeholder="98765 43210"
+            hint="This becomes your sign-in ID and cannot be changed later."
+            error={phone.length > 0 && phone.replace(/\D/g, '').length < 10 ? 'A 10-digit mobile number is needed.' : undefined} />
+          <Field label="Email" value={email} onChange={setEmail} placeholder="owner@academy.in"
+            keyboardType="email-address" />
+        </>
       ) : (
         <>
-          <Card>
-            <H2>Security questions</H2>
-            {/* C-97: recovery for the SUPER ADMIN only. Staff never see these,
-                and an answer is never displayed again once it is set. */}
-            <Body style={{ marginTop: SPACE.sm }}>
-              These recover your account if you forget your PIN. Only the super admin has them —
-              staff request a reset from an admin instead.
-            </Body>
-            <Muted style={{ marginTop: SPACE.sm }}>
-              Answers are stored hashed. They are never shown again — they can only be replaced.
+          <View style={{
+            padding: SPACE.lg, borderRadius: RADIUS.lg, flexDirection: 'row', gap: SPACE.md,
+            backgroundColor: theme.surface2, borderWidth: 1, borderColor: theme.line,
+          }}>
+            <Icon name="shield_lock" size={19} color={theme.accentInk} />
+            <Muted style={{ flex: 1 }}>
+              Two questions, answered now. These are the only way your PIN can be reset later without a
+              call, so pick answers you will still know in a year.
             </Muted>
-          </Card>
+          </View>
 
-          {picked.map((qi, n) => (
-            <Card key={qi}>
-              <Row><Pill text={`Question ${n + 1}`} /></Row>
-              <Body style={{ marginTop: SPACE.sm, fontWeight: '700' }}>{SECURITY_QUESTIONS[qi]}</Body>
-              <View style={{ marginTop: SPACE.md }}>
-                <Field label="Your answer" value={answers[qi] ?? ''} secure
-                  onChange={v => setAnswers(a => ({ ...a, [qi]: v }))}
-                  placeholder="Answer" />
+          {[0, 1].map(i => {
+            const short = answers[i].trim().length > 0 && answers[i].trim().length < 3;
+            return (
+              <View key={i} style={{ marginTop: SPACE.lg }}>
+                <Label>{`Question ${i + 1}`}</Label>
+                <Pressable onPress={() => setPicking(i)}
+                  accessibilityRole="button" accessibilityLabel={questions[i]}
+                  accessibilityHint="Opens the question list"
+                  style={{
+                    marginTop: 8, minHeight: TAP_MIN + 6, borderRadius: RADIUS.md,
+                    backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
+                    paddingHorizontal: SPACE.lg, paddingVertical: SPACE.sm,
+                    flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
+                  }}>
+                  <Text style={{ flex: 1, fontSize: 13.5, fontWeight: '600', color: theme.fgStrong, lineHeight: 19 }}>
+                    {questions[i]}
+                  </Text>
+                  <Icon name="arrow_drop_down" size={22} color={theme.muted} />
+                </Pressable>
+                <View style={{ marginTop: SPACE.sm }}>
+                  <Field label="Your answer" value={answers[i]}
+                    onChange={v => setAnswers(p => p.map((x, j) => j === i ? v : x))}
+                    placeholder="Your answer"
+                    error={short ? 'A little longer, so it cannot be guessed.' : undefined}
+                    hint="Stored hashed · case and spaces ignored" />
+                </View>
               </View>
-              <Choice label="Use a different question"
-                options={SECURITY_QUESTIONS.map((_, i) => `Q${i + 1}`)}
-                value={`Q${qi + 1}`}
-                onChange={v => {
-                  const i = Number(v.slice(1)) - 1;
-                  if (picked.includes(i)) return;             // no duplicates
-                  setPicked(p => p.map((x, j) => (j === n ? i : x)));
-                }} />
-            </Card>
-          ))}
+            );
+          })}
 
-          <Card>
-            <Divider />
-            <Body>
-              Next you will set a 4-digit PIN. It is derived from your account, not your
-              phone number, so changing your number later will not invalidate it.
-            </Body>
-          </Card>
-
-          <Row style={{ gap: SPACE.md }}>
-            <Button label="Back" variant="secondary" onPress={() => setStep(1)} style={{ flex: 1 }} />
-            <Button label="Set my PIN" disabled={!step2Ok}
-              onPress={() => router.push('/set-pin')} style={{ flex: 2 }} />
-          </Row>
+          <Muted style={{ marginTop: SPACE.sm }}>
+            Answers are stored hashed and case-insensitive, trimmed of spaces. They are never shown
+            again — not to you, not to anyone at RosiFit. If both are forgotten, a call is the only
+            way back in.
+          </Muted>
         </>
       )}
+
+      <View style={{ flexDirection: 'row', gap: SPACE.md, marginTop: SPACE.xl }}>
+        {step === 2 && (
+          <Button label="Back" variant="secondary" onPress={() => setStep(1)} style={{ flex: 1 }} />
+        )}
+        <Button label={step === 1 ? 'Next — security questions' : 'Register & issue PIN'}
+          onPress={next} disabled={!valid} style={{ flex: 2 }} />
+      </View>
+
+      <SearchPicker
+        open={picking !== null} onClose={() => setPicking(null)}
+        title="Choose a question" placeholder="Search questions"
+        options={SECURITY_QUESTIONS
+          // the OTHER slot's question is not offered: two answers to one
+          // question would halve the recovery check
+          .filter(q => q !== questions[picking === 0 ? 1 : 0])
+          .map(label => ({ label }))}
+        value={picking !== null ? questions[picking] : undefined}
+        onSelect={l => {
+          if (picking !== null) setQuestions(p => p.map((x, j) => j === picking ? l : x));
+          setPicking(null);
+        }} />
     </Screen>
   );
 }
