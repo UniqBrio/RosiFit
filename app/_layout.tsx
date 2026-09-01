@@ -16,6 +16,24 @@ function Nav() {
       }}>
         <Stack.Screen name="index"  options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="register"      options={{ title: 'Register' }} />
+        <Stack.Screen name="set-pin"       options={{ title: 'Your PIN' }} />
+        <Stack.Screen name="forgot-pin"    options={{ title: 'Forgot PIN' }} />
+        <Stack.Screen name="courses"       options={{ title: 'Courses' }} />
+        <Stack.Screen name="course/edit"   options={{ title: 'Course' }} />
+        <Stack.Screen name="course/rules"  options={{ title: 'Follow-up rules' }} />
+        <Stack.Screen name="member/[id]"   options={{ title: 'Member' }} />
+        <Stack.Screen name="member/edit"   options={{ title: 'Member' }} />
+        <Stack.Screen name="sessions"      options={{ title: 'Sessions' }} />
+        <Stack.Screen name="holiday"       options={{ title: 'Add holiday' }} />
+        <Stack.Screen name="templates"     options={{ title: 'Templates' }} />
+        <Stack.Screen name="staff"         options={{ title: 'Staff' }} />
+        <Stack.Screen name="reports"       options={{ title: 'Reports' }} />
+        <Stack.Screen name="audit"         options={{ title: 'Audit log' }} />
+        <Stack.Screen name="change-mobile" options={{ title: 'Mobile number' }} />
+        <Stack.Screen name="send/index"    options={{ title: 'Send' }} />
+        <Stack.Screen name="send/review"   options={{ title: 'Review & send' }} />
+        <Stack.Screen name="send/result"   options={{ title: 'Result' }} />
       </Stack>
     </>
   );

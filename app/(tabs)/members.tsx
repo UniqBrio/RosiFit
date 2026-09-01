@@ -4,9 +4,11 @@ import { Screen, Card, H1, H2, Body, Muted, Label, Row, Pill, Button, Divider } 
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { SPACE, RADIUS, TAP_MIN } from '../../src/theme/tokens';
 import { MEMBERS } from '../../src/data/mock';
+import { useRouter } from 'expo-router';
 
 export default function Members() {
   const { theme } = useTheme();
+  const router = useRouter();
   const [q, setQ] = useState('');
   const list = MEMBERS.filter(m =>
     m.name.toLowerCase().includes(q.toLowerCase()) ||
@@ -37,6 +39,8 @@ export default function Members() {
               <Muted>{m.code} · {m.course} · {m.branch}</Muted>
             </View>
             {m.emails.length === 0 ? <Pill text="No email" tone="warning" /> : null}
+            <Button label="Open" variant="secondary"
+              onPress={() => router.push({ pathname: '/member/[id]', params: { id: m.id } })} />
           </Row>
 
           <Divider />
@@ -74,6 +78,8 @@ export default function Members() {
       {list.length === 0 && (
         <Card><Body>No member matches “{q}”.</Body></Card>
       )}
+
+      <Button label="+ Add member" onPress={() => router.push('/member/edit')} />
     </Screen>
   );
 }

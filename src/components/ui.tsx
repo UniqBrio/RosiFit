@@ -21,7 +21,11 @@ export function Card({ children, style }: { children: React.ReactNode; style?: V
   );
 }
 
-type TxtProps = { children: React.ReactNode; style?: TextStyle; numberOfLines?: number };
+type TxtProps = {
+  children: React.ReactNode; style?: TextStyle; numberOfLines?: number;
+  /** 'polite' announces validation errors to a screen reader as they appear. */
+  accessibilityLiveRegion?: 'none' | 'polite' | 'assertive';
+};
 export const H1 = ({ children, style }: TxtProps) => {
   const { theme } = useTheme();
   return <Text style={[{ fontSize: 26, fontWeight: '800', color: theme.fgStrong, letterSpacing: -0.5 }, style]}>{children}</Text>;
@@ -30,13 +34,13 @@ export const H2 = ({ children, style }: TxtProps) => {
   const { theme } = useTheme();
   return <Text style={[{ fontSize: 18, fontWeight: '700', color: theme.fgStrong }, style]}>{children}</Text>;
 };
-export const Body = ({ children, style, numberOfLines }: TxtProps) => {
+export const Body = ({ children, style, numberOfLines, accessibilityLiveRegion }: TxtProps) => {
   const { theme } = useTheme();
-  return <Text numberOfLines={numberOfLines} style={[{ fontSize: 15, color: theme.fg, lineHeight: 22 }, style]}>{children}</Text>;
+  return <Text numberOfLines={numberOfLines} accessibilityLiveRegion={accessibilityLiveRegion} style={[{ fontSize: 15, color: theme.fg, lineHeight: 22 }, style]}>{children}</Text>;
 };
-export const Muted = ({ children, style, numberOfLines }: TxtProps) => {
+export const Muted = ({ children, style, numberOfLines, accessibilityLiveRegion }: TxtProps) => {
   const { theme } = useTheme();
-  return <Text numberOfLines={numberOfLines} style={[{ fontSize: 13, color: theme.muted, lineHeight: 19 }, style]}>{children}</Text>;
+  return <Text numberOfLines={numberOfLines} accessibilityLiveRegion={accessibilityLiveRegion} style={[{ fontSize: 13, color: theme.muted, lineHeight: 19 }, style]}>{children}</Text>;
 };
 export const Label = ({ children, style }: TxtProps) => {
   const { theme } = useTheme();
@@ -59,13 +63,17 @@ export function Button({ label, onPress, variant = 'primary', disabled, style }:
         borderRadius: RADIUS.md,
         alignItems: 'center', justifyContent: 'center',
         paddingHorizontal: SPACE.lg,
-        backgroundColor: primary ? theme.accent : theme.control,
-        borderWidth: primary ? 0 : 1,
+        // A disabled button changes FILL rather than fading the whole control.
+        // Dimming with opacity washed the white label into the accent at
+        // ~1.14:1 -- WCAG exempts inactive controls, but a label nobody can
+        // read still hides what the button would do once it is enabled.
+        backgroundColor: disabled ? theme.control : primary ? theme.accent : theme.control,
+        borderWidth: disabled || !primary ? 1 : 0,
         borderColor: theme.lineStrong,
-        opacity: disabled ? 0.45 : pressed ? 0.85 : 1,
+        opacity: pressed && !disabled ? 0.85 : 1,
       }, style]}>
       <Text style={{ fontSize: 15, fontWeight: '800',
-        color: primary ? theme.onAccent : theme.fgStrong }}>{label}</Text>
+        color: disabled ? theme.muted : primary ? theme.onAccent : theme.fgStrong }}>{label}</Text>
     </Pressable>
   );
 }

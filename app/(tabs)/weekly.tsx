@@ -4,9 +4,11 @@ import { Screen, Card, H1, H2, Body, Muted, Button, Row, Pill, Divider } from '.
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { SPACE } from '../../src/theme/tokens';
 import { CANDIDATES, WEEK } from '../../src/data/mock';
+import { useRouter } from 'expo-router';
 
 export default function Weekly() {
   const { theme } = useTheme();
+  const router = useRouter();
   const [picked, setPicked] = useState<string[]>(CANDIDATES.filter(c => c.has_email).map(c => c.member_id));
   const sendable = CANDIDATES.filter(c => c.has_email);
   const excluded = CANDIDATES.filter(c => !c.has_email);
@@ -74,7 +76,7 @@ export default function Weekly() {
       <Button
         label={`Choose a template · ${picked.length} selected`}
         disabled={picked.length === 0}
-        onPress={() => {}}
+        onPress={() => router.push('/send')}
       />
       <Muted style={{ marginTop: SPACE.sm, textAlign: 'center' }}>
         Messages come from a stored template. There is no free-form composing.

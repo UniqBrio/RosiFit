@@ -92,6 +92,18 @@ export default function Home() {
         <Button label="Review the file" variant="secondary"
           onPress={() => router.push('/(tabs)/upload')} style={{ marginTop: SPACE.md }} />
       </Card>
+
+      <Card>
+        <H2>Go to</H2>
+        <Row style={{ marginTop: SPACE.md, gap: SPACE.sm, flexWrap: 'wrap' }}>
+          <Button label="Reports" variant="secondary" onPress={() => router.push('/reports')} style={{ flex: 1 }} />
+          <Button label="Courses" variant="secondary" onPress={() => router.push('/courses')} style={{ flex: 1 }} />
+        </Row>
+        <Row style={{ marginTop: SPACE.sm, gap: SPACE.sm, flexWrap: 'wrap' }}>
+          <Button label="Sessions" variant="secondary" onPress={() => router.push('/sessions')} style={{ flex: 1 }} />
+          <Button label="Staff" variant="secondary" onPress={() => router.push('/staff')} style={{ flex: 1 }} />
+        </Row>
+      </Card>
     </Screen>
   );
 }

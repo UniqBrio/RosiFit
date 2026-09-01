@@ -63,6 +63,8 @@ export default function SignIn() {
               </View>
               <Muted>Only RosiFit staff numbers can sign in.</Muted>
               <Button label="Continue" disabled={!phoneOk} onPress={() => setStep('pin')} />
+              <Button label="Super admin registration" variant="secondary"
+                onPress={() => router.push('/register')} />
             </>
           ) : (
             <>
@@ -95,7 +97,8 @@ export default function SignIn() {
                   </Pressable>
                 ))}
               </View>
-              <Body style={{ textAlign: 'center', color: theme.accentInk, marginTop: SPACE.md }}>Forgot PIN</Body>
+              <Button label="Forgot PIN" variant="secondary"
+                onPress={() => router.push('/forgot-pin')} />
             </>
           )}
         </View>

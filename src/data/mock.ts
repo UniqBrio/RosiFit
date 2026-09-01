@@ -101,3 +101,171 @@ export const WEEK = { from: '17 Aug', to: '23 Aug 2026', label: '17–23 August 
 export const BRANCHES = ['All branches', 'Coimbatore', 'Salem', 'Erode', 'Chennai'];
 export const COURSES  = ['All courses', 'Prenatal Fitness', 'Prenatal Yoga', 'Postnatal Recovery', 'Prenatal Flow'];
 export const SUPPORT_PHONE = '9994871158';
+
+// ---------------------------------------------------------------- courses
+export type Course = {
+  id: string; name: string;
+  start_time: string | null; end_time: string | null;
+  frequency: number | null;              // stated intent, never counted
+  offerings: { branch: string; weekdays: number[] }[];
+};
+
+export const COURSE_LIST: Course[] = [
+  { id: 'c1', name: 'Prenatal Fitness', start_time: '06:00', end_time: '07:00', frequency: 6,
+    offerings: [{ branch: 'Coimbatore', weekdays: [1,2,4,6] }, { branch: 'Salem', weekdays: [1,2,3,4,5,6] }] },
+  { id: 'c2', name: 'Prenatal Yoga', start_time: '07:30', end_time: '08:30', frequency: 4,
+    offerings: [{ branch: 'Salem', weekdays: [1,2,4,6] }] },
+  { id: 'c3', name: 'Postnatal Recovery', start_time: '17:00', end_time: '18:00', frequency: 3,
+    offerings: [{ branch: 'Erode', weekdays: [1,3,5] }] },
+];
+
+export const DAY_NAMES = ['', 'Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+/** Mirrors public.effective_follow_up_config(). */
+export type FollowUpRule = {
+  source: 'course' | 'global';
+  weekly_enabled: boolean;  weekly_threshold: number;
+  consecutive_enabled: boolean; consecutive_threshold: number;
+  combination: 'OR' | 'AND';
+};
+
+export const GLOBAL_RULE: FollowUpRule = {
+  source: 'global', weekly_enabled: true, weekly_threshold: 3,
+  consecutive_enabled: false, consecutive_threshold: 4, combination: 'OR',
+};
+
+export const COURSE_RULES: Record<string, FollowUpRule> = {
+  c1: { source: 'course', weekly_enabled: true, weekly_threshold: 3,
+        consecutive_enabled: true, consecutive_threshold: 4, combination: 'OR' },
+  c2: { source: 'course', weekly_enabled: true, weekly_threshold: 2,
+        consecutive_enabled: true, consecutive_threshold: 3, combination: 'AND' },
+};
+
+/** The plain-language sentence is GENERATED from the values (C-67), never
+ *  hardcoded, so it cannot drift away from what the rule actually does. */
+export function ruleSentence(r: FollowUpRule, courseName: string): string {
+  const parts: string[] = [];
+  if (r.weekly_enabled) parts.push(`miss ${r.weekly_threshold} or more sessions in the week`);
+  if (r.consecutive_enabled) parts.push(`miss ${r.consecutive_threshold} consecutive sessions`);
+  if (parts.length === 0) return 'No condition is switched on, so nobody would be listed.';
+  const joined = parts.length === 1
+    ? parts[0]
+    : parts.join(r.combination === 'OR' ? ' OR ' : ' AND ');
+  const caveat = parts.length === 1 && r.combination === 'AND'
+    ? ' (only one condition is on, so AND behaves as that condition alone)'
+    : '';
+  return `Members in ${courseName} will be listed for follow-up when they ${joined}.${caveat}`;
+}
+
+// -------------------------------------------------------------- templates
+export type Template = {
+  id: string; name: string; subject: string; body: string; active: boolean;
+};
+
+export const TEMPLATES: Template[] = [
+  { id: 't1', name: 'Gentle check-in', active: true,
+    subject: 'We missed you this week, {{first_name}}',
+    body: 'Hello {{first_name}},\n\nYou were down for {{expected_sessions}} sessions in {{course_name}} between {{period_from}} and {{period_to}}, and made {{attended_sessions}}.\n\nNothing is wrong — we would just like to see you back on the mat.\n\n{{academy_name}}' },
+  { id: 't2', name: 'Trimester check', active: true,
+    subject: 'How is this trimester treating you, {{first_name}}?',
+    body: 'Hello {{first_name}},\n\nIf the timing is hard right now, tell us and we will move your slots.\n\n{{academy_name}}' },
+  { id: 't3', name: 'Long absence', active: true,
+    subject: 'Shall we pause your enrolment, {{first_name}}?',
+    body: 'Hello {{first_name}},\n\nIt has been {{consecutive_missed}} sessions in a row. We can pause and hold your place.\n\n{{academy_name}}' },
+  { id: 't4', name: 'Schedule change notice', active: false,
+    subject: 'A change to your {{course_name}} times',
+    body: 'Hello {{first_name}},\n\nInactive — not offered in the send flow while it is switched off.\n\n{{academy_name}}' },
+];
+
+export const TOKENS = ['{{first_name}}','{{member_name}}','{{member_code}}','{{course_name}}',
+  '{{branch_name}}','{{period_from}}','{{period_to}}','{{expected_sessions}}','{{attended_sessions}}',
+  '{{missed_sessions}}','{{attendance_pct}}','{{consecutive_missed}}','{{last_attendance_date}}','{{academy_name}}'];
+
+/** Server-side rendering is what the real thing does; this mirrors it so the
+ *  preview shows real values rather than placeholders. */
+export function renderTemplate(tpl: string, c: FollowUpCandidate): string {
+  const map: Record<string, string> = {
+    first_name: c.full_name.split(' ')[0], member_name: c.full_name,
+    member_code: c.member_id, course_name: c.course_name, branch_name: c.branch_name,
+    period_from: WEEK.from, period_to: WEEK.to,
+    expected_sessions: String(c.expected), attended_sessions: String(c.attended),
+    missed_sessions: String(c.missed), attendance_pct: c.attendance_pct === null ? '—' : `${c.attendance_pct}%`,
+    consecutive_missed: String(c.current_streak), last_attendance_date: '21 Aug',
+    academy_name: 'RosiFit Academy',
+  };
+  return tpl.replace(/\{\{(\w+)\}\}/g, (_, k) => map[k] ?? `{{${k}}}`);
+}
+
+// ------------------------------------------------------------------ staff
+export type Staff = {
+  id: string; name: string; phone: string; role: string;
+  has_login: boolean; last_login?: string;
+};
+export const STAFF: Staff[] = [
+  { id: 's1', name: 'Priya Menon',  phone: '+91 80563 29742', role: 'Academy admin', has_login: true,  last_login: 'Today, 8:04 am' },
+  { id: 's2', name: 'Rosi Owner',   phone: '+91 99948 71158', role: 'Super admin',   has_login: true,  last_login: 'Yesterday' },
+  { id: 's3', name: 'Kavitha S',    phone: '+91 90031 55210', role: 'Coach',         has_login: false },
+  { id: 's4', name: 'Anand R',      phone: '+91 98404 22119', role: 'Front desk',    has_login: false },
+];
+export const ROLE_LABELS = ['Academy admin', 'Coach', 'Front desk'];
+
+// ----------------------------------------------------------------- audit
+export type AuditEntry = {
+  id: string; who: string; when: string; action: string;
+  entity: string; subject: string;
+  changes: { field: string; old: string | null; new: string | null }[];
+};
+export const AUDIT: AuditEntry[] = [
+  { id: 'a1', who: 'Priya Menon', when: '31 Aug 2026, 10:32 am', action: 'CSV match decision',
+    entity: 'Member', subject: 'Shazia Farheen (RF-000118)',
+    changes: [{ field: 'Display names', old: '“Shazia F”, “Shazia Farheen”', new: '“Shazia F”, “Shazia Farheen”, “Shazia”' }] },
+  { id: 'a2', who: 'Priya Menon', when: '31 Aug 2026, 10:18 am', action: 'Member email changed',
+    entity: 'Member', subject: 'Divya Ramesh (RF-000102)',
+    changes: [{ field: 'Primary email', old: 'old@example.com', new: 'divya@example.com' }] },
+  { id: 'a3', who: 'Rosi Owner', when: '30 Aug 2026, 6:40 pm', action: 'Follow-up rule changed',
+    entity: 'Course', subject: 'Prenatal Yoga',
+    changes: [
+      { field: 'Weekly threshold', old: '3', new: '2' },
+      { field: 'Consecutive threshold', old: '4', new: '3' },
+      { field: 'Combination', old: 'OR', new: 'AND' }] },
+  { id: 'a4', who: 'Rosi Owner', when: '30 Aug 2026, 9:02 am', action: 'Holiday added',
+    entity: 'Holiday', subject: 'Diwali · 20–22 Oct 2026 · All branches',
+    changes: [{ field: 'Sessions marked', old: null, new: '12' }] },
+  { id: 'a5', who: 'Priya Menon', when: '29 Aug 2026, 4:15 pm', action: 'Schedule changed',
+    entity: 'Offering', subject: 'Prenatal Fitness · Coimbatore',
+    changes: [{ field: 'Weekdays', old: 'Mon Tue Thu Sat', new: 'Mon Tue Wed Thu Sat' }] },
+];
+
+// --------------------------------------------------------------- sessions
+export type SessionDay = {
+  date: string; day: number;
+  status: 'completed' | 'scheduled' | 'holiday' | 'cancelled' | 'none';
+  expected?: number; present?: number;
+};
+export const MONTH_LABEL = 'August 2026';
+export const MONTH_DAYS: SessionDay[] = Array.from({ length: 31 }, (_, i) => {
+  const day = i + 1;
+  const dow = new Date(2026, 7, day).getDay();       // 0 = Sun
+  const runs = [1, 2, 4, 6].includes(dow === 0 ? 7 : dow);
+  if (!runs) return { date: `2026-08-${day}`, day, status: 'none' };
+  if (day === 25) return { date: `2026-08-25`, day, status: 'holiday' };
+  if (day === 19) return { date: `2026-08-19`, day, status: 'cancelled' };
+  if (day <= 24) return { date: `2026-08-${day}`, day, status: 'completed', expected: 8, present: 5 + (day % 3) };
+  return { date: `2026-08-${day}`, day, status: 'scheduled', expected: 8 };
+});
+
+export const SECURITY_QUESTIONS = [
+  'What was the name of your first school?',
+  'In which city were you born?',
+  "What is your mother's maiden name?",
+  'What was the name of your first pet?',
+  'What is the name of the street you grew up on?',
+];
+
+// ---------------------------------------------------------------- reports
+export const WEEK_ROWS = [
+  { week: '3–9 Aug',   expected: 34, attended: 27, missed: 7 },
+  { week: '10–16 Aug', expected: 36, attended: 25, missed: 11 },
+  { week: '17–23 Aug', expected: 34, attended: 21, missed: 13 },
+  { week: '24–30 Aug', expected: 30, attended: 24, missed: 6 },
+];

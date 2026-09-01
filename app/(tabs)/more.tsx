@@ -1,5 +1,6 @@
 import { View, Pressable, Text, Linking } from 'react-native';
-import { Screen, Card, H1, H2, Body, Muted, Label, Row, Divider } from '../../src/components/ui';
+import { useRouter } from 'expo-router';
+import { Screen, Card, H1, H2, Body, Muted, Label, Row, Button, Divider } from '../../src/components/ui';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { SPACE, RADIUS, TAP_MIN } from '../../src/theme/tokens';
 import { SUPPORT_PHONE } from '../../src/data/mock';
@@ -7,6 +8,7 @@ import type { ThemeMode } from '../../src/theme/ThemeProvider';
 
 export default function More() {
   const { theme, mode, setMode, accentKey, setAccentKey, accents } = useTheme();
+  const router = useRouter();
   const modes: { key: ThemeMode; label: string }[] = [
     { key: 'light', label: 'Light' }, { key: 'dark', label: 'Dark' }, { key: 'system', label: 'System' },
   ];
@@ -15,6 +17,34 @@ export default function More() {
     <Screen>
       <H1>More</H1>
       <Muted style={{ marginBottom: SPACE.lg }}>Priya Menon · Academy admin</Muted>
+
+      <Card>
+        <H2>Manage</H2>
+        <View style={{ marginTop: SPACE.sm }}>
+          {[
+            { label: 'Courses',           sub: 'Times, frequency, follow-up rules', to: '/courses' },
+            { label: 'Sessions',          sub: 'Month view, cancel a session',      to: '/sessions' },
+            { label: 'Add holiday',       sub: 'A date range, with impact shown',   to: '/holiday' },
+            { label: 'Message templates', sub: 'The only way anything is sent',     to: '/templates' },
+            { label: 'Reports',           sub: 'Member-wise and week-wise',         to: '/reports' },
+            { label: 'Staff',             sub: 'People and their login PINs',       to: '/staff' },
+            { label: 'Audit log',         sub: 'Who changed what, and when',        to: '/audit' },
+          ].map(item => (
+            <Pressable key={item.to} onPress={() => router.push(item.to as never)}
+              accessibilityRole="button" accessibilityLabel={item.label}
+              style={({ pressed }) => ({
+                flexDirection: 'row', alignItems: 'center', minHeight: TAP_MIN + 12,
+                paddingVertical: SPACE.sm, opacity: pressed ? 0.6 : 1,
+                borderBottomWidth: 1, borderBottomColor: theme.line })}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: theme.fgStrong }}>{item.label}</Text>
+                <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>{item.sub}</Text>
+              </View>
+              <Text style={{ color: theme.accentInk, fontSize: 18, fontWeight: '800' }}>›</Text>
+            </Pressable>
+          ))}
+        </View>
+      </Card>
 
       <Card>
         <H2>Appearance</H2>
@@ -88,6 +118,12 @@ export default function More() {
         <Muted style={{ marginTop: 4 }}>
           Your sign-in number. It can be changed, with verification — your PIN keeps working.
         </Muted>
+        <View style={{ gap: SPACE.sm, marginTop: SPACE.md }}>
+          <Button label="Change mobile number" variant="secondary"
+            onPress={() => router.push('/change-mobile')} />
+          <Button label="Change my PIN" variant="secondary"
+            onPress={() => router.push('/set-pin')} />
+        </View>
       </Card>
     </Screen>
   );
