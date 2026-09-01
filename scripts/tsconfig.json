@@ -1,0 +1,18 @@
+{
+  // The guards run in node under tsx, not in the app bundle. The app config
+  // sets customConditions:["react-native"], under which @types/node's exports
+  // do not resolve -- so these files are checked separately rather than
+  // loosening the app's own config to accommodate them.
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "customConditions": [],
+    "lib": ["ESNext"],
+    "types": ["node"]
+  },
+  "include": ["*.ts", "../src/theme/tokens.ts", "../src/components/iconAlias.ts"]
+}

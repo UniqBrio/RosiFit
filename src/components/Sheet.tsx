@@ -1,0 +1,134 @@
+import React, { useMemo, useState } from 'react';
+import { View, Text, Pressable, Modal, ScrollView, TextInput } from 'react-native';
+import { useTheme } from '../theme/ThemeProvider';
+import { RADIUS, SPACE, TAP_MIN } from '../theme/tokens';
+import { Icon } from './Icon';
+
+/**
+ * The canvas' bottom sheet: scrim, rounded top, grab handle. Dismissing by
+ * tapping the scrim is a real control, so it carries a label rather than
+ * being an unnamed hit area.
+ */
+export function Sheet({ open, onClose, title, children }:
+  { open: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
+  const { theme } = useTheme();
+  return (
+    <Modal visible={open} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+        <Pressable
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel={`Close ${title}`}
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.scrim }} />
+        <View
+          accessibilityViewIsModal
+          style={{
+            maxHeight: '76%', backgroundColor: theme.surface,
+            borderTopLeftRadius: 28, borderTopRightRadius: 28,
+            borderTopWidth: 1, borderColor: theme.line,
+            paddingTop: SPACE.md, paddingHorizontal: SPACE.xl, paddingBottom: SPACE.xxl,
+          }}>
+          <View style={{ width: 42, height: 4, borderRadius: 99, backgroundColor: theme.lineStrong, alignSelf: 'center', marginBottom: SPACE.lg }} />
+          <Text style={{ fontSize: 19, fontWeight: '800', color: theme.fgStrong }}>{title}</Text>
+          {children}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+export type PickerOption = { label: string; meta?: string };
+
+/**
+ * Search-and-pick sheet used for the role, course and branch pickers. When
+ * `onAdd` is given, a query that matches nothing existing can be added as a
+ * new label -- the canvas' behaviour, and the reason the empty state says
+ * what to do rather than just "no results".
+ */
+export function SearchPicker({ open, onClose, title, placeholder, options, value, onSelect, onAdd, addMeta, emptyNote }:
+  {
+    open: boolean; onClose: () => void; title: string; placeholder: string;
+    options: PickerOption[]; value?: string;
+    onSelect: (label: string) => void;
+    onAdd?: (label: string) => void;
+    addMeta?: string;
+    emptyNote?: string;
+  }) {
+  const { theme } = useTheme();
+  const [query, setQuery] = useState('');
+
+  const q = query.trim().toLowerCase();
+  const results = useMemo(
+    () => options.filter(o => o.label.toLowerCase().includes(q)),
+    [options, q]);
+
+  const canAdd = !!onAdd && q.length >= 2 && !options.some(o => o.label.toLowerCase() === q);
+  const empty = q.length > 0 && results.length === 0 && !canAdd;
+
+  const close = () => { setQuery(''); onClose(); };
+
+  return (
+    <Sheet open={open} onClose={close} title={title}>
+      <View style={{
+        flexDirection: 'row', alignItems: 'center', gap: SPACE.md, marginTop: SPACE.md,
+        height: 50, borderRadius: RADIUS.md, backgroundColor: theme.shell,
+        borderWidth: 1, borderColor: theme.lineStrong, paddingHorizontal: SPACE.lg,
+      }}>
+        <Icon name="search" size={20} color={theme.muted} />
+        <TextInput
+          value={query} onChangeText={setQuery} placeholder={placeholder}
+          placeholderTextColor={theme.muted} accessibilityLabel={placeholder}
+          style={{ flex: 1, color: theme.fgStrong, fontSize: 14.5, fontWeight: '600' }} />
+      </View>
+
+      <ScrollView style={{ marginTop: SPACE.md }} contentContainerStyle={{ gap: 7 }} keyboardShouldPersistTaps="handled">
+        {results.map(o => {
+          const on = o.label === value;
+          return (
+            <Pressable key={o.label}
+              onPress={() => { setQuery(''); onSelect(o.label); }}
+              accessibilityRole="radio" accessibilityState={{ selected: on }}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
+                minHeight: TAP_MIN + 6, paddingHorizontal: SPACE.lg, paddingVertical: SPACE.md,
+                borderRadius: RADIUS.md, borderWidth: 1,
+                borderColor: on ? theme.accent : theme.line,
+                backgroundColor: on ? theme.control : theme.surface2,
+              }}>
+              <Icon name={on ? 'radio_button_checked' : 'radio_button_unchecked'}
+                size={19} color={on ? theme.accentInk : theme.dim} />
+              <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: theme.fgStrong }}>{o.label}</Text>
+              {/* the selected row says "Selected" as well as showing a filled
+                  radio, so the state is not carried by the glyph alone */}
+              <Text style={{ fontSize: 11.5, color: theme.muted }}>{on ? 'Selected' : o.meta ?? ''}</Text>
+            </Pressable>
+          );
+        })}
+
+        {canAdd ? (
+          <Pressable
+            onPress={() => { const v = query.trim(); setQuery(''); onAdd!(v); }}
+            accessibilityRole="button"
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
+              minHeight: TAP_MIN + 6, paddingHorizontal: SPACE.lg, paddingVertical: SPACE.md,
+              borderRadius: RADIUS.md, borderWidth: 1, borderColor: theme.accent,
+              backgroundColor: theme.control,
+            }}>
+            <Icon name="add_circle" size={19} color={theme.accentInk} />
+            <Text style={{ flex: 1, fontSize: 14, fontWeight: '800', color: theme.fgStrong }}>
+              {`Add “${query.trim()}”`}
+            </Text>
+            <Text style={{ fontSize: 11.5, color: theme.accentInk }}>{addMeta ?? 'New label'}</Text>
+          </Pressable>
+        ) : null}
+
+        {empty ? (
+          <Text style={{ paddingVertical: SPACE.lg, paddingHorizontal: SPACE.xs, fontSize: 12.5, color: theme.muted, lineHeight: 19 }}>
+            {emptyNote ?? 'Nothing matches that.'}
+          </Text>
+        ) : null}
+      </ScrollView>
+    </Sheet>
+  );
+}

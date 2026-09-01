@@ -4,5 +4,6 @@
     "strict": true,
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "exclude": ["node_modules", "scripts"]
 }

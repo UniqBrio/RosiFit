@@ -1,105 +1,222 @@
 import { useState } from 'react';
-import { View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Screen, Card, H1, H2, Body, Muted, Button, Pill, Row, Divider } from '../../src/components/ui';
-import { Toggle, Stepper, Choice } from '../../src/components/Field';
+import { View, Text, Pressable } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
+import { Screen, Muted, Label, Button } from '../../src/components/ui';
+import { Icon } from '../../src/components/Icon';
 import { useTheme } from '../../src/theme/ThemeProvider';
-import { SPACE, RADIUS } from '../../src/theme/tokens';
-import { COURSE_LIST, COURSE_RULES, GLOBAL_RULE, ruleSentence, CANDIDATES, type FollowUpRule } from '../../src/data/mock';
+import { useToast } from '../../src/components/Toast';
+import { SPACE, RADIUS, TAP_MIN } from '../../src/theme/tokens';
+import {
+  COURSE_LIST, MEMBERS, GLOBAL_RULE, isEligible, type FollowUpRule,
+} from '../../src/data/mock';
 
 /**
- * C-60..C-67. Two conditions, combined by OR or AND, resolved as
- *   global default -> course override -> effective.
+ * C-61..C-67: the rule editor. Everything below edits a DRAFT; the live
+ * preview counts who would be listed, and nothing changes until Save. A
+ * config with both conditions off cannot exist -- the toggle refuses.
  */
-export default function CourseRules() {
+export default function Rules() {
   const { theme } = useTheme();
-  const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const course = COURSE_LIST.find(c => c.id === id) ?? COURSE_LIST[0];
+  const { flash } = useToast();
+  const { id } = useLocalSearchParams<{ id?: string }>();
+  const course = COURSE_LIST.find(c => c.id === id);
 
-  const [useDefault, setUseDefault] = useState(!COURSE_RULES[course.id]);
-  const [r, setR] = useState<FollowUpRule>(COURSE_RULES[course.id] ?? { ...GLOBAL_RULE, source: 'course' });
-  const effective: FollowUpRule = useDefault ? GLOBAL_RULE : r;
+  const [scope, setScope] = useState<string | null>(course?.name ?? null);
+  const [saved, setSaved] = useState<FollowUpRule>(GLOBAL_RULE);
+  const [draft, setDraft] = useState<FollowUpRule>(GLOBAL_RULE);
 
-  // at least one condition must be on, or the rule can never fire
-  const noCondition = !effective.weekly_enabled && !effective.consecutive_enabled;
-  const preview = CANDIDATES.filter(c => c.course_name === course.name).length;
+  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
+  const wouldList = MEMBERS.filter(m => isEligible(m, draft)).length;
+
+  const plain = (() => {
+    const w = `misses ${draft.weekly_threshold} or more sessions in the week`;
+    const c = `misses ${draft.consecutive_threshold} sessions in a row`;
+    const body = draft.weekly_enabled && draft.consecutive_enabled
+      ? `${w} ${draft.combination === 'AND' ? 'AND' : 'OR'} ${c}`
+      : draft.weekly_enabled ? w : c;
+    return `A member ${scope ? `in ${scope}` : 'in any course'} is listed for follow-up when she ${body}.`;
+  })();
+
+  const toggle = (key: 'weekly_enabled' | 'consecutive_enabled') => {
+    const next = { ...draft, [key]: !draft[key] };
+    if (!next.weekly_enabled && !next.consecutive_enabled) {
+      // C-62: both-off cannot exist; the same guard the DB CHECK enforces
+      flash('Turn on at least one condition, or switch follow-up off entirely', 'warn');
+      return;
+    }
+    setDraft(next);
+  };
+
+  const conditions = [
+    { key: 'weekly_enabled' as const, tkey: 'weekly_threshold' as const,
+      label: 'Weekly missed sessions', min: 1, max: 7,
+      hint: 'Listed when she misses this many of the week’s scheduled sessions.' },
+    { key: 'consecutive_enabled' as const, tkey: 'consecutive_threshold' as const,
+      label: 'Consecutive missed sessions', min: 1, max: 12,
+      hint: 'Listed when her current run of misses reaches this length.' },
+  ];
 
   return (
     <Screen>
-      <H1>Follow-up rules</H1>
-      <Muted style={{ marginBottom: SPACE.lg }}>{course.name}</Muted>
+      <Muted style={{ marginBottom: SPACE.lg }}>
+        {scope
+          ? `${scope} · overrides the academy default`
+          : 'The academy default · used by every course without its own rules'}
+      </Muted>
 
-      <Card>
-        <Choice label="Which rule applies?"
-          options={['Use the academy default', 'Set rules for this course']}
-          value={useDefault ? 'Use the academy default' : 'Set rules for this course'}
-          onChange={v => setUseDefault(v === 'Use the academy default')} />
-        {useDefault && (
-          <Muted>
-            Academy default: weekly missed ≥ {GLOBAL_RULE.weekly_threshold}
-            {GLOBAL_RULE.consecutive_enabled ? `, consecutive ≥ ${GLOBAL_RULE.consecutive_threshold}` : ', consecutive off'}.
-          </Muted>
-        )}
-      </Card>
+      {/* C-64: scope first — who this rule is FOR is never implicit */}
+      <View style={{ gap: SPACE.sm }}>
+        {[
+          { key: null, label: 'Use for every course',
+            desc: 'The academy default. A course can still be given its own rules from Courses.' },
+          { key: course?.name ?? 'Prenatal Flow', label: `Set rules for ${course?.name ?? 'Prenatal Flow'}`,
+            desc: 'Only this course. Everyone else keeps the academy default.' },
+        ].map(s => {
+          const on = scope === s.key;
+          return (
+            <Pressable key={String(s.key)} onPress={() => setScope(s.key)}
+              accessibilityRole="radio" accessibilityState={{ selected: on }}
+              accessibilityLabel={`${s.label}. ${s.desc}`}
+              style={{
+                flexDirection: 'row', gap: SPACE.md, padding: SPACE.lg, minHeight: TAP_MIN,
+                borderRadius: RADIUS.lg, backgroundColor: on ? theme.control : theme.surface,
+                borderWidth: 1.5, borderColor: on ? theme.accent : theme.line,
+              }}>
+              <Icon name={on ? 'radio_button_checked' : 'radio_button_unchecked'}
+                size={20} color={on ? theme.accentInk : theme.dim} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 14, fontWeight: '800', color: theme.fgStrong }}>{s.label}</Text>
+                <Text style={{ fontSize: 12, color: theme.muted, marginTop: 3, lineHeight: 17 }}>{s.desc}</Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
 
-      {!useDefault && (
-        <Card>
-          <H2>Conditions</H2>
-          <View style={{ marginTop: SPACE.md }}>
-            <Toggle label="Weekly missed sessions" value={r.weekly_enabled}
-              onChange={v => setR(x => ({ ...x, weekly_enabled: v }))}
-              hint="Counts misses within the selected week." />
-            {r.weekly_enabled && (
-              <Stepper label="Threshold" value={r.weekly_threshold} min={1} max={7}
-                onChange={v => setR(x => ({ ...x, weekly_threshold: v }))} />
-            )}
-            <Divider />
-            <Toggle label="Consecutive missed sessions" value={r.consecutive_enabled}
-              onChange={v => setR(x => ({ ...x, consecutive_enabled: v }))}
-              hint="Counts an unbroken run, however long it has been building." />
-            {r.consecutive_enabled && (
-              <Stepper label="Threshold" value={r.consecutive_threshold} min={1} max={12}
-                onChange={v => setR(x => ({ ...x, consecutive_threshold: v }))} />
-            )}
+      <View style={{
+        marginTop: SPACE.lg, padding: SPACE.lg, borderRadius: RADIUS.lg,
+        backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line, gap: SPACE.lg,
+      }}>
+        {conditions.map(c => {
+          const on = draft[c.key];
+          const v = draft[c.tkey];
+          return (
+            <View key={c.key}>
+              <Pressable onPress={() => toggle(c.key)}
+                accessibilityRole="checkbox" accessibilityState={{ checked: on }}
+                accessibilityLabel={c.label}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.md, minHeight: TAP_MIN - 8 }}>
+                <View style={{
+                  width: 22, height: 22, borderRadius: 7,
+                  backgroundColor: on ? theme.accent : 'transparent',
+                  borderWidth: 1.5, borderColor: on ? theme.accent : theme.lineStrong,
+                  alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {on ? <Icon name="check" size={14} color={theme.onAccent} /> : null}
+                </View>
+                <Text style={{ flex: 1, fontSize: 14.5, fontWeight: '800', color: theme.fgStrong }}>{c.label}</Text>
+              </Pressable>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.md, marginTop: SPACE.sm }}>
+                <Text style={{ flex: 1, fontSize: 12, color: theme.muted, lineHeight: 17 }}>{c.hint}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }}>
+                  {(['−', '+'] as const).map((sym, i) => {
+                    const delta = i === 0 ? -1 : 1;
+                    const disabled = !on || (delta < 0 ? v <= c.min : v >= c.max);
+                    return i === 0 ? (
+                      <StepBtn key={sym} sym={sym} disabled={disabled}
+                        label={`Decrease ${c.label.toLowerCase()}`}
+                        onPress={() => setDraft({ ...draft, [c.tkey]: v - 1 })} />
+                    ) : (
+                      <View key={sym} style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }}>
+                        <Text accessibilityLiveRegion="polite" style={{
+                          width: 30, textAlign: 'center', fontSize: 18, fontWeight: '800',
+                          color: on ? theme.fgStrong : theme.dim, fontVariant: ['tabular-nums'],
+                        }}>{v}</Text>
+                        <StepBtn sym={sym} disabled={disabled}
+                          label={`Increase ${c.label.toLowerCase()}`}
+                          onPress={() => setDraft({ ...draft, [c.tkey]: v + 1 })} />
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            </View>
+          );
+        })}
+
+        <View>
+          <Label>When should she be listed?</Label>
+          <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.sm }}>
+            {([['OR', 'Either condition'], ['AND', 'Both conditions']] as const).map(([key, label]) => {
+              const on = draft.combination === key;
+              return (
+                <Pressable key={key} onPress={() => setDraft({ ...draft, combination: key })}
+                  accessibilityRole="radio" accessibilityState={{ selected: on }}
+                  style={{
+                    flex: 1, minHeight: TAP_MIN + 4, alignItems: 'center', justifyContent: 'center', gap: 2,
+                    borderRadius: RADIUS.md, backgroundColor: on ? theme.accent : theme.surface2,
+                    borderWidth: 1, borderColor: on ? theme.accent : theme.lineStrong,
+                  }}>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: on ? theme.onAccent : theme.fg }}>{label}</Text>
+                  <Text style={{ fontSize: 10.5, fontWeight: '700', color: on ? theme.onAccent : theme.muted }}>{key}</Text>
+                </Pressable>
+              );
+            })}
           </View>
+          <Muted style={{ marginTop: SPACE.sm }}>
+            {draft.combination === 'AND' && draft.weekly_enabled && draft.consecutive_enabled
+              ? 'Both conditions must hold in the same week. Fewer members will be listed.'
+              : 'Meeting either condition lists her. This is the safer default.'}
+          </Muted>
+        </View>
+      </View>
 
-          <Divider />
-          <Choice label="When should a member be listed?"
-            options={['Either condition (OR)', 'Both conditions (AND)']}
-            value={r.combination === 'OR' ? 'Either condition (OR)' : 'Both conditions (AND)'}
-            onChange={v => setR(x => ({ ...x, combination: v.startsWith('Either') ? 'OR' : 'AND' }))} />
+      {/* C-67: the rule in PLAIN WORDS plus a live count, before anything saves */}
+      <View style={{
+        marginTop: SPACE.md, padding: SPACE.lg, borderRadius: RADIUS.lg,
+        backgroundColor: theme.surface2, borderWidth: 1, borderColor: theme.line,
+      }}>
+        <Text style={{ fontSize: 13.5, color: theme.fg, lineHeight: 21 }}>{plain}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: SPACE.md, marginTop: SPACE.md }}>
+          <Text style={{ fontSize: 34, fontWeight: '800', color: theme.accentInk, fontVariant: ['tabular-nums'] }}>
+            {wouldList}
+          </Text>
+          <Muted style={{ flex: 1 }}>
+            {`members would be listed for the current week, out of ${MEMBERS.length}. Nothing is saved until you press save.`}
+          </Muted>
+        </View>
+      </View>
 
-          {noCondition && (
-            <Body accessibilityLiveRegion="polite" style={{ color: theme.danger }}>
-              Turn on at least one condition, or switch follow-up off entirely. With both off,
-              nobody would ever be listed.
-            </Body>
-          )}
-        </Card>
-      )}
+      <Muted style={{ marginTop: SPACE.md }}>
+        Cancelled classes, festival holidays, and sessions still awaiting upload never count toward a
+        miss. Every send stores the rule it used, so a report months later can say which one applied.
+      </Muted>
 
-      {/* C-67: generated from the values, so it cannot drift from the rule */}
-      <Card style={{ borderColor: theme.accent, borderWidth: 2 }}>
-        <H2>What this means</H2>
-        <Body style={{ marginTop: SPACE.sm }}>{ruleSentence(effective, course.name)}</Body>
-        <Divider />
-        <Row>
-          <Pill text={`${preview} would be listed now`} tone={preview > 0 ? 'warning' : 'success'} />
-        </Row>
-        <Muted style={{ marginTop: SPACE.sm }}>
-          Counted against the current week before you save, so a wider rule cannot surprise you.
-        </Muted>
-      </Card>
-
-      <Row style={{ gap: SPACE.md }}>
-        <Button label="Cancel" variant="secondary" onPress={() => router.back()} style={{ flex: 1 }} />
-        <Button label="Save rules" disabled={!useDefault && noCondition}
-          onPress={() => router.back()} style={{ flex: 2 }} />
-      </Row>
-      <Muted style={{ textAlign: 'center', marginTop: SPACE.sm }}>
-        Every changed field is recorded in the audit log, old value and new.
+      <Button label="Save rules" disabled={!dirty} style={{ marginTop: SPACE.lg }}
+        onPress={() => {
+          setSaved(draft);
+          flash(`Rules saved · ${wouldList} members listed`);
+        }} />
+      <Muted style={{ marginTop: 9, textAlign: 'center' }}>
+        {dirty ? 'Saved rules are stored with every send, for audit' : 'Nothing changed yet'}
       </Muted>
     </Screen>
+  );
+}
+
+function StepBtn({ sym, disabled, label, onPress }:
+  { sym: string; disabled: boolean; label: string; onPress: () => void }) {
+  const { theme } = useTheme();
+  return (
+    <Pressable onPress={onPress} disabled={disabled}
+      accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }}
+      style={{
+        width: TAP_MIN - 4, height: TAP_MIN - 8, borderRadius: RADIUS.sm,
+        alignItems: 'center', justifyContent: 'center',
+        backgroundColor: disabled ? theme.control : theme.surface2,
+        borderWidth: 1, borderColor: theme.lineStrong,
+      }}>
+      <Text style={{ fontSize: 20, fontWeight: '700', color: disabled ? theme.dim : theme.fgStrong }}>{sym}</Text>
+    </Pressable>
   );
 }

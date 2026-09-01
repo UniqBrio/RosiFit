@@ -1,73 +1,144 @@
-import { View } from 'react-native';
+import { useState } from 'react';
+import { View, Text, Pressable, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Screen, Card, H1, H2, Body, Muted, Label, Button, Pill, Row, Divider } from '../src/components/ui';
+import { Screen, Muted, Button } from '../src/components/ui';
+import { Icon } from '../src/components/Icon';
 import { useTheme } from '../src/theme/ThemeProvider';
-import { SPACE } from '../src/theme/tokens';
-import { COURSE_LIST, DAY_NAMES, COURSE_RULES, GLOBAL_RULE, ruleSentence } from '../src/data/mock';
+import { useToast } from '../src/components/Toast';
+import { SPACE, RADIUS, TAP_MIN, STATUS } from '../src/theme/tokens';
+import {
+  COURSE_LIST, MEMBERS, DAY_NAMES, COURSE_RULES, GLOBAL_RULE, ruleSentence,
+  AVATAR_TINTS, initials,
+} from '../src/data/mock';
+
+/** '06:00' -> '6:00 AM', for reading out a course's default time */
+const ampm = (t: string) => {
+  const [h, m] = t.split(':').map(Number);
+  const hr = ((h + 11) % 12) + 1;
+  return `${hr}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+};
 
 export default function Courses() {
   const { theme } = useTheme();
+  const { flash } = useToast();
   const router = useRouter();
+  const [query, setQuery] = useState('');
+
+  const list = COURSE_LIST.filter(c =>
+    !query.trim() || c.name.toLowerCase().includes(query.trim().toLowerCase()));
+  const dangerInk = theme.isDark ? STATUS.absent.fgDark : STATUS.absent.fgLight;
+
   return (
     <Screen>
-      <H1>Courses</H1>
-      <Muted style={{ marginBottom: SPACE.lg }}>{COURSE_LIST.length} courses</Muted>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.md }}>
+        <Muted style={{ flex: 1 }}>
+          {`${COURSE_LIST.length} courses · ${COURSE_LIST.reduce((n, c) => n + c.offerings.length, 0)} offerings`}
+        </Muted>
+        <Button label="Add" onPress={() => router.push('/course/edit')} />
+      </View>
 
-      {COURSE_LIST.map(c => {
-        const rule = COURSE_RULES[c.id] ?? GLOBAL_RULE;
-        return (
-          <Card key={c.id}>
-            <Row>
-              <View style={{ flex: 1 }}>
-                <H2>{c.name}</H2>
-                <Muted>
-                  {c.start_time && c.end_time ? `${c.start_time}–${c.end_time} · ` : ''}
-                  states {c.frequency ?? '—'} sessions a week
-                </Muted>
-              </View>
-              <Button label="Edit" variant="secondary"
-                onPress={() => router.push({ pathname: '/course/edit', params: { id: c.id } })} />
-            </Row>
+      <View style={{
+        flexDirection: 'row', alignItems: 'center', gap: SPACE.md, marginTop: SPACE.md,
+        height: 46, borderRadius: RADIUS.md, backgroundColor: theme.surface,
+        borderWidth: 1, borderColor: theme.lineStrong, paddingHorizontal: 13,
+      }}>
+        <Icon name="search" size={19} color={theme.muted} />
+        <TextInput value={query} onChangeText={setQuery} placeholder="Search courses"
+          placeholderTextColor={theme.muted} accessibilityLabel="Search courses"
+          style={{ flex: 1, color: theme.fgStrong, fontSize: 13.5, fontWeight: '600' }} />
+      </View>
 
-            <Divider />
-            <Label>Where it runs</Label>
-            {c.offerings.map(o => {
-              // CR-07: the schedule is what counts. When it disagrees with the
-              // course's stated frequency we show BOTH and never reconcile.
-              const mismatch = c.frequency !== null && o.weekdays.length !== c.frequency;
-              return (
-                <View key={o.branch} style={{ marginTop: SPACE.sm }}>
-                  <Row>
-                    <Body style={{ flex: 1, fontWeight: '700' }}>{o.branch}</Body>
-                    <Muted>{o.weekdays.map(d => DAY_NAMES[d]).join(' ')}</Muted>
-                  </Row>
-                  {mismatch && (
-                    <Body style={{ color: theme.warning, fontSize: 13, marginTop: 4 }}>
-                      This course is set up for {c.frequency} sessions a week. This offering runs{' '}
-                      {o.weekdays.length} days. Attendance is counted from the {o.weekdays.length} days.
-                    </Body>
-                  )}
+      <View style={{ gap: SPACE.md, marginTop: SPACE.lg }}>
+        {list.map((c, i) => {
+          const enrolled = MEMBERS.filter(m => m.course === c.name).length;
+          const rule = COURSE_RULES[c.id];
+          const offerings = c.offerings.length
+            ? c.offerings.map(o =>
+                `${o.branch} ${o.weekdays.map(d => DAY_NAMES[d]).join(' ')}`).join(' · ')
+            : 'No offering yet — so no schedule';
+          return (
+            <View key={c.id} style={{
+              padding: SPACE.lg, borderRadius: RADIUS.lg, backgroundColor: theme.surface,
+              borderWidth: 1, borderColor: theme.line,
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.md }}>
+                <View style={{
+                  width: 42, height: 42, borderRadius: 13,
+                  backgroundColor: AVATAR_TINTS[(i + 1) % AVATAR_TINTS.length],
+                  alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Text style={{ fontSize: 14, fontWeight: '800', color: '#FFFFFF' }}>{initials(c.name)}</Text>
                 </View>
-              );
-            })}
-
-            <Divider />
-            <Row>
-              <View style={{ flex: 1 }}>
-                <Label>Follow-up rule</Label>
-                <Muted style={{ marginTop: 4 }}>
-                  {rule.source === 'course' ? 'Set for this course' : 'Using the academy default'}
-                </Muted>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 15, fontWeight: '800', color: theme.fgStrong }}>{c.name}</Text>
+                  <Text style={{ fontSize: 11.5, color: theme.muted, marginTop: 2, fontVariant: ['tabular-nums'] }}>
+                    {`${enrolled} member${enrolled === 1 ? '' : 's'} · `}
+                    {c.start_time ? `${ampm(c.start_time)}–${ampm(c.end_time!)} · ` : 'no default time · '}
+                    {/* "intended", because frequency is stated intent and is
+                        never what attendance is counted against */}
+                    {`${c.frequency}/week intended`}
+                  </Text>
+                </View>
+                <RowIcon icon="edit" label={`Edit ${c.name}`} tint={theme.accentInk}
+                  onPress={() => router.push({ pathname: '/course/edit', params: { id: c.id } })} />
+                <RowIcon icon="delete" label={`Remove ${c.name}`} tint={dangerInk}
+                  onPress={() => flash(`Removing ${c.name} needs a confirmation`, 'warn')} />
               </View>
-              <Button label="Rules" variant="secondary"
-                onPress={() => router.push({ pathname: '/course/rules', params: { id: c.id } })} />
-            </Row>
-            <Body style={{ marginTop: SPACE.sm, fontSize: 13 }}>{ruleSentence(rule, c.name)}</Body>
-          </Card>
-        );
-      })}
 
-      <Button label="+ Add course" onPress={() => router.push('/course/edit')} />
+              <View style={{
+                flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, marginTop: SPACE.md,
+                paddingTop: SPACE.md, borderTopWidth: 1, borderTopColor: theme.line,
+              }}>
+                <Text numberOfLines={2} style={{ flex: 1, fontSize: 11.5, color: theme.muted, lineHeight: 16 }}>
+                  {offerings}
+                </Text>
+                <Pressable onPress={() => router.push('/(tabs)/members')} accessibilityRole="button"
+                  accessibilityLabel={`Members of ${c.name}`}>
+                  <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.accentInk }}>Members</Text>
+                </Pressable>
+              </View>
+
+              <Muted style={{ marginTop: SPACE.sm }}>
+                {rule ? ruleSentence(rule, c.name) : ruleSentence(GLOBAL_RULE, c.name)}
+                {rule ? '' : ' (academy default)'}
+              </Muted>
+              <Pressable onPress={() => router.push({ pathname: '/course/rules', params: { id: c.id } })}
+                accessibilityRole="button" accessibilityLabel={`Follow-up rules for ${c.name}`}
+                style={{ marginTop: 6, minHeight: TAP_MIN / 2 }}>
+                <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.accentInk }}>Follow-up rules</Text>
+              </Pressable>
+            </View>
+          );
+        })}
+      </View>
+
+      <View style={{
+        marginTop: SPACE.md, padding: SPACE.lg, borderRadius: RADIUS.lg,
+        flexDirection: 'row', gap: SPACE.md,
+        backgroundColor: theme.surface2, borderWidth: 1, borderColor: theme.line,
+      }}>
+        <Icon name="info" size={18} color={theme.accentInk} />
+        {/* C-56: the model, stated where it is used */}
+        <Muted style={{ flex: 1 }}>
+          A course carries no schedule. Days and times live on its offerings — the same course runs
+          different days at different branches.
+        </Muted>
+      </View>
     </Screen>
+  );
+}
+
+function RowIcon({ icon, label, tint, onPress }:
+  { icon: string; label: string; tint: string; onPress: () => void }) {
+  const { theme } = useTheme();
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label}
+      style={({ pressed }) => ({
+        width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center',
+        backgroundColor: theme.control, borderWidth: 1, borderColor: theme.line,
+        opacity: pressed ? 0.7 : 1,
+      })}>
+      <Icon name={icon} size={18} color={tint} />
+    </Pressable>
   );
 }

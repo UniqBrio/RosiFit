@@ -1,10 +1,14 @@
 import { useState } from 'react';
-import { View, Text, TextInput, Pressable } from 'react-native';
+import { View, Text, TextInput, Pressable, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../src/theme/ThemeProvider';
-import { Button, Body, Muted, Label } from '../src/components/ui';
-import { RADIUS, SPACE, TAP_MIN } from '../src/theme/tokens';
+import { Button, Muted, DeepBackground } from '../src/components/ui';
+import { Icon } from '../src/components/Icon';
+import { RADIUS, SPACE, TAP_MIN, STATUS } from '../src/theme/tokens';
+
+/** '1'..'9', clear-entry, '0', backspace -- the canvas' 3-column layout */
+const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'ce', '0', 'del'] as const;
 
 export default function SignIn() {
   const { theme } = useTheme();
@@ -16,93 +20,158 @@ export default function SignIn() {
   const digits = phone.replace(/\D/g, '');
   const phoneOk = digits.length === 10;
 
-  const press = (d: string) => {
-    if (d === 'del') return setPin(p => p.slice(0, -1));
+  const press = (k: string) => {
+    // CE clears the whole entry; only the backspace removes one digit. These
+    // were previously wired to the same action, so there was no way to start
+    // over without pressing delete four times.
+    if (k === 'ce') return setPin('');
+    if (k === 'del') return setPin(p => p.slice(0, -1));
     if (pin.length >= 4) return;
-    const next = pin + d;
+    const next = pin + k;
     setPin(next);
     // A real sign-in posts to auth-login. The UI never sees a PIN again after
     // this: it is not stored, not logged, and not echoed back.
     if (next.length === 4) setTimeout(() => router.replace('/(tabs)'), 220);
   };
 
-  return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.accentDeep }}>
-      <View style={{ flex: 1, justifyContent: 'flex-end' }}>
-        <View style={{ alignItems: 'center', paddingVertical: SPACE.xxl * 2 }}>
-          <Text style={{ fontSize: 34, fontWeight: '800', color: theme.onDeep, letterSpacing: -1 }}>RosiFit</Text>
-          <Text style={{ fontSize: 13, color: theme.onDeep, marginTop: 6, letterSpacing: 2, textTransform: 'uppercase' }}>
-            Fit moms to be
-          </Text>
-        </View>
+  const okInk = theme.isDark ? STATUS.present.fgDark : STATUS.present.fgLight;
 
-        <View style={{
-          backgroundColor: theme.bg, borderTopLeftRadius: 28, borderTopRightRadius: 28,
-          padding: SPACE.xl, paddingBottom: SPACE.xxl, gap: SPACE.md,
-        }}>
-          {step === 'phone' ? (
-            <>
-              <Text style={{ fontSize: 24, fontWeight: '800', color: theme.fgStrong }}>Welcome back</Text>
-              <Muted>Your number, then your 4-digit PIN.</Muted>
-              <Label>Mobile number</Label>
-              <View style={{
-                flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
-                borderWidth: 1, borderColor: theme.lineStrong, borderRadius: RADIUS.md,
-                backgroundColor: theme.surface, paddingHorizontal: SPACE.lg, minHeight: TAP_MIN + 8,
-              }}>
-                <Text style={{ color: theme.muted, fontWeight: '700' }}>+91</Text>
-                <TextInput
-                  value={phone}
-                  onChangeText={setPhone}
-                  keyboardType="number-pad"
-                  accessibilityLabel="Mobile number"
-                  placeholder="00000 00000"
-                  placeholderTextColor={theme.muted}
-                  style={{ flex: 1, color: theme.fgStrong, fontSize: 17, fontWeight: '700' }}
-                />
-              </View>
-              <Muted>Only RosiFit staff numbers can sign in.</Muted>
-              <Button label="Continue" disabled={!phoneOk} onPress={() => setStep('pin')} />
-              <Button label="Super admin registration" variant="secondary"
-                onPress={() => router.push('/register')} />
-            </>
-          ) : (
-            <>
-              <Text style={{ fontSize: 24, fontWeight: '800', color: theme.fgStrong }}>Enter your PIN</Text>
-              <Muted>+91 {phone}</Muted>
-              <View style={{ flexDirection: 'row', gap: SPACE.md, justifyContent: 'center', marginVertical: SPACE.lg }}>
-                {[0, 1, 2, 3].map(i => (
-                  <View key={i} accessibilityElementsHidden style={{
-                    width: 52, height: 60, borderRadius: RADIUS.md,
-                    borderWidth: 1.5, borderColor: i < pin.length ? theme.accent : theme.lineStrong,
-                    backgroundColor: theme.surface, alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    <Text style={{ fontSize: 28, color: theme.fgStrong }}>{i < pin.length ? '•' : ''}</Text>
+  return (
+    <DeepBackground>
+      <SafeAreaView style={{ flex: 1 }}>
+        <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 18, paddingHorizontal: 32 }}>
+            <Image
+              source={require('../assets/rosifit-logo.png')}
+              style={{ width: 126, height: 126, resizeMode: 'contain' }}
+              accessibilityLabel="RosiFit" />
+            <View style={{ alignItems: 'center' }}>
+              <Text style={{
+                fontSize: 15, fontWeight: '600', color: '#FFFFFF',
+                letterSpacing: 2, textTransform: 'uppercase',
+              }}>Preparing, Thriving</Text>
+              <Text style={{
+                fontSize: 15, fontWeight: '600', color: theme.accentInk,
+                letterSpacing: 2, textTransform: 'uppercase',
+              }}>and Beyond</Text>
+            </View>
+          </View>
+
+          <View style={{
+            backgroundColor: theme.shell, borderTopLeftRadius: 30, borderTopRightRadius: 30,
+            borderTopWidth: 1, borderColor: theme.line,
+            paddingHorizontal: SPACE.xl, paddingTop: 26, paddingBottom: 34,
+          }}>
+            {step === 'phone' ? (
+              <>
+                <Text style={{ fontSize: 26, fontWeight: '800', color: theme.fgStrong, letterSpacing: -0.5 }}>
+                  Welcome back
+                </Text>
+                <Muted style={{ marginTop: 6, marginBottom: 22, fontSize: 14 }}>
+                  Your number, then your 4-digit PIN.
+                </Muted>
+                <View style={{
+                  flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
+                  borderWidth: 1, borderColor: theme.lineStrong, borderRadius: RADIUS.md,
+                  backgroundColor: theme.surface, paddingHorizontal: SPACE.lg, height: 56,
+                }}>
+                  <Text style={{ color: theme.muted, fontWeight: '600', fontSize: 15 }}>+91</Text>
+                  <View style={{ width: 1, height: 22, backgroundColor: theme.line }} />
+                  <TextInput
+                    value={phone} onChangeText={setPhone} keyboardType="number-pad"
+                    accessibilityLabel="Mobile number"
+                    placeholder="00000 00000" placeholderTextColor={theme.muted}
+                    style={{ flex: 1, color: theme.fgStrong, fontSize: 17, fontWeight: '600', letterSpacing: 1 }} />
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, marginTop: SPACE.lg, marginBottom: SPACE.xl }}>
+                  <Icon name="lock" size={16} color={okInk} />
+                  <Muted style={{ flex: 1 }}>Only RosiFit staff numbers can sign in.</Muted>
+                </View>
+                <Button label="Continue" disabled={!phoneOk} onPress={() => setStep('pin')} />
+                <Button label="Super admin registration" variant="secondary"
+                  onPress={() => router.push('/register')} style={{ marginTop: SPACE.sm }} />
+              </>
+            ) : (
+              <>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.md }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 24, fontWeight: '800', color: theme.fgStrong, letterSpacing: -0.5 }}>
+                      Enter your PIN
+                    </Text>
+                    <Text style={{ fontSize: 13, color: theme.muted, marginTop: 5, fontVariant: ['tabular-nums'] }}>
+                      +91 {phone}
+                    </Text>
                   </View>
-                ))}
-              </View>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.md, justifyContent: 'center' }}>
-                {['1','2','3','4','5','6','7','8','9','CE','0','del'].map(k => (
-                  <Pressable key={k} onPress={() => press(k === 'CE' ? 'del' : k)}
-                    accessibilityRole="button" accessibilityLabel={k === 'del' ? 'Delete' : k}
+                  <Pressable onPress={() => { setPin(''); setStep('phone'); }}
+                    accessibilityRole="button" accessibilityLabel="Change mobile number"
                     style={({ pressed }) => ({
-                      width: 92, minHeight: TAP_MIN + 10, borderRadius: RADIUS.md,
-                      alignItems: 'center', justifyContent: 'center',
-                      backgroundColor: pressed ? theme.control : theme.surface,
-                      borderWidth: 1, borderColor: theme.line,
+                      minHeight: TAP_MIN, justifyContent: 'center', paddingHorizontal: 11,
+                      borderRadius: RADIUS.sm, borderWidth: 1, borderColor: theme.lineStrong,
+                      opacity: pressed ? 0.7 : 1,
                     })}>
-                    <Text style={{ fontSize: 20, fontWeight: '700', color: theme.fgStrong }}>
-                      {k === 'del' ? '⌫' : k}
+                    <Text style={{ fontSize: 11.5, fontWeight: '700', color: theme.fg, textAlign: 'center', lineHeight: 15 }}>
+                      Change mobile{'\n'}number
                     </Text>
                   </Pressable>
-                ))}
-              </View>
-              <Button label="Forgot PIN" variant="secondary"
-                onPress={() => router.push('/forgot-pin')} />
-            </>
-          )}
+                </View>
+
+                {/* one control, not four: a screen reader hears how many
+                    digits are entered rather than four unlabelled boxes */}
+                <View
+                  accessible
+                  accessibilityLabel={`PIN, ${pin.length} of 4 digits entered`}
+                  style={{ flexDirection: 'row', gap: 14, justifyContent: 'center', marginTop: 22, marginBottom: 18 }}>
+                  {[0, 1, 2, 3].map(i => (
+                    <View key={i} style={{
+                      width: 52, height: 60, borderRadius: RADIUS.lg,
+                      borderWidth: 1.5, borderColor: i < pin.length ? theme.accent : theme.lineStrong,
+                      backgroundColor: theme.surface, alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <Text style={{ fontSize: 24, fontWeight: '800', color: theme.fgStrong }}>
+                        {i < pin.length ? '•' : ''}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                  {KEYS.map(k => (
+                    <Pressable key={k} onPress={() => press(k)}
+                      accessibilityRole="button"
+                      accessibilityLabel={k === 'del' ? 'Delete last digit' : k === 'ce' ? 'Clear entry' : k}
+                      style={({ pressed }) => ({
+                        // three to a row, gaps included
+                        width: '31.5%', flexGrow: 1, height: 56, borderRadius: RADIUS.lg,
+                        alignItems: 'center', justifyContent: 'center',
+                        backgroundColor: pressed ? theme.control : theme.surface,
+                        borderWidth: 1, borderColor: theme.line,
+                      })}>
+                      <Text style={{
+                        fontSize: k === 'ce' ? 15 : 21, fontWeight: '700',
+                        color: k === 'ce' || k === 'del' ? theme.muted : theme.fgStrong,
+                        fontVariant: ['tabular-nums'],
+                      }}>
+                        {k === 'del' ? '⌫' : k === 'ce' ? 'CE' : k}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                <Pressable onPress={() => router.push('/forgot-pin')}
+                  accessibilityRole="button" accessibilityLabel="Forgot PIN"
+                  style={({ pressed }) => ({
+                    marginTop: SPACE.lg, minHeight: TAP_MIN, borderRadius: RADIUS.md,
+                    borderWidth: 1, borderColor: theme.line, opacity: pressed ? 0.7 : 1,
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.sm,
+                  })}>
+                  <Icon name="help" size={18} color={theme.accentInk} />
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: theme.fg }}>Forgot PIN?</Text>
+                </Pressable>
+              </>
+            )}
+          </View>
         </View>
-      </View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </DeepBackground>
   );
 }

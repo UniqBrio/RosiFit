@@ -16,11 +16,12 @@ export function Donut({ attended, missed, notExpected }:
   { attended: number; missed: number; notExpected: number }) {
   const { theme } = useTheme();
   const total = attended + missed + notExpected;
+  const expected = attended + missed;
   const R = 54, C = 2 * Math.PI * R, W = 18;
 
   const segs = [
-    { label: 'Attended',     value: attended,    color: theme.success },
-    { label: 'Missed',       value: missed,      color: theme.danger },
+    { label: 'Present',      value: attended,    color: theme.success },
+    { label: 'Absent',       value: missed,      color: theme.danger },
     { label: 'Not expected', value: notExpected, color: theme.muted },
   ].filter(s => s.value > 0);
 
@@ -43,6 +44,22 @@ export function Donut({ attended, missed, notExpected }:
             })}
           </G>
         </Svg>
+        {/* the headline number sits in the hole, as on the canvas. It is the
+            attended share of what was EXPECTED -- "not expected" is in the
+            ring but never in this denominator, or a member on a reduced
+            schedule would read as poor attendance. */}
+        <View style={{
+          position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+          alignItems: 'center', justifyContent: 'center',
+        }} pointerEvents="none">
+          <Text style={{
+            fontSize: 22, fontWeight: '800', color: theme.fgStrong,
+            fontVariant: ['tabular-nums'], lineHeight: 24,
+          }}>{expected ? `${Math.round((attended / expected) * 100)}%` : '—'}</Text>
+          <Text style={{ fontSize: 9, fontWeight: '700', letterSpacing: 0.4, color: theme.muted }}>
+            ATTENDED
+          </Text>
+        </View>
       </View>
       <View style={{ flex: 1, gap: SPACE.sm }}>
         {segs.map(s => (

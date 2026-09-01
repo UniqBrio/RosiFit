@@ -1,0 +1,10 @@
+import { chromium } from '/opt/node22/lib/node_modules/playwright/index.mjs';
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+const p = await b.newPage({ viewport:{width:420,height:900} });
+const lines=[];
+p.on('console', m => { const t=m.text(); if (/hydrat|did not match|mismatch|Warning/i.test(t)) lines.push(t.slice(0,1400)); });
+p.on('pageerror', e => lines.push('PAGEERROR '+e.message.slice(0,900)));
+await p.goto('http://127.0.0.1:8102' + (process.argv[2]||'/(tabs)/more'), { waitUntil:'networkidle' });
+await p.waitForTimeout(1500);
+console.log(lines.join('\n---\n') || 'no hydration warnings');
+await b.close();
