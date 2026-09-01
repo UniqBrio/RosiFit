@@ -1,12 +1,17 @@
 import { View } from 'react-native';
-import { Screen, Card, H1, H2, Body, Muted, Label, Pill, Row, Divider } from '../src/components/ui';
+import { useLocalSearchParams } from 'expo-router';
+import { Screen, Card, H1, H2, Body, Muted, Label, Pill, Row, Divider, Skeleton, EmptyState, ErrorState } from '../src/components/ui';
 import { useTheme } from '../src/theme/ThemeProvider';
 import { SPACE, RADIUS } from '../src/theme/tokens';
-import { AUDIT } from '../src/data/mock';
+import { useAudit } from '../src/data/hooks';
 
 /** C-94/C-96. WHO · WHAT · WHEN · PREVIOUS · CURRENT, and nothing is editable. */
 export default function Audit() {
   const { theme } = useTheme();
+  const { state: forced } = useLocalSearchParams<{ state?: string }>();
+  const { state, data, error, retry } = useAudit(forced);
+  const entries = data ?? [];
+
   return (
     <Screen>
       <H1>Audit log</H1>
@@ -15,7 +20,20 @@ export default function Audit() {
         entries cannot be edited or deleted by anyone, including the system.
       </Muted>
 
-      {AUDIT.map(a => (
+      {state === 'loading' && <Skeleton lines={4} />}
+
+      {state === 'error' && (
+        <ErrorState onRetry={retry}
+          message={error ?? 'The audit log could not be loaded. Nothing has been changed.'} />
+      )}
+
+      {state === 'ready' && entries.length === 0 && (
+        <EmptyState
+          title="Nothing recorded yet"
+          body="Every change writes an entry here as soon as it happens. An empty log means nothing has changed yet, not that anything is missing." />
+      )}
+
+      {state === 'ready' && entries.map(a => (
         <Card key={a.id}>
           <Row>
             <Pill text={a.action} />

@@ -57,14 +57,44 @@ async function preview(admin: SupabaseClient, actorId: string, body: Record<stri
   const kept = rawRows.filter(r => (r.minutes_in_call ?? 0) >= MIN_MINUTES);
 
   const { data: aliases } = await admin.from('member_aliases')
-    .select('member_id, alias_normalized').eq('alias_type', 'name');
+    .select('member_id, alias_display, alias_normalized').eq('alias_type', 'name');
   const { data: members } = await admin.from('members')
     .select('id, member_code, full_name, name_normalized').is('deleted_at', null);
   const { data: primaryEmails } = await admin.from('member_emails')
     .select('member_id').eq('is_primary', true).is('deleted_at', null).neq('status', 'bounced');
+  const { data: stats } = await admin.from('member_stats').select('member_id, last_present_date');
 
   const hasEmail = new Set((primaryEmails ?? []).map(e => e.member_id as string));
   const memberById = new Map((members ?? []).map(m => [m.id as string, m]));
+  const lastPresentBy = new Map((stats ?? []).map(s => [s.member_id as string, s.last_present_date as string | null]));
+
+  // Who she is, in the words the review screen shows: course, branch and the
+  // display names already known for her. Outcome C is the prompt that stops
+  // a duplicate being created, and it can only do that if the person
+  // deciding can see who the candidate actually is.
+  const { data: enrollments } = await admin.from('member_enrollments')
+    .select('member_id, offering_id').eq('status', 'active');
+  const offeringIds = [...new Set((enrollments ?? []).map(e => e.offering_id as string))];
+  const zero = '00000000-0000-0000-0000-000000000000';
+  const { data: offeringRows } = await admin.from('course_offerings')
+    .select('id, course_id, branch_id').in('id', offeringIds.length ? offeringIds : [zero]);
+  const courseIds = [...new Set((offeringRows ?? []).map(o => o.course_id as string))];
+  const branchIds = [...new Set((offeringRows ?? []).map(o => o.branch_id as string))];
+  const { data: courseRows } = await admin.from('courses').select('id, name')
+    .in('id', courseIds.length ? courseIds : [zero]);
+  const { data: branchRows } = await admin.from('branches').select('id, name')
+    .in('id', branchIds.length ? branchIds : [zero]);
+
+  const offeringById = new Map((offeringRows ?? []).map(o => [o.id as string, o]));
+  const courseNameById = new Map((courseRows ?? []).map(c => [c.id as string, c.name as string]));
+  const branchNameById = new Map((branchRows ?? []).map(b => [b.id as string, b.name as string]));
+  const offeringByMember = new Map((enrollments ?? []).map(e => [e.member_id as string, e.offering_id as string]));
+  const aliasNamesByMember = new Map<string, string[]>();
+  for (const a of aliases ?? []) {
+    const list = aliasNamesByMember.get(a.member_id as string) ?? [];
+    list.push(a.alias_display as string);
+    aliasNamesByMember.set(a.member_id as string, list);
+  }
 
   const rows = kept.map((r, i) => {
     const normalized = normalizeName(r.full_name);
@@ -100,7 +130,22 @@ async function preview(admin: SupabaseClient, actorId: string, body: Record<stri
 
     const candidates = candidateIds.map(id => {
       const m = memberById.get(id)!;
-      return { member_id: id, full_name: m.full_name, member_code: m.member_code, has_email: hasEmail.has(id) };
+      const offering = offeringById.get(offeringByMember.get(id) ?? '');
+      return {
+        member_id: id,
+        full_name: m.full_name as string,
+        member_code: m.member_code as string,
+        has_email: hasEmail.has(id),
+        course_name: offering ? (courseNameById.get(offering.course_id as string) ?? '—') : '—',
+        branch_name: offering ? (branchNameById.get(offering.branch_id as string) ?? '—') : '—',
+        aliases: aliasNamesByMember.get(id) ?? [],
+        last_present_date: lastPresentBy.get(id) ?? null,
+        // why THIS candidate is being offered, in one line
+        hint: tier === 'alias' ? 'Matched on a confirmed display name'
+            : tier === 'canonical' ? 'Matched on her canonical name'
+            : 'Fuzzy match — nothing is assumed',
+        hint_tone: tier === 'fuzzy' ? 'unsure' : 'sure',
+      };
     });
 
     return {

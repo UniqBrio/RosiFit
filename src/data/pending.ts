@@ -20,9 +20,33 @@ export type RegistrationDraft = {
  *  bar, browser history, or anything that logs a path. */
 export type IssuedPinHandoff = { pin: string; name: string; phone: string; role: string };
 
+/** A staged CSV import on its way from the upload wizard to the review
+ *  screen. Nothing has been written to attendance at this point -- the rows
+ *  are a classification the operator is about to decide on. */
+export type StagedImport = {
+  import_id: string;
+  session_label: string;
+  rows: import('./api').PreviewRow[];
+  dropped_count: number;
+  counts: Record<string, number>;
+};
+
 let registration: RegistrationDraft | null = null;
 let recoveryToken: string | null = null;
 let issuedPin: IssuedPinHandoff | null = null;
+let stagedImport: StagedImport | null = null;
+let sendResult: import('./api').SendResult | null = null;
+
+/** The per-recipient outcome of a send, on its way to the result screen.
+ *  Kept whole: "sent" is claimed per address, never for the batch, and an
+ *  excluded member is named with her reason rather than dropped. */
+export const setSendResult = (r: import('./api').SendResult) => { sendResult = r; };
+export const peekSendResult = (): import('./api').SendResult | null => sendResult;
+export const clearSendResult = () => { sendResult = null; };
+
+export const setStagedImport = (s: StagedImport) => { stagedImport = s; };
+export const peekStagedImport = (): StagedImport | null => stagedImport;
+export const clearStagedImport = () => { stagedImport = null; };
 
 export const setIssuedPin = (p: IssuedPinHandoff) => { issuedPin = p; };
 export const takeIssuedPin = (): IssuedPinHandoff | null => {

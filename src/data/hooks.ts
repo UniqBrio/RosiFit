@@ -16,10 +16,11 @@ import type { ScreenState } from './useScreenState';
 import { currentWeek, type Period } from './period';
 import {
   fetchMembers, fetchRules, fetchCourses, fetchTemplates, fetchStaff, fetchAudit,
-  fetchFilterOptions, fetchMonthSessions, type Rules,
+  fetchFilterOptions, fetchMonthSessions, fetchPendingSessions, fetchWeekRows,
+  type Rules, type PendingSession,
 } from './repository';
 import { flagged } from './followup';
-import type { Member, Course, Template, Staff, AuditEntry, SessionDay } from './mock';
+import type { Member, Course, Template, Staff, AuditEntry, SessionDay, WeekRow } from './mock';
 
 export type Async<T> = {
   state: ScreenState;
@@ -107,4 +108,19 @@ export function useFilterOptions(forced?: string): Async<{ branches: string[]; c
 
 export function useMonthSessions(year: number, month: number, forced?: string): Async<SessionDay[]> {
   return useAsync(() => fetchMonthSessions(year, month), [year, month], forced);
+}
+
+export function usePendingSessions(forced?: string): Async<PendingSession[]> {
+  return useAsync(() => fetchPendingSessions(), [], forced);
+}
+
+/** The last four weeks, most recent first. Mon–Sun, per week_start_day. */
+export function useWeekRows(forced?: string): Async<WeekRow[]> {
+  const weeks = [0, 1, 2, 3].map(back => {
+    const d = new Date();
+    d.setDate(d.getDate() - back * 7);
+    return currentWeek(d);
+  });
+  const key = weeks.map(w => w.from).join(',');
+  return useAsync(() => fetchWeekRows(weeks), [key], forced);
 }

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { View, Text } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Screen, Muted, Button } from '../../src/components/ui';
@@ -6,6 +7,7 @@ import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, STATUS, statusSurface } from '../../src/theme/tokens';
 import { flaggedMembers, hasEmail } from '../../src/data/mock';
+import { peekSendResult } from '../../src/data/pending';
 
 /**
  * Step 3 of 3: RESULT, per member. "Sent" is claimed per address, never for
@@ -17,18 +19,31 @@ export default function SendResult() {
   const { flash } = useToast();
   const router = useRouter();
 
-  const flagged = flaggedMembers();
-  const recipients = flagged.filter(hasEmail);
-  const excluded = flagged.filter(m => !hasEmail(m));
-  const sent = recipients.slice(0, 1);
-  const failed = recipients.slice(1, 2);
+  // The real per-recipient outcome when a send just ran; the fixtures'
+  // three states otherwise, so the screen is still reviewable offline.
+  const [result] = useState(() => peekSendResult());
+
+  const fallbackFlagged = flaggedMembers();
+  const fallbackRecipients = fallbackFlagged.filter(hasEmail);
+
+  type Row = { id: string; name: string; reason?: string };
+  const sent: Row[] = result
+    ? result.results.filter(r => r.status === 'sent').map(r => ({ id: r.member_id, name: r.name }))
+    : fallbackRecipients.slice(0, 1).map(m => ({ id: m.id, name: m.name }));
+  const failed: Row[] = result
+    ? result.results.filter(r => r.status === 'failed').map(r => ({ id: r.member_id, name: r.name, reason: r.reason }))
+    : fallbackRecipients.slice(1, 2).map(m => ({ id: m.id, name: m.name }));
+  // C-76: an excluded member is NAMED with her reason, never dropped.
+  const excluded: Row[] = result
+    ? result.results.filter(r => r.status === 'excluded').map(r => ({ id: r.member_id, name: r.name, reason: r.reason }))
+    : fallbackFlagged.filter(m => !hasEmail(m)).map(m => ({ id: m.id, name: m.name, reason: 'No email on file' }));
 
   const ink = (k: keyof typeof STATUS) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
   const okInk = ink('present'); const badInk = ink('absent');
 
   return (
     <Screen>
-      <Muted>Sent 8:42 pm · 22 Aug</Muted>
+      <Muted>{result ? `Sent ${new Date().toLocaleString()}` : 'Sent 8:42 pm · 22 Aug'}</Muted>
 
       <View style={{ flexDirection: 'row', marginTop: SPACE.lg, gap: SPACE.md }}>
         <Count n={sent.length} label="sent" color={okInk} />
@@ -62,7 +77,7 @@ export default function SendResult() {
             </View>
             {/* the reason and the fallback, not just "failed" */}
             <Text style={{ fontSize: 12, color: theme.fg, marginTop: SPACE.sm, lineHeight: 18 }}>
-              Mailbox full at her provider. Retry, or call her on +91 98431 20117.
+              {m.reason ?? 'Her provider refused the message. Retry, or call her.'}
             </Text>
             <Button label="Retry this one" variant="secondary" style={{ marginTop: SPACE.md }}
               onPress={() => flash(`Retrying ${m.name.split(' ')[0]} — result will replace this row`)} />
@@ -76,7 +91,12 @@ export default function SendResult() {
             borderWidth: 1, borderColor: theme.line,
           }}>
             <Icon name="mail_off" size={18} color={theme.muted} />
-            <Text style={{ flex: 1, fontSize: 13.5, fontWeight: '700', color: theme.fg }}>{m.name}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 13.5, fontWeight: '700', color: theme.fg }}>{m.name}</Text>
+              <Text style={{ fontSize: 11.5, color: theme.muted, marginTop: 2 }}>
+                {`${m.reason ?? 'No email on file'} — she stays in the report`}
+              </Text>
+            </View>
             <Text style={{ fontSize: 10, fontWeight: '800', color: theme.muted }}>EXCLUDED</Text>
           </View>
         ))}

@@ -196,7 +196,7 @@ export const COURSE_RULES: Record<string, FollowUpRule> = {
 // Supabase data are judged by exactly ONE implementation. Imported for use
 // below and re-exported because every screen already reaches for it here.
 import { isEligible, reasonFor, attendancePct } from './followup';
-export { ruleHits, isEligible, reasonFor, attendancePct, ruleSentence, flagged } from './followup';
+export { ruleHits, isEligible, reasonFor, attendancePct, ruleSentence, flagged, toCandidate } from './followup';
 
 // -------------------------------------------------------------- templates
 export type Template = {

@@ -121,10 +121,17 @@ export function recoveryApply(recoveryToken: string, newPin: string): Promise<Si
 
 // -------------------------------------------------------------- csv import
 export type MatchKindLive = 'matched' | 'noEmail' | 'possible' | 'ambiguous' | 'unmatched';
+export type PreviewCandidate = {
+  member_id: string; full_name: string; member_code: string; has_email: boolean;
+  course_name: string; branch_name: string; aliases: string[];
+  last_present_date: string | null;
+  /** why this candidate is offered, in one line, and how sure it is */
+  hint: string; hint_tone: 'sure' | 'unsure';
+};
 export type PreviewRow = {
   row: number; kind: MatchKindLive; raw_name: string;
   first_seen: string | null; minutes: number;
-  candidates: { member_id: string; full_name: string; member_code: string; has_email: boolean }[];
+  candidates: PreviewCandidate[];
 };
 export type PreviewResult = {
   import_id: string; rows: PreviewRow[]; dropped_count: number;

@@ -15,9 +15,9 @@ import { supabase, isConfigured } from '../lib/supabase';
 import type { Period } from './period';
 import {
   MEMBERS, COURSE_LIST, GLOBAL_RULE, COURSE_RULES, TEMPLATES, STAFF, AUDIT,
-  BRANCHES, COURSES, MONTH_DAYS,
+  BRANCHES, COURSES, MONTH_DAYS, PENDING_SESSIONS, WEEK_ROWS,
   type Member, type Course, type FollowUpRule, type Template, type Staff,
-  type StaffAccess, type AuditEntry, type SessionDay,
+  type StaffAccess, type AuditEntry, type SessionDay, type WeekRow,
 } from './mock';
 
 export const dataSource: 'live' | 'fixtures' = isConfigured ? 'live' : 'fixtures';
@@ -207,6 +207,18 @@ export async function fetchTemplates(): Promise<Template[]> {
   }));
 }
 
+/**
+ * Activating or deactivating a template is a deliberate, audited act
+ * (C-68) -- and one of the few writes that does NOT need an Edge Function,
+ * because email_templates is a table `authenticated` was deliberately
+ * granted UPDATE on (0009) and the audit trigger fires either way.
+ */
+export async function setTemplateActive(id: string, active: boolean): Promise<void> {
+  if (!isConfigured) return;
+  const { error } = await supabase.from('email_templates').update({ is_active: active }).eq('id', id);
+  if (error) fail('Could not change that template', error);
+}
+
 // -------------------------------------------------------------------- staff
 /** The four-state access fact (see mock.ts): "has a record", "has a PIN",
  *  "has used it" and "was turned off" need different actions, so they are
@@ -310,6 +322,87 @@ export async function fetchMonthSessions(year: number, month: number): Promise<S
       status: s.status as SessionDay['status'],
       expected: s.expected_count as number,
       present: s.present_count as number,
+    };
+  });
+}
+
+// ------------------------------------------------- week-wise attendance
+/**
+ * Expected and attended per week (C-88). Every figure comes from
+ * member_period_metrics — the SAME function the member report and the donut
+ * read — so a chart cannot disagree with the report beside it (C-87).
+ */
+export async function fetchWeekRows(weeks: Period[]): Promise<WeekRow[]> {
+  if (!isConfigured) return WEEK_ROWS;
+
+  const rows = await Promise.all(weeks.map(async (w, i) => {
+    const { data } = await supabase.rpc('member_period_metrics', { p_from: w.from, p_to: w.to });
+    const list = (data ?? []) as { expected: number; attended: number }[];
+    return {
+      label: w.label,
+      expected: list.reduce((n, m) => n + (m.expected ?? 0), 0),
+      attended: list.reduce((n, m) => n + (m.attended ?? 0), 0),
+      current: i === 0,
+    };
+  }));
+  return rows;
+}
+
+// -------------------------------------------- sessions awaiting an upload
+/** A session with no attendance file yet counts for NOBODY — it is neither
+ *  attended nor missed — so these are surfaced as work to do rather than
+ *  quietly treated as absences. */
+export type PendingSession = {
+  session_id: string | null; offering_id: string; session_date: string;
+  dayNum: string; mon: string; title: string; meta: string; label: string;
+};
+
+const MONTHS_SHORT = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+const DAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+export async function fetchPendingSessions(): Promise<PendingSession[]> {
+  if (!isConfigured) {
+    return PENDING_SESSIONS.map(p => ({
+      ...p, session_id: null, offering_id: '', session_date: '',
+    }));
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: sessions, error } = await supabase.from('sessions')
+    .select('id, offering_id, session_date, start_time, expected_count')
+    .eq('status', 'scheduled').lte('session_date', today).is('deleted_at', null)
+    .order('session_date', { ascending: false }).limit(20);
+  if (error) fail('Could not load sessions awaiting upload', error);
+
+  const offeringIds = [...new Set((sessions ?? []).map(s => s.offering_id as string))];
+  if (offeringIds.length === 0) return [];
+  const { data: offerings } = await supabase.from('course_offerings')
+    .select('id, course_id, branch_id').in('id', offeringIds);
+  const courseIds = [...new Set((offerings ?? []).map(o => o.course_id as string))];
+  const branchIds = [...new Set((offerings ?? []).map(o => o.branch_id as string))];
+  const [coursesRes, branchesRes] = await Promise.all([
+    supabase.from('courses').select('id, name').in('id', courseIds),
+    supabase.from('branches').select('id, name').in('id', branchIds),
+  ]);
+  const offeringById = new Map((offerings ?? []).map(o => [o.id as string, o]));
+  const courseName = new Map((coursesRes.data ?? []).map(c => [c.id as string, c.name as string]));
+  const branchName = new Map((branchesRes.data ?? []).map(b => [b.id as string, b.name as string]));
+
+  return (sessions ?? []).map(s => {
+    const offering = offeringById.get(s.offering_id as string);
+    const course = offering ? (courseName.get(offering.course_id as string) ?? 'Course') : 'Course';
+    const branch = offering ? (branchName.get(offering.branch_id as string) ?? '') : '';
+    const date = new Date(`${s.session_date}T00:00:00`);
+    const time = (s.start_time as string | null)?.slice(0, 5) ?? '';
+    return {
+      session_id: s.id as string,
+      offering_id: s.offering_id as string,
+      session_date: s.session_date as string,
+      dayNum: String(date.getDate()),
+      mon: MONTHS_SHORT[date.getMonth()],
+      title: `${course}${time ? ` · ${time}` : ''}`,
+      meta: `${branch} · ${s.expected_count ?? 0} expected · awaiting upload`,
+      label: `${DAYS_SHORT[date.getDay()]} ${date.getDate()} ${MONTHS_SHORT[date.getMonth()][0]}${MONTHS_SHORT[date.getMonth()].slice(1).toLowerCase()} · ${course}${time ? ` ${time}` : ''}`,
     };
   });
 }

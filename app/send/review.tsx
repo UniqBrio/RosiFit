@@ -1,13 +1,17 @@
+import { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Screen, Body, Muted, Label, Button } from '../../src/components/ui';
+import { Screen, Body, Muted, Label, Button, Skeleton, ErrorState } from '../../src/components/ui';
 import { Icon } from '../../src/components/Icon';
 import { useTheme } from '../../src/theme/ThemeProvider';
+import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, STATUS, statusSurface } from '../../src/theme/tokens';
-import {
-  TEMPLATES, WEEK, flaggedMembers, hasEmail, primaryEmail, reasonFor,
-  GLOBAL_RULE, AVATAR_TINTS, initials,
-} from '../../src/data/mock';
+import { hasEmail, primaryEmail, reasonFor, AVATAR_TINTS, initials } from '../../src/data/mock';
+import { useTemplates, useFollowUp } from '../../src/data/hooks';
+import { currentWeek } from '../../src/data/period';
+import { isConfigured } from '../../src/lib/supabase';
+import { sendFollowUps } from '../../src/data/api';
+import { setSendResult } from '../../src/data/pending';
 
 /**
  * Step 2 of 3: REVIEW. Both lists are shown — who will receive, and who is
@@ -16,20 +20,67 @@ import {
  */
 export default function ReviewSend() {
   const { theme } = useTheme();
+  const { flash } = useToast();
   const router = useRouter();
-  const { template } = useLocalSearchParams<{ template?: string }>();
+  const { template, state: forced } = useLocalSearchParams<{ template?: string; state?: string }>();
+  const week = currentWeek();
+  const templates = useTemplates(forced);
+  const followUp = useFollowUp(forced, week);
+  const [sending, setSending] = useState(false);
 
-  const tpl = TEMPLATES.find(t => t.id === template) ?? TEMPLATES[0];
-  const flagged = flaggedMembers();
+  const list = templates.data ?? [];
+  const tpl = list.find(t => t.id === template) ?? list[0];
+  const flagged = followUp.data?.flagged ?? [];
+  const rules = followUp.data?.rules;
   const recipients = flagged.filter(hasEmail);
   const excluded = flagged.filter(m => !hasEmail(m));
   const ink = (k: keyof typeof STATUS) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
   const okInk = ink('present');
   const badInk = ink('absent');
 
+  const send = async () => {
+    if (!tpl || sending) return;
+    if (!isConfigured) {
+      router.push({ pathname: '/send/result', params: { template: tpl.id } });
+      return;
+    }
+    setSending(true);
+    try {
+      // Only the template id and the period go up. There is no subject or
+      // body parameter to send -- that is C-68 enforced at the API, not
+      // just hidden in the UI. Excluded members are decided server-side
+      // from the member record, so the send cannot be talked into mailing
+      // an address the record does not have.
+      const result = await sendFollowUps({
+        member_ids: flagged.map(m => m.id),
+        template_id: tpl.id,
+        period_from: week.from,
+        period_to: week.to,
+      });
+      setSendResult(result);
+      router.push({ pathname: '/send/result', params: { template: tpl.id } });
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'The send did not run.', 'warn');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (templates.state === 'loading' || followUp.state === 'loading') {
+    return <Screen><Skeleton lines={5} /></Screen>;
+  }
+  if (templates.state === 'error' || followUp.state === 'error' || !tpl) {
+    return (
+      <Screen>
+        <ErrorState onRetry={() => { templates.retry(); followUp.retry(); }}
+          message={templates.error ?? followUp.error ?? 'That template could not be loaded. Nothing has been sent.'} />
+      </Screen>
+    );
+  }
+
   return (
     <Screen>
-      <Muted>{`${tpl.name} · week ${WEEK.label}`}</Muted>
+      <Muted>{`${tpl.name} · week ${week.label}`}</Muted>
 
       <Label style={{ marginTop: SPACE.lg }}>{`Will receive · ${recipients.length}`}</Label>
       <View style={{ gap: SPACE.md, marginTop: SPACE.md }}>
@@ -58,7 +109,9 @@ export default function ReviewSend() {
             <Text style={{
               fontSize: 11.5, color: theme.muted, marginTop: SPACE.sm,
               fontVariant: ['tabular-nums'], lineHeight: 17,
-            }}>{reasonFor(m, GLOBAL_RULE)}</Text>
+            }}>
+              {rules ? reasonFor(m, rules.byCourseName[m.course] ?? rules.global) : ''}
+            </Text>
           </View>
         ))}
       </View>
@@ -108,8 +161,10 @@ export default function ReviewSend() {
         </Muted>
       </View>
 
-      <Button label={`Send to ${recipients.length} members`} style={{ marginTop: SPACE.lg }}
-        onPress={() => router.push({ pathname: '/send/result', params: { template: tpl.id } })} />
+      <Button
+        label={sending ? 'Sending…' : `Send to ${recipients.length} members`}
+        disabled={sending || recipients.length === 0}
+        style={{ marginTop: SPACE.lg }} onPress={() => void send()} />
     </Screen>
   );
 }

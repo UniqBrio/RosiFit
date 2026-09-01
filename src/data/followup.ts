@@ -12,7 +12,7 @@
  * reads members once and derives from that, so what a screen shows and what
  * it counts cannot disagree.
  */
-import type { Member, FollowUpRule } from './mock';
+import type { Member, FollowUpRule, FollowUpCandidate } from './mock';
 
 export function ruleHits(m: Member, r: FollowUpRule) {
   return {
@@ -57,6 +57,19 @@ export function ruleSentence(r: FollowUpRule, courseName: string): string {
     ? ' (only one condition is on, so AND behaves as that condition alone)'
     : '';
   return `Members in ${courseName} will be listed for follow-up when they ${joined}.${caveat}`;
+}
+
+/** A member in the shape the template renderer and the send flow read, with
+ *  her real engine figures — never a placeholder (C-69). */
+export function toCandidate(m: Member, r: FollowUpRule): FollowUpCandidate {
+  return {
+    member_id: m.id, full_name: m.name, course_name: m.course, branch_name: m.branch,
+    expected: m.expected, attended: m.attended, missed: m.missed,
+    attendance_pct: attendancePct(m), current_streak: m.streak,
+    config_source: r.source,
+    reason: reasonFor(m, r),
+    has_email: m.emails.length > 0,
+  };
 }
 
 /** The flagged set for any member list and any rule. `rulesByCourse` lets a
