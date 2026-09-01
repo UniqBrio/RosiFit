@@ -1,0 +1,16 @@
+import { chromium } from '/opt/node22/lib/node_modules/playwright/index.mjs';
+const path = process.argv[2] || '/(tabs)/more';
+const ssr = await (await fetch('http://127.0.0.1:8100'+path)).text();
+const m = ssr.match(/<div id="root">([\s\S]*?)<\/div><script/);
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+const p = await b.newPage({ viewport:{width:420,height:900} });
+await p.goto('http://127.0.0.1:8100'+path, { waitUntil:'networkidle' });
+await p.waitForTimeout(700);
+const client = await p.evaluate(() => document.getElementById('root').innerHTML);
+await b.close();
+const a = (m?m[1]:'').replace(/<!--[\s\S]*?-->/g,'');
+const c = client.replace(/<!--[\s\S]*?-->/g,'');
+let i=0; while(i<a.length && i<c.length && a[i]===c[i]) i++;
+console.log('first divergence at', i, 'of', a.length, '/', c.length);
+console.log('SSR   ...', JSON.stringify(a.slice(Math.max(0,i-160), i+160)));
+console.log('CLIENT...', JSON.stringify(c.slice(Math.max(0,i-160), i+160)));
