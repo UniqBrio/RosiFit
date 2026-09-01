@@ -197,17 +197,54 @@ export function renderTemplate(tpl: string, c: FollowUpCandidate): string {
 }
 
 // ------------------------------------------------------------------ staff
+/**
+ * Access is a four-state fact, not a boolean. "Has a record" / "has a PIN" /
+ * "has used it" / "was turned off" are different situations that need
+ * different actions, and collapsing them into has_login hid the two that
+ * actually need the academy to do something.
+ */
+export type StaffAccess = 'notEnabled' | 'awaiting' | 'disabled' | 'active';
+
 export type Staff = {
   id: string; name: string; phone: string; role: string;
-  has_login: boolean; last_login?: string;
+  access: StaffAccess;
+  /** why this person is in this state, in their own row */
+  meta: string;
 };
+
+export const STAFF_ACCESS: Record<StaffAccess, {
+  word: string; icon: string; action: string;
+  /** the two states that need an action get the filled button */
+  primary: boolean; rank: number;
+}> = {
+  notEnabled: { word: 'Not enabled',  icon: 'lock_open',      action: 'Generate PIN', primary: true,  rank: 0 },
+  awaiting:   { word: 'Awaiting PIN', icon: 'hourglass_top',  action: 'Regenerate',   primary: true,  rank: 1 },
+  disabled:   { word: 'Disabled',     icon: 'block',          action: 'Re-enable',    primary: false, rank: 2 },
+  active:     { word: 'Active',       icon: 'lock',           action: 'Reset PIN',    primary: false, rank: 3 },
+};
+
 export const STAFF: Staff[] = [
-  { id: 's1', name: 'Priya Menon',  phone: '+91 80563 29742', role: 'Academy admin', has_login: true,  last_login: 'Today, 8:04 am' },
-  { id: 's2', name: 'Rosi Owner',   phone: '+91 99948 71158', role: 'Super admin',   has_login: true,  last_login: 'Yesterday' },
-  { id: 's3', name: 'Kavitha S',    phone: '+91 90031 55210', role: 'Coach',         has_login: false },
-  { id: 's4', name: 'Anand R',      phone: '+91 98404 22119', role: 'Front desk',    has_login: false },
+  { id: 's1', name: 'Sowmya Iyer',   phone: '+91 90032 71144', role: 'Front desk',    access: 'notEnabled', meta: 'added 21 Aug' },
+  { id: 's2', name: 'Nandhini R',    phone: '+91 99406 33871', role: 'Coach',         access: 'awaiting',   meta: 'PIN issued 22 Aug, not used yet' },
+  { id: 's3', name: 'Deepa Suresh',  phone: '+91 94422 10098', role: 'Coach',         access: 'disabled',   meta: 'left the academy' },
+  { id: 's4', name: 'Revathi Anand', phone: '+91 98431 55210', role: 'Coach',         access: 'active',     meta: 'signed in today' },
+  { id: 's5', name: 'Priya Menon',   phone: '+91 80563 29742', role: 'Academy admin', access: 'active',     meta: 'that\u2019s you' },
 ];
+
 export const ROLE_LABELS = ['Academy admin', 'Coach', 'Front desk'];
+
+/** A number is enough to identify someone; the middle is not needed on screen. */
+export function maskPhone(phone: string): string {
+  return phone.slice(0, 7) + '\u2022\u2022\u2022\u2022\u2022 ' + phone.slice(-2);
+}
+
+export const AVATAR_TINTS = [
+  '#5C0F63', '#8A2C7A', '#B03A6E', '#6B2E8A',
+  '#93245F', '#7A1B6B', '#A32E86', '#5E2478',
+];
+
+export const initials = (n: string) =>
+  n.split(' ').filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase();
 
 // ----------------------------------------------------------------- audit
 export type AuditEntry = {

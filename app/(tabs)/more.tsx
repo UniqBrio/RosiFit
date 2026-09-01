@@ -1,130 +1,122 @@
-import { View, Pressable, Text, Linking } from 'react-native';
-import { useRouter } from 'expo-router';
-import { Screen, Card, H1, H2, Body, Muted, Label, Row, Button, Divider } from '../../src/components/ui';
+import { View, Text, Pressable } from 'react-native';
+import { useRouter, type Href } from 'expo-router';
+import { Screen, Muted, Label } from '../../src/components/ui';
+import { Icon } from '../../src/components/Icon';
 import { useTheme } from '../../src/theme/ThemeProvider';
-import { SPACE, RADIUS, TAP_MIN } from '../../src/theme/tokens';
-import { SUPPORT_PHONE } from '../../src/data/mock';
-import type { ThemeMode } from '../../src/theme/ThemeProvider';
+import { useToast } from '../../src/components/Toast';
+import { SPACE, RADIUS, TAP_MIN, STATUS } from '../../src/theme/tokens';
+import { STAFF, TEMPLATES, BRANCHES, GLOBAL_RULE, SUPPORT_PHONE } from '../../src/data/mock';
+
+type Item = {
+  icon: string; label: string; meta: string;
+  to?: Href; onPress?: () => void; danger?: boolean;
+};
 
 export default function More() {
-  const { theme, mode, setMode, accentKey, setAccentKey, accents } = useTheme();
+  const { theme, mode, accentKey, accents, isCustom } = useTheme();
+  const { flash } = useToast();
   const router = useRouter();
-  const modes: { key: ThemeMode; label: string }[] = [
-    { key: 'light', label: 'Light' }, { key: 'dark', label: 'Dark' }, { key: 'system', label: 'System' },
+
+  const activeTemplates = TEMPLATES.filter(t => t.active).length;
+  const accentName = isCustom ? 'custom' : (accents.find(a => a.key === accentKey)?.label ?? '');
+  const themeName = mode === 'system' ? 'System' : mode === 'dark' ? 'Dark' : 'Light';
+
+  const groups: { title: string; items: Item[] }[] = [
+    {
+      title: 'Configuration', items: [
+        { icon: 'rule',        label: 'Follow-up rules',   meta: `${GLOBAL_RULE.weekly_threshold}+ missed`, to: '/course/rules' },
+        { icon: 'mail',        label: 'Message templates', meta: `${activeTemplates} active`,           to: '/templates' },
+        { icon: 'event_busy',  label: 'Holidays',          meta: 'add',                                 to: '/holiday' },
+        { icon: 'apartment',   label: 'Branches',          meta: String(BRANCHES.length - 1),
+          onPress: () => flash(BRANCHES.filter(b => b !== 'All branches').join(' · ')) },
+      ],
+    },
+    {
+      title: 'Access', items: [
+        { icon: 'badge',           label: 'Staff & access',        meta: String(STAFF.length), to: '/staff' },
+        { icon: 'phonelink_lock',  label: 'First-time PIN setup',  meta: 'staff view',         to: '/set-pin' },
+        { icon: 'help_center',     label: 'PIN recovery questions', meta: '2 set',             to: '/forgot-pin' },
+        { icon: 'how_to_reg',      label: 'Super admin registration', meta: 'PIN recovery',    to: '/register' },
+        { icon: 'history',         label: 'Audit log',             meta: 'today',              to: '/audit' },
+      ],
+    },
+    {
+      title: 'App', items: [
+        { icon: 'palette',       label: 'Appearance',     meta: `${themeName} · ${accentName}`, to: '/appearance' },
+        { icon: 'translate',     label: 'Language',       meta: 'English', onPress: () => flash('Tamil is coming') },
+        { icon: 'support_agent', label: 'Help & support', meta: SUPPORT_PHONE, to: '/help' },
+        { icon: 'logout',        label: 'Sign out',       meta: '', danger: true,
+          onPress: () => router.replace('/') },
+      ],
+    },
   ];
+
+  const dangerInk = theme.isDark ? STATUS.absent.fgDark : STATUS.absent.fgLight;
 
   return (
     <Screen>
-      <H1>More</H1>
-      <Muted style={{ marginBottom: SPACE.lg }}>Priya Menon · Academy admin</Muted>
+      <Muted style={{ marginBottom: SPACE.lg }}>Your account, your academy, your rules</Muted>
 
-      <Card>
-        <H2>Manage</H2>
-        <View style={{ marginTop: SPACE.sm }}>
-          {[
-            { label: 'Courses',           sub: 'Times, frequency, follow-up rules', to: '/courses' },
-            { label: 'Sessions',          sub: 'Month view, cancel a session',      to: '/sessions' },
-            { label: 'Add holiday',       sub: 'A date range, with impact shown',   to: '/holiday' },
-            { label: 'Message templates', sub: 'The only way anything is sent',     to: '/templates' },
-            { label: 'Reports',           sub: 'Member-wise and week-wise',         to: '/reports' },
-            { label: 'Staff',             sub: 'People and their login PINs',       to: '/staff' },
-            { label: 'Audit log',         sub: 'Who changed what, and when',        to: '/audit' },
-          ].map(item => (
-            <Pressable key={item.to} onPress={() => router.push(item.to as never)}
-              accessibilityRole="button" accessibilityLabel={item.label}
-              style={({ pressed }) => ({
-                flexDirection: 'row', alignItems: 'center', minHeight: TAP_MIN + 12,
-                paddingVertical: SPACE.sm, opacity: pressed ? 0.6 : 1,
-                borderBottomWidth: 1, borderBottomColor: theme.line })}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 15, fontWeight: '700', color: theme.fgStrong }}>{item.label}</Text>
-                <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>{item.sub}</Text>
-              </View>
-              <Text style={{ color: theme.accentInk, fontSize: 18, fontWeight: '800' }}>›</Text>
-            </Pressable>
-          ))}
+      <Pressable onPress={() => router.push('/profile')}
+        accessibilityRole="button"
+        accessibilityLabel="Priya Menon, Academy admin. Open your profile"
+        style={({ pressed }) => ({
+          flexDirection: 'row', alignItems: 'center', gap: 14, padding: SPACE.lg,
+          borderRadius: 20, backgroundColor: theme.accentDeep,
+          borderWidth: 1, borderColor: theme.lineStrong, opacity: pressed ? 0.85 : 1,
+        })}>
+        <View style={{
+          width: 52, height: 52, borderRadius: 26, backgroundColor: theme.accentAvatar,
+          borderWidth: 2, borderColor: theme.lineStrong, alignItems: 'center', justifyContent: 'center',
+        }}>
+          <Text style={{ fontSize: 18, fontWeight: '800', color: theme.onAccent }}>PM</Text>
         </View>
-      </Card>
-
-      <Card>
-        <H2>Appearance</H2>
-        {/* C-81: three explicit choices, persisted per user. Not system-only. */}
-        <Label style={{ marginTop: SPACE.md }}>Theme</Label>
-        <Row style={{ marginTop: SPACE.sm }}>
-          {modes.map(m => {
-            const on = mode === m.key;
-            return (
-              <Pressable key={m.key} onPress={() => setMode(m.key)}
-                accessibilityRole="radio" accessibilityState={{ selected: on }}
-                style={{
-                  flex: 1, minHeight: TAP_MIN, alignItems: 'center', justifyContent: 'center',
-                  borderRadius: RADIUS.md, borderWidth: 1.5,
-                  borderColor: on ? theme.accent : theme.lineStrong,
-                  backgroundColor: on ? theme.accent : 'transparent',
-                }}>
-                <Text style={{ fontWeight: '700', color: on ? theme.onAccent : theme.fg }}>{m.label}</Text>
-              </Pressable>
-            );
-          })}
-        </Row>
-
-        {/* C-82: a controlled set. There is no free colour picker, because a
-            custom hue cannot be measured against every surface ahead of time. */}
-        <Label style={{ marginTop: SPACE.lg }}>Accent colour</Label>
-        <Row style={{ marginTop: SPACE.sm, flexWrap: 'wrap' }}>
-          {accents.map(a => {
-            const on = accentKey === a.key;
-            return (
-              <Pressable key={a.key} onPress={() => setAccentKey(a.key)}
-                accessibilityRole="radio" accessibilityState={{ selected: on }}
-                accessibilityLabel={a.label}
-                style={{
-                  minHeight: TAP_MIN, minWidth: TAP_MIN, paddingHorizontal: SPACE.md,
-                  flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
-                  borderRadius: RADIUS.pill, borderWidth: 2,
-                  borderColor: on ? theme.fgStrong : theme.lineStrong,
-                }}>
-                <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: a.value }} />
-                <Text style={{ fontSize: 12, fontWeight: '700', color: theme.fg }}>{a.label}</Text>
-              </Pressable>
-            );
-          })}
-        </Row>
-        <Muted style={{ marginTop: SPACE.md }}>
-          Your choice applies to your account only. Every colour here is measured for
-          contrast in both themes before it ships.
-        </Muted>
-      </Card>
-
-      <Card>
-        <H2>Help &amp; support</H2>
-        {/* C-83: this number, and nothing invented alongside it */}
-        <Pressable onPress={() => Linking.openURL(`tel:${SUPPORT_PHONE}`)}
-          accessibilityRole="link" accessibilityLabel={`Call support on ${SUPPORT_PHONE}`}
-          style={{ minHeight: TAP_MIN + 8, justifyContent: 'center' }}>
-          <Text style={{ fontSize: 24, fontWeight: '800', color: theme.accentInk,
-            fontVariant: ['tabular-nums'] }}>{SUPPORT_PHONE}</Text>
-        </Pressable>
-        <Muted>Tap to call.</Muted>
-      </Card>
-
-      <Card>
-        <H2>Account</H2>
-        <Divider />
-        <Label>Mobile number</Label>
-        <Body style={{ fontWeight: '800', marginTop: 2 }}>+91 80563 29742</Body>
-        {/* C-99: changeable. The PIN is derived from the immutable account id,
-            not the number, so changing it does not invalidate the PIN. */}
-        <Muted style={{ marginTop: 4 }}>
-          Your sign-in number. It can be changed, with verification — your PIN keeps working.
-        </Muted>
-        <View style={{ gap: SPACE.sm, marginTop: SPACE.md }}>
-          <Button label="Change mobile number" variant="secondary"
-            onPress={() => router.push('/change-mobile')} />
-          <Button label="Change my PIN" variant="secondary"
-            onPress={() => router.push('/set-pin')} />
+        <View style={{ flex: 1 }}>
+          {/* the deep header is the same dark plum in both themes, so the
+              name is white in both -- theme.onDeep is the softer body ink */}
+          <Text style={{ fontSize: 19, fontWeight: '800', color: '#FFFFFF' }}>Priya Menon</Text>
+          <Text style={{ fontSize: 12, color: theme.onDeep, marginTop: 3, fontVariant: ['tabular-nums'] }}>
+            Academy admin · +91 80563 29742
+          </Text>
         </View>
-      </Card>
+        <Icon name="chevron_right" size={22} color={theme.onDeep} />
+      </Pressable>
+
+      {groups.map(g => (
+        <View key={g.title} style={{ marginTop: SPACE.xxl }}>
+          <Label style={{ marginBottom: SPACE.sm }}>{g.title}</Label>
+          <View style={{
+            borderRadius: RADIUS.lg, backgroundColor: theme.surface,
+            borderWidth: 1, borderColor: theme.line, overflow: 'hidden',
+          }}>
+            {g.items.map((i, ix) => {
+              const ink = i.danger ? dangerInk : theme.fgStrong;
+              return (
+                <Pressable key={i.label}
+                  onPress={() => (i.to ? router.push(i.to) : i.onPress?.())}
+                  accessibilityRole="button"
+                  accessibilityLabel={i.meta ? `${i.label}, ${i.meta}` : i.label}
+                  style={({ pressed }) => ({
+                    flexDirection: 'row', alignItems: 'center', gap: 13,
+                    minHeight: TAP_MIN + 10, paddingHorizontal: 15, paddingVertical: SPACE.md,
+                    opacity: pressed ? 0.7 : 1,
+                    borderBottomWidth: ix === g.items.length - 1 ? 0 : 1, borderBottomColor: theme.line,
+                  })}>
+                  <View style={{
+                    width: 34, height: 34, borderRadius: RADIUS.sm,
+                    backgroundColor: theme.control, alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <Icon name={i.icon} size={18} color={i.danger ? dangerInk : theme.accentInk} />
+                  </View>
+                  <Text style={{ flex: 1, fontSize: 15, fontWeight: '700', color: ink }}>{i.label}</Text>
+                  {i.meta ? <Text style={{ fontSize: 12, color: theme.muted }}>{i.meta}</Text> : null}
+                  <Icon name="chevron_right" size={20} color={theme.dim} />
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      ))}
     </Screen>
   );
 }
