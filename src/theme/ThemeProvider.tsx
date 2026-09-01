@@ -1,7 +1,9 @@
-import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useColorScheme } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ACCENTS, DARK, LIGHT, customAccent, DEFAULT_HUE, type Accent } from './tokens';
+import { currentAppUser } from '../data/session';
+import { fetchPreferences, savePreferences } from '../data/repository';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
@@ -44,6 +46,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [accentKey, setAccentKeyState] = useState<string>('rosifit');
   const [hue, setHueState] = useState<number>(DEFAULT_HUE);
 
+  // The app_user whose user_preferences row this is. Null in fixtures mode
+  // and before sign-in, when AsyncStorage alone carries the preference.
+  const appUserId = useRef<string | null>(null);
+
   useEffect(() => {
     (async () => {
       try {
@@ -60,27 +66,57 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         // storage can be unavailable (private mode, cleared data). The
         // defaults above are a correct app, so this is not an error path.
       }
+
+      // C-81/C-82: the preference is per USER, so it follows her to another
+      // device — AsyncStorage alone would leave it on the one she set it on.
+      // The stored row wins where it exists; a device with no row keeps
+      // whatever this device had, and the next change writes it up.
+      try {
+        const user = await currentAppUser();
+        if (!user) return;
+        appUserId.current = user.id;
+        const prefs = await fetchPreferences(user.id);
+        if (!prefs) return;
+        setModeState(prefs.theme_mode);
+        if (prefs.accent_key === CUSTOM_KEY || ACCENTS.some(x => x.key === prefs.accent_key)) {
+          setAccentKeyState(prefs.accent_key);
+        }
+        if (prefs.accent_hue >= 0 && prefs.accent_hue <= 359) setHueState(prefs.accent_hue);
+      } catch {
+        // An unreachable project must not cost her the local preference.
+      }
     })();
+  }, []);
+
+  /** Both stores, always: AsyncStorage so the next launch is instant even
+   *  offline, user_preferences so the choice is hers rather than this
+   *  device's. Neither write is allowed to throw into a tap handler. */
+  const persist = useCallback((patch: Partial<{ theme_mode: ThemeMode; accent_key: string; accent_hue: number }>) => {
+    if (patch.theme_mode !== undefined) AsyncStorage.setItem(KEY_MODE, patch.theme_mode).catch(() => {});
+    if (patch.accent_key !== undefined) AsyncStorage.setItem(KEY_ACCENT, patch.accent_key).catch(() => {});
+    if (patch.accent_hue !== undefined) AsyncStorage.setItem(KEY_HUE, String(patch.accent_hue)).catch(() => {});
+    const id = appUserId.current;
+    if (id) savePreferences(id, patch).catch(() => {});
   }, []);
 
   const setMode = useCallback((m: ThemeMode) => {
     setModeState(m);
-    AsyncStorage.setItem(KEY_MODE, m).catch(() => {});
-  }, []);
+    persist({ theme_mode: m });
+  }, [persist]);
 
   const setAccentKey = useCallback((k: string) => {
     // C-82: the approved set, plus 'custom' -- which is not free input either.
     // customAccent() darkens until it measures, so no hue can fail contrast.
     if (k !== CUSTOM_KEY && !ACCENTS.some(x => x.key === k)) return;
     setAccentKeyState(k);
-    AsyncStorage.setItem(KEY_ACCENT, k).catch(() => {});
-  }, []);
+    persist({ accent_key: k });
+  }, [persist]);
 
   const setHue = useCallback((h: number) => {
     const n = Math.max(0, Math.min(359, Math.round(h)));
     setHueState(n);
-    AsyncStorage.setItem(KEY_HUE, String(n)).catch(() => {});
-  }, []);
+    persist({ accent_hue: n });
+  }, [persist]);
 
   const value = useMemo<Ctx>(() => {
     const isDark = mode === 'system' ? system !== 'light' : mode === 'dark';

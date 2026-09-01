@@ -192,21 +192,11 @@ export const COURSE_RULES: Record<string, FollowUpRule> = {
         consecutive_enabled: true, consecutive_threshold: 3, combination: 'AND' },
 };
 
-/** The plain-language sentence is GENERATED from the values (C-67), never
- *  hardcoded, so it cannot drift away from what the rule actually does. */
-export function ruleSentence(r: FollowUpRule, courseName: string): string {
-  const parts: string[] = [];
-  if (r.weekly_enabled) parts.push(`miss ${r.weekly_threshold} or more sessions in the week`);
-  if (r.consecutive_enabled) parts.push(`miss ${r.consecutive_threshold} consecutive sessions`);
-  if (parts.length === 0) return 'No condition is switched on, so nobody would be listed.';
-  const joined = parts.length === 1
-    ? parts[0]
-    : parts.join(r.combination === 'OR' ? ' OR ' : ' AND ');
-  const caveat = parts.length === 1 && r.combination === 'AND'
-    ? ' (only one condition is on, so AND behaves as that condition alone)'
-    : '';
-  return `Members in ${courseName} will be listed for follow-up when they ${joined}.${caveat}`;
-}
+// The rule logic itself lives in ./followup, so the fixtures and live
+// Supabase data are judged by exactly ONE implementation. Imported for use
+// below and re-exported because every screen already reaches for it here.
+import { isEligible, reasonFor, attendancePct } from './followup';
+export { ruleHits, isEligible, reasonFor, attendancePct, ruleSentence, flagged } from './followup';
 
 // -------------------------------------------------------------- templates
 export type Template = {
@@ -400,40 +390,12 @@ type StatusKeyName = 'present' | 'absent' | 'awaiting' | 'scheduled' | 'cancelle
  * The canvas computes the follow-up set from MEMBERS and the saved rule
  * rather than storing it. Keeping that here is what makes the dashboard
  * count, the weekly list and the send flow agree by construction: there is
- * no second list to fall out of step.
+ * no second list to fall out of step. Live data goes through the same
+ * ./followup functions -- see the note at the top of that file.
  */
-export function ruleHits(m: Member, r: FollowUpRule) {
-  return {
-    // a member with nothing scheduled cannot have "missed" anything
-    weekly: r.weekly_enabled && m.expected >= 1 && m.missed >= r.weekly_threshold,
-    consecutive: r.consecutive_enabled && m.streak >= r.consecutive_threshold,
-  };
-}
-
-export function isEligible(m: Member, r: FollowUpRule): boolean {
-  const h = ruleHits(m, r);
-  return r.combination === 'AND' && r.weekly_enabled && r.consecutive_enabled
-    ? h.weekly && h.consecutive
-    : h.weekly || h.consecutive;
-}
-
-/** Names the CONDITION that fired, not the rule -- so the row explains itself. */
-export function reasonFor(m: Member, r: FollowUpRule): string {
-  const h = ruleHits(m, r);
-  if (h.weekly && h.consecutive) {
-    return `Missed ${m.missed} of ${m.expected} this week and ${m.streak} consecutive`;
-  }
-  if (h.weekly) return `Missed ${m.missed} of ${m.expected} sessions this week`;
-  if (h.consecutive) return `${m.streak} consecutive missed sessions`;
-  return 'Meets the follow-up rule';
-}
-
 export function flaggedMembers(r: FollowUpRule = GLOBAL_RULE): Member[] {
   return MEMBERS.filter(m => isEligible(m, r));
 }
-
-export const attendancePct = (m: Member): number | null =>
-  m.expected === 0 ? null : Math.round((m.attended / m.expected) * 100);
 
 /**
  * The legacy follow-up shape, now DERIVED. Kept so the send flow and the
