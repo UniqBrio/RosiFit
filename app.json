@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "RosiFit",
+    "slug": "rosifit",
+    "scheme": "rosifit",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "assetBundlePatterns": ["**/*"],
+    "ios": { "supportsTablet": true, "bundleIdentifier": "com.uniqbrio.rosifit" },
+    "android": { "package": "com.uniqbrio.rosifit" },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "name": "RosiFit",
+      "shortName": "RosiFit",
+      "themeColor": "#5C0F63",
+      "backgroundColor": "#130D18",
+      "display": "standalone",
+      "startUrl": "/",
+      "description": "Attendance and follow-up for RosiFit Academy"
+    },
+    "plugins": ["expo-router"],
+    "experiments": { "typedRoutes": true }
+  }
+}
