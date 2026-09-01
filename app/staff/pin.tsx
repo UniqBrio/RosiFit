@@ -30,14 +30,14 @@ export default function StaffPin() {
   const phone = params.phone ?? '';
   const role = params.role ?? '';
 
-  if (!ready) return <Screen><View /></Screen>;
+  if (!ready) return <Screen deep><View /></Screen>;
 
   // A PIN is shown exactly once, from the staff list. Landing here without
   // one means the moment has passed -- say so rather than showing filler
   // that reads like a credential.
   if (pin.length !== 4) {
     return (
-      <Screen>
+      <Screen deep>
         <Body>
           This PIN has already been shown once and cannot be retrieved. Generate a new one from
           Staff &amp; access.
@@ -70,7 +70,7 @@ export default function StaffPin() {
   };
 
   return (
-    <Screen>
+    <Screen deep>
       <View style={{
         flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
         padding: SPACE.md, borderRadius: RADIUS.md,

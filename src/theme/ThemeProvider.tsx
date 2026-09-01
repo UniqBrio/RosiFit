@@ -6,7 +6,9 @@ import { ACCENTS, DARK, LIGHT, customAccent, DEFAULT_HUE, type Accent } from './
 export type ThemeMode = 'light' | 'dark' | 'system';
 
 export type Theme = typeof DARK & {
-  accent: string; accentInk: string; accentDeep: string; accentAvatar: string;
+  accent: string; accentInk: string; accentAvatar: string;
+  /** the three stops of the header gradient, dark to darker */
+  accentDeep: string; accentDeep2: string; accentDeep3: string;
   isDark: boolean;
 };
 
@@ -95,6 +97,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         // ink per theme, or light mode renders it at ~1.5:1
         accentInk: isDark ? a.tintDark : a.tintLight,
         accentDeep: a.deep,
+        accentDeep2: a.deep2,
+        accentDeep3: a.deep3,
         accentAvatar: a.avatar,
       },
       mode, accentKey, accents: ACCENTS, hue, isCustom,

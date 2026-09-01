@@ -22,6 +22,8 @@ export type Accent = {
   tintDark: string;   // accent-coloured TEXT on dark surfaces
   tintLight: string;  // accent-coloured TEXT on light surfaces
   deep: string;       // chrome / headers
+  deep2: string;      // mid stop of the header gradient
+  deep3: string;      // far stop of the header gradient
   avatar: string;
 };
 
@@ -34,12 +36,12 @@ export type Accent = {
  * labels at 3.05-3.67:1. Hue is preserved; only lightness moved.
  */
 export const ACCENTS: Accent[] = [
-  { key: 'rosifit', label: 'RosiFit pink', value: '#D6157F', tintDark: '#F5A8CE', tintLight: '#C81477', deep: '#5C0F63', avatar: '#93245F' },
-  { key: 'plum',    label: 'Plum',         value: '#9B2BA8', tintDark: '#E3B0EC', tintLight: '#9B2BA8', deep: '#4A1057', avatar: '#7C2490' },
-  { key: 'coral',   label: 'Coral',        value: '#D53F20', tintDark: '#F8B7A4', tintLight: '#BF391C', deep: '#6B2418', avatar: '#A83A26' },
-  { key: 'teal',    label: 'Teal',         value: '#0C8572', tintDark: '#8FE0D2', tintLight: '#0B7766', deep: '#0B4A42', avatar: '#127666' },
-  { key: 'indigo',  label: 'Indigo',       value: '#5566E0', tintDark: '#B5BEF7', tintLight: '#485ADE', deep: '#232C6B', avatar: '#414FB4' },
-  { key: 'gold',    label: 'Gold',         value: '#986E0E', tintDark: '#F2D48A', tintLight: '#88620D', deep: '#5A4008', avatar: '#96690D' },
+  { key: 'rosifit', label: 'RosiFit pink', value: '#D6157F', tintDark: '#F5A8CE', tintLight: '#C81477', deep: '#5C0F63', deep2: '#33073A', deep3: '#210528', avatar: '#93245F' },
+  { key: 'plum',    label: 'Plum',         value: '#9B2BA8', tintDark: '#E3B0EC', tintLight: '#9B2BA8', deep: '#4A1057', deep2: '#2C0733', deep3: '#1C0522', avatar: '#7C2490' },
+  { key: 'coral',   label: 'Coral',        value: '#D53F20', tintDark: '#F8B7A4', tintLight: '#BF391C', deep: '#6B2418', deep2: '#3D1409', deep3: '#260C06', avatar: '#A83A26' },
+  { key: 'teal',    label: 'Teal',         value: '#0C8572', tintDark: '#8FE0D2', tintLight: '#0B7766', deep: '#0B4A42', deep2: '#062B27', deep3: '#041B18', avatar: '#127666' },
+  { key: 'indigo',  label: 'Indigo',       value: '#5566E0', tintDark: '#B5BEF7', tintLight: '#485ADE', deep: '#232C6B', deep2: '#141A3E', deep3: '#0D1128', avatar: '#414FB4' },
+  { key: 'gold',    label: 'Gold',         value: '#986E0E', tintDark: '#F2D48A', tintLight: '#88620D', deep: '#5A4008', deep2: '#332504', deep3: '#201703', avatar: '#96690D' },
 ];
 
 export const DARK = {
@@ -176,6 +178,8 @@ export function customAccent(hue: number): CustomAccent {
     tintDark: toHex(hslToRgb(hue, 0.68, Math.min(l + 0.34, 0.84))),
     tintLight: toHex(ink),
     deep: toHex(hslToRgb(hue, 0.70, Math.max(l - 0.28, 0.10))),
+    deep2: toHex(hslToRgb(hue, 0.72, Math.max(l - 0.36, 0.06))),
+    deep3: toHex(hslToRgb(hue, 0.74, Math.max(l - 0.42, 0.04))),
     avatar: toHex(hslToRgb(hue, 0.68, Math.max(l - 0.09, 0.16))),
     ratio: contrast(rgb, WHITE).toFixed(1) + ':1',
   };

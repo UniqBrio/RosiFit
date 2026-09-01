@@ -22,7 +22,7 @@ export default function Help() {
   const panelLine = theme.isDark ? 'rgba(255,255,255,0.18)' : theme.line;
 
   return (
-    <Screen>
+    <Screen deep>
       <H1>Help &amp; support</H1>
       <Body style={{ marginTop: SPACE.sm, color: onDeep }}>
         Call us. A person picks up — there is no ticket queue to wait in.

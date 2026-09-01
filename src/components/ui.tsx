@@ -1,14 +1,19 @@
 import React from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet, type ViewStyle, type TextStyle } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../theme/ThemeProvider';
 import { RADIUS, SPACE, TAP_MIN } from '../theme/tokens';
 
-export function Screen({ children, scroll = true }: { children: React.ReactNode; scroll?: boolean }) {
+export function Screen({ children, scroll = true, deep = false }:
+  { children: React.ReactNode; scroll?: boolean; deep?: boolean }) {
   const { theme } = useTheme();
-  const style = { flex: 1, backgroundColor: theme.bg };
-  return scroll
-    ? <ScrollView style={style} contentContainerStyle={{ padding: SPACE.lg, paddingBottom: 96 }}>{children}</ScrollView>
-    : <View style={[style, { padding: SPACE.lg }]}>{children}</View>;
+  // `deep` puts the screen on the header gradient instead of the app
+  // background -- sign-in, help and the PIN screen in the canvas.
+  const body = scroll
+    ? <ScrollView style={{ flex: 1, backgroundColor: deep ? 'transparent' : theme.bg }}
+        contentContainerStyle={{ padding: SPACE.lg, paddingBottom: 96 }}>{children}</ScrollView>
+    : <View style={{ flex: 1, backgroundColor: deep ? 'transparent' : theme.bg, padding: SPACE.lg }}>{children}</View>;
+  return deep ? <DeepBackground>{body}</DeepBackground> : body;
 }
 
 export function Card({ children, style }: { children: React.ReactNode; style?: ViewStyle }) {
@@ -173,5 +178,23 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
       </Text>
       {onRetry ? <Button label="Try again" onPress={onRetry} style={{ marginTop: SPACE.lg }} /> : null}
     </View>
+  );
+}
+
+/* ---------------------------------------------------------- deep surfaces
+ * Sign-in, Help, Profile and the PIN screen sit on the canvas' deep header
+ * gradient rather than the app background. The canvas paints a radial
+ * gradient; a vertical one through the same three stops reads the same at
+ * phone width and needs no platform-specific shim.
+ */
+export function DeepBackground({ children, style }: { children: React.ReactNode; style?: ViewStyle }) {
+  const { theme } = useTheme();
+  return (
+    <LinearGradient
+      colors={[theme.accentDeep, theme.accentDeep2, theme.accentDeep3]}
+      locations={[0, 0.55, 1]}
+      style={[{ flex: 1 }, style]}>
+      {children}
+    </LinearGradient>
   );
 }

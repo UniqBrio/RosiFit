@@ -45,7 +45,11 @@ for (const [themeName, T] of [['dark', DARK], ['light', LIGHT]] as const) {
   for (const a of ACCENTS) {
     checks.push({ label: `${themeName}: ${a.label} button label`, fg: T.onAccent, bg: a.value,  need: 4.5 });
     checks.push({ label: `${themeName}: ${a.label} fill vs surface (border)`, fg: a.value, bg: T.surface, need: 3.0 });
-    checks.push({ label: `${themeName}: onDeep text on ${a.label} deep`, fg: T.onDeep, bg: a.deep, need: 4.5 });
+    // the header gradient runs deep -> deep2 -> deep3, and the same ink sits
+    // on all three stops, so all three are checked rather than just the first
+    for (const [stop, bg] of [['deep', a.deep], ['deep2', a.deep2], ['deep3', a.deep3]] as const) {
+      checks.push({ label: `${themeName}: onDeep text on ${a.label} ${stop}`, fg: T.onDeep, bg, need: 4.5 });
+    }
   }
 }
 
