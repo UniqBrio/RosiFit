@@ -1,9 +1,17 @@
 import { Tabs } from 'expo-router';
-import { Text, type ColorValue } from 'react-native';
+import { type ColorValue } from 'react-native';
 import { useTheme } from '../../src/theme/ThemeProvider';
+import { Icon } from '../../src/components/Icon';
 
-const icon = (glyph: string) => ({ color }: { color: ColorValue }) =>
-  <Text style={{ fontSize: 19, color }}>{glyph}</Text>;
+/**
+ * The canvas splits navigation into a 3-item bar (Home / Reports / More) plus
+ * four secondary tabs in the header. Five real tabs reach the same
+ * destinations in one tap instead of two, and Upload -- a core weekly job in
+ * the canvas' own "what needs you" list -- gets a permanent home rather than
+ * living only inside Home. The icons are the canvas' own names.
+ */
+const icon = (name: string) => ({ color }: { color: ColorValue }) =>
+  <Icon name={name} size={22} color={String(color)} />;
 
 export default function TabLayout() {
   const { theme } = useTheme();
@@ -18,11 +26,11 @@ export default function TabLayout() {
       tabBarInactiveTintColor: theme.muted,
       tabBarLabelStyle: { fontSize: 11, fontWeight: '700' },
     }}>
-      <Tabs.Screen name="index"   options={{ title: 'Home',    tabBarIcon: icon('◆') }} />
-      <Tabs.Screen name="weekly"  options={{ title: 'Weekly',  tabBarIcon: icon('◱') }} />
-      <Tabs.Screen name="upload"  options={{ title: 'Upload',  tabBarIcon: icon('↑') }} />
-      <Tabs.Screen name="members" options={{ title: 'Members', tabBarIcon: icon('☺') }} />
-      <Tabs.Screen name="more"    options={{ title: 'More',    tabBarIcon: icon('⋯') }} />
+      <Tabs.Screen name="index"   options={{ title: 'Home',    tabBarIcon: icon('space_dashboard') }} />
+      <Tabs.Screen name="weekly"  options={{ title: 'Weekly',  tabBarIcon: icon('favorite') }} />
+      <Tabs.Screen name="upload"  options={{ title: 'Upload',  tabBarIcon: icon('cloud_upload') }} />
+      <Tabs.Screen name="members" options={{ title: 'Members', tabBarIcon: icon('group') }} />
+      <Tabs.Screen name="more"    options={{ title: 'More',    tabBarIcon: icon('more_horiz') }} />
     </Tabs>
   );
 }

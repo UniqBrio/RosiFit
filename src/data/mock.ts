@@ -300,9 +300,39 @@ export const SECURITY_QUESTIONS = [
 ];
 
 // ---------------------------------------------------------------- reports
-export const WEEK_ROWS = [
-  { week: '3–9 Aug',   expected: 34, attended: 27, missed: 7 },
-  { week: '10–16 Aug', expected: 36, attended: 25, missed: 11 },
-  { week: '17–23 Aug', expected: 34, attended: 21, missed: 13 },
-  { week: '24–30 Aug', expected: 30, attended: 24, missed: 6 },
+/**
+ * Weeks run Monday to Sunday. A part-week at the start of a range is FLAGGED
+ * rather than blended in -- averaging it into the neighbouring week silently
+ * moves the percentage everyone reads.
+ */
+export type WeekRow = {
+  label: string; expected: number; attended: number;
+  current?: boolean; partial?: boolean;
+};
+
+export const WEEK_ROWS: WeekRow[] = [
+  { label: '18\u201324 Aug', expected: 22, attended: 6,  current: true },
+  { label: '11\u201317 Aug', expected: 24, attended: 15 },
+  { label: '4\u201310 Aug',  expected: 24, attended: 19 },
+  { label: '28 Jul \u2013 3 Aug', expected: 18, attended: 14, partial: true },
 ];
+
+/** The period a dashboard range names, so no tile can imply a different one. */
+export const PERIODS: Record<string, string> = {
+  'This week':    '18\u201324 Aug 2026',
+  'Last week':    '11\u201317 Aug 2026',
+  'Last 4 weeks': '28 Jul \u2013 24 Aug 2026',
+  'This month':   '1\u201324 Aug 2026',
+};
+
+/** Mon..Sun for the current week, as attendance statuses. */
+export const WEEK_STRIP: { day: string; status: StatusKeyName }[] = [
+  { day: 'Mon', status: 'present' },
+  { day: 'Tue', status: 'holiday' },
+  { day: 'Wed', status: 'present' },
+  { day: 'Thu', status: 'cancelled' },
+  { day: 'Fri', status: 'awaiting' },
+  { day: 'Sat', status: 'awaiting' },
+  { day: 'Sun', status: 'none' },
+];
+type StatusKeyName = 'present' | 'absent' | 'awaiting' | 'scheduled' | 'cancelled' | 'holiday' | 'extra' | 'none';

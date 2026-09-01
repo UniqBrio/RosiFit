@@ -98,9 +98,9 @@ export default function Reports() {
           {WEEK_ROWS.map(w => {
             const pct = Math.round((w.attended / w.expected) * 1000) / 10;
             return (
-              <View key={w.week} style={{ marginBottom: SPACE.md }}>
+              <View key={w.label} style={{ marginBottom: SPACE.md }}>
                 <Row>
-                  <Body style={{ flex: 1, fontWeight: '700' }}>{w.week}</Body>
+                  <Body style={{ flex: 1, fontWeight: '700' }}>{w.label}{w.partial ? ' · partial' : ''}</Body>
                   <Body style={{ fontWeight: '800' }}>{pct}%</Body>
                 </Row>
                 {/* the bar is a second encoding of the number beside it, never
@@ -111,7 +111,7 @@ export default function Reports() {
                     backgroundColor: pct >= 70 ? theme.success : pct >= 40 ? theme.warning : theme.danger }} />
                 </View>
                 <Muted style={{ marginTop: 4 }}>
-                  {w.expected} expected · {w.attended} attended · {w.missed} missed
+                  {w.expected} expected · {w.attended} attended · {w.expected - w.attended} missed
                 </Muted>
               </View>
             );
