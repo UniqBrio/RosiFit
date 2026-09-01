@@ -8,7 +8,7 @@ const routes = [
   ['/staff/add','staff-add'],['/audit','audit'],['/register','register'],['/set-pin','set-pin'],
   ['/forgot-pin','forgot-pin'],['/change-mobile','change-mobile'],['/send','send'],
   ['/send/review','send-review'],['/send/result','send-result'],
-  ['/appearance','appearance'],['/profile','profile'],['/help','help'],
+  ['/appearance','appearance'],['/profile','profile'],['/help','help'],['/match','match'],
 ];
 let bad=0;
 for (const [path,name] of routes) {

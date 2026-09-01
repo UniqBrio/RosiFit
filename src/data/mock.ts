@@ -32,7 +32,11 @@ export const OUTCOME_META: Record<MatchKind, { tag: string; blocks: boolean; not
 
 export type Candidate = {
   member_id: string; name: string; code: string; course: string; branch: string;
-  last_attended?: string; aliases?: string;
+  last_attended?: string; attendance?: string; aliases?: string;
+  /** why this candidate is being offered, in one line */
+  hint?: string;
+  /** 'sure' reads as a confident read of the name, 'unsure' as a guess */
+  hintTone?: 'sure' | 'unsure';
 };
 export type MatchRow = {
   row: number; kind: MatchKind; raw: string; first_seen: string; minutes: number;
@@ -45,21 +49,69 @@ export const CSV_COLUMNS = ['Full Name', 'First Seen', 'Time in Call'] as const;
 export const MATCH_ROWS: MatchRow[] = [
   { row: 12, kind: 'matched', raw: 'Divya Ramesh', first_seen: '5:58 pm', minutes: 61,
     candidates: [{ member_id: '1', name: 'Divya Ramesh', code: 'RF-000102',
-      course: 'Prenatal Fitness', branch: 'Coimbatore', last_attended: '21 Aug',
-      aliases: '“Divya”, “Divya R”' }] },
+      course: 'Prenatal Flow', branch: 'Coimbatore', last_attended: '21 Aug', attendance: '78%',
+      aliases: '\u201cDivya\u201d, \u201cDivya R\u201d',
+      hint: 'Matched on her canonical name', hintTone: 'sure' }] },
   { row: 47, kind: 'possible', raw: 'Shazia', first_seen: '6:02 pm', minutes: 58,
-    candidates: [{ member_id: '5', name: 'Shazia Farheen', code: 'RF-000118',
-      course: 'Prenatal Fitness', branch: 'Coimbatore', last_attended: '28 Aug',
-      aliases: '“Shazia F”, “Shazia Farheen”' }] },
+    candidates: [{ member_id: '2', name: 'Shazia Begum', code: 'RF-000118',
+      course: 'Postnatal Core', branch: 'Madurai', last_attended: '28 Aug', attendance: '71%',
+      aliases: '\u201cShazia F\u201d, \u201cShazia Begum\u201d',
+      hint: 'Fuzzy match \u2014 one candidate, so nothing is assumed', hintTone: 'unsure' }] },
   { row: 52, kind: 'ambiguous', raw: 'priya l', first_seen: '6:00 pm', minutes: 52,
     candidates: [
-      { member_id: '7', name: 'Lakshmi Priya', code: 'RF-000131', course: 'Prenatal Flow', branch: 'Chennai' },
-      { member_id: '8', name: 'Priya Lakshmi', code: 'RF-000149', course: 'Prenatal Flow', branch: 'Chennai' }] },
-  { row: 88, kind: 'noEmail', raw: 'Meena Raj', first_seen: '6:05 pm', minutes: 52,
-    candidates: [{ member_id: '3', name: 'Meena Raj', code: 'RF-000204',
-      course: 'Prenatal Yoga', branch: 'Salem', last_attended: '26 Aug' }] },
+      { member_id: '7', name: 'Lakshmi Priya', code: 'RF-000131', course: 'Prenatal Flow',
+        branch: 'Chennai', last_attended: '19 Aug', attendance: '64%',
+        aliases: '\u201cLakshmi P\u201d', hint: 'Name order reversed in Meet', hintTone: 'sure' },
+      { member_id: '9', name: 'Priya Latha', code: 'RF-000148', course: 'Postnatal Core',
+        branch: 'Chennai', last_attended: '15 Aug', attendance: '81%',
+        aliases: 'none yet', hint: 'Also a plausible reading', hintTone: 'unsure' }] },
+  { row: 88, kind: 'noEmail', raw: 'Meena Raj', first_seen: '6:04 pm', minutes: 52,
+    candidates: [{ member_id: '8', name: 'Kavya Balaji', code: 'RF-000146',
+      course: 'Postnatal Core', branch: 'Madurai', last_attended: '27 Aug', attendance: '66%',
+      aliases: '\u201cMeena Raj\u201d', hint: 'Matched on her canonical name', hintTone: 'sure' }] },
   { row: 91, kind: 'unmatched', raw: 'kavi.s', first_seen: '6:11 pm', minutes: 9, candidates: [] },
 ];
+
+/** The rows a person must decide. A clean match needs no decision. */
+export const DECISION_ROWS = MATCH_ROWS.filter(r => r.kind !== 'matched');
+
+/** What can be done with a row, per outcome. Each says what it will DO. */
+export type MatchAction = { icon: string; label: string; note: string; primary?: boolean };
+
+export const MATCH_ACTIONS: Record<MatchKind, MatchAction[]> = {
+  matched: [],
+  possible: [
+    { icon: 'person_add', label: 'Add as new member', primary: true,
+      note: 'Pre-filled from this row \u00b7 email left blank \u00b7 duplicate guard runs first' },
+    { icon: 'help_outline', label: 'Keep unmatched',
+      note: 'Recorded as not-a-member. Nothing is created' },
+  ],
+  noEmail: [
+    { icon: 'alternate_email', label: 'Add email to existing member', primary: true,
+      note: 'She becomes eligible for follow-up sends' },
+    { icon: 'east', label: 'Continue without email',
+      note: 'Attendance still imports \u00b7 excluded from sends, with the reason shown' },
+  ],
+  ambiguous: [
+    { icon: 'person_off', label: 'Not a member \u2014 leave this row out',
+      note: 'No record is created' },
+  ],
+  unmatched: [
+    { icon: 'person_add', label: 'Add as new member', primary: true,
+      note: 'Course and branch come from the session being imported' },
+    { icon: 'link', label: 'Link to an existing member', note: 'Search the register yourself' },
+    { icon: 'skip_next', label: 'Skip this row', note: 'Left out of the import entirely' },
+  ],
+};
+
+/** The question each outcome puts to the person deciding. */
+export const MATCH_QUESTION: Record<MatchKind, string> = {
+  matched: 'Matched to',
+  possible: 'Is this her?',
+  noEmail: 'Matched to',
+  ambiguous: 'Who is she?',
+  unmatched: 'What should happen to this row?',
+};
 
 export type Member = {
   id: string; code: string; name: string; course: string; branch: string;
@@ -390,3 +442,39 @@ export const primaryEmail = (m: Member): string =>
 
 /** C-76: no email means listed-and-excluded, never silently dropped. */
 export const hasEmail = (m: Member): boolean => primaryEmail(m) !== '';
+
+/**
+ * A member's week, session by session. Holidays and cancellations are LISTED
+ * and say why they do not count -- a blank row would read as a miss, which is
+ * the whole point of showing them (C-92).
+ */
+export type MemberSession = {
+  status: StatusKeyName; date: string; time: string; detail: string;
+};
+
+export const MEMBER_WEEK: MemberSession[] = [
+  { status: 'absent',    date: 'Mon 18 Aug', time: '6:00 pm', detail: 'Prenatal Flow · Google Meet' },
+  { status: 'holiday',   date: 'Tue 19 Aug', time: '—',  detail: 'Onam — does not count' },
+  { status: 'absent',    date: 'Wed 20 Aug', time: '6:00 pm', detail: 'Prenatal Flow · Google Meet' },
+  { status: 'cancelled', date: 'Thu 21 Aug', time: '—',  detail: 'Coach unwell — does not count' },
+  { status: 'absent',    date: 'Fri 22 Aug', time: '6:00 pm', detail: 'Prenatal Flow · Google Meet' },
+  { status: 'awaiting',  date: 'Sat 23 Aug', time: '8:00 am', detail: 'File not uploaded — counts for nobody' },
+];
+
+/** Nothing scheduled is its own state, not an empty list of misses. */
+export const NO_SESSIONS: MemberSession[] = [
+  { status: 'none', date: 'No sessions', time: '—', detail: 'She had none scheduled this week' },
+];
+
+export const sessionsFor = (m: Member): MemberSession[] =>
+  m.expected === 0 ? NO_SESSIONS : MEMBER_WEEK;
+
+/** Sessions whose attendance file has not arrived yet. */
+export const PENDING_SESSIONS = [
+  { dayNum: '22', mon: 'AUG', title: 'Prenatal Flow · 6:00 pm',
+    meta: 'Coimbatore · 18 expected · awaiting upload',
+    label: 'Fri 22 Aug · Prenatal Flow 6:00 pm' },
+  { dayNum: '23', mon: 'AUG', title: 'Postnatal Core · 8:00 am',
+    meta: 'Madurai · 12 expected · awaiting upload',
+    label: 'Sat 23 Aug · Postnatal Core 8:00 am' },
+];

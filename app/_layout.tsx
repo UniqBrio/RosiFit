@@ -38,6 +38,7 @@ function Nav() {
         <Stack.Screen name="send/index"    options={{ title: 'Send' }} />
         <Stack.Screen name="send/review"   options={{ title: 'Review & send' }} />
         <Stack.Screen name="send/result"   options={{ title: 'Result' }} />
+        <Stack.Screen name="match"         options={{ title: 'Match review' }} />
         <Stack.Screen name="appearance"    options={{ title: 'Appearance' }} />
         <Stack.Screen name="profile"       options={{ title: 'Your profile' }} />
         <Stack.Screen name="help"          options={{ title: 'Help & support' }} />
