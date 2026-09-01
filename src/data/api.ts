@@ -47,6 +47,16 @@ export function authBootstrap(input: {
   return callFn<SignedIn>('auth-bootstrap', input);
 }
 
+export type SecurityQuestion = { id: number; text: string };
+
+/** The question list for registration. It comes from the function, not a
+ *  client-side copy, because security_questions is readable only by the
+ *  super admin -- the account being created. */
+export function fetchSecurityQuestions():
+  Promise<{ questions: SecurityQuestion[]; bootstrap_completed: boolean }> {
+  return callFn('auth-bootstrap', { action: 'questions' });
+}
+
 /** After either call the client must adopt the returned session, or the
  *  next request still goes out anonymous. */
 export async function adoptSession(result: SignedIn): Promise<void> {
@@ -66,12 +76,40 @@ export function pinIssue(input: {
   return callFn<IssuedPin>('pin-issue', input);
 }
 
+/** Turn access back on WITHOUT issuing a PIN — a re-enabled account goes
+ *  back to "needs a PIN", which is what the staff list then offers. */
+export function staffReenable(appUserId: string): Promise<{ app_user_id: string; reactivated: true }> {
+  return callFn('pin-issue', { app_user_id: appUserId, reactivate_only: true });
+}
+
+/** Add the person, grant nothing. She appears as "Not enabled" until a PIN
+ *  is issued from the staff list — a separate, deliberate step. */
+export function staffCreate(input: { name: string; phone: string; role_label: string }):
+  Promise<{ app_user_id: string; access: 'not_enabled' }> {
+  return callFn('pin-issue', { ...input, create_only: true });
+}
+
+/** Admin path: the server generates the PIN for somebody else and returns it
+ *  once. Super admin only. */
 export function pinReset(appUserId: string, signOutEverywhere = false):
   Promise<IssuedPin & { signed_out_everywhere: boolean }> {
   return callFn('pin-reset', { app_user_id: appUserId, sign_out_everywhere: signOutEverywhere });
 }
 
+/** Self path: she chooses her own four digits, so nothing comes back but the
+ *  confirmation — the PIN is not echoed anywhere. */
+export function changeOwnPin(newPin: string, signOutEverywhere = false):
+  Promise<{ app_user_id: string; signed_out_everywhere: boolean }> {
+  return callFn('pin-reset', { new_pin: newPin, sign_out_everywhere: signOutEverywhere });
+}
+
 // ---------------------------------------------------------------- recovery
+/** The two questions THIS account registered, so the screen asks hers rather
+ *  than a guess. Says which questions, never an answer. */
+export function recoveryQuestions(phone: string): Promise<{ questions: SecurityQuestion[] }> {
+  return callFn('recovery-check', { action: 'questions', phone });
+}
+
 export function recoveryVerify(phone: string, answers: { question_id: number; answer: string }[]):
   Promise<{ ok: true; recovery_token: string }> {
   return callFn('recovery-check', { action: 'verify', phone, answers });

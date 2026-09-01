@@ -31,6 +31,23 @@ Deno.serve(async (req) => {
       if (findErr) throw new HttpError(500, 'Could not look up that staff member.');
       if (!existing) throw new HttpError(404, 'Staff member not found.');
 
+      // Re-enabling is not the same as issuing a PIN, and the staff list says
+      // so: a re-enabled account goes back to "needs a PIN" rather than
+      // silently getting one she has not been told. is_active is one of the
+      // columns guard_app_users() refuses from PostgREST, so it can only
+      // move through here.
+      if (body.reactivate_only) {
+        const { error: onErr } = await admin.from('app_users')
+          .update({ is_active: true, failed_attempts: 0, locked_until: null })
+          .eq('id', existingId);
+        if (onErr) throw new HttpError(500, 'Could not re-enable that staff member.');
+        await admin.rpc('audit_log', {
+          p_action: 'auth.staff_reenabled', p_entity_type: 'app_user', p_entity_id: existingId,
+          p_metadata: { by: caller.id },
+        });
+        return json({ app_user_id: existingId, reactivated: true });
+      }
+
       const patch: Record<string, unknown> = {
         must_change_pin: true, pin_set_at: new Date().toISOString(),
         failed_attempts: 0, locked_until: null,
@@ -72,11 +89,26 @@ Deno.serve(async (req) => {
       .eq('phone_e164', e164).is('deleted_at', null);
     if (count && count > 0) throw new HttpError(409, 'This mobile number is already registered.');
 
+    // Adding a person and giving her a login are two steps on purpose. With
+    // create_only the record exists and reads as "Not enabled" (pin_set_at
+    // stays null, no shadow GoTrue user yet); the PIN is issued later from
+    // the staff list, which is a named, deliberate act.
+    const createOnly = Boolean(body.create_only);
+
     const { data: inserted, error: insertErr } = await admin.from('app_users').insert({
       kind: 'staff', name, phone_e164: e164, role_label: roleLabel,
-      must_change_pin: true, pin_set_at: new Date().toISOString(), created_by: caller.id,
+      must_change_pin: true, pin_set_at: createOnly ? null : new Date().toISOString(),
+      created_by: caller.id,
     }).select('id').single();
     if (insertErr || !inserted) throw new HttpError(500, 'Could not create the staff account.');
+
+    if (createOnly) {
+      await admin.rpc('audit_log', {
+        p_action: 'auth.staff_created', p_entity_type: 'app_user', p_entity_id: inserted.id,
+        p_metadata: { by: caller.id, access: 'not_enabled' },
+      });
+      return json({ app_user_id: inserted.id, phone_e164: e164, access: 'not_enabled' });
+    }
 
     try {
       await createAuthIdentity(admin, inserted.id, pin);

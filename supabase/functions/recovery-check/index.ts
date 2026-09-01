@@ -35,6 +35,26 @@ Deno.serve(async (req) => {
     const action = String(body.action ?? 'verify');
     const admin = adminClient();
 
+    // Which two questions to ask her. She is not signed in -- that is the
+    // whole point of this screen -- so the client cannot read
+    // security_questions itself. This says which questions the account uses,
+    // never an answer or a hash.
+    if (action === 'questions') {
+      const e164 = toE164India(String(body.phone ?? ''));
+      if (!e164) throw new HttpError(400, 'Enter a valid 10-digit mobile number.');
+      const { data: appUser } = await admin.from('app_users')
+        .select('id').eq('phone_e164', e164).eq('kind', 'super_admin')
+        .is('deleted_at', null).maybeSingle();
+      if (!appUser) throw new HttpError(404, 'That mobile number is not registered as the academy admin.');
+
+      const { data: rows } = await admin.from('super_admin_recovery')
+        .select('question_id').eq('app_user_id', appUser.id).order('question_id');
+      const ids = (rows ?? []).map(r => r.question_id as number);
+      const { data: questions } = await admin.from('security_questions')
+        .select('id, text').in('id', ids.length ? ids : [-1]);
+      return json({ questions: questions ?? [] });
+    }
+
     if (action === 'apply') {
       const newPin = String(body.new_pin ?? '');
       if (!isFourDigitPin(newPin)) throw new HttpError(400, 'Choose a 4-digit PIN.');

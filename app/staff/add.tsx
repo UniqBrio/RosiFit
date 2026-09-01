@@ -9,6 +9,8 @@ import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../../src/theme/tokens';
 import { ROLE_LABELS } from '../../src/data/mock';
+import { isConfigured } from '../../src/lib/supabase';
+import { staffCreate } from '../../src/data/api';
 
 export default function StaffAdd() {
   const { theme } = useTheme();
@@ -21,16 +23,31 @@ export default function StaffAdd() {
   const [roles, setRoles] = useState<string[]>(
     [...ROLE_LABELS, 'Physiotherapist', 'Nutrition coach']);
   const [picking, setPicking] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   const digits = phone.replace(/\D/g, '');
   const valid = name.trim().length > 0 && digits.length >= 10;
 
-  const save = () => {
-    if (!valid) return;
+  const save = async () => {
+    if (!valid || busy) return;
     // Saving the record is deliberately NOT the same act as granting access;
-    // the PIN is issued from the staff list as a separate, named step.
-    flash(`${name.trim().split(' ')[0]} saved · no app access yet`);
-    router.replace('/staff');
+    // the PIN is issued from the staff list as a separate, named step. That
+    // is why this calls create_only and no PIN comes back.
+    if (!isConfigured) {
+      flash(`${name.trim().split(' ')[0]} saved · no app access yet`);
+      router.replace('/staff');
+      return;
+    }
+    setBusy(true);
+    try {
+      await staffCreate({ name: name.trim(), phone, role_label: role });
+      flash(`${name.trim().split(' ')[0]} saved · no app access yet`);
+      router.replace('/staff');
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'That did not work.', 'warn');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const warnInk = theme.isDark ? STATUS.awaiting.fgDark : STATUS.awaiting.fgLight;
@@ -77,7 +94,8 @@ export default function StaffAdd() {
         </Text>
       </View>
 
-      <Button label="Save staff member" onPress={save} disabled={!valid} style={{ marginTop: SPACE.xl }} />
+      <Button label={busy ? 'Saving…' : 'Save staff member'} onPress={() => void save()}
+        disabled={!valid || busy} style={{ marginTop: SPACE.xl }} />
       <Muted style={{ marginTop: 9, textAlign: 'center' }}>
         {valid ? `Saved as ${role} · no app access yet` : 'Name and a 10-digit mobile number are needed'}
       </Muted>

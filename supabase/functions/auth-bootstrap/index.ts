@@ -19,6 +19,23 @@ Deno.serve(async (req) => {
     if (req.method !== 'POST') throw new HttpError(405, 'Use POST.');
     const body = await req.json().catch(() => ({}));
 
+    // The registration screen has to show the question list before anyone is
+    // signed in, and security_questions is readable only by the super admin
+    // (0003) -- which is the very account being created. So the list comes
+    // from here, where the service role can read it. The questions carry no
+    // secret; only the answers do.
+    if (String(body.action ?? '') === 'questions') {
+      const admin = adminClient();
+      const [{ data: questions }, { data: settings }] = await Promise.all([
+        admin.from('security_questions').select('id, text').eq('is_active', true).order('id'),
+        admin.from('app_settings').select('bootstrap_completed').eq('id', 1).single(),
+      ]);
+      return json({
+        questions: questions ?? [],
+        bootstrap_completed: Boolean(settings?.bootstrap_completed),
+      });
+    }
+
     const name = String(body.name ?? '').trim();
     const e164 = toE164India(String(body.phone ?? ''));
     const pin = String(body.pin ?? '');
