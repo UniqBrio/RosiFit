@@ -158,12 +158,16 @@ export type Course = {
 };
 
 export const COURSE_LIST: Course[] = [
-  { id: 'c1', name: 'Prenatal Fitness', start_time: '06:00', end_time: '07:00', frequency: 6,
-    offerings: [{ branch: 'Coimbatore', weekdays: [1,2,4,6] }, { branch: 'Salem', weekdays: [1,2,3,4,5,6] }] },
-  { id: 'c2', name: 'Prenatal Yoga', start_time: '07:30', end_time: '08:30', frequency: 4,
-    offerings: [{ branch: 'Salem', weekdays: [1,2,4,6] }] },
-  { id: 'c3', name: 'Postnatal Recovery', start_time: '17:00', end_time: '18:00', frequency: 3,
-    offerings: [{ branch: 'Erode', weekdays: [1,3,5] }] },
+  { id: 'c1', name: 'Prenatal Flow', start_time: '06:00', end_time: '07:00', frequency: 3,
+    offerings: [{ branch: 'Coimbatore', weekdays: [1,3,5] }, { branch: 'Chennai', weekdays: [1,3,5] }] },
+  { id: 'c2', name: 'Postnatal Core', start_time: '07:00', end_time: '08:00', frequency: 3,
+    offerings: [{ branch: 'Madurai', weekdays: [2,4,6] }, { branch: 'Coimbatore', weekdays: [2,4,6] }] },
+  { id: 'c3', name: 'Trimester 3 Gentle', start_time: '07:00', end_time: '08:15', frequency: 4,
+    offerings: [{ branch: 'Chennai', weekdays: [1,4] }] },
+  // no offering on purpose: a course with no offering has no schedule, and
+  // the UI must say so rather than invent one
+  { id: 'c4', name: 'Pelvic Floor Foundations', start_time: null, end_time: null, frequency: 2,
+    offerings: [] },
 ];
 
 export const DAY_NAMES = ['', 'Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
