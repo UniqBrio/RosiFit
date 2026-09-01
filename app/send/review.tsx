@@ -1,84 +1,115 @@
-import { useState } from 'react';
-import { View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Screen, Card, H1, H2, Body, Muted, Label, Button, Pill, Row, Divider } from '../../src/components/ui';
+import { View, Text, Pressable } from 'react-native';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Screen, Body, Muted, Label, Button } from '../../src/components/ui';
+import { Icon } from '../../src/components/Icon';
 import { useTheme } from '../../src/theme/ThemeProvider';
-import { SPACE, RADIUS } from '../../src/theme/tokens';
-import { TEMPLATES, CANDIDATES, WEEK, renderTemplate } from '../../src/data/mock';
+import { SPACE, RADIUS, STATUS, statusSurface } from '../../src/theme/tokens';
+import {
+  TEMPLATES, WEEK, flaggedMembers, hasEmail, primaryEmail, reasonFor,
+  GLOBAL_RULE, AVATAR_TINTS, initials,
+} from '../../src/data/mock';
 
-/** Step 2 of 3: review the GENERATED message. Nothing here is editable. */
+/**
+ * Step 2 of 3: REVIEW. Both lists are shown — who will receive, and who is
+ * excluded and why. C-76: a member with no address is counted and named here,
+ * never silently dropped from the send.
+ */
 export default function ReviewSend() {
   const { theme } = useTheme();
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const tpl = TEMPLATES.find(t => t.id === id) ?? TEMPLATES[0];
-  const sendable = CANDIDATES.filter(c => c.has_email);
-  const excluded = CANDIDATES.filter(c => !c.has_email);
-  const [who, setWho] = useState(0);
-  const person = sendable[who];
+  const { template } = useLocalSearchParams<{ template?: string }>();
+
+  const tpl = TEMPLATES.find(t => t.id === template) ?? TEMPLATES[0];
+  const flagged = flaggedMembers();
+  const recipients = flagged.filter(hasEmail);
+  const excluded = flagged.filter(m => !hasEmail(m));
+  const ink = (k: keyof typeof STATUS) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
+  const okInk = ink('present');
+  const badInk = ink('absent');
 
   return (
     <Screen>
-      <H1>Review &amp; send</H1>
-      <Muted style={{ marginBottom: SPACE.lg }}>{tpl.name} · {WEEK.label}</Muted>
+      <Muted>{`${tpl.name} · week ${WEEK.label}`}</Muted>
 
-      <Card>
-        <Row style={{ flexWrap: 'wrap' }}>
-          {sendable.map((c, i) => (
-            <Pill key={c.member_id} text={c.full_name.split(' ')[0]} tone={i === who ? 'success' : 'neutral'} />
-          ))}
-        </Row>
-        <Row style={{ marginTop: SPACE.md, gap: SPACE.md }}>
-          <Button label="Previous" variant="secondary" disabled={who === 0}
-            onPress={() => setWho(w => w - 1)} style={{ flex: 1 }} />
-          <Button label="Next" variant="secondary" disabled={who >= sendable.length - 1}
-            onPress={() => setWho(w => w + 1)} style={{ flex: 1 }} />
-        </Row>
-        <Muted style={{ marginTop: SPACE.sm, textAlign: 'center' }}>
-          Showing {who + 1} of {sendable.length}
-        </Muted>
-      </Card>
+      <Label style={{ marginTop: SPACE.lg }}>{`Will receive · ${recipients.length}`}</Label>
+      <View style={{ gap: SPACE.md, marginTop: SPACE.md }}>
+        {recipients.map((m, i) => (
+          <View key={m.id} style={{
+            padding: SPACE.lg, borderRadius: RADIUS.lg, backgroundColor: theme.surface,
+            borderWidth: 1, borderColor: theme.line,
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.md }}>
+              <View style={{
+                width: 34, height: 34, borderRadius: 17,
+                backgroundColor: AVATAR_TINTS[i % AVATAR_TINTS.length],
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Text style={{ fontSize: 12, fontWeight: '800', color: '#FFFFFF' }}>{initials(m.name)}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 14.5, fontWeight: '700', color: theme.fgStrong }}>{m.name}</Text>
+                <Text style={{ fontSize: 11.5, color: theme.muted, fontVariant: ['tabular-nums'] }}>
+                  {primaryEmail(m)}
+                </Text>
+              </View>
+              <Icon name="check_circle" size={19} color={okInk} />
+            </View>
+            {/* her REAL figures, from the engine -- never a placeholder */}
+            <Text style={{
+              fontSize: 11.5, color: theme.muted, marginTop: SPACE.sm,
+              fontVariant: ['tabular-nums'], lineHeight: 17,
+            }}>{reasonFor(m, GLOBAL_RULE)}</Text>
+          </View>
+        ))}
+      </View>
 
-      <Card>
-        <Label>To</Label>
-        <Body style={{ fontWeight: '800' }}>{person.full_name}</Body>
-        <Muted>{person.course_name} · {person.branch_name}</Muted>
+      <Label style={{ marginTop: SPACE.xl }}>
+        {`Excluded · ${excluded.length} · counted, not dropped`}
+      </Label>
+      <View style={{ gap: SPACE.sm, marginTop: SPACE.md }}>
+        {excluded.map(m => (
+          <View key={m.id} style={{
+            flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
+            padding: SPACE.md, borderRadius: RADIUS.md,
+            backgroundColor: statusSurface(badInk).bg,
+            borderWidth: 1, borderColor: statusSurface(badInk).border,
+          }}>
+            <Icon name="mail_off" size={18} color={badInk} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 13.5, fontWeight: '700', color: theme.fgStrong }}>{m.name}</Text>
+              <Text style={{ fontSize: 11.5, color: theme.muted, marginTop: 2 }}>
+                No email on file — she stays in the report
+              </Text>
+            </View>
+            <Text style={{ fontSize: 10, fontWeight: '800', color: badInk }}>EXCLUDED</Text>
+          </View>
+        ))}
+      </View>
 
-        <Divider />
-        <Label>Subject</Label>
-        {/* read-only on purpose -- this is the C-68 line in the sand */}
-        <Body style={{ fontWeight: '700', marginTop: 4 }}>{renderTemplate(tpl.subject, person)}</Body>
-
-        <Divider />
-        <Label>Message</Label>
-        <View style={{ backgroundColor: theme.surface2, borderRadius: RADIUS.md,
-          borderWidth: 1, borderColor: theme.line, padding: SPACE.md, marginTop: SPACE.sm }}>
-          <Body>{renderTemplate(tpl.body, person)}</Body>
+      <View style={{
+        marginTop: SPACE.xl, padding: SPACE.lg, borderRadius: RADIUS.lg,
+        backgroundColor: theme.surface2, borderWidth: 1, borderColor: theme.line,
+      }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }}>
+          <Text style={{ flex: 1, fontSize: 12.5, fontWeight: '700', color: theme.fg }}>
+            {`Template · ${tpl.name}`}
+          </Text>
+          <Pressable onPress={() => router.back()} accessibilityRole="button"
+            accessibilityLabel="Change template">
+            <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.accentInk }}>Change</Text>
+          </Pressable>
         </View>
-
+        <Body style={{ marginTop: SPACE.md, fontSize: 13 }}>
+          {`Subject: ${tpl.subject.replace('{{first_name}}', recipients[0]?.name.split(' ')[0] ?? 'her')}`}
+        </Body>
         <Muted style={{ marginTop: SPACE.md }}>
-          The wording is fixed. Only her own figures change, and they come from the attendance
-          engine — never a placeholder. To change the wording, edit the template in Settings.
+          The wording is fixed. Only her own figures change, and they come from the attendance engine —
+          never a placeholder.
         </Muted>
-      </Card>
+      </View>
 
-      {excluded.length > 0 && (
-        <Card>
-          <H2>Not included</H2>
-          {excluded.map(c => (
-            <Row key={c.member_id} style={{ marginTop: SPACE.sm }}>
-              <Body style={{ flex: 1 }}>{c.full_name}</Body>
-              <Pill text="No email on file" tone="warning" />
-            </Row>
-          ))}
-          <Muted style={{ marginTop: SPACE.sm }}>
-            They stay in every attendance figure. Only the send skips them.
-          </Muted>
-        </Card>
-      )}
-
-      <Button label={`Send to ${sendable.length} members`}
-        onPress={() => router.push('/send/result')} />
+      <Button label={`Send to ${recipients.length} members`} style={{ marginTop: SPACE.lg }}
+        onPress={() => router.push({ pathname: '/send/result', params: { template: tpl.id } })} />
     </Screen>
   );
 }

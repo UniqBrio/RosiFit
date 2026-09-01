@@ -1,10 +1,11 @@
-import { useState } from 'react';
-import { View } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Screen, Card, H1, H2, Body, Muted, Button, Pill, Row } from '../../src/components/ui';
+import { Screen, Body, Muted, Button } from '../../src/components/ui';
+import { Icon } from '../../src/components/Icon';
 import { useTheme } from '../../src/theme/ThemeProvider';
-import { SPACE } from '../../src/theme/tokens';
-import { TEMPLATES, CANDIDATES, WEEK } from '../../src/data/mock';
+import { useToast } from '../../src/components/Toast';
+import { SPACE, RADIUS, STATUS, statusSurface } from '../../src/theme/tokens';
+import { TEMPLATES, WEEK, flaggedMembers, hasEmail } from '../../src/data/mock';
 
 /**
  * C-68/C-69, step 1 of 3: CHOOSE A TEMPLATE.
@@ -15,52 +16,65 @@ import { TEMPLATES, CANDIDATES, WEEK } from '../../src/data/mock';
  */
 export default function ChooseTemplate() {
   const { theme } = useTheme();
+  const { flash } = useToast();
   const router = useRouter();
-  const [chosen, setChosen] = useState<string | null>(null);
-  const sendable = CANDIDATES.filter(c => c.has_email);
-  const active = TEMPLATES.filter(t => t.active);
-  const inactive = TEMPLATES.filter(t => !t.active);
+
+  const flagged = flaggedMembers();
+  const sendable = flagged.filter(hasEmail);
+  const ink = (k: keyof typeof STATUS) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
 
   return (
     <Screen>
-      <H1>Choose a template</H1>
-      <Muted style={{ marginBottom: SPACE.lg }}>
-        {sendable.length} members selected · {WEEK.label}
-      </Muted>
+      <Muted>{`${sendable.length} members selected · week ${WEEK.label}`}</Muted>
 
-      {active.map(t => {
-        const on = chosen === t.id;
-        return (
-          <Card key={t.id} style={on ? { borderColor: theme.accent, borderWidth: 2 } : undefined}>
-            <Row>
-              <View style={{ flex: 1 }}>
-                <H2>{t.name}</H2>
-                <Muted numberOfLines={2} style={{ marginTop: 4 }}>{t.subject}</Muted>
+      <Body style={{ marginTop: SPACE.md }}>
+        Pick one of your saved templates. You cannot type a message here — the wording is agreed once,
+        in Settings, so nobody sends something unreviewed at 9 pm.
+      </Body>
+
+      <View style={{ gap: SPACE.md, marginTop: SPACE.lg }}>
+        {TEMPLATES.map(t => {
+          const off = !t.active;
+          const stateInk = off ? theme.dim : ink('present');
+          return (
+            <Pressable key={t.id}
+              onPress={() => off
+                ? flash(`${t.name} is switched off in Settings`, 'warn')
+                : router.push({ pathname: '/send/review', params: { template: t.id } })}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: off }}
+              accessibilityLabel={`${t.name}, ${off ? 'switched off' : 'active'}. ${t.preview}`}
+              style={({ pressed }) => ({
+                padding: SPACE.lg, borderRadius: RADIUS.lg, backgroundColor: theme.surface,
+                borderWidth: 1, borderColor: theme.line, opacity: pressed ? 0.75 : 1,
+              })}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }}>
+                <Icon name={t.icon} size={19} color={off ? theme.dim : theme.accentInk} />
+                <Text style={{ flex: 1, fontSize: 15, fontWeight: '700', color: off ? theme.muted : theme.fgStrong }}>
+                  {t.name}
+                </Text>
+                {/* an inactive template is LISTED and says why it cannot be
+                    used, rather than vanishing from the picker */}
+                <View style={{
+                  paddingVertical: 3, paddingHorizontal: 8, borderRadius: RADIUS.pill,
+                  backgroundColor: statusSurface(stateInk).bg,
+                  borderWidth: 1, borderColor: statusSurface(stateInk).border,
+                }}>
+                  <Text style={{ fontSize: 10, fontWeight: '800', color: stateInk }}>
+                    {off ? 'OFF' : 'ACTIVE'}
+                  </Text>
+                </View>
               </View>
-              <Button label={on ? 'Chosen' : 'Choose'} variant={on ? 'primary' : 'secondary'}
-                onPress={() => setChosen(t.id)} />
-            </Row>
-          </Card>
-        );
-      })}
+              <Text style={{ fontSize: 12.5, color: theme.muted, marginTop: 7, lineHeight: 18 }}>
+                {t.preview}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
 
-      {inactive.length > 0 && (
-        <Card>
-          <H2>Switched off</H2>
-          <Muted style={{ marginTop: 4 }}>
-            Not offered here while inactive. Turn one back on in Settings → Message templates.
-          </Muted>
-          <Row style={{ marginTop: SPACE.sm, flexWrap: 'wrap' }}>
-            {inactive.map(t => <Pill key={t.id} text={t.name} />)}
-          </Row>
-        </Card>
-      )}
-
-      <Button label="Review the message" disabled={!chosen}
-        onPress={() => router.push({ pathname: '/send/review', params: { id: chosen! } })} />
-      <Muted style={{ textAlign: 'center', marginTop: SPACE.sm }}>
-        You will see the finished message, with each member's real figures, before anything sends.
-      </Muted>
+      <Button label="Manage templates in Settings" variant="secondary" style={{ marginTop: SPACE.lg }}
+        onPress={() => router.push('/templates')} />
     </Screen>
   );
 }

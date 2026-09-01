@@ -207,19 +207,27 @@ export function ruleSentence(r: FollowUpRule, courseName: string): string {
 // -------------------------------------------------------------- templates
 export type Template = {
   id: string; name: string; subject: string; body: string; active: boolean;
+  /** the canvas' glyph for this template */
+  icon: string;
+  /** one line of the wording, for the picker */
+  preview: string;
 };
 
 export const TEMPLATES: Template[] = [
-  { id: 't1', name: 'Gentle check-in', active: true,
+  { id: 't1', name: 'Gentle check-in', active: true, icon: 'favorite',
+    preview: 'We missed you this week — you were down for {{expected_sessions}} and made {{attended_sessions}}.',
     subject: 'We missed you this week, {{first_name}}',
     body: 'Hello {{first_name}},\n\nYou were down for {{expected_sessions}} sessions in {{course_name}} between {{period_from}} and {{period_to}}, and made {{attended_sessions}}.\n\nNothing is wrong — we would just like to see you back on the mat.\n\n{{academy_name}}' },
-  { id: 't2', name: 'Trimester check', active: true,
+  { id: 't2', name: 'Trimester check', active: true, icon: 'pregnant_woman',
+    preview: 'If this trimester is hard right now, tell us and we will move your slots.',
     subject: 'How is this trimester treating you, {{first_name}}?',
     body: 'Hello {{first_name}},\n\nIf the timing is hard right now, tell us and we will move your slots.\n\n{{academy_name}}' },
-  { id: 't3', name: 'Long absence', active: true,
+  { id: 't3', name: 'Long absence', active: true, icon: 'schedule',
+    preview: 'It has been {{consecutive_missed}} sessions. Shall we pause your enrolment?',
     subject: 'Shall we pause your enrolment, {{first_name}}?',
     body: 'Hello {{first_name}},\n\nIt has been {{consecutive_missed}} sessions in a row. We can pause and hold your place.\n\n{{academy_name}}' },
-  { id: 't4', name: 'Schedule change notice', active: false,
+  { id: 't4', name: 'Schedule change notice', active: false, icon: 'payments',
+    preview: 'Inactive — not offered in the send flow while it is switched off.',
     subject: 'A change to your {{course_name}} times',
     body: 'Hello {{first_name}},\n\nInactive — not offered in the send flow while it is switched off.\n\n{{academy_name}}' },
 ];
