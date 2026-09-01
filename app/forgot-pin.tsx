@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Screen, H2, Body, Muted, Label, Button } from '../src/components/ui';
 import { Field } from '../src/components/Field';
 import { Icon } from '../src/components/Icon';
@@ -8,14 +8,20 @@ import { useTheme } from '../src/theme/ThemeProvider';
 import { useToast } from '../src/components/Toast';
 import { SPACE, RADIUS, STATUS, statusSurface } from '../src/theme/tokens';
 import { SECURITY_QUESTIONS, SUPPORT_PHONE } from '../src/data/mock';
+import { isConfigured } from '../src/lib/supabase';
+import { recoveryQuestions, recoveryVerify, type SecurityQuestion } from '../src/data/api';
+import { setRecoveryToken } from '../src/data/pending';
 
 /**
  * C-97/C-98: recovery is two security questions, three attempts, then a
  * 30-minute lockout. Every terminal state says plainly what has and has NOT
  * happened -- a lockout that leaves someone wondering if their PIN changed
  * is worse than the lockout itself.
+ *
+ * Both answers go to recovery-check together, on the second submit. The
+ * attempt counter and the lockout live there, server-side, keyed on the
+ * account -- a counter in this component would reset with the screen.
  */
-const QUESTIONS = SECURITY_QUESTIONS.slice(0, 2);
 // fixture answers; the real check happens server-side against a hash
 const ANSWERS = ['kavitha', 'coimbatore'];
 
@@ -25,27 +31,75 @@ export default function ForgotPin() {
   const { theme } = useTheme();
   const { flash } = useToast();
   const router = useRouter();
+  const { phone } = useLocalSearchParams<{ phone?: string }>();
 
+  const [questions, setQuestions] = useState<SecurityQuestion[]>(
+    SECURITY_QUESTIONS.slice(0, 2).map((text, i) => ({ id: i + 1, text }))
+  );
   const [ix, setIx] = useState(0);
   const [answer, setAnswer] = useState('');
+  const [held, setHeld] = useState('');            // the first answer, until the pair is submitted
   const [tries, setTries] = useState(0);
   const [wrong, setWrong] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const [stage, setStage] = useState<'asking' | 'locked' | 'passed'>('asking');
 
   const ink = (k: keyof typeof STATUS) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
 
-  const submit = () => {
+  useEffect(() => {
+    if (!isConfigured || !phone) return;
+    recoveryQuestions(phone)
+      .then(({ questions: list }) => { if (list.length >= 2) setQuestions(list.slice(0, 2)); })
+      .catch((err: unknown) => setMessage(err instanceof Error ? err.message : null));
+  }, [phone]);
+
+  const submit = async () => {
     const raw = normalise(answer);
-    if (!raw) return;
-    if (raw !== normalise(ANSWERS[ix])) {
-      const t = tries + 1;
-      if (t >= 3) { setStage('locked'); return; }
-      setTries(t); setWrong(true);
-      flash('Answer did not match', 'warn');
+    if (!raw || busy) return;
+
+    if (ix === 0) {                                  // hold it; nothing is checked yet
+      setHeld(answer);
+      setIx(1); setAnswer(''); setWrong(false); setMessage(null);
       return;
     }
-    if (ix === 1) { setStage('passed'); setWrong(false); return; }
-    setIx(1); setAnswer(''); setWrong(false);
+
+    if (!isConfigured) {
+      const bothMatch = normalise(held) === ANSWERS[0] && raw === ANSWERS[1];
+      if (!bothMatch) {
+        const t = tries + 1;
+        if (t >= 3) { setStage('locked'); return; }
+        setTries(t); setWrong(true);
+        setIx(0); setAnswer(''); setHeld('');
+        flash('Answer did not match', 'warn');
+        return;
+      }
+      setStage('passed'); setWrong(false);
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const result = await recoveryVerify(phone ?? '', [
+        { question_id: questions[0].id, answer: held },
+        { question_id: questions[1].id, answer },
+      ]);
+      // The token is the ONLY thing that survives this screen, and it is
+      // handed over in memory rather than as a route parameter.
+      setRecoveryToken(result.recovery_token);
+      setStage('passed'); setWrong(false); setMessage(null);
+    } catch (err) {
+      const text = err instanceof Error ? err.message : 'That did not work.';
+      // The function says "locked for 30 minutes ... Your PIN has not
+      // changed" itself, so the screen shows its words rather than guessing.
+      if (/locked/i.test(text)) { setMessage(text); setStage('locked'); return; }
+      setTries(t => t + 1);
+      setWrong(true);
+      setMessage(text);
+      setIx(0); setAnswer(''); setHeld('');
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (stage === 'locked') {
@@ -62,7 +116,7 @@ export default function ForgotPin() {
           <H2 style={{ marginTop: SPACE.lg }}>Too many wrong answers</H2>
           {/* what has NOT happened, stated as plainly as what has */}
           <Body style={{ marginTop: SPACE.sm, textAlign: 'center' }}>
-            Recovery is closed for 30 minutes. Your PIN has not changed and nobody has been signed in.
+            {message ?? 'Recovery is closed for 30 minutes. Your PIN has not changed and nobody has been signed in.'}
           </Body>
           <Button label="Call the academy instead" style={{ marginTop: SPACE.xl, alignSelf: 'stretch' }}
             onPress={() => flash(`Calling ${SUPPORT_PHONE}`)} />
@@ -107,7 +161,7 @@ export default function ForgotPin() {
       </View>
 
       <Muted style={{ marginTop: SPACE.md, fontVariant: ['tabular-nums'] }}>
-        Registered to +91 80563 29742
+        {phone ? `Registered to +91 ${phone}` : 'Registered to your academy admin number'}
       </Muted>
 
       <View style={{
@@ -116,18 +170,20 @@ export default function ForgotPin() {
       }}>
         <Label>{`Security question ${ix + 1} of 2`}</Label>
         <Text style={{ fontSize: 16, fontWeight: '700', color: theme.fgStrong, marginTop: SPACE.sm, lineHeight: 23 }}>
-          {QUESTIONS[ix]}
+          {questions[ix].text}
         </Text>
         <View style={{ marginTop: SPACE.md }}>
           <Field label="Your answer" value={answer} onChange={v => { setAnswer(v); setWrong(false); }}
             placeholder="Your answer"
-            error={wrong ? `That does not match. ${2 - tries} attempt${2 - tries === 1 ? '' : 's'} left before recovery closes.` : undefined}
+            error={wrong
+              ? (message ?? `That does not match. ${2 - tries} attempt${2 - tries === 1 ? '' : 's'} left before recovery closes.`)
+              : undefined}
             hint="Spelling and capitals do not matter. Spaces are ignored." />
         </View>
       </View>
 
-      <Button label={ix === 1 ? 'Check and continue' : 'Next question'} onPress={submit}
-        disabled={!answer.trim()} style={{ marginTop: SPACE.lg }} />
+      <Button label={busy ? 'Checking…' : ix === 1 ? 'Check and continue' : 'Next question'} onPress={() => void submit()}
+        disabled={!answer.trim() || busy} style={{ marginTop: SPACE.lg }} />
       <Button label="Can't remember — call the academy" variant="secondary"
         onPress={() => flash(`Calling ${SUPPORT_PHONE}`)} style={{ marginTop: SPACE.sm }} />
 

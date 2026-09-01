@@ -3,14 +3,13 @@ import { View, Text, Pressable, TextInput, ScrollView } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Screen, Muted, Button, Skeleton, EmptyState, ErrorState } from '../../src/components/ui';
 import { Icon } from '../../src/components/Icon';
-import { useScreenState } from '../../src/data/useScreenState';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../../src/theme/tokens';
 import {
-  MEMBERS, BRANCHES, COURSES, GLOBAL_RULE, isEligible, hasEmail, primaryEmail,
-  AVATAR_TINTS, initials, type Member,
+  isEligible, hasEmail, primaryEmail, AVATAR_TINTS, initials, type Member,
 } from '../../src/data/mock';
+import { useFollowUp, useFilterOptions } from '../../src/data/hooks';
 
 type Filter = 'all' | 'nomail' | 'follow' | 'coimbatore';
 
@@ -19,13 +18,19 @@ export default function Members() {
   const { flash } = useToast();
   const router = useRouter();
   const { state: forced } = useLocalSearchParams<{ state?: string }>();
-  const [state, retry] = useScreenState(forced);
+  // ONE fetch for the members AND the rule, so "needs follow-up" here is the
+  // same derivation the dashboard and the send flow use -- not a second list.
+  const { state, data, error, retry } = useFollowUp(forced);
+  const filters = useFilterOptions(forced);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
 
+  const members = useMemo(() => data?.members ?? [], [data]);
+  const rules = data?.rules;
+
   const list = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return MEMBERS.filter(m => {
+    return members.filter(m => {
       // the search covers everything the placeholder promises, including the
       // Meet aliases -- that is how a name from a CSV gets found at all
       const matches = !q || [
@@ -34,11 +39,12 @@ export default function Members() {
       const passes =
         filter === 'all' ? true
         : filter === 'nomail' ? !hasEmail(m)
-        : filter === 'follow' ? isEligible(m, GLOBAL_RULE)
+        : filter === 'follow'
+          ? (rules ? isEligible(m, rules.byCourseName[m.course] ?? rules.global) : false)
         : m.branch === 'Coimbatore';
       return matches && passes;
     });
-  }, [query, filter]);
+  }, [query, filter, members, rules]);
 
   const chips: { key: Filter; label: string; icon: string }[] = [
     { key: 'all',        label: 'All',             icon: 'group' },
@@ -47,14 +53,15 @@ export default function Members() {
     { key: 'coimbatore', label: 'Coimbatore',      icon: 'apartment' },
   ];
 
-  const branches = BRANCHES.length - 1;
-  const courses = COURSES.length - 1;
+  // "All branches"/"All courses" head each list, so the real count is one less
+  const branches = Math.max(0, (filters.data?.branches.length ?? 1) - 1);
+  const courses = Math.max(0, (filters.data?.courses.length ?? 1) - 1);
 
   return (
     <Screen>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.md }}>
         <Muted style={{ flex: 1 }}>
-          {`${MEMBERS.length} members · ${branches} branches · ${courses} courses`}
+          {`${members.length} members · ${branches} branches · ${courses} courses`}
         </Muted>
         <Button label="Add" onPress={() => router.push('/member/edit')} />
       </View>
@@ -98,10 +105,11 @@ export default function Members() {
       {state === 'loading' && <Skeleton lines={4} />}
 
       {state === 'error' && (
-        <ErrorState onRetry={retry} message="The member list could not be loaded. Nothing has been changed." />
+        <ErrorState onRetry={retry}
+          message={error ?? 'The member list could not be loaded. Nothing has been changed.'} />
       )}
 
-      {state === 'ready' && MEMBERS.length === 0 && (
+      {state === 'ready' && members.length === 0 && (
         // no members yet is NOT the same as no search results
         <EmptyState
           title="No members yet"
@@ -109,7 +117,7 @@ export default function Members() {
           action="Add a member" onAction={() => router.push('/member/edit')} />
       )}
 
-      {state === 'ready' && MEMBERS.length > 0 && list.length === 0 && (
+      {state === 'ready' && members.length > 0 && list.length === 0 && (
         <EmptyState
           title="Nothing matches"
           body="No member matches that search and filter. Clear one of them to widen the list." />

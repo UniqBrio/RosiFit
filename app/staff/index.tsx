@@ -1,13 +1,17 @@
 import { useMemo, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { useRouter } from 'expo-router';
-import { Screen, Muted, Button } from '../../src/components/ui';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Screen, Muted, Button, Skeleton, ErrorState, EmptyState } from '../../src/components/ui';
 import { Icon } from '../../src/components/Icon';
 import { Sheet } from '../../src/components/Sheet';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface, type StatusKey } from '../../src/theme/tokens';
-import { STAFF, STAFF_ACCESS, maskPhone, initials, AVATAR_TINTS, type Staff } from '../../src/data/mock';
+import { STAFF_ACCESS, maskPhone, initials, AVATAR_TINTS, type Staff } from '../../src/data/mock';
+import { useStaff } from '../../src/data/hooks';
+import { isConfigured } from '../../src/lib/supabase';
+import { pinIssue, pinReset, staffReenable } from '../../src/data/api';
+import { setIssuedPin } from '../../src/data/pending';
 
 /**
  * Adding a person and giving them a login are TWO steps, on purpose. A record
@@ -23,41 +27,92 @@ export default function StaffList() {
   const { theme } = useTheme();
   const { flash } = useToast();
   const router = useRouter();
+  const { state: forced } = useLocalSearchParams<{ state?: string }>();
+  const { state, data, error, retry } = useStaff(forced);
   const [target, setTarget] = useState<Staff | null>(null);
   const [signOutEverywhere, setSignOutEverywhere] = useState(true);
+  const [busy, setBusy] = useState(false);
 
+  const staff = useMemo(() => data ?? [], [data]);
   const people = useMemo(
-    () => [...STAFF].sort((a, b) => STAFF_ACCESS[a.access].rank - STAFF_ACCESS[b.access].rank),
-    []);
-  const needAccess = STAFF.filter(s => s.access !== 'active').length;
+    () => [...staff].sort((a, b) => STAFF_ACCESS[a.access].rank - STAFF_ACCESS[b.access].rank),
+    [staff]);
+  const needAccess = staff.filter(s => s.access !== 'active').length;
 
-  const act = (s: Staff) => {
+  const act = async (s: Staff) => {
     if (s.access === 'disabled') {
-      flash(`${s.name.split(' ')[0]} re-enabled · still needs a PIN`);
+      // Re-enabling gives back access, not a PIN: she reappears as "needs a
+      // PIN", and issuing one stays a second, deliberate act.
+      if (!isConfigured) { flash(`${s.name.split(' ')[0]} re-enabled · still needs a PIN`); return; }
+      try {
+        await staffReenable(s.id);
+        flash(`${s.name.split(' ')[0]} re-enabled · still needs a PIN`);
+        retry();
+      } catch (err) {
+        flash(err instanceof Error ? err.message : 'That did not work.', 'warn');
+      }
       return;
     }
     setSignOutEverywhere(true);
     setTarget(s);
   };
 
-  const confirm = () => {
+  const confirm = async () => {
     const s = target;
-    if (!s) return;
+    if (!s || busy) return;
     setTarget(null);
-    // Generated here and shown once on the next screen. It is never stored in
-    // readable form and never written to the audit log.
-    const pin = String(Math.floor(1000 + Math.random() * 9000));
-    router.push({
-      pathname: '/staff/pin',
-      params: { pin, name: s.name, phone: s.phone.replace('+91 ', ''), role: s.role },
-    });
+
+    const goShowOnce = (pin: string) => {
+      // The PIN is handed over in memory, never as a route parameter -- see
+      // src/data/pending.ts. It is shown once and is never stored readable
+      // or written to the audit log.
+      setIssuedPin({ pin, name: s.name, phone: s.phone.replace('+91 ', ''), role: s.role });
+      router.push('/staff/pin');
+    };
+
+    if (!isConfigured) {
+      goShowOnce(String(Math.floor(1000 + Math.random() * 9000)));
+      return;
+    }
+
+    setBusy(true);
+    try {
+      // Active means she has been using a PIN and forgot it (the C-98
+      // admin-assisted path); anything else is her first or a replacement.
+      const result = s.access === 'active'
+        ? await pinReset(s.id, signOutEverywhere)
+        : await pinIssue({ app_user_id: s.id });
+      goShowOnce(result.pin);
+      retry();
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'That did not work.', 'warn');
+    } finally {
+      setBusy(false);
+    }
   };
+
+  if (state === 'loading') return <Screen><Skeleton lines={4} /></Screen>;
+  if (state === 'error') {
+    return (
+      <Screen>
+        <ErrorState onRetry={retry}
+          message={error ?? 'The staff list could not be loaded. Nothing has been changed.'} />
+      </Screen>
+    );
+  }
 
   return (
     <Screen>
       <Muted style={{ marginBottom: SPACE.lg }}>
-        {`${STAFF.length} people · ${needAccess} still need access`}
+        {`${staff.length} people · ${needAccess} still need access`}
       </Muted>
+
+      {staff.length === 0 && (
+        <EmptyState
+          title="No staff yet"
+          body="Add the people who will use RosiFit. A record comes first; access is granted deliberately afterwards."
+          action="Add staff" onAction={() => router.push('/staff/add')} />
+      )}
 
       {people.map(s => {
         const meta = STAFF_ACCESS[s.access];
@@ -101,7 +156,7 @@ export default function StaffList() {
             <Button
               label={meta.action}
               variant={meta.primary ? 'primary' : 'secondary'}
-              onPress={() => act(s)}
+              onPress={() => void act(s)}
               style={{ marginTop: SPACE.md }} />
           </View>
         );
@@ -141,7 +196,8 @@ export default function StaffList() {
 
         <View style={{ flexDirection: 'row', gap: SPACE.md, marginTop: SPACE.lg }}>
           <Button label="Cancel" variant="secondary" onPress={() => setTarget(null)} style={{ flex: 1 }} />
-          <Button label="Generate PIN" onPress={confirm} style={{ flex: 1 }} />
+          <Button label={busy ? 'Generating…' : 'Generate PIN'} onPress={() => void confirm()}
+            disabled={busy} style={{ flex: 1 }} />
         </View>
       </Sheet>
     </Screen>

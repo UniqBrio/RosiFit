@@ -5,5 +5,9 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "exclude": ["node_modules", "scripts"]
+  // supabase/functions is Deno, not React Native: it uses Deno.serve, npm:
+  // specifiers and the Edge Runtime's globals, none of which this config's
+  // lib knows about. It is typechecked by the Edge Runtime at deploy time,
+  // where those types exist.
+  "exclude": ["node_modules", "scripts", "supabase"]
 }

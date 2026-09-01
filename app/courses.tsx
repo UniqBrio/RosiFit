@@ -1,15 +1,13 @@
 import { useState } from 'react';
 import { View, Text, Pressable, TextInput } from 'react-native';
-import { useRouter } from 'expo-router';
-import { Screen, Muted, Button } from '../src/components/ui';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Screen, Muted, Button, Skeleton, EmptyState, ErrorState } from '../src/components/ui';
 import { Icon } from '../src/components/Icon';
 import { useTheme } from '../src/theme/ThemeProvider';
 import { useToast } from '../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS } from '../src/theme/tokens';
-import {
-  COURSE_LIST, MEMBERS, DAY_NAMES, COURSE_RULES, GLOBAL_RULE, ruleSentence,
-  AVATAR_TINTS, initials,
-} from '../src/data/mock';
+import { DAY_NAMES, ruleSentence, AVATAR_TINTS, initials } from '../src/data/mock';
+import { useCourses, useFollowUp } from '../src/data/hooks';
 
 /** '06:00' -> '6:00 AM', for reading out a course's default time */
 const ampm = (t: string) => {
@@ -22,17 +20,33 @@ export default function Courses() {
   const { theme } = useTheme();
   const { flash } = useToast();
   const router = useRouter();
+  const { state: forced } = useLocalSearchParams<{ state?: string }>();
+  const courses = useCourses(forced);
+  const followUp = useFollowUp(forced);
   const [query, setQuery] = useState('');
 
-  const list = COURSE_LIST.filter(c =>
+  const all = courses.data ?? [];
+  const members = followUp.data?.members ?? [];
+  const rules = followUp.data?.rules;
+  const list = all.filter(c =>
     !query.trim() || c.name.toLowerCase().includes(query.trim().toLowerCase()));
   const dangerInk = theme.isDark ? STATUS.absent.fgDark : STATUS.absent.fgLight;
+
+  if (courses.state === 'loading') return <Screen><Skeleton lines={4} /></Screen>;
+  if (courses.state === 'error') {
+    return (
+      <Screen>
+        <ErrorState onRetry={courses.retry}
+          message={courses.error ?? 'The courses could not be loaded. Nothing has been changed.'} />
+      </Screen>
+    );
+  }
 
   return (
     <Screen>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.md }}>
         <Muted style={{ flex: 1 }}>
-          {`${COURSE_LIST.length} courses · ${COURSE_LIST.reduce((n, c) => n + c.offerings.length, 0)} offerings`}
+          {`${all.length} courses · ${all.reduce((n, c) => n + c.offerings.length, 0)} offerings`}
         </Muted>
         <Button label="Add" onPress={() => router.push('/course/edit')} />
       </View>
@@ -48,10 +62,21 @@ export default function Courses() {
           style={{ flex: 1, color: theme.fgStrong, fontSize: 13.5, fontWeight: '600' }} />
       </View>
 
+      {all.length === 0 && (
+        <EmptyState
+          title="No courses yet"
+          body="A course says what is taught. Adding it at a branch creates the offering that actually runs, and the offering's weekdays are what attendance is counted from."
+          action="Add a course" onAction={() => router.push('/course/edit')} />
+      )}
+
+      {all.length > 0 && list.length === 0 && (
+        <EmptyState title="Nothing matches" body="No course matches that search. Clear it to see them all." />
+      )}
+
       <View style={{ gap: SPACE.md, marginTop: SPACE.lg }}>
         {list.map((c, i) => {
-          const enrolled = MEMBERS.filter(m => m.course === c.name).length;
-          const rule = COURSE_RULES[c.id];
+          const enrolled = members.filter(m => m.course === c.name).length;
+          const rule = rules?.byCourseName[c.name];
           const offerings = c.offerings.length
             ? c.offerings.map(o =>
                 `${o.branch} ${o.weekdays.map(d => DAY_NAMES[d]).join(' ')}`).join(' · ')
@@ -99,7 +124,8 @@ export default function Courses() {
               </View>
 
               <Muted style={{ marginTop: SPACE.sm }}>
-                {rule ? ruleSentence(rule, c.name) : ruleSentence(GLOBAL_RULE, c.name)}
+                {rule ? ruleSentence(rule, c.name)
+                  : rules ? ruleSentence(rules.global, c.name) : ''}
                 {rule ? '' : ' (academy default)'}
               </Muted>
               <Pressable onPress={() => router.push({ pathname: '/course/rules', params: { id: c.id } })}

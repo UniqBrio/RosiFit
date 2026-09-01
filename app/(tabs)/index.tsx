@@ -1,17 +1,16 @@
 import { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter, type Href } from 'expo-router';
-import { Screen, H2, Muted, Label } from '../../src/components/ui';
+import { useRouter, useLocalSearchParams, type Href } from 'expo-router';
+import { Screen, H2, Muted, Label, Skeleton, ErrorState } from '../../src/components/ui';
 import { Icon } from '../../src/components/Icon';
 import { SearchPicker } from '../../src/components/Sheet';
 import { Donut } from '../../src/components/Donut';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface, type StatusKey } from '../../src/theme/tokens';
-import {
-  CANDIDATES, MATCH_ROWS, OUTCOME_META, BRANCHES, COURSES, STAFF,
-  WEEK_ROWS, WEEK_STRIP, PERIODS, GLOBAL_RULE, ruleSentence,
-} from '../../src/data/mock';
+import { WEEK_STRIP, PERIODS, hasEmail, ruleSentence } from '../../src/data/mock';
+import { useFollowUp, useStaff, useFilterOptions, useWeekRows, usePendingSessions } from '../../src/data/hooks';
+import { currentWeek, lastWeek, lastFourWeeks } from '../../src/data/period';
 
 type Scope = 'academy' | 'branch';
 type PickerKind = null | 'branch' | 'course' | 'period';
@@ -19,43 +18,70 @@ type PickerKind = null | 'branch' | 'course' | 'period';
 export default function Home() {
   const { theme } = useTheme();
   const router = useRouter();
+  const { state: forced } = useLocalSearchParams<{ state?: string }>();
 
   const [scope, setScope] = useState<Scope>('academy');
-  const [branch, setBranch] = useState(BRANCHES[1]);
-  const [course, setCourse] = useState(COURSES[0]);
   const [period, setPeriod] = useState('This week');
   const [picker, setPicker] = useState<PickerKind>(null);
 
-  const blocked = MATCH_ROWS.filter(r => OUTCOME_META[r.kind].blocks).length;
-  const noEmail = CANDIDATES.filter(c => !c.has_email).length;
-  const needAccess = STAFF.filter(s => s.access !== 'active').length;
-  const awaiting = WEEK_STRIP.filter(d => d.status === 'awaiting').length;
+  // The period the filters name IS the period the queries run over, so a
+  // tile can never quietly cover a different range from its own label (C-84).
+  const range = period === 'Last week' ? lastWeek()
+    : period === 'Last 4 weeks' ? lastFourWeeks()
+    : currentWeek();
 
-  // ONE source of truth for the period, repeated on every tile that depends
-  // on it -- a tile that quietly covers a different range is the failure this
-  // prevents (C-84).
-  const periodLabel = PERIODS[period] ?? period;
+  const followUp = useFollowUp(forced, range);
+  const staff = useStaff(forced);
+  const filterOptions = useFilterOptions(forced);
+  const weekRows = useWeekRows(forced);
+  const pending = usePendingSessions(forced);
+
+  const branchOptions = filterOptions.data?.branches ?? ['All branches'];
+  const courseOptions = filterOptions.data?.courses ?? ['All courses'];
+  const [branch, setBranch] = useState<string | null>(null);
+  const [course, setCourse] = useState<string | null>(null);
+  const branchValue = branch ?? branchOptions[1] ?? 'All branches';
+  const courseValue = course ?? courseOptions[0];
+
+  const flagged = followUp.data?.flagged ?? [];
+  const rules = followUp.data?.rules;
+  const noEmail = flagged.filter(m => !hasEmail(m)).length;
+  const needAccess = (staff.data ?? []).filter(s => s.access !== 'active').length;
+  const awaiting = pending.data?.length ?? WEEK_STRIP.filter(d => d.status === 'awaiting').length;
+
+  const periodLabel = PERIODS[period] ?? range.label;
 
   // C-86: the scope is named, so an academy-wide number can never be read as
   // a branch number.
+  const allCourses = courseOptions[0];
   const scopeLabel =
     scope === 'academy'
-      ? (course === COURSES[0] ? 'Academy-wide attendance' : `${course} · whole academy`)
-      : (course === COURSES[0] ? `${branch} branch attendance` : `${course} · ${branch}`);
+      ? (courseValue === allCourses ? 'Academy-wide attendance' : `${courseValue} · whole academy`)
+      : (courseValue === allCourses ? `${branchValue} branch attendance` : `${courseValue} · ${branchValue}`);
 
-  const week = WEEK_ROWS.find(w => w.current) ?? WEEK_ROWS[0];
+  const allWeeks = weekRows.data ?? [];
+  const week = allWeeks.find(w => w.current) ?? allWeeks[0] ?? { label: range.label, expected: 0, attended: 0 };
   const attended = week.attended;
   const missed = week.expected - week.attended;
-  const notExpected = CANDIDATES.reduce((n, c) => n + Math.max(6 - c.expected, 0), 0);
+  // "Not expected" is shown so a member on a 4-day override does not read as
+  // a 6-day member with poor attendance (C-87).
+  const notExpected = (followUp.data?.members ?? [])
+    .reduce((n, m) => n + Math.max(6 - m.expected, 0), 0);
 
-  const rows = period === 'This week' ? WEEK_ROWS.slice(0, 1)
-    : period === 'Last week' ? WEEK_ROWS.slice(1, 2) : WEEK_ROWS;
+  const rows = period === 'This week' ? allWeeks.slice(0, 1)
+    : period === 'Last week' ? allWeeks.slice(1, 2) : allWeeks;
 
   const filters: { label: string; value: string; kind: Exclude<PickerKind, null> }[] = [
-    ...(scope === 'branch' ? [{ label: 'Branch', value: branch, kind: 'branch' as const }] : []),
-    { label: 'Course', value: course, kind: 'course' },
+    ...(scope === 'branch' ? [{ label: 'Branch', value: branchValue, kind: 'branch' as const }] : []),
+    { label: 'Course', value: courseValue, kind: 'course' },
     { label: 'Period', value: period, kind: 'period' },
   ];
+
+  const loading = followUp.state === 'loading' || weekRows.state === 'loading';
+  const failed = followUp.state === 'error' || weekRows.state === 'error';
+
+  // Named rather than "someone": the person reading this decides who to call.
+  const longestGap = [...flagged].sort((a, b) => b.streak - a.streak)[0] ?? null;
 
   const needs: {
     icon: string; tone: StatusKey; title: string; sub: string; to: Href; accent?: boolean;
@@ -63,12 +89,29 @@ export default function Home() {
     { icon: 'cloud_upload', tone: 'awaiting', to: '/(tabs)/upload',
       title: `${awaiting} sessions awaiting upload`, sub: 'Counts for nobody until the file is in' },
     { icon: 'favorite', tone: 'absent', to: '/(tabs)/weekly', accent: true,
-      title: `${CANDIDATES.length} members to reach out to`, sub: 'Longest gap: Meenakshi, 6 sessions' },
+      title: `${flagged.length} members to reach out to`,
+      sub: longestGap ? `Longest gap: ${longestGap.name.split(' ')[0]}, ${longestGap.streak} sessions`
+                      : 'Nobody is over her course’s threshold' },
     { icon: 'mail_off', tone: 'absent', to: '/send',
       title: `${noEmail} members have no email`, sub: 'They stay listed, counted as excluded' },
     { icon: 'lock_open', tone: 'holiday', to: '/staff',
       title: `${needAccess} staff cannot sign in yet`, sub: 'Saved, but no PIN generated' },
   ];
+
+  // Every hook above has already run, so these returns cannot change the
+  // hook order. Zeros during a load would be a lie -- "0 members need you"
+  // reads as good news -- so the figures wait behind a skeleton instead.
+  if (loading) return <Screen><Skeleton lines={6} /></Screen>;
+  if (failed) {
+    return (
+      <Screen>
+        <ErrorState
+          onRetry={() => { followUp.retry(); weekRows.retry(); }}
+          message={followUp.error ?? weekRows.error
+            ?? 'The dashboard figures could not be loaded. Nothing has been changed.'} />
+      </Screen>
+    );
+  }
 
   const holidayInk = theme.isDark ? STATUS.holiday.fgDark : STATUS.holiday.fgLight;
   const holidayBox = statusSurface(holidayInk);
@@ -171,7 +214,7 @@ export default function Home() {
           <Text style={{
             fontSize: 60, fontWeight: '800', color: '#FFFFFF',
             letterSpacing: -2, fontVariant: ['tabular-nums'],
-          }}>{CANDIDATES.length}</Text>
+          }}>{flagged.length}</Text>
           <Text style={{ fontSize: 21, fontWeight: '600', color: '#FFFFFF' }}>members{'\n'}need you</Text>
         </View>
         {/* the rule is stated where the number is, so nobody has to guess
@@ -183,7 +226,7 @@ export default function Home() {
         }}>
           <Icon name="rule" size={15} color={theme.accentInk} />
           <Text style={{ flex: 1, fontSize: 12, color: theme.onDeep }}>
-            {ruleSentence(GLOBAL_RULE, 'every course')}
+            {rules ? ruleSentence(rules.global, 'every course') : ''}
           </Text>
         </View>
       </LinearGradient>
@@ -332,12 +375,12 @@ export default function Home() {
       <SearchPicker
         open={picker === 'branch'} onClose={() => setPicker(null)}
         title="Choose a branch" placeholder="Search branches"
-        options={BRANCHES.map(label => ({ label }))} value={branch}
+        options={branchOptions.map(label => ({ label }))} value={branchValue}
         onSelect={l => { setBranch(l); setPicker(null); }} />
       <SearchPicker
         open={picker === 'course'} onClose={() => setPicker(null)}
         title="Choose a course" placeholder="Search courses"
-        options={COURSES.map(label => ({ label }))} value={course}
+        options={courseOptions.map(label => ({ label }))} value={courseValue}
         onSelect={l => { setCourse(l); setPicker(null); }} />
       <SearchPicker
         open={picker === 'period'} onClose={() => setPicker(null)}
