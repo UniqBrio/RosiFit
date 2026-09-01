@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { Screen, Muted, Label } from '../src/components/ui';
+import { useLocalSearchParams } from 'expo-router';
+import { Screen, Muted, Label, Skeleton, EmptyState, ErrorState } from '../src/components/ui';
 import { Icon } from '../src/components/Icon';
 import { useTheme } from '../src/theme/ThemeProvider';
 import { useToast } from '../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../src/theme/tokens';
-import { TEMPLATES, TOKENS, CANDIDATES, renderTemplate } from '../src/data/mock';
+import { TOKENS, CANDIDATES, renderTemplate, toCandidate } from '../src/data/mock';
+import { useTemplates, useFollowUp } from '../src/data/hooks';
+import { setTemplateActive } from '../src/data/repository';
 
 /**
  * C-68/C-69: templates are the ONLY way anything reaches a member, and this
@@ -15,26 +18,61 @@ import { TEMPLATES, TOKENS, CANDIDATES, renderTemplate } from '../src/data/mock'
 export default function Templates() {
   const { theme } = useTheme();
   const { flash } = useToast();
-  const [off, setOff] = useState<string[]>(TEMPLATES.filter(t => !t.active).map(t => t.id));
+  const { state: forced } = useLocalSearchParams<{ state?: string }>();
+  const templates = useTemplates(forced);
+  const followUp = useFollowUp(forced);
+  const [off, setOff] = useState<string[] | null>(null);
   const [previewing, setPreviewing] = useState<string | null>(null);
 
-  const activeCount = TEMPLATES.length - off.length;
+  const list = templates.data ?? [];
+  // Until something is toggled, "off" IS what the stored templates say.
+  const offIds = off ?? list.filter(t => !t.active).map(t => t.id);
+  const activeCount = list.length - offIds.length;
   const okInk = theme.isDark ? STATUS.present.fgDark : STATUS.present.fgLight;
-  const sample = CANDIDATES[0];
 
-  const toggle = (id: string, name: string) => {
-    const isOff = off.includes(id);
-    setOff(p => isOff ? p.filter(x => x !== id) : [...p, id]);
-    flash(`${name} switched ${isOff ? 'on' : 'off'} · audited`);
+  // The preview renders with a REAL member's figures where there is one, so
+  // what is previewed is what she would receive -- never a placeholder.
+  const rules = followUp.data?.rules;
+  const first = followUp.data?.flagged[0];
+  const sample = first && rules
+    ? toCandidate(first, rules.byCourseName[first.course] ?? rules.global)
+    : CANDIDATES[0];
+
+  const toggle = async (id: string, name: string) => {
+    const isOff = offIds.includes(id);
+    setOff(isOff ? offIds.filter(x => x !== id) : [...offIds, id]);
+    try {
+      await setTemplateActive(id, isOff);
+      flash(`${name} switched ${isOff ? 'on' : 'off'} · audited`);
+    } catch (err) {
+      setOff(offIds);                                  // put it back as it was
+      flash(err instanceof Error ? err.message : 'That did not save.', 'warn');
+    }
   };
+
+  if (templates.state === 'loading') return <Screen><Skeleton lines={4} /></Screen>;
+  if (templates.state === 'error') {
+    return (
+      <Screen>
+        <ErrorState onRetry={templates.retry}
+          message={templates.error ?? 'The templates could not be loaded. Nothing has been changed.'} />
+      </Screen>
+    );
+  }
 
   return (
     <Screen>
-      <Muted>{`${activeCount} active of ${TEMPLATES.length} · wording is fixed here, not at send time`}</Muted>
+      <Muted>{`${activeCount} active of ${list.length} · wording is fixed here, not at send time`}</Muted>
+
+      {list.length === 0 && (
+        <EmptyState
+          title="No templates yet"
+          body="A follow-up email can only ever be one of these. Until one exists, the send flow has nothing to offer." />
+      )}
 
       <View style={{ gap: SPACE.md, marginTop: SPACE.lg }}>
-        {TEMPLATES.map(t => {
-          const isOff = off.includes(t.id);
+        {list.map(t => {
+          const isOff = offIds.includes(t.id);
           const stateInk = isOff ? theme.dim : okInk;
           const stateBox = statusSurface(stateInk);
           const showing = previewing === t.id;
@@ -46,7 +84,7 @@ export default function Templates() {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }}>
                 <Icon name={t.icon} size={19} color={isOff ? theme.dim : theme.accentInk} />
                 <Text style={{ flex: 1, fontSize: 15, fontWeight: '800', color: theme.fgStrong }}>{t.name}</Text>
-                <Pressable onPress={() => toggle(t.id, t.name)}
+                <Pressable onPress={() => void toggle(t.id, t.name)}
                   accessibilityRole="switch" accessibilityState={{ checked: !isOff }}
                   accessibilityLabel={`${t.name} is ${isOff ? 'off' : 'active'}`}
                   style={{

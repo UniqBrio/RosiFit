@@ -6,7 +6,7 @@
 -- will fail loudly (not silently half-apply) if any object already exists.
 -- Wrapped in a single transaction: either the whole schema lands or none.
 --
--- Generated 2026-09-01T12:35:07Z from eac132f
+-- Generated 2026-09-01T14:32:52Z from 6323632
 
 begin;
 
@@ -1709,5 +1709,404 @@ comment on table public.user_preferences is
 grant select, insert, update on public.user_preferences to authenticated;
 grant all                    on public.user_preferences to service_role;
 -- No delete to authenticated: the row is upserted, never removed.
+
+-- ===================================================================
+-- 0011_harden_function_security.sql
+-- ===================================================================
+-- 0011 · advisor hardening: pin search_path, narrow anon/authenticated RPC surface
+--
+-- get_advisors (security) on the freshly-applied schema flagged two real gaps:
+--
+-- 1. A handful of 0001-0004 helper/trigger functions had no `set search_path`,
+--    so a role that can alter its own search_path could shadow `public` and
+--    change what an unqualified call resolves to. Every one of them already
+--    qualifies its own references with `public.`, so this is belt-and-braces,
+--    not a live exploit -- but it is cheap to close and the linter is right
+--    to ask for it.
+--
+-- 2. CREATE FUNCTION grants EXECUTE to PUBLIC by default unless revoked.
+--    0002/0003 explicitly revoked-then-granted their SECURITY DEFINER helpers
+--    (current_app_user_id, is_super_admin, subscription_state, ...); 0004,
+--    0007, 0008 and 0009 did not, so every SECURITY DEFINER function they
+--    declared -- including mutating ones like apply_holiday, remove_holiday,
+--    generate_sessions and recompute_member_stats -- was callable by `anon`
+--    over PostgREST's /rest/v1/rpc/ regardless of the table-level RLS those
+--    functions bypass by design. None of these functions re-check
+--    is_active_app_user()/is_super_admin() internally (they trust the grant),
+--    so the grant IS the access control here.
+--
+-- Nothing in this file changes behaviour for a legitimate caller: the local
+-- harness runs every RPC as the `postgres` superuser, which bypasses grants
+-- entirely, so db/harness/test.sh is unaffected by design (verified below).
+
+-- ---------------------------------------------------------- pin search_path
+create or replace function public.set_updated_at() returns trigger
+language plpgsql set search_path = public as $$
+begin
+  new.updated_at := now();
+  return new;
+end $$;
+
+create or replace function public.normalize_name(p text) returns text
+language sql immutable parallel safe set search_path = public as $$
+  select nullif(
+    btrim(
+      regexp_replace(
+        lower(public.unaccent(
+          'public.unaccent'::regdictionary, coalesce(p, ''))),
+        '[^a-z0-9]+', ' ', 'g'
+      )
+    ), '')
+$$;
+
+create or replace function public.normalize_email(p text) returns citext
+language sql immutable parallel safe set search_path = public as $$
+  select nullif(lower(trim(coalesce(p, ''))), '')::citext
+$$;
+
+create or replace function public.week_bounds(
+  p_date date,
+  p_week_start smallint default 1
+) returns table (week_start date, week_end date)
+language sql immutable parallel safe set search_path = public as $$
+  select w, w + 6
+  from (select p_date - ((extract(isodow from p_date)::int - p_week_start + 7) % 7) as w) s
+$$;
+
+create or replace function public.audit_redact(p jsonb) returns jsonb
+language sql immutable parallel safe set search_path = public as $$
+  select coalesce(
+    (select jsonb_agg(
+       case when lower(e->>'field') ~ '(pin|password|secret|answer|token|key|credential)'
+            then jsonb_build_object('field', e->>'field', 'old', '[redacted]', 'new', '[redacted]')
+            else e end)
+     from jsonb_array_elements(case jsonb_typeof(p) when 'array' then p else '[]'::jsonb end) e),
+    '[]'::jsonb)
+$$;
+
+create or replace function public.guard_app_settings() returns trigger
+language plpgsql set search_path = public as $$
+begin
+  if old.bootstrap_completed and not new.bootstrap_completed then
+    raise exception 'bootstrap_completed cannot be cleared';
+  end if;
+  return new;
+end $$;
+
+create or replace function public.audit_immutable() returns trigger
+language plpgsql set search_path = public as $$
+begin
+  raise exception 'audit_logs is append-only (attempted %)', tg_op
+    using errcode = '42501';
+end $$;
+
+create or replace function public.member_alias_normalize() returns trigger
+language plpgsql set search_path = public as $$
+begin
+  new.alias_normalized := case new.alias_type
+    when 'email' then public.normalize_email(new.alias_display)::text
+    else public.normalize_name(new.alias_display) end;
+  if new.alias_normalized is null then
+    raise exception 'a display name must contain at least one letter or digit';
+  end if;
+  return new;
+end $$;
+
+-- --------------------------------------------------- narrow the RPC surface
+-- Mutating engine internals: never meant to be called directly by a client.
+-- They run only from Edge Functions (service_role) or from other
+-- SECURITY DEFINER functions that already ran their own authorization check.
+revoke all on function public.apply_holiday(uuid)                              from public;
+revoke all on function public.remove_holiday(uuid)                             from public;
+revoke all on function public.generate_sessions(uuid, date, date)              from public;
+revoke all on function public.recompute_member_stats(uuid[])                   from public;
+revoke all on function public.refresh_session_counts(uuid)                     from public;
+revoke all on function public.audit_row_change()                               from public;
+grant execute on function public.apply_holiday(uuid)                           to service_role;
+grant execute on function public.remove_holiday(uuid)                          to service_role;
+grant execute on function public.generate_sessions(uuid, date, date)           to service_role;
+grant execute on function public.recompute_member_stats(uuid[])                to service_role;
+grant execute on function public.refresh_session_counts(uuid)                  to service_role;
+grant execute on function public.audit_row_change()                            to service_role;
+
+-- Read-only engine views-as-functions: legitimate for any signed-in staff
+-- member to call (the dashboard, reports and follow-up screens all read
+-- these directly), but never for `anon`, since they are SECURITY DEFINER and
+-- bypass the RLS on the tables they read.
+revoke all on function public.member_period_metrics(date, date, uuid, uuid, uuid, uuid) from public;
+revoke all on function public.current_streak_for(uuid)                                  from public;
+revoke all on function public.effective_follow_up_config(uuid)                          from public;
+revoke all on function public.expected_members_for_session(uuid)                        from public;
+revoke all on function public.follow_up_candidates(date, date, uuid, uuid)              from public;
+revoke all on function public.preview_holiday(date, date, uuid)                         from public;
+revoke all on function public.audit_log(text, text, text, jsonb, jsonb)                 from public;
+grant execute on function public.member_period_metrics(date, date, uuid, uuid, uuid, uuid) to authenticated, service_role;
+grant execute on function public.current_streak_for(uuid)                                  to authenticated, service_role;
+grant execute on function public.effective_follow_up_config(uuid)                          to authenticated, service_role;
+grant execute on function public.expected_members_for_session(uuid)                        to authenticated, service_role;
+grant execute on function public.follow_up_candidates(date, date, uuid, uuid)              to authenticated, service_role;
+grant execute on function public.preview_holiday(date, date, uuid)                         to authenticated, service_role;
+grant execute on function public.audit_log(text, text, text, jsonb, jsonb)                 to authenticated, service_role;
+
+-- ===================================================================
+-- 0012_harden_function_security_direct_grants.sql
+-- ===================================================================
+-- 0012 · 0011 follow-up: Supabase grants EXECUTE directly to anon/authenticated
+--
+-- 0011 revoked from PUBLIC, which is correct for privileges a function picked
+-- up from its CREATE-time default (implicit PUBLIC grant). But this project,
+-- like every Supabase project, carries a default-privileges rule that grants
+-- EXECUTE on new `public` functions DIRECTLY to `anon` and `authenticated` --
+-- not via the PUBLIC pseudo-role -- so `revoke ... from public` left those
+-- direct grants untouched. get_advisors confirmed it: apply_holiday and its
+-- siblings were still anon-callable after 0011. This migration revokes the
+-- direct grants explicitly, which is the only thing that actually removes
+-- them.
+--
+-- Same split as 0011: mutating engine internals go to service_role only;
+-- read-only engine functions keep authenticated (staff-facing screens call
+-- them directly) but lose anon.
+
+revoke execute on function public.apply_holiday(uuid)                    from anon, authenticated;
+revoke execute on function public.remove_holiday(uuid)                   from anon, authenticated;
+revoke execute on function public.generate_sessions(uuid, date, date)    from anon, authenticated;
+revoke execute on function public.recompute_member_stats(uuid[])         from anon, authenticated;
+revoke execute on function public.refresh_session_counts(uuid)           from anon, authenticated;
+revoke execute on function public.audit_row_change()                    from anon, authenticated;
+
+revoke execute on function public.member_period_metrics(date, date, uuid, uuid, uuid, uuid) from anon;
+revoke execute on function public.current_streak_for(uuid)                                  from anon;
+revoke execute on function public.effective_follow_up_config(uuid)                          from anon;
+revoke execute on function public.expected_members_for_session(uuid)                        from anon;
+revoke execute on function public.follow_up_candidates(date, date, uuid, uuid)              from anon;
+revoke execute on function public.preview_holiday(date, date, uuid)                         from anon;
+revoke execute on function public.audit_log(text, text, text, jsonb, jsonb)                 from anon;
+
+-- ===================================================================
+-- 0013_rls_initplan_perf.sql
+-- ===================================================================
+-- 0013 · advisor hardening: wrap auth.uid() so RLS evaluates it once per
+-- query, not once per row.
+--
+-- get_advisors (performance) flagged app_users_read and app_users_self_update
+-- for calling auth.uid() directly in their USING/WITH CHECK clauses. Postgres
+-- cannot volatility-cache a bare function call across rows in that position,
+-- so it re-evaluates auth.uid() per row scanned. Wrapping it as
+-- `(select auth.uid())` lets the planner treat it as an InitPlan, evaluated
+-- once. No behavioural change -- same rows are visible/writable either way.
+
+drop policy app_users_read on public.app_users;
+create policy app_users_read on public.app_users
+  for select to authenticated
+  using (public.is_super_admin() or auth_user_id = (select auth.uid()));
+
+drop policy app_users_self_update on public.app_users;
+create policy app_users_self_update on public.app_users
+  for update to authenticated
+  using ((public.is_super_admin() or auth_user_id = (select auth.uid()))
+         and public.is_subscription_writable())
+  with check (public.is_super_admin() or auth_user_id = (select auth.uid()));
+
+-- ===================================================================
+-- 0014_csv_import_commit.sql
+-- ===================================================================
+-- 0014 · atomic CSV import commit
+--
+-- csv-import (the Edge Function) stages a file's classification into
+-- csv_imports.summary at preview time (five outcomes, per row, computed in
+-- TypeScript against members/aliases read through the service-role client --
+-- the fuzzy-match tier has no SQL equivalent here, so it cannot live in the
+-- database). Once the operator has resolved every blocking row (C/D/E),
+-- this function performs the actual write: new members, aliases, emails,
+-- attendance for every expected member (present/absent/extra), decisions
+-- audited individually (C-95). It is ONE Postgres function so "all rows or
+-- none" (the plan's ATOMIC import requirement) is a transaction boundary,
+-- not application-level bookkeeping that could half-apply on a crash.
+
+create sequence public.member_code_seq start 100;
+
+create or replace function public.commit_csv_import(
+  p_import_id uuid, p_actor uuid, p_decisions jsonb
+) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_import        record;
+  v_offering      record;
+  v_holiday_id    uuid;
+  v_session_id    uuid;
+  v_rows          jsonb;
+  v_row           jsonb;
+  v_decision      jsonb;
+  v_decisions_by_row jsonb;
+  v_kind          text;
+  v_action        text;
+  v_member_id     uuid;
+  v_alias_display text;
+  v_expected      boolean;
+  v_status        text;
+  v_has_primary   boolean;
+  v_new_email     text;
+  v_present_ids   uuid[] := '{}';
+  v_new_members   int := 0;
+  v_skipped       int := 0;
+begin
+  select * into v_import from public.csv_imports where id = p_import_id for update;
+  if not found then
+    raise exception 'csv import % not found', p_import_id using errcode = 'P0002';
+  end if;
+  if v_import.status <> 'previewed' then
+    raise exception 'this import is % and cannot be committed again', v_import.status using errcode = '55000';
+  end if;
+
+  select o.id, o.branch_id, o.start_time, o.end_time into v_offering
+    from public.course_offerings o where o.id = v_import.offering_id;
+  if not found then
+    raise exception 'the offering for this import no longer exists' using errcode = 'P0002';
+  end if;
+
+  select coalesce(jsonb_object_agg(d->>'row', d), '{}'::jsonb) into v_decisions_by_row
+    from jsonb_array_elements(coalesce(p_decisions, '[]'::jsonb)) d;
+
+  -- ---------------------------------------------------------- the session
+  select id into v_session_id from public.sessions
+   where offering_id = v_import.offering_id and session_date = v_import.session_date
+     and deleted_at is null;
+
+  if v_session_id is null then
+    select hh.id into v_holiday_id from public.holidays hh
+     where v_import.session_date between hh.start_date and hh.end_date
+       and (hh.branch_id is null or hh.branch_id = v_offering.branch_id)
+     order by hh.branch_id nulls last limit 1;
+
+    insert into public.sessions
+      (offering_id, session_date, start_time, end_time, status, source, holiday_id, import_id)
+    values
+      (v_import.offering_id, v_import.session_date, v_offering.start_time, v_offering.end_time,
+       case when v_holiday_id is not null then 'holiday' else 'scheduled' end,
+       'import', v_holiday_id, p_import_id)
+    returning id into v_session_id;
+  else
+    update public.sessions set import_id = p_import_id where id = v_session_id;
+  end if;
+
+  -- ------------------------------------------------------ walk every row
+  v_rows := coalesce(v_import.summary->'rows', '[]'::jsonb);
+  for v_row in select * from jsonb_array_elements(v_rows)
+  loop
+    v_kind     := v_row->>'kind';
+    v_decision := v_decisions_by_row->(v_row->>'row');
+    v_action   := coalesce(v_decision->>'action',
+                    case v_kind when 'matched' then 'accept'
+                                when 'noEmail' then 'continue_without_email'
+                                else null end);
+    v_member_id     := null;
+    v_alias_display := v_row->>'raw_name';
+
+    if v_kind in ('possible', 'ambiguous', 'unmatched') and v_action is null then
+      raise exception 'row % (%) needs a decision before this import can be committed',
+        v_row->>'row', v_kind using errcode = '55000';
+    end if;
+
+    if v_kind in ('matched', 'noEmail') then
+      v_member_id := nullif(v_row->'candidates'->0->>'member_id', '')::uuid;
+
+      if v_action = 'add_email' then
+        v_new_email := v_decision->>'email';
+        if v_new_email is null or v_new_email = '' then
+          raise exception 'row %: add_email needs an email address', v_row->>'row' using errcode = '55000';
+        end if;
+        select exists (select 1 from public.member_emails
+                        where member_id = v_member_id and is_primary and deleted_at is null)
+          into v_has_primary;
+        insert into public.member_emails (member_id, email, is_primary, status, source, created_by)
+        values (v_member_id, v_new_email, not v_has_primary, 'unknown', 'csv_import', p_actor);
+        perform public.audit_log('csv_import.email_added', 'member', v_member_id::text,
+          jsonb_build_array(jsonb_build_object('field', 'email', 'old', null, 'new', v_new_email)),
+          jsonb_build_object('import_id', p_import_id, 'row', v_row->>'row'));
+      end if;
+
+    elsif v_action in ('use_existing', 'select_member', 'link_existing') then
+      v_member_id := coalesce(nullif(v_decision->>'member_id', '')::uuid,
+                               nullif(v_row->'candidates'->0->>'member_id', '')::uuid);
+      if v_member_id is null then
+        raise exception 'row %: % needs member_id', v_row->>'row', v_action using errcode = '55000';
+      end if;
+      if coalesce((v_decision->>'remember_alias')::boolean, true) then
+        insert into public.member_aliases (member_id, alias_type, alias_display, source, confirmed_by, import_id)
+        values (v_member_id, 'name', v_alias_display, 'csv_import', p_actor, p_import_id)
+        on conflict (alias_type, alias_normalized) do nothing;
+      end if;
+      perform public.audit_log('csv_import.matched_existing', 'member', v_member_id::text,
+        '[]'::jsonb, jsonb_build_object('import_id', p_import_id, 'row', v_row->>'row', 'raw_name', v_alias_display));
+
+    elsif v_action = 'add_as_new' then
+      if jsonb_array_length(coalesce(v_row->'candidates', '[]'::jsonb)) > 0
+         and not coalesce((v_decision->>'confirm_different_person')::boolean, false) then
+        raise exception 'row %: a similar member already exists -- confirm this is a different person',
+          v_row->>'row' using errcode = '55000';
+      end if;
+      insert into public.members (member_code, full_name, joined_on, status, created_by)
+      values ('RF-' || lpad(nextval('public.member_code_seq')::text, 6, '0'),
+              v_alias_display, v_import.session_date, 'active', p_actor)
+      returning id into v_member_id;
+      insert into public.member_enrollments (member_id, offering_id, effective_from, created_by)
+      values (v_member_id, v_import.offering_id, v_import.session_date, p_actor);
+      insert into public.member_aliases (member_id, alias_type, alias_display, source, confirmed_by, import_id)
+      values (v_member_id, 'name', v_alias_display, 'csv_import', p_actor, p_import_id)
+      on conflict (alias_type, alias_normalized) do nothing;
+      v_new_members := v_new_members + 1;
+      perform public.audit_log('csv_import.member_created', 'member', v_member_id::text,
+        jsonb_build_array(jsonb_build_object('field', 'full_name', 'old', null, 'new', v_alias_display)),
+        jsonb_build_object('import_id', p_import_id, 'row', v_row->>'row'));
+
+    elsif v_action in ('keep_unmatched', 'skip', 'not_a_member') then
+      v_skipped := v_skipped + 1;
+      perform public.audit_log('csv_import.row_skipped', 'csv_import', p_import_id::text,
+        '[]'::jsonb, jsonb_build_object('row', v_row->>'row', 'raw_name', v_alias_display, 'action', v_action));
+    end if;
+
+    if v_member_id is not null then
+      v_expected := exists (
+        select 1 from public.expected_members_for_session(v_session_id) em
+         where em.member_id = v_member_id);
+      v_status := case when v_expected then 'present' else 'extra' end;
+      insert into public.attendance_records
+        (session_id, member_id, status, expected, minutes_in_call, raw_display_name, import_id, created_by)
+      values (v_session_id, v_member_id, v_status, v_expected,
+              nullif(v_row->>'minutes', '')::int, v_alias_display, p_import_id, p_actor)
+      on conflict (session_id, member_id) where deleted_at is null do update set
+        status = excluded.status, minutes_in_call = excluded.minutes_in_call,
+        raw_display_name = excluded.raw_display_name;
+      v_present_ids := array_append(v_present_ids, v_member_id);
+    end if;
+  end loop;
+
+  -- --------------------------------------------- everyone else was absent
+  insert into public.attendance_records (session_id, member_id, status, expected, import_id, created_by)
+  select v_session_id, em.member_id, 'absent', true, p_import_id, p_actor
+    from public.expected_members_for_session(v_session_id) em
+   where not (em.member_id = any (v_present_ids))
+  on conflict (session_id, member_id) where deleted_at is null do nothing;
+
+  perform public.refresh_session_counts(v_session_id);
+  update public.sessions set status = 'completed', completed_at = now()
+   where id = v_session_id and status = 'scheduled';
+  perform public.recompute_member_stats();
+
+  update public.csv_imports set
+    status = 'completed', completed_at = now(), session_id = v_session_id,
+    processed_count = jsonb_array_length(v_rows), decisions = p_decisions
+   where id = p_import_id;
+
+  perform public.audit_log('csv_import.completed', 'csv_import', p_import_id::text, '[]'::jsonb,
+    jsonb_build_object('session_id', v_session_id, 'new_members', v_new_members, 'skipped', v_skipped));
+
+  return jsonb_build_object(
+    'session_id', v_session_id, 'new_members', v_new_members, 'skipped', v_skipped,
+    'present_or_extra', coalesce(array_length(v_present_ids, 1), 0));
+end $$;
+
+revoke all on function public.commit_csv_import(uuid, uuid, jsonb) from public, anon, authenticated;
+grant execute on function public.commit_csv_import(uuid, uuid, jsonb) to service_role;
 
 commit;

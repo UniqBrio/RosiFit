@@ -4,12 +4,11 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Screen, Muted, Label, Button, Skeleton, EmptyState, ErrorState } from '../../src/components/ui';
 import { Icon } from '../../src/components/Icon';
 import { MemberRow } from '../../src/components/MemberRow';
-import { useScreenState } from '../../src/data/useScreenState';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { SPACE, RADIUS, TAP_MIN } from '../../src/theme/tokens';
-import {
-  MEMBERS, WEEK, GLOBAL_RULE, ruleSentence, flaggedMembers, hasEmail,
-} from '../../src/data/mock';
+import { ruleSentence, hasEmail } from '../../src/data/mock';
+import { useFollowUp } from '../../src/data/hooks';
+import { currentWeek } from '../../src/data/period';
 
 type Filter = 'follow' | 'all' | 'nomail';
 
@@ -17,22 +16,27 @@ export default function Weekly() {
   const { theme } = useTheme();
   const router = useRouter();
   const { state: forced } = useLocalSearchParams<{ state?: string }>();
-  const [state, retry] = useScreenState(forced);
+  const week = currentWeek();
+  const { state, data, error, retry } = useFollowUp(forced, week);
   const [filter, setFilter] = useState<Filter>('follow');
 
-  const flagged = flaggedMembers(GLOBAL_RULE);
-  const noMail = MEMBERS.filter(m => !hasEmail(m));
-  const rows = filter === 'follow' ? flagged : filter === 'nomail' ? noMail : MEMBERS;
+  // Members, the rule and the flagged set from ONE load: the chip counts and
+  // the list underneath cannot be a query apart and disagree.
+  const members = data?.members ?? [];
+  const rules = data?.rules;
+  const flagged = data?.flagged ?? [];
+  const noMail = members.filter(m => !hasEmail(m));
+  const rows = filter === 'follow' ? flagged : filter === 'nomail' ? noMail : members;
 
   const chips: { key: Filter; label: string }[] = [
     { key: 'follow', label: `Needs follow-up · ${flagged.length}` },
-    { key: 'all',    label: `All ${MEMBERS.length}` },
+    { key: 'all',    label: `All ${members.length}` },
     { key: 'nomail', label: `No email · ${noMail.length}` },
   ];
 
   return (
     <Screen>
-      <Muted>{`${WEEK.label} · ${MEMBERS.length} members`}</Muted>
+      <Muted>{`${week.label} · ${members.length} members`}</Muted>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false}
         contentContainerStyle={{ gap: SPACE.sm, paddingVertical: SPACE.md }}>
@@ -58,7 +62,9 @@ export default function Weekly() {
       {/* the rule is stated above the list it produced */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: SPACE.md }}>
         <Icon name="rule" size={15} color={theme.accentInk} />
-        <Muted style={{ flex: 1 }}>{ruleSentence(GLOBAL_RULE, 'every course')}</Muted>
+        <Muted style={{ flex: 1 }}>
+          {rules ? ruleSentence(rules.global, 'every course') : ''}
+        </Muted>
       </View>
 
       {state === 'loading' && <Skeleton lines={4} />}
@@ -89,7 +95,7 @@ export default function Weekly() {
             filter === 'follow' ? (
               <EmptyState
                 title="Nobody needs following up"
-                body={`Every member met her course's rule for ${WEEK.label}. Nothing to do this week.`} />
+                body={`Every member met her course's rule for ${week.label}. Nothing to do this week.`} />
             ) : (
               <EmptyState
                 title="Nothing matches this filter"

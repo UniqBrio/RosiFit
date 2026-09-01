@@ -6,6 +6,8 @@ import { useTheme } from '../src/theme/ThemeProvider';
 import { Button, Muted, DeepBackground } from '../src/components/ui';
 import { Icon } from '../src/components/Icon';
 import { RADIUS, SPACE, TAP_MIN, STATUS } from '../src/theme/tokens';
+import { isConfigured } from '../src/lib/supabase';
+import { authLogin, adoptSession } from '../src/data/api';
 
 /** '1'..'9', clear-entry, '0', backspace -- the canvas' 3-column layout */
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'ce', '0', 'del'] as const;
@@ -14,27 +16,55 @@ export default function SignIn() {
   const { theme } = useTheme();
   const router = useRouter();
   const [step, setStep] = useState<'phone' | 'pin'>('phone');
-  const [phone, setPhone] = useState('80563 29742');
+  const [phone, setPhone] = useState(isConfigured ? '' : '80563 29742');
   const [pin, setPin] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const digits = phone.replace(/\D/g, '');
   const phoneOk = digits.length === 10;
 
+  /** The PIN goes to auth-login and is never kept: not stored, not logged,
+   *  not echoed back. The entry is cleared whichever way the call ends. */
+  const submit = async (entered: string) => {
+    if (!isConfigured) {
+      // Fixtures mode has no project to authenticate against, so the
+      // prototype behaviour stands in for it.
+      setTimeout(() => router.replace('/(tabs)'), 220);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await authLogin(digits, entered);
+      await adoptSession(result);
+      setPin('');
+      // A first PIN (or one an admin reset) must be changed before she goes
+      // anywhere else -- must_change_pin is the server's word, not a guess.
+      router.replace(result.user?.must_change_pin ? '/set-pin?for=self' : '/(tabs)');
+    } catch (err) {
+      setPin('');
+      setError(err instanceof Error ? err.message : 'That did not work. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const press = (k: string) => {
+    if (busy) return;
     // CE clears the whole entry; only the backspace removes one digit. These
     // were previously wired to the same action, so there was no way to start
     // over without pressing delete four times.
-    if (k === 'ce') return setPin('');
-    if (k === 'del') return setPin(p => p.slice(0, -1));
+    if (k === 'ce') { setError(null); return setPin(''); }
+    if (k === 'del') { setError(null); return setPin(p => p.slice(0, -1)); }
     if (pin.length >= 4) return;
     const next = pin + k;
     setPin(next);
-    // A real sign-in posts to auth-login. The UI never sees a PIN again after
-    // this: it is not stored, not logged, and not echoed back.
-    if (next.length === 4) setTimeout(() => router.replace('/(tabs)'), 220);
+    if (next.length === 4) void submit(next);
   };
 
   const okInk = theme.isDark ? STATUS.present.fgDark : STATUS.present.fgLight;
+  const badInk = theme.isDark ? STATUS.absent.fgDark : STATUS.absent.fgLight;
 
   return (
     <DeepBackground>
@@ -157,7 +187,27 @@ export default function SignIn() {
                   ))}
                 </View>
 
-                <Pressable onPress={() => router.push('/forgot-pin')}
+                {/* The word and the icon carry the state; the colour only
+                    reinforces it (never the only signal). */}
+                {(busy || error) && (
+                  <View
+                    accessibilityLiveRegion="polite"
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
+                      marginTop: SPACE.lg, paddingVertical: 10, paddingHorizontal: 12,
+                      borderRadius: RADIUS.md, borderWidth: 1,
+                      borderColor: error ? badInk : theme.line, backgroundColor: theme.surface,
+                    }}>
+                    <Icon name={busy ? 'hourglass_top' : 'error'} size={17}
+                      color={error ? badInk : theme.muted} />
+                    <Text style={{ flex: 1, fontSize: 12.5, fontWeight: '600', color: error ? badInk : theme.fg }}>
+                      {busy ? 'Checking your PIN…' : error}
+                    </Text>
+                  </View>
+                )}
+
+                <Pressable
+                  onPress={() => router.push({ pathname: '/forgot-pin', params: { phone: digits } })}
                   accessibilityRole="button" accessibilityLabel="Forgot PIN"
                   style={({ pressed }) => ({
                     marginTop: SPACE.lg, minHeight: TAP_MIN, borderRadius: RADIUS.md,

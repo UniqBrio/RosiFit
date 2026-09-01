@@ -7,6 +7,7 @@ import { Icon } from '../../src/components/Icon';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../../src/theme/tokens';
+import { takeIssuedPin } from '../../src/data/pending';
 
 const APP_LINK = 'https://rosifit.app/staff';
 
@@ -16,19 +17,25 @@ export default function StaffPin() {
   const router = useRouter();
   const params = useLocalSearchParams<{ pin?: string; name?: string; phone?: string; role?: string }>();
 
-  // The whole screen is derived from route params, which do not exist during
-  // the static web export's first render. Painting them straight away made
+  // The whole screen is derived from a hand-off that does not exist during
+  // the static web export's first render. Painting it straight away made
   // the client disagree with the server (React #418) -- and, worse, briefly
   // rendered a placeholder that looked like a real PIN. So nothing that
-  // depends on a param is drawn until after mount.
+  // depends on it is drawn until after mount.
   const [ready, setReady] = useState(false);
+  // Taken ONCE, at mount: a re-render must not re-read a slot that has
+  // already been emptied, or the screen would flip to "already shown".
+  const [issued] = useState(() => takeIssuedPin());
   useEffect(() => setReady(true), []);
 
-  const rawPin = (params.pin ?? '').replace(/\D/g, '');
+  // In memory first (the live path, so the PIN never reaches the URL); route
+  // params remain for the fixtures walkthrough, which has no function call
+  // to carry it.
+  const rawPin = (issued?.pin ?? params.pin ?? '').replace(/\D/g, '');
   const pin = rawPin.slice(0, 4);
-  const name = params.name ?? 'She';
-  const phone = params.phone ?? '';
-  const role = params.role ?? '';
+  const name = issued?.name ?? params.name ?? 'She';
+  const phone = issued?.phone ?? params.phone ?? '';
+  const role = issued?.role ?? params.role ?? '';
 
   if (!ready) return <Screen deep><View /></Screen>;
 

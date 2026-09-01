@@ -1,11 +1,13 @@
 import { View, Text, Pressable } from 'react-native';
-import { useRouter } from 'expo-router';
-import { Screen, Body, Muted, Button } from '../../src/components/ui';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Screen, Body, Muted, Button, Skeleton, ErrorState, EmptyState } from '../../src/components/ui';
 import { Icon } from '../../src/components/Icon';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, STATUS, statusSurface } from '../../src/theme/tokens';
-import { TEMPLATES, WEEK, flaggedMembers, hasEmail } from '../../src/data/mock';
+import { hasEmail } from '../../src/data/mock';
+import { useTemplates, useFollowUp } from '../../src/data/hooks';
+import { currentWeek } from '../../src/data/period';
 
 /**
  * C-68/C-69, step 1 of 3: CHOOSE A TEMPLATE.
@@ -18,22 +20,49 @@ export default function ChooseTemplate() {
   const { theme } = useTheme();
   const { flash } = useToast();
   const router = useRouter();
+  const { state: forced } = useLocalSearchParams<{ state?: string }>();
+  const week = currentWeek();
+  const templates = useTemplates(forced);
+  const followUp = useFollowUp(forced, week);
 
-  const flagged = flaggedMembers();
+  // The same derived list the dashboard and the weekly screen read -- one
+  // member source, one rule, so these counts cannot disagree with theirs.
+  const flagged = followUp.data?.flagged ?? [];
   const sendable = flagged.filter(hasEmail);
   const ink = (k: keyof typeof STATUS) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
 
+  if (templates.state === 'loading' || followUp.state === 'loading') {
+    return <Screen><Skeleton lines={4} /></Screen>;
+  }
+  if (templates.state === 'error' || followUp.state === 'error') {
+    return (
+      <Screen>
+        <ErrorState onRetry={() => { templates.retry(); followUp.retry(); }}
+          message={templates.error ?? followUp.error ?? 'The templates could not be loaded. Nothing has been sent.'} />
+      </Screen>
+    );
+  }
+
+  const list = templates.data ?? [];
+
   return (
     <Screen>
-      <Muted>{`${sendable.length} members selected · week ${WEEK.label}`}</Muted>
+      <Muted>{`${sendable.length} members selected · week ${week.label}`}</Muted>
 
       <Body style={{ marginTop: SPACE.md }}>
         Pick one of your saved templates. You cannot type a message here — the wording is agreed once,
         in Settings, so nobody sends something unreviewed at 9 pm.
       </Body>
 
+      {list.length === 0 && (
+        <EmptyState
+          title="No templates yet"
+          body="Follow-up emails only ever go out from a saved template. Add one in Settings → Message templates before sending."
+          action="Message templates" onAction={() => router.push('/templates')} />
+      )}
+
       <View style={{ gap: SPACE.md, marginTop: SPACE.lg }}>
-        {TEMPLATES.map(t => {
+        {list.map(t => {
           const off = !t.active;
           const stateInk = off ? theme.dim : ink('present');
           return (

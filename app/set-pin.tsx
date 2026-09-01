@@ -6,6 +6,9 @@ import { Icon } from '../src/components/Icon';
 import { useTheme } from '../src/theme/ThemeProvider';
 import { useToast } from '../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS } from '../src/theme/tokens';
+import { isConfigured } from '../src/lib/supabase';
+import { authBootstrap, adoptSession, recoveryApply, changeOwnPin } from '../src/data/api';
+import { takeRegistrationDraft, peekRegistrationDraft, takeRecoveryToken, peekRecoveryToken } from '../src/data/pending';
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'] as const;
 
@@ -26,14 +29,60 @@ export default function SetPin() {
   const [stage, setStage] = useState<'new' | 'confirm'>('new');
   const [pinNew, setPinNew] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const shown = stage === 'new' ? pinNew : confirm;
   const set = stage === 'new' ? setPinNew : setConfirm;
   const ink = (k: keyof typeof STATUS) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
 
+  /**
+   * Three ways to arrive here, and the PIN is only ever sent, never kept:
+   *   ?for=register  the account does not exist yet -- auth-bootstrap takes
+   *                  the draft AND this PIN in one call, so a half-registered
+   *                  super admin cannot exist.
+   *   after recovery a recovery token is waiting -- recovery-check spends it.
+   *   otherwise      she is signed in and choosing her own -- pin-reset's
+   *                  self path, which clears must_change_pin.
+   */
+  const apply = async (chosen: string) => {
+    if (!isConfigured) {
+      if (self) { router.back(); flash('PIN updated'); }
+      else { router.replace('/(tabs)'); flash('PIN set · welcome to RosiFit'); }
+      return;
+    }
+    setBusy(true);
+    try {
+      const draft = peekRegistrationDraft();
+      const token = peekRecoveryToken();
+      if (who === 'register' || draft) {
+        if (!draft) throw new Error('That registration was not finished. Start again.');
+        takeRegistrationDraft();
+        const result = await authBootstrap({ ...draft, pin: chosen });
+        await adoptSession(result);
+        router.replace('/(tabs)');
+        flash('Registered · welcome to RosiFit');
+      } else if (token) {
+        takeRecoveryToken();
+        const result = await recoveryApply(token, chosen);
+        await adoptSession(result);
+        router.replace('/(tabs)');
+        flash('PIN set · you are signed in');
+      } else {
+        await changeOwnPin(chosen);
+        if (self) { router.back(); flash('PIN updated'); }
+        else { router.replace('/(tabs)'); flash('PIN set · welcome to RosiFit'); }
+      }
+    } catch (err) {
+      setStage('new'); setPinNew(''); setConfirm('');
+      flash(err instanceof Error ? err.message : 'That did not work. Try again.', 'warn');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const press = (k: string) => {
-    if (k === '') return;
+    if (k === '' || busy) return;
     if (k === 'del') return set(p => p.slice(0, -1));
     if (shown.length >= 4) return;
     const v = shown + k;
@@ -45,9 +94,7 @@ export default function SetPin() {
         if (weak(v)) { setPinNew(''); flash('Too easy to guess — try another four digits', 'warn'); }
         else { setStage('confirm'); setConfirm(''); }
       } else if (v === pinNew) {
-        // the PIN goes to auth and nowhere else; nothing here stores it
-        if (self) { router.back(); flash('PIN updated'); }
-        else { router.replace('/(tabs)'); flash('PIN set · welcome to RosiFit'); }
+        void apply(v);
       } else {
         setStage('new'); setPinNew(''); setConfirm('');
         flash('Those did not match — start again', 'warn');
@@ -58,7 +105,11 @@ export default function SetPin() {
   return (
     <Screen deep scroll={false}>
       <View style={{ flex: 1 }}>
-        {!self && <Muted style={{ color: theme.accentInk }}>Welcome, Sowmya.</Muted>}
+        {!self && (
+          <Muted style={{ color: theme.accentInk }}>
+            {`Welcome${peekRegistrationDraft() ? `, ${peekRegistrationDraft()!.name.split(' ')[0]}` : ''}.`}
+          </Muted>
+        )}
         <H1 style={{ color: '#FFFFFF', marginTop: 4 }}>
           {self ? 'Change your PIN' : 'Pick your own PIN'}
         </H1>
@@ -93,7 +144,7 @@ export default function SetPin() {
           marginTop: SPACE.xl, textAlign: 'center', fontSize: 11.5, fontWeight: '700',
           letterSpacing: 1, textTransform: 'uppercase', color: theme.accentInk,
         }}>
-          {stage === 'new' ? 'Your new PIN' : 'Type it once more'}
+          {busy ? 'Saving…' : stage === 'new' ? 'Your new PIN' : 'Type it once more'}
         </Text>
 
         <View accessible accessibilityLabel={`PIN, ${shown.length} of 4 digits entered`}
