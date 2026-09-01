@@ -17,20 +17,7 @@ export type FollowUpCandidate = {
   has_email: boolean;         // C-76: false means listed but not sendable
 };
 
-export const CANDIDATES: FollowUpCandidate[] = [
-  { member_id: '1', full_name: 'Divya Ramesh', course_name: 'Prenatal Fitness', branch_name: 'Coimbatore',
-    expected: 6, attended: 3, missed: 3, attendance_pct: 50.0, current_streak: 1,
-    config_source: 'course', reason: 'Missed 3 of 6 sessions this week', has_email: true },
-  { member_id: '2', full_name: 'Meenakshi Iyer', course_name: 'Prenatal Yoga', branch_name: 'Salem',
-    expected: 4, attended: 0, missed: 4, attendance_pct: 0.0, current_streak: 4,
-    config_source: 'course', reason: '4 consecutive missed sessions', has_email: true },
-  { member_id: '3', full_name: 'Meena Raj', course_name: 'Prenatal Yoga', branch_name: 'Salem',
-    expected: 4, attended: 1, missed: 3, attendance_pct: 25.0, current_streak: 2,
-    config_source: 'global', reason: 'Missed 3 of 4 sessions this week', has_email: false },
-  { member_id: '4', full_name: 'Anitha Kumar', course_name: 'Postnatal Recovery', branch_name: 'Erode',
-    expected: 3, attended: 0, missed: 3, attendance_pct: 0.0, current_streak: 3,
-    config_source: 'global', reason: 'Missed 3 of 3 sessions this week', has_email: true },
-];
+// CANDIDATES is derived further down, once MEMBERS and the rule exist.
 
 /** The five outcomes of CSV review (C-79). C, D and E block the import. */
 export type MatchKind = 'matched' | 'noEmail' | 'possible' | 'ambiguous' | 'unmatched';
@@ -76,30 +63,38 @@ export const MATCH_ROWS: MatchRow[] = [
 
 export type Member = {
   id: string; code: string; name: string; course: string; branch: string;
-  aliases: string[]; emails: { address: string; primary: boolean }[];
-  expected: number; attended: number; missed: number; streak: number;
+  aliases: string[];
+  /** A member can hold several addresses; exactly one is primary. An EMPTY
+   *  list means no usable address -- she is still listed and still counted,
+   *  never quietly dropped (C-76). */
+  emails: { address: string; primary: boolean }[];
+  expected: number; attended: number; missed: number;
+  /** her CURRENT run of consecutive misses -- not the week's total */
+  streak: number;
+  /** last time anyone reached out, or '\u2014' for never */
+  last: string;
 };
 
+/**
+ * ONE member list. The follow-up set is DERIVED from it by the rule below,
+ * so the dashboard count, the weekly list and the member report cannot
+ * disagree -- there was previously a second, differently-populated list for
+ * follow-up, which is exactly how those numbers drift apart.
+ */
 export const MEMBERS: Member[] = [
-  { id: '1', code: 'RF-000102', name: 'Divya Ramesh', course: 'Prenatal Fitness', branch: 'Coimbatore',
-    aliases: ['Divya', 'Divya R'], emails: [{ address: 'divya@example.com', primary: true }],
-    expected: 6, attended: 3, missed: 3, streak: 1 },
-  { id: '5', code: 'RF-000118', name: 'Shazia Farheen', course: 'Prenatal Fitness', branch: 'Coimbatore',
-    aliases: ['Shazia', 'Shazia F'], emails: [
-      { address: 'shazia@example.com', primary: true },
-      { address: 'shazia.f@work.example.com', primary: false }],
-    expected: 6, attended: 5, missed: 1, streak: 0 },
-  { id: '3', code: 'RF-000204', name: 'Meena Raj', course: 'Prenatal Yoga', branch: 'Salem',
-    aliases: ['Meena'], emails: [],
-    expected: 4, attended: 1, missed: 3, streak: 2 },
-  { id: '2', code: 'RF-000151', name: 'Meenakshi Iyer', course: 'Prenatal Yoga', branch: 'Salem',
-    aliases: [], emails: [{ address: 'meenakshi@example.com', primary: true }],
-    expected: 4, attended: 0, missed: 4, streak: 4 },
+  { id: '1', code: 'RF-000102', name: 'Divya Ramesh',       course: 'Prenatal Flow',            branch: 'Coimbatore', aliases: ['Divya', 'Divya R'], emails: [{ address: 'divya.r@gmail.com', primary: true }],   expected: 3, attended: 0, missed: 3, streak: 3, last: '14 Aug' },
+  { id: '2', code: 'RF-000118', name: 'Shazia Begum',       course: 'Postnatal Core',           branch: 'Madurai',    aliases: ['Shazia', 'Shazia F'], emails: [{ address: 'shazia.b@gmail.com', primary: true }], expected: 3, attended: 1, missed: 2, streak: 2, last: '20 Aug' },
+  { id: '3', code: 'RF-000151', name: 'Meenakshi Sundaram', course: 'Trimester 3 Gentle',       branch: 'Chennai',    aliases: ['Meena S'],          emails: [{ address: 'meena.s@yahoo.in', primary: true }],    expected: 4, attended: 0, missed: 4, streak: 6, last: '2 Aug' },
+  { id: '4', code: 'RF-000127', name: 'Aarthi Venkat',      course: 'Prenatal Flow',            branch: 'Coimbatore', aliases: [],                   emails: [{ address: 'aarthi.v@gmail.com', primary: true }],  expected: 3, attended: 3, missed: 0, streak: 0, last: '\u2014' },
+  { id: '5', code: 'RF-000133', name: 'Nithya Krishnan',    course: 'Pelvic Floor Foundations', branch: 'Madurai',    aliases: [],                   emails: [],                    expected: 0, attended: 0, missed: 0, streak: 0, last: '11 Aug' },
+  { id: '6', code: 'RF-000140', name: 'Fathima Rizwan',     course: 'Postnatal Core',           branch: 'Coimbatore', aliases: ['Fathima'],          emails: [],                    expected: 3, attended: 0, missed: 3, streak: 4, last: '9 Aug' },
+  { id: '7', code: 'RF-000131', name: 'Lakshmi Priya',      course: 'Prenatal Flow',            branch: 'Chennai',    aliases: ['Lakshmi P'],        emails: [{ address: 'lakshmi.p@gmail.com', primary: true }], expected: 4, attended: 2, missed: 2, streak: 1, last: '\u2014' },
+  { id: '8', code: 'RF-000146', name: 'Kavya Balaji',       course: 'Postnatal Core',           branch: 'Madurai',    aliases: [],                   emails: [],                    expected: 3, attended: 0, missed: 3, streak: 3, last: '6 Aug' },
 ];
 
-export const WEEK = { from: '17 Aug', to: '23 Aug 2026', label: '17–23 August 2026' };
-export const BRANCHES = ['All branches', 'Coimbatore', 'Salem', 'Erode', 'Chennai'];
-export const COURSES  = ['All courses', 'Prenatal Fitness', 'Prenatal Yoga', 'Postnatal Recovery', 'Prenatal Flow'];
+export const WEEK = { from: '18 Aug', to: '24 Aug 2026', label: '18\u201324 Aug 2026' };
+export const BRANCHES = ['All branches', 'Coimbatore', 'Madurai', 'Chennai'];
+export const COURSES  = ['All courses', 'Prenatal Flow', 'Postnatal Core', 'Trimester 3 Gentle', 'Pelvic Floor Foundations'];
 export const SUPPORT_PHONE = '9994871158';
 
 // ---------------------------------------------------------------- courses
@@ -336,3 +331,62 @@ export const WEEK_STRIP: { day: string; status: StatusKeyName }[] = [
   { day: 'Sun', status: 'none' },
 ];
 type StatusKeyName = 'present' | 'absent' | 'awaiting' | 'scheduled' | 'cancelled' | 'holiday' | 'extra' | 'none';
+
+/* ------------------------------------------------------- follow-up, derived
+ * The canvas computes the follow-up set from MEMBERS and the saved rule
+ * rather than storing it. Keeping that here is what makes the dashboard
+ * count, the weekly list and the send flow agree by construction: there is
+ * no second list to fall out of step.
+ */
+export function ruleHits(m: Member, r: FollowUpRule) {
+  return {
+    // a member with nothing scheduled cannot have "missed" anything
+    weekly: r.weekly_enabled && m.expected >= 1 && m.missed >= r.weekly_threshold,
+    consecutive: r.consecutive_enabled && m.streak >= r.consecutive_threshold,
+  };
+}
+
+export function isEligible(m: Member, r: FollowUpRule): boolean {
+  const h = ruleHits(m, r);
+  return r.combination === 'AND' && r.weekly_enabled && r.consecutive_enabled
+    ? h.weekly && h.consecutive
+    : h.weekly || h.consecutive;
+}
+
+/** Names the CONDITION that fired, not the rule -- so the row explains itself. */
+export function reasonFor(m: Member, r: FollowUpRule): string {
+  const h = ruleHits(m, r);
+  if (h.weekly && h.consecutive) {
+    return `Missed ${m.missed} of ${m.expected} this week and ${m.streak} consecutive`;
+  }
+  if (h.weekly) return `Missed ${m.missed} of ${m.expected} sessions this week`;
+  if (h.consecutive) return `${m.streak} consecutive missed sessions`;
+  return 'Meets the follow-up rule';
+}
+
+export function flaggedMembers(r: FollowUpRule = GLOBAL_RULE): Member[] {
+  return MEMBERS.filter(m => isEligible(m, r));
+}
+
+export const attendancePct = (m: Member): number | null =>
+  m.expected === 0 ? null : Math.round((m.attended / m.expected) * 100);
+
+/**
+ * The legacy follow-up shape, now DERIVED. Kept so the send flow and the
+ * rules preview read the same members as everything else.
+ */
+export const CANDIDATES: FollowUpCandidate[] = flaggedMembers().map(m => ({
+  member_id: m.id, full_name: m.name, course_name: m.course, branch_name: m.branch,
+  expected: m.expected, attended: m.attended, missed: m.missed,
+  attendance_pct: attendancePct(m), current_streak: m.streak,
+  config_source: COURSE_RULES[m.id] ? 'course' : 'global',
+  reason: reasonFor(m, GLOBAL_RULE),
+  has_email: m.emails.length > 0,
+}));
+
+/** Her primary address, or '' when there is none on file. */
+export const primaryEmail = (m: Member): string =>
+  (m.emails.find(e => e.primary) ?? m.emails[0])?.address ?? '';
+
+/** C-76: no email means listed-and-excluded, never silently dropped. */
+export const hasEmail = (m: Member): boolean => primaryEmail(m) !== '';
