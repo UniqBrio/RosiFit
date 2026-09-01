@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { View } from 'react-native';
-import { Screen, Card, H1, H2, Body, Muted, Label, Button, Pill, Row, Stat, Divider } from '../src/components/ui';
+import { Screen, Card, H1, H2, Body, Muted, Label, Button, Pill, Row, Stat, Divider,
+         Skeleton, EmptyState, ErrorState } from '../src/components/ui';
+import { useScreenState } from '../src/data/useScreenState';
+import { useLocalSearchParams } from 'expo-router';
 import { useTheme } from '../src/theme/ThemeProvider';
 import { SPACE } from '../src/theme/tokens';
 import { MEMBERS, WEEK_ROWS, BRANCHES, COURSES, WEEK } from '../src/data/mock';
@@ -9,6 +12,8 @@ import { Donut } from '../src/components/Donut';
 
 export default function Reports() {
   const { theme } = useTheme();
+  const { state: forced } = useLocalSearchParams<{ state?: string }>();
+  const [state, retry] = useScreenState(forced);
   const [branch, setBranch] = useState(BRANCHES[0]);
   const [course, setCourse] = useState(COURSES[0]);
   const [tab, setTab] = useState<'member' | 'week'>('member');
@@ -30,6 +35,14 @@ export default function Reports() {
 
       <FilterBar branch={branch} onBranch={setBranch} course={course} onCourse={setCourse} period={WEEK.label} />
 
+      {state === 'loading' && <Skeleton lines={3} />}
+
+      {state === 'error' && (
+        <ErrorState onRetry={retry}
+          message="The report could not be built. The figures you were looking at are unchanged." />
+      )}
+
+      {state === 'ready' && <>
       <Row style={{ gap: SPACE.sm, marginBottom: SPACE.md }}>
         <Button label="Member-wise" variant={tab === 'member' ? 'primary' : 'secondary'}
           onPress={() => setTab('member')} style={{ flex: 1 }} />
@@ -69,7 +82,13 @@ export default function Reports() {
               </Row>
             </Card>
           );
-        }) : <Card><Body>No member matches these filters.</Body></Card>
+        }) : (
+          <EmptyState
+            title="No member matches these filters"
+            body={`Nothing recorded for ${course === 'All courses' ? 'any course' : course} at ${branch === 'All branches' ? 'any branch' : branch} in this period. Widen a filter, or check the period.`}
+            action="Show every branch and course"
+            onAction={() => { setBranch(BRANCHES[0]); setCourse(COURSES[0]); }} />
+        )
       ) : (
         <Card>
           <H2>Week by week</H2>
@@ -99,6 +118,7 @@ export default function Reports() {
           })}
         </Card>
       )}
+      </>}
     </Screen>
   );
 }

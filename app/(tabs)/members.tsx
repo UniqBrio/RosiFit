@@ -1,6 +1,9 @@
 import { View, TextInput } from 'react-native';
 import { useState } from 'react';
-import { Screen, Card, H1, H2, Body, Muted, Label, Row, Pill, Button, Divider } from '../../src/components/ui';
+import { Screen, Card, H1, H2, Body, Muted, Label, Row, Pill, Button, Divider,
+         Skeleton, EmptyState, ErrorState } from '../../src/components/ui';
+import { useScreenState } from '../../src/data/useScreenState';
+import { useLocalSearchParams } from 'expo-router';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { SPACE, RADIUS, TAP_MIN } from '../../src/theme/tokens';
 import { MEMBERS } from '../../src/data/mock';
@@ -9,6 +12,8 @@ import { useRouter } from 'expo-router';
 export default function Members() {
   const { theme } = useTheme();
   const router = useRouter();
+  const { state: forced } = useLocalSearchParams<{ state?: string }>();
+  const [state, retry] = useScreenState(forced);
   const [q, setQ] = useState('');
   const list = MEMBERS.filter(m =>
     m.name.toLowerCase().includes(q.toLowerCase()) ||
@@ -17,7 +22,9 @@ export default function Members() {
   return (
     <Screen>
       <H1>Members</H1>
-      <Muted style={{ marginBottom: SPACE.md }}>{MEMBERS.length} members</Muted>
+      <Muted style={{ marginBottom: SPACE.md }}>
+        {state === 'ready' ? `${MEMBERS.length} members` : ' '}
+      </Muted>
 
       <TextInput
         value={q} onChangeText={setQ}
@@ -31,7 +38,22 @@ export default function Members() {
           marginBottom: SPACE.md,
         }} />
 
-      {list.map(m => (
+      {state === 'loading' && <Skeleton lines={3} />}
+
+      {state === 'error' && (
+        <ErrorState onRetry={retry}
+          message="The member list could not be loaded. Nothing has been changed." />
+      )}
+
+      {/* not configured yet -- an academy before its first import */}
+      {state === 'ready' && MEMBERS.length === 0 && (
+        <EmptyState
+          title="No members yet"
+          body="Add your first member, or import the register. Until a member exists, an attendance file has nothing to match against."
+          action="+ Add member" onAction={() => router.push('/member/edit')} />
+      )}
+
+      {state === 'ready' && list.map(m => (
         <Card key={m.id}>
           <Row>
             <View style={{ flex: 1 }}>
@@ -75,11 +97,18 @@ export default function Members() {
         </Card>
       ))}
 
-      {list.length === 0 && (
-        <Card><Body>No member matches “{q}”.</Body></Card>
+      {/* a search that matches nothing is a DIFFERENT state from having no
+          members at all, and must not tell an academy its data is missing */}
+      {state === 'ready' && MEMBERS.length > 0 && list.length === 0 && (
+        <EmptyState
+          title={`No member matches “${q}”`}
+          body="Try part of a name, or one of her Google Meet display names. Display names are searched too."
+          action="Clear the search" onAction={() => setQ('')} />
       )}
 
-      <Button label="+ Add member" onPress={() => router.push('/member/edit')} />
+      {state === 'ready' && MEMBERS.length > 0 && (
+        <Button label="+ Add member" onPress={() => router.push('/member/edit')} />
+      )}
     </Screen>
   );
 }

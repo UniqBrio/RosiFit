@@ -1,6 +1,9 @@
 import { View } from 'react-native';
 import { useState } from 'react';
-import { Screen, Card, H1, H2, Body, Muted, Button, Row, Pill, Divider } from '../../src/components/ui';
+import { Screen, Card, H1, H2, Body, Muted, Button, Row, Pill, Divider,
+         Skeleton, EmptyState, ErrorState } from '../../src/components/ui';
+import { useScreenState } from '../../src/data/useScreenState';
+import { useLocalSearchParams } from 'expo-router';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { SPACE } from '../../src/theme/tokens';
 import { CANDIDATES, WEEK } from '../../src/data/mock';
@@ -9,6 +12,8 @@ import { useRouter } from 'expo-router';
 export default function Weekly() {
   const { theme } = useTheme();
   const router = useRouter();
+  const { state: forced } = useLocalSearchParams<{ state?: string }>();
+  const [state, retry] = useScreenState(forced);
   const [picked, setPicked] = useState<string[]>(CANDIDATES.filter(c => c.has_email).map(c => c.member_id));
   const sendable = CANDIDATES.filter(c => c.has_email);
   const excluded = CANDIDATES.filter(c => !c.has_email);
@@ -17,9 +22,25 @@ export default function Weekly() {
   return (
     <Screen>
       <H1>Follow-up</H1>
-      <Muted style={{ marginBottom: SPACE.lg }}>{WEEK.label} · {CANDIDATES.length} members listed</Muted>
+      <Muted style={{ marginBottom: SPACE.lg }}>
+        {state === 'ready' ? `${WEEK.label} · ${CANDIDATES.length} members listed` : WEEK.label}
+      </Muted>
 
-      {CANDIDATES.map(c => {
+      {state === 'loading' && <Skeleton lines={3} />}
+
+      {state === 'error' && (
+        <ErrorState onRetry={retry}
+          message="The attendance figures for this week could not be loaded. No email has been prepared and nobody has been contacted." />
+      )}
+
+      {state === 'ready' && CANDIDATES.length === 0 && (
+        // "nobody qualifies" is GOOD NEWS and must not read like a failure
+        <EmptyState
+          title="Nobody needs following up"
+          body={`Every member met her course's rule for ${WEEK.label}. Nothing to do this week.`} />
+      )}
+
+      {state === 'ready' && CANDIDATES.map(c => {
         const on = picked.includes(c.member_id);
         return (
           <Card key={c.member_id}>
@@ -63,7 +84,7 @@ export default function Weekly() {
         );
       })}
 
-      {excluded.length > 0 && (
+      {state === 'ready' && excluded.length > 0 && (
         <Card>
           <H2>Excluded from this send</H2>
           <Muted style={{ marginTop: 4 }}>
@@ -73,14 +94,16 @@ export default function Weekly() {
         </Card>
       )}
 
-      <Button
+      {state === 'ready' && <Button
         label={`Choose a template · ${picked.length} selected`}
         disabled={picked.length === 0}
         onPress={() => router.push('/send')}
-      />
-      <Muted style={{ marginTop: SPACE.sm, textAlign: 'center' }}>
-        Messages come from a stored template. There is no free-form composing.
-      </Muted>
+      />}
+      {state === 'ready' && (
+        <Muted style={{ marginTop: SPACE.sm, textAlign: 'center' }}>
+          Messages come from a stored template. There is no free-form composing.
+        </Muted>
+      )}
     </Screen>
   );
 }

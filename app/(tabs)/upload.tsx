@@ -1,6 +1,9 @@
 import { View } from 'react-native';
 import { useState } from 'react';
-import { Screen, Card, H1, H2, Body, Muted, Label, Button, Row, Pill, Divider } from '../../src/components/ui';
+import { Screen, Card, H1, H2, Body, Muted, Label, Button, Row, Pill, Divider,
+         Skeleton, EmptyState, ErrorState } from '../../src/components/ui';
+import { useScreenState } from '../../src/data/useScreenState';
+import { useLocalSearchParams } from 'expo-router';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { SPACE, RADIUS } from '../../src/theme/tokens';
 import { MATCH_ROWS, OUTCOME_META, CSV_COLUMNS, type MatchKind } from '../../src/data/mock';
@@ -21,6 +24,8 @@ const ACTIONS: Record<MatchKind, string[]> = {
 
 export default function Upload() {
   const { theme } = useTheme();
+  const { state: forced } = useLocalSearchParams<{ state?: string }>();
+  const [state, retry] = useScreenState(forced);
   const [decided, setDecided] = useState<Record<number, string>>({});
 
   const blocking = MATCH_ROWS.filter(r => OUTCOME_META[r.kind].blocks);
@@ -36,6 +41,21 @@ export default function Upload() {
         Fri 22 Aug 2026 · Prenatal Flow · Coimbatore · {MATCH_ROWS.length} rows
       </Muted>
 
+      {state === 'loading' && <Skeleton lines={2} />}
+
+      {state === 'error' && (
+        <ErrorState onRetry={retry}
+          message="The file could not be read. It may not be a Google Meet export, or the download was incomplete. No attendance has been imported." />
+      )}
+
+      {state === 'ready' && MATCH_ROWS.length === 0 && (
+        <EmptyState
+          title="No file to review"
+          body="Upload the Google Meet attendance export for a session and every row will be matched to a member here before anything is imported."
+          action="Choose a file" onAction={() => {}} />
+      )}
+
+      {state === 'ready' && <>
       <Card>
         <Label>Columns read from the file</Label>
         <Row style={{ marginTop: SPACE.sm, flexWrap: 'wrap' }}>
@@ -103,6 +123,7 @@ export default function Upload() {
         <Button label={`Import ${MATCH_ROWS.length} rows`} disabled={!canImport}
           style={{ marginTop: SPACE.md }} onPress={() => {}} />
       </Card>
+      </>}
     </Screen>
   );
 }

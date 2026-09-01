@@ -115,3 +115,63 @@ export function Stat({ value, label, period, tone }:
     </View>
   );
 }
+
+/* ------------------------------------------------------------------ states
+ * D1.1 §41. Every list screen has to answer four questions honestly:
+ * still loading · nothing here yet · nothing matches your filters · it broke.
+ * Collapsing "no data" into "no results" is the common failure -- it tells a
+ * new academy its import is broken when it simply has not imported yet.
+ */
+
+export function Skeleton({ lines = 3 }: { lines?: number }) {
+  const { theme } = useTheme();
+  return (
+    <View accessibilityRole="progressbar" accessibilityLabel="Loading">
+      {Array.from({ length: lines }).map((_, i) => (
+        <View key={i} style={{
+          backgroundColor: theme.surface, borderRadius: RADIUS.lg, borderWidth: 1,
+          borderColor: theme.line, padding: SPACE.lg, marginBottom: SPACE.md, gap: SPACE.sm,
+        }}>
+          <View style={{ height: 16, width: '55%', borderRadius: 6, backgroundColor: theme.control }} />
+          <View style={{ height: 12, width: '80%', borderRadius: 6, backgroundColor: theme.control }} />
+          <View style={{ height: 12, width: '35%', borderRadius: 6, backgroundColor: theme.control }} />
+        </View>
+      ))}
+    </View>
+  );
+}
+
+export function EmptyState({ title, body, action, onAction }:
+  { title: string; body: string; action?: string; onAction?: () => void }) {
+  const { theme } = useTheme();
+  return (
+    <View style={{
+      backgroundColor: theme.surface, borderRadius: RADIUS.lg, borderWidth: 1,
+      borderColor: theme.line, padding: SPACE.xl, marginBottom: SPACE.md, alignItems: 'flex-start',
+    }}>
+      <Text style={{ fontSize: 17, fontWeight: '800', color: theme.fgStrong }}>{title}</Text>
+      <Text style={{ fontSize: 14, color: theme.fg, lineHeight: 21, marginTop: SPACE.sm }}>{body}</Text>
+      {action && onAction ? (
+        <Button label={action} onPress={onAction} style={{ marginTop: SPACE.lg, alignSelf: 'stretch' }} />
+      ) : null}
+    </View>
+  );
+}
+
+export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  const { theme } = useTheme();
+  return (
+    <View accessibilityLiveRegion="polite" style={{
+      backgroundColor: theme.surface, borderRadius: RADIUS.lg, borderWidth: 2,
+      borderColor: theme.danger, padding: SPACE.xl, marginBottom: SPACE.md,
+    }}>
+      <Text style={{ fontSize: 17, fontWeight: '800', color: theme.danger }}>Something went wrong</Text>
+      {/* say what failed and what it means, never just "error" */}
+      <Text style={{ fontSize: 14, color: theme.fg, lineHeight: 21, marginTop: SPACE.sm }}>{message}</Text>
+      <Text style={{ fontSize: 13, color: theme.muted, marginTop: SPACE.sm }}>
+        Nothing was changed. You can try again safely.
+      </Text>
+      {onRetry ? <Button label="Try again" onPress={onRetry} style={{ marginTop: SPACE.lg }} /> : null}
+    </View>
+  );
+}
