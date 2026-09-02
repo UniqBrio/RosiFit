@@ -21,7 +21,7 @@ function Nav() {
         <Stack.Screen name="upload"        options={{ title: 'Upload attendance' }} />
         <Stack.Screen name="register"      options={{ title: 'Register' }} />
         <Stack.Screen name="set-pin"       options={{ title: 'Your PIN' }} />
-        <Stack.Screen name="forgot-pin"    options={{ title: 'Forgot PIN' }} />
+        <Stack.Screen name="forgot-pin"    options={{ title: 'Forgot your PIN' }} />
         <Stack.Screen name="course/edit"   options={{ title: 'Course' }} />
         <Stack.Screen name="course/rules"  options={{ title: 'Follow-up rules' }} />
         <Stack.Screen name="member/[id]"   options={{ title: 'Member' }} />
