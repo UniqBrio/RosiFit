@@ -1,14 +1,14 @@
 ---
-description: Track E - think it through; no code, no gates, no file edits
+description: Track 0 - a LIST of items: dedupe, order, score, then a queue gate
 ---
 
-# /brainstorm
+# /triage
 
-**Read `workflows/brainstorm.md` in full, then follow it.** That file is the single source of truth for this
+**Read `workflows/triage.md` in full, then follow it.** That file is the single source of truth for this
 track; this command exists to route you to it, not to restate it. Do not work from a summary —
 the details this file omits are the ones that get skipped.
 
-**Use when:** there is no clear next action yet
+**Use when:** the request is several things at once
 
 **The request:** $ARGUMENTS
 
@@ -25,10 +25,11 @@ the details this file omits are the ones that get skipped.
    scoped request, and never work from memory of a file — read it.
 5. State your assumptions before acting. Where the request admits two readings, present both.
 
-## The constraint
-**Thinking only.** No code, no gates, no file edits until the decision routes back into a normal
-track. The deliverable is a Decision Summary whose next step is a drafted request, a recorded
-rule, or an explicit "no change".
+## Why this runs first
+Handled item-by-item, a list produces work on something already built, in an order that forces
+rework. Twenty minutes here routinely removes several days.
+
+**Never start item N+1's build while item N's gate is unresolved.**
 
 ## Close out
 

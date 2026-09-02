@@ -1,14 +1,14 @@
 ---
-description: Track E - think it through; no code, no gates, no file edits
+description: Track A - a new feature, through four approval gates
 ---
 
-# /brainstorm
+# /feature
 
-**Read `workflows/brainstorm.md` in full, then follow it.** That file is the single source of truth for this
+**Read `workflows/feature.md` in full, then follow it.** That file is the single source of truth for this
 track; this command exists to route you to it, not to restate it. Do not work from a summary —
 the details this file omits are the ones that get skipped.
 
-**Use when:** there is no clear next action yet
+**Use when:** the request adds a capability that does not exist yet
 
 **The request:** $ARGUMENTS
 
@@ -25,10 +25,11 @@ the details this file omits are the ones that get skipped.
    scoped request, and never work from memory of a file — read it.
 5. State your assumptions before acting. Where the request admits two readings, present both.
 
-## The constraint
-**Thinking only.** No code, no gates, no file edits until the decision routes back into a normal
-track. The deliverable is a Decision Summary whose next step is a drafted request, a recorded
-rule, or an explicit "no change".
+## The four gates
+Requirements → **GATE 1** · Feasibility → **GATE 2** · Design → **GATE 3** · Plan → **GATE 4**
+
+Each gate is a **stop**. Present the deliverable and wait. Do not proceed on assumptions, and do
+not run two gates together to save time — the gates exist because being wrong is cheapest early.
 
 ## Close out
 

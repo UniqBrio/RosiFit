@@ -1,14 +1,14 @@
 ---
-description: Track E - think it through; no code, no gates, no file edits
+description: Track F - the PROCESS failed; repair it
 ---
 
-# /brainstorm
+# /framework-update
 
-**Read `workflows/brainstorm.md` in full, then follow it.** That file is the single source of truth for this
+**Read `workflows/framework-update.md` in full, then follow it.** That file is the single source of truth for this
 track; this command exists to route you to it, not to restate it. Do not work from a summary —
 the details this file omits are the ones that get skipped.
 
-**Use when:** there is no clear next action yet
+**Use when:** a root cause revealed that a correctly functioning process would have caught it
 
 **The request:** $ARGUMENTS
 
@@ -25,10 +25,14 @@ the details this file omits are the ones that get skipped.
    scoped request, and never work from memory of a file — read it.
 5. State your assumptions before acting. Where the request admits two readings, present both.
 
-## The constraint
-**Thinking only.** No code, no gates, no file edits until the decision routes back into a normal
-track. The deliverable is a Decision Summary whose next step is a drafted request, a recorded
-rule, or an explicit "no change".
+## The triple close-out
+Every run of this delivers all three, or states which it skipped **and why, in that run**:
+
+1. **PROCESS** — the governed files learn the lesson.
+2. **FLOW** — the actual issue is fixed in the codebase.
+3. **CASES** — test cases are added.
+
+Each has been skipped in isolation, and each skip was invisible at the time.
 
 ## Close out
 

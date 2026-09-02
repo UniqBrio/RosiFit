@@ -1,14 +1,14 @@
 ---
-description: Track E - think it through; no code, no gates, no file edits
+description: Track B - modify an existing feature, surgically
 ---
 
-# /brainstorm
+# /enhance
 
-**Read `workflows/brainstorm.md` in full, then follow it.** That file is the single source of truth for this
+**Read `workflows/enhance.md` in full, then follow it.** That file is the single source of truth for this
 track; this command exists to route you to it, not to restate it. Do not work from a summary —
 the details this file omits are the ones that get skipped.
 
-**Use when:** there is no clear next action yet
+**Use when:** the request changes something that already ships
 
 **The request:** $ARGUMENTS
 
@@ -25,10 +25,12 @@ the details this file omits are the ones that get skipped.
    scoped request, and never work from memory of a file — read it.
 5. State your assumptions before acting. Where the request admits two readings, present both.
 
-## The constraint
-**Thinking only.** No code, no gates, no file edits until the decision routes back into a normal
-track. The deliverable is a Decision Summary whose next step is a drafted request, a recorded
-rule, or an explicit "no change".
+## The governing instruction
+**Do not regenerate the feature. Modify it surgically.**
+
+The dominant risk here is not "the new thing does not work" — it is **"something else stopped
+working and nobody looked"**. So the effort goes into the impact analysis, including the sibling
+call-site sweep, before anything is proposed.
 
 ## Close out
 

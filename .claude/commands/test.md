@@ -1,14 +1,14 @@
 ---
-description: Track E - think it through; no code, no gates, no file edits
+description: The merge gate - T0 to T6
 ---
 
-# /brainstorm
+# /test
 
-**Read `workflows/brainstorm.md` in full, then follow it.** That file is the single source of truth for this
+**Read `workflows/test-gate.md` in full, then follow it.** That file is the single source of truth for this
 track; this command exists to route you to it, not to restate it. Do not work from a summary —
 the details this file omits are the ones that get skipped.
 
-**Use when:** there is no clear next action yet
+**Use when:** any code changed and you are about to merge
 
 **The request:** $ARGUMENTS
 
@@ -25,10 +25,12 @@ the details this file omits are the ones that get skipped.
    scoped request, and never work from memory of a file — read it.
 5. State your assumptions before acting. Where the request admits two readings, present both.
 
-## The constraint
-**Thinking only.** No code, no gates, no file edits until the decision routes back into a normal
-track. The deliverable is a Decision Summary whose next step is a drafted request, a recorded
-rule, or an explicit "no change".
+## Two rules that are always violated first
+**This prompt TESTS.** It never "improves" application code. A genuine bug is documented and
+triaged, not silently patched.
+
+**BLOCKED is a verdict.** A class that could not be verified is never a pass — green-by-omission
+is the exact failure this gate exists to prevent.
 
 ## Close out
 

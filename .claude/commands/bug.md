@@ -1,14 +1,14 @@
 ---
-description: Track E - think it through; no code, no gates, no file edits
+description: Track C - fix a defect, root cause first
 ---
 
-# /brainstorm
+# /bug
 
-**Read `workflows/brainstorm.md` in full, then follow it.** That file is the single source of truth for this
+**Read `workflows/bug.md` in full, then follow it.** That file is the single source of truth for this
 track; this command exists to route you to it, not to restate it. Do not work from a summary —
 the details this file omits are the ones that get skipped.
 
-**Use when:** there is no clear next action yet
+**Use when:** something is broken
 
 **The request:** $ARGUMENTS
 
@@ -25,10 +25,12 @@ the details this file omits are the ones that get skipped.
    scoped request, and never work from memory of a file — read it.
 5. State your assumptions before acting. Where the request admits two readings, present both.
 
-## The constraint
-**Thinking only.** No code, no gates, no file edits until the decision routes back into a normal
-track. The deliverable is a Decision Summary whose next step is a drafted request, a recorded
-rule, or an explicit "no change".
+## The governing instruction
+**State the root cause before writing the fix.** Not the symptom. Not the file where the error
+surfaced. The cause — as a sentence, distinct from what was observed.
+
+And first: for any "it was working yesterday", check whether an external dependency is degraded
+before theorising about code.
 
 ## Close out
 
