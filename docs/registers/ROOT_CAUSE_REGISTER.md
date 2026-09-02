@@ -59,6 +59,73 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-007 — Every narrow table grant in 0002-0010 was a no-op, and the harness could not see it
+**Date:** 02-Sep-2026  ·  **Severity:** S1  ·  **Modules:** supabase/migrations, db/harness
+
+**Symptom** — a live-project audit found `authenticated` holding
+`DELETE, INSERT, SELECT, TRUNCATE, UPDATE` on 28 of 30 tables, and `anon` holding all of the same
+on `user_preferences` — while RBAC_MATRIX and FEATURE_TRUTH both stated, as a guarantee, that
+"`authenticated` holds no write grant on the engine tables". 135 assertions were passing.
+
+**Root cause** — Supabase ships DEFAULT PRIVILEGES granting ALL on every new `public` object
+**directly to `anon` and `authenticated`**, not through the PUBLIC pseudo-role. Every table was
+therefore fully open the instant it was created, and the narrow `grant select` / `grant insert,
+update` statements that followed added nothing to a grant that already included everything. Only
+the `revoke all ... from anon` lines did any work — which is exactly why `anon` was clean
+everywhere except `user_preferences`, the one migration with no revoke. The same root cause was
+found and fixed for FUNCTIONS in 0012; nobody went back for the tables.
+
+The reason it survived 135 green assertions is the second half: `000_local_shim.sql` did not
+reproduce those default privileges, so **the harness was stricter than production**. Every grant
+assertion was vacuously true there. A test environment that is safer than production cannot
+prove a claim about production.
+
+**Fix** — `0015_repair_table_grants.sql` revokes everything from `anon` and `authenticated` and
+re-grants exactly what each creating migration asked for, restores the column-level
+`update (status, cancellation_reason)` on `sessions`, forces RLS on `user_preferences`, and
+removes the `postgres`-owned default-privilege entry so the next table starts closed. The shim
+now sets those default privileges, so the defect is reproducible before it is fixed.
+
+**Files** — `supabase/migrations/0015_repair_table_grants.sql`, `db/harness/000_local_shim.sql`,
+`supabase/tests/09_grants.sql`.
+
+**How to verify** — `npm run test:db`. `09_grants.sql` compares `authenticated`'s privileges
+against the intended set table by table and names any that differ; it asserts `sessions` carries
+UPDATE on exactly `status, cancellation_reason`; and it creates a throwaway table to prove a NEW
+one starts with no `anon`/`authenticated` grant. Revert 0015 and those assertions fail.
+
+**Recurrence risk** — the class is "a grant the platform made that a migration did not know to
+take away". Searched with `information_schema.role_table_grants` and `pg_default_acl` across all
+30 tables and both client roles; the remaining sites are the SECURITY DEFINER functions, already
+closed by 0011/0012, and the `supabase_admin`-owned default ACL, which governs only objects
+created by that role and not by our migrations. The default-privilege revoke in 0015 closes the
+class for tables rather than the instances.
+
+**What was actually reachable** — RLS refused nearly all of it, because a write with no permissive
+policy is denied whatever the grant says. Two things were real. `sessions` had a table-wide UPDATE
+where 0007 intended two columns, and `sessions_status_update` is a row predicate, so any signed-in
+active staff member could rewrite `present_count`, `expected_count`, `session_date` or
+`deleted_at` — attendance figures, from the client, which RBAC_MATRIX forbids outright. And a
+staff `SELECT` on `super_admin_recovery` was ACCEPTED (RLS returned zero rows) where
+`01_auth.sql` asserted it was REFUSED; no hash could ever be read, so nothing leaked, but that
+assertion was green for a reason that did not hold in production. Nothing was exploited: the
+project has zero `app_users` rows, so no session has ever existed. It would have become live with
+the first sign-in.
+
+**Prevention** — `supabase/tests/09_grants.sql`, executed by `db/harness/test.sh` and by the
+`db-harness` job in `.github/workflows/ci.yml`. The rung only exists because the shim was made
+faithful first; the assertion and the fidelity are one control, not two.
+
+**Process check** — **Yes**, a correctly functioning process would have caught this. ENVIRONMENTS
+rule 4 requires schema parity to be "proven by reconstruction", and the harness did reconstruct —
+but only what the migrations wrote, never what the platform granted underneath them. The rule now
+reads on a shim that reproduces the platform's own defaults. The wider lesson is recorded rather
+than assumed: a harness is only evidence about production to the extent it reproduces
+production's defaults, and one that is *stricter* produces false greens, which are worse than
+reds.
+
+---
+
 ## RC-006 — writeBaseline glued the first entry onto the header
 **Date:** 28-Aug-2026 · **Severity:** S2 · **Modules:** ratchet engine (all baselined gates)
 
