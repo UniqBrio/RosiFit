@@ -3,31 +3,82 @@
 > Ambiguity here produces "which database did that just write to?" — a question with no good
 > answers, usually asked after the fact.
 
+> **Filled at framework adoption, 02-Sep-2026,** from `db/harness/`, `src/data/repository.ts`,
+> `src/lib/supabase.ts`, `.env.example` and `supabase/SETUP.md`.
+
+RosiFit has **three** environments, not the template's four. There is no staging, and saying so
+is more useful than leaving an empty row that looks like an oversight.
+
 | Name | Purpose | URL | Datastore identifier | Who may write | Automated target? |
 |---|---|---|---|---|---|
-| **development** | Local | `localhost:3000` | local / dev instance | anyone | yes |
-| **test** | Automated tests | | | CI + developers | **yes — the only automated target** |
-| **staging** | Pre-production verification | | | deploys only | no |
-| **production** | Real users | | | **approved deploys only** | **NEVER** |
+| **fixtures** | The app with no backend at all | `expo start` / static export | none — `src/data/mock.ts` | anyone; nothing persists | yes — no data exists to harm |
+| **harness** | Automated schema + policy tests | none (psql only) | local Postgres 16, socket `/tmp`, port `5433`, database `rosifit` | CI + developers | **yes — the only automated target** |
+| **production** | Real users | Vercel project `rosi-fit` | Supabase project `lhpzhkzbnquwjljmbylo` ("Rosifit") | **approved deploys only** | **NEVER without explicit instruction** |
+
+**There is no staging.** RosiFit has one Supabase project. A change is proven against the harness
+and then goes to production; there is no third place for it to sit. Recorded here so nobody plans
+around a staging environment that does not exist — see TECH_DEBT if that becomes a constraint.
+
+## How the app chooses
+
+`src/data/repository.ts` decides once, at module load, and exports `dataSource`:
+
+- `EXPO_PUBLIC_SUPABASE_URL` **and** `EXPO_PUBLIC_SUPABASE_ANON_KEY` set → `live`. Every read
+  goes to the live project through the anon key, and RLS decides what comes back.
+- Either missing → `fixtures`. The app runs, warns once in dev, and signs nobody in.
+
+**Screens never branch on this.** They receive the same shapes either way (CP-001). There is no
+`APP_ENV` variable in RosiFit; presence of the two public keys *is* the switch, which means there
+is no way to point a build at "production config" and "test data" by accident.
 
 ---
 
 ## Binding rules
 
-1. **Production is never an automated test target.** Not "usually not". Never.
+1. **Production is never an automated test target.** Not "usually not". Never — and in this repo
+   that rule has teeth, because production is the *only* live environment there is.
 2. **A staging deploy is a production BUILD pointed at NON-PRODUCTION DATA.** Those are separate
-   questions and conflating them is how a test run reaches live customers.
-3. **Every schema change reaches production only through a migration file** that was applied to
-   the test environment first and confirmed. Direct edits to either environment are drift by
-   definition — and "minor" is not an exemption.
-4. **Schema parity is checked before backend work and again before production promotion.** Any
-   unacknowledged difference blocks.
-5. **Outbound messages are deny-by-default outside production**, with an explicit allowlist.
+   questions and conflating them is how a test run reaches live customers. N/A today: no staging.
+3. **Every schema change reaches production only through a migration file** in
+   `supabase/migrations/`, applied to the harness first and confirmed by `bash db/harness/test.sh`.
+   Never edit an applied migration. Direct edits are drift by definition — and "minor" is not an
+   exemption.
+4. **Schema parity is checked before backend work and again before production promotion.** The
+   harness rebuilds from `000_local_shim.sql` plus every migration in order, so parity is proven
+   by reconstruction rather than by comparison.
+5. **Outbound messages are deny-by-default outside production**, with an explicit allowlist. See
+   TEST_ACCOUNTS.md. Today this holds trivially: fixtures and harness have no SES credentials, so
+   a send cannot leave either of them.
+
+---
 
 ## Configuration per environment
 
-| Variable | development | test | staging | production |
-|---|---|---|---|---|
-| `APP_ENV` | development | test | staging | production |
-| `ALLOW_OUTBOUND_MESSAGES` | false | false | false | true |
-| `PUBLIC_BUILD_ID` | *(empty)* | commit SHA | commit SHA | commit SHA |
+| Variable | fixtures | harness | production |
+|---|---|---|---|
+| `EXPO_PUBLIC_SUPABASE_URL` | *(unset — this is what makes it fixtures)* | *(unset)* | set |
+| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | *(unset)* | *(unset)* | set |
+| `SUPABASE_SERVICE_ROLE_KEY` | ➖ | ➖ | Edge Function secret only |
+| `PIN_PEPPER` | ➖ | ➖ | Edge Function secret only — ◻ **not yet set** |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_REGION` / `SES_*` | ➖ | ➖ | Edge Function secrets only |
+
+Only the two `EXPO_PUBLIC_` values may ever be public: anything with that prefix is compiled into
+the bundle and readable by anyone who installs the app (guardrail 4, `.env.example`). The rest are
+set with `supabase secrets set` and appear in no tracked file.
+
+---
+
+## Current state of production — ◻ as recorded in `supabase/SETUP.md`, not re-verified here
+
+- Migrations `0001`–`0014` applied; 30 tables in `public`, every one with RLS.
+- Edge Functions deployed: `auth-login`, `auth-bootstrap`, `recovery-check` (public,
+  `verify_jwt=false` — nobody has a session when they call them), plus `pin-issue`, `pin-reset`,
+  `csv-import`, `send-followups` (JWT required).
+- `app_settings` singleton seeded; **`bootstrap_completed` is still `false`** — the academy admin
+  has not registered yet.
+- **`PIN_PEPPER` is not set.** Until it is, every auth function returns 500. Nothing else is
+  blocked: CSV import and send do not derive from it.
+- Supabase advisors run and acted on — migrations `0011`–`0013`.
+
+These marks are ◻ because they were read from `SETUP.md` during this documentation pass. Nothing
+in this pass connected to the live project, by design.
