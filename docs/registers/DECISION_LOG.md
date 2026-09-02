@@ -18,7 +18,8 @@
 | 009 | [G8 Functional / integration — accepted unverifiable; no `test:functional` script exists](../decisions/003-accepted-unverifiable-gate-classes.md) | Accepted | 02-Sep-2026 | |
 | 010 | [G10 Backward compatibility — accepted INERT, and its PASS must not be believed](../decisions/003-accepted-unverifiable-gate-classes.md) | Accepted | 02-Sep-2026 | |
 | 011 | [`gate-runner.mjs` is not edited locally; its `src`-only default is carried as debt](../decisions/004-gate-runner-dir-gap.md) | Accepted | 02-Sep-2026 | |
-| 012 | [The DB harness is unverifiable on the adopting machine (no `psql`, no Docker)](../decisions/003-accepted-unverifiable-gate-classes.md) | Accepted | 02-Sep-2026 | |
+| 012 | [The DB harness is unverifiable on the adopting machine (no `psql`, no Docker)](../decisions/003-accepted-unverifiable-gate-classes.md) | **Superseded by 013** | 02-Sep-2026 | |
+| 013 | [The DB harness is runnable, and CI is what keeps it runnable](../decisions/005-db-harness-runnable.md) | Accepted | 02-Sep-2026 | 012 |
 
 Status: `Proposed` · `Accepted` · `Superseded by NNN` · `Deprecated`
 

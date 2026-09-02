@@ -160,6 +160,13 @@ edit; the framework's own rule is that needing to edit a process file is the sig
   executed. This was already true before the pass and nothing here touched `supabase/` or
   `db/harness/`. TD-010.
 
+  > **Superseded 02-Sep-2026 — ADR 013.** That was a property of the adopting machine, not
+  > of this repository: Debian and Ubuntu keep `initdb`, `postgres` and `pg_ctl` off `PATH`,
+  > under `/usr/lib/postgresql/<major>/bin`, so a complete Postgres 16 reads as absent. On a
+  > machine with the server binaries the suite runs unmodified and **all 135 assertions
+  > pass** — over a socket and over TCP. `db/harness/start.sh` and the `db-harness` job in
+  > `.github/workflows/ci.yml` keep it that way. TD-010 is paid down.
+
 ---
 
 ## Verification pass — 02-Sep-2026, same branch
@@ -237,6 +244,13 @@ in the archive header: never archive a file whose basename matches a rung-claime
 - `bash db/harness/test.sh` is **BLOCKED, not run.** Neither `psql` nor Docker is on PATH on this
   machine; it aborts in `reset.sh` at `psql: command not found`. **The 124 assertions were not
   executed, and the same-count comparison could not be made.**
+
+  > **Superseded 02-Sep-2026 — ADR 013.** That was a property of the adopting machine, not
+  > of this repository: Debian and Ubuntu keep `initdb`, `postgres` and `pg_ctl` off `PATH`,
+  > under `/usr/lib/postgresql/<major>/bin`, so a complete Postgres 16 reads as absent. On a
+  > machine with the server binaries the suite runs unmodified and **all 135 assertions
+  > pass** — over a socket and over TCP. `db/harness/start.sh` and the `db-harness` job in
+  > `.github/workflows/ci.yml` keep it that way. TD-010 is paid down.
 
   This was measured **before** any commit on this branch and failed identically then, so it is a
   pre-existing environment gap, not a regression. This pass changed nothing under `supabase/` or

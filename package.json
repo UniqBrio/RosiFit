@@ -50,6 +50,8 @@
     "audit:deadweight": "node scripts/audits/check-dead-weight.mjs",
     "audit:all": "npm run audit:colors && npm run audit:testids && npm run audit:rules && npm run audit:columns && npm run audit:deadweight",
     "guard:test": "bash scripts/hooks/guard-reachability.test.sh",
+    "db:start": "bash db/harness/start.sh",
+    "test:db": "bash db/harness/start.sh && bash db/harness/test.sh",
     "guard:install": "ln -sf ../../scripts/hooks/pre-commit-guard.sh .git/hooks/pre-commit"
   },
   "private": true

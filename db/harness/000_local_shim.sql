@@ -8,6 +8,20 @@ do $$ begin
 end $$;
 grant anon, authenticated, service_role to authenticator;
 
+-- Supabase ships DEFAULT PRIVILEGES that grant ALL on every new object in
+-- `public` DIRECTLY to anon, authenticated and service_role -- not via the
+-- PUBLIC pseudo-role. Reproducing them is not a nicety: without these lines
+-- the harness is STRICTER than production, so a migration that forgets to
+-- revoke looks correct here and is wide open there. That is exactly what
+-- happened to the table grants 0002-0010 believed they were setting, and why
+-- 135 passing assertions did not catch it (see 0015).
+--
+-- Set as `postgres` because that is the role migrations run as, both here and
+-- on Supabase, so it is the pg_default_acl entry that governs their tables.
+alter default privileges in schema public grant all on tables    to anon, authenticated, service_role;
+alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
+alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
+
 create schema if not exists auth;
 create schema if not exists storage;
 

@@ -23,8 +23,14 @@ schema, all of which a Supabase project already has.
 asserts the invariants. It is not part of the deployed schema.
 
 ```bash
+npm run test:db               # start the cluster if it is not up, then all 135 assertions
+./db/harness/start.sh         # just the cluster: Postgres 16, socket /tmp, port 5433
 ./db/harness/test.sh          # rebuilds a fresh DB per test file, then asserts
 ```
+
+The same suite runs in CI against `services: postgres:16` — the `db-harness` job in
+`.github/workflows/ci.yml`. `PGHOST`, `PGPORT` and `PGUSER` point the scripts at any
+server, which is what lets one command work in both places.
 
 `db/harness/000_local_shim.sql` recreates the pieces Supabase provides
 (the roles, `auth.users`, `auth.uid()`, `storage.*`) so `supabase/migrations/`
