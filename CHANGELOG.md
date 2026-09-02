@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased — the three migrations the live project never got
+
+**Add Member fails in the live app.** It says so, at least: *"Could not find the function
+public.create_member(p_aliases, p_emails, p_full_name, p_joined_on, p_offering_id, p_weekdays)
+in the schema cache. Nothing has been saved."* The client is not wrong — `createMember` in
+`src/data/repository.ts` sends exactly the six named arguments **0016** declares. The function
+is not there.
+
+**Nor are two others.** Read back from the live schema rather than assumed: the project holds
+0001–0015 and stops. `create_member` (0016), the `holidays` triggers and DELETE policy (0017)
+and `set_offering_schedule` (0018) are all absent. Three forms therefore fail the same way —
+adding a member, deleting a holiday, and giving a course its days — and the last entry below
+already said as much about 0018 alone. It was true of all three.
+
+**`supabase db push` cannot place them.** The live migration-history table holds timestamp-named
+versions from an earlier apply route (`20260901134714` …) while `supabase/migrations/` is
+numbered `0001`…`0018`; the CLI refuses that mismatch outright rather than guessing which is
+which. Repairing that history is a decision about the live project in its own right, not
+something to do on the way past a form bug.
+
+**`supabase/apply_0016_0018.sql`** is the paste-ready alternative, following the
+`supabase/apply_all.sql` convention already in the repo: 0016, 0017 and 0018 verbatim and in
+order, inside one transaction, with a PostgREST schema-cache reload after the commit. Run it
+**once** — 0017's triggers and policy are bare `CREATE`s, so a second run fails loudly instead
+of half-applying. Nothing here is application code; nothing in the app was wrong.
+
+**Still not applied.** Only the repo owner runs it.
+
 ## Unreleased — a course can be given the days it actually runs
 
 **Frequency was orphaned intent.** The course form collects "3 sessions per week" and says,
