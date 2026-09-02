@@ -40,7 +40,17 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p scripts/tsconfig.json",
     "check:contrast": "tsx scripts/check-contrast.ts",
     "check:icons": "tsx scripts/check-icons.ts",
-    "check": "npm run typecheck && npm run check:contrast && npm run check:icons"
+    "check": "npm run typecheck && npm run check:contrast && npm run check:icons",
+    "gate": "node scripts/gate-runner.mjs",
+    "theme:contrast": "npm run check:contrast",
+    "audit:colors": "node scripts/audits/check-hardcoded-colors.mjs --dir src && node scripts/audits/check-hardcoded-colors.mjs --dir app --baseline .baselines/hardcoded-colors-app-baseline.txt",
+    "audit:testids": "node scripts/audits/check-testid-coverage.mjs --dir src && node scripts/audits/check-testid-coverage.mjs --dir app --baseline .baselines/testid-app-baseline.txt",
+    "audit:rules": "node scripts/audits/check-rule-coverage.mjs",
+    "audit:columns": "node scripts/audits/check-column-control.mjs --dir src && node scripts/audits/check-column-control.mjs --dir app --baseline .baselines/column-control-app-baseline.txt",
+    "audit:deadweight": "node scripts/audits/check-dead-weight.mjs",
+    "audit:all": "npm run audit:colors && npm run audit:testids && npm run audit:rules && npm run audit:columns && npm run audit:deadweight",
+    "guard:test": "bash scripts/hooks/guard-reachability.test.sh",
+    "guard:install": "ln -sf ../../scripts/hooks/pre-commit-guard.sh .git/hooks/pre-commit"
   },
   "private": true
 }
