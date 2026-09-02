@@ -6,7 +6,9 @@ import { handlePreflight } from '../_shared/cors.ts';
 import { json, errorJson, HttpError } from '../_shared/response.ts';
 import { adminClient } from '../_shared/db.ts';
 import { toE164India } from '../_shared/phone.ts';
-import { hashAnswer, isFourDigitPin, syntheticEmail, derivePinSecret } from '../_shared/pin.ts';
+import {
+  hashAnswer, isFourDigitPin, syntheticEmail, derivePinSecret, pinSecretsConfigured,
+} from '../_shared/pin.ts';
 import { createAuthIdentity } from '../_shared/identity.ts';
 
 type AnswerInput = { question_id: number; answer: string };
@@ -51,6 +53,16 @@ Deno.serve(async (req) => {
       if (typeof a.answer !== 'string' || a.answer.trim().length === 0) {
         throw new HttpError(400, 'Every security question needs an answer.');
       }
+    }
+
+    // Fail before the first write, not after. Without the pepper this call
+    // cannot possibly finish, and discovering that AFTER inserting app_users
+    // means relying on the cleanup path to undo a row that should never have
+    // been created.
+    if (!pinSecretsConfigured()) {
+      throw new HttpError(503,
+        'Sign-in is not finished being set up on the server yet. ' +
+        'An administrator needs to set the PIN_PEPPER secret for this project.');
     }
 
     const admin = adminClient();

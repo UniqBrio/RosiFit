@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, Pressable, Modal, ScrollView, TextInput } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, Pressable, Modal, ScrollView, TextInput, Platform } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
 import { RADIUS, SPACE, TAP_MIN } from '../theme/tokens';
 import { Icon } from './Icon';
@@ -12,8 +12,31 @@ import { Icon } from './Icon';
 export function Sheet({ open, onClose, title, children }:
   { open: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
   const { theme } = useTheme();
+
+  /**
+   * Two halves of the same accessibility bug, both from react-native-web's
+   * Modal:
+   *
+   *  - OPEN: `accessibilityViewIsModal` puts aria-hidden on the app root, but
+   *    the button that opened the sheet is IN that root and still holds
+   *    focus -- "aria-hidden on an ancestor of a focused element". Blurring
+   *    the opener as the sheet opens leaves nothing focused inside the
+   *    hidden subtree.
+   *  - CLOSED: a closed Modal stays mounted as a display:none container whose
+   *    buttons and search field are still in the DOM and still focusable.
+   *    Not rendering it at all (below) is the fix -- a closed sheet has no
+   *    DOM, so it cannot hold focus or be tabbed into.
+   */
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const active = document.activeElement as HTMLElement | null;
+    if (active && active !== document.body && typeof active.blur === 'function') active.blur();
+  }, [open]);
+
+  if (!open) return null;
+
   return (
-    <Modal visible={open} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <View style={{ flex: 1, justifyContent: 'flex-end' }}>
         <Pressable
           onPress={onClose}

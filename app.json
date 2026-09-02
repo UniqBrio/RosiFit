@@ -13,6 +13,7 @@
     "web": {
       "bundler": "metro",
       "output": "static",
+      "favicon": "./assets/favicon.png",
       "name": "RosiFit",
       "shortName": "RosiFit",
       "themeColor": "#5C0F63",
