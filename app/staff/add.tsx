@@ -94,7 +94,7 @@ export default function StaffAdd() {
         </Text>
       </View>
 
-      <Button label={busy ? 'Saving…' : 'Save staff member'} onPress={() => void save()}
+      <Button label={busy ? 'Saving…' : 'Save Staff Member'} onPress={() => void save()}
         disabled={!valid || busy} style={{ marginTop: SPACE.xl }} />
       <Muted style={{ marginTop: 9, textAlign: 'center' }}>
         {valid ? `Saved as ${role} · no app access yet` : 'Name and a 10-digit mobile number are needed'}

@@ -124,7 +124,7 @@ export default function MatchReview() {
         <Button label={importing ? 'Importing…' : 'Import the file'} disabled={importing}
           style={{ marginTop: SPACE.lg }} onPress={() => void runImport()} />
         <Button label="Back to upload" variant="secondary" style={{ marginTop: SPACE.sm }}
-          onPress={() => router.replace('/(tabs)/upload')} />
+          onPress={() => router.replace('/upload')} />
       </Screen>
     );
   }

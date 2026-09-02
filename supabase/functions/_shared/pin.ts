@@ -4,12 +4,31 @@
 // database alone -- the database never sees a PIN, a pepper, or a derived
 // secret, only the resulting GoTrue password hash.
 
+import { HttpError } from './response.ts';
+
 const encoder = new TextEncoder();
 
+/**
+ * A missing pepper is a DEPLOYMENT fault, not a caller fault, so it answers
+ * 503 with a sentence that names the fix -- not an opaque 500 that reads
+ * like a bug in the app. It must never be defaulted or generated on the fly:
+ * every PIN in the project derives from this value, so a different pepper
+ * silently invalidates every credential already issued.
+ */
 function pepper(): string {
   const p = Deno.env.get('PIN_PEPPER');
-  if (!p) throw new Error('PIN_PEPPER is not configured for this project.');
+  if (!p) {
+    throw new HttpError(503,
+      'Sign-in is not finished being set up on the server yet. ' +
+      'An administrator needs to set the PIN_PEPPER secret for this project.');
+  }
   return p;
+}
+
+/** True when this project can derive PINs at all. Lets a handler answer a
+ *  read-only request (the question list) that does not need the pepper. */
+export function pinSecretsConfigured(): boolean {
+  return Boolean(Deno.env.get('PIN_PEPPER'));
 }
 
 export async function hmacHex(key: string, message: string): Promise<string> {

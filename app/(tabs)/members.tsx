@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { View, Text, Pressable, TextInput, ScrollView } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Screen, Muted, Button, Skeleton, EmptyState, ErrorState } from '../../src/components/ui';
+import { ScreenHeader } from '../../src/components/AppShell';
 import { Icon } from '../../src/components/Icon';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
@@ -59,12 +60,9 @@ export default function Members() {
 
   return (
     <Screen>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.md }}>
-        <Muted style={{ flex: 1 }}>
-          {`${members.length} members · ${branches} branches · ${courses} courses`}
-        </Muted>
-        <Button label="Add" onPress={() => router.push('/member/edit')} />
-      </View>
+      <ScreenHeader title="Members"
+        subtitle={`${members.length} members · ${branches} branches · ${courses} courses`}
+        right={<Button label="Add" onPress={() => router.push('/member/edit')} />} />
 
       <View style={{
         flexDirection: 'row', alignItems: 'center', gap: SPACE.md, marginTop: SPACE.md,

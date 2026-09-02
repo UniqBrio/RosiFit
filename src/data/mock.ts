@@ -220,7 +220,7 @@ export const TEMPLATES: Template[] = [
     preview: 'It has been {{consecutive_missed}} sessions. Shall we pause your enrolment?',
     subject: 'Shall we pause your enrolment, {{first_name}}?',
     body: 'Hello {{first_name}},\n\nIt has been {{consecutive_missed}} sessions in a row. We can pause and hold your place.\n\n{{academy_name}}' },
-  { id: 't4', name: 'Schedule change notice', active: false, icon: 'payments',
+  { id: 't4', name: 'Schedule change notice', active: false, icon: 'edit_calendar',
     preview: 'Inactive — not offered in the send flow while it is switched off.',
     subject: 'A change to your {{course_name}} times',
     body: 'Hello {{first_name}},\n\nInactive — not offered in the send flow while it is switched off.\n\n{{academy_name}}' },

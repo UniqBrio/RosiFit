@@ -31,10 +31,23 @@ Deno.serve(async (req) => {
       .is('deleted_at', null)
       .maybeSingle();
     if (findErr) throw new HttpError(500, 'Could not check that account. Try again.');
-    // Same generic message whether the number is unknown or the PIN is
-    // wrong -- distinguishing them would let an attacker enumerate registered
-    // staff by phone number.
-    if (!appUser) throw new HttpError(401, GENERIC_FAIL);
+
+    if (!appUser) {
+      // Before anyone has registered there is no account ANY number could
+      // match, and "that number and PIN do not match" sends the first user
+      // hunting for a typo instead of to the register screen. This leaks
+      // nothing: whether the academy has been set up is a single global fact
+      // the register screen already states out loud. Once it IS set up, the
+      // message below goes back to being deliberately indistinguishable from
+      // a wrong PIN, so nobody can enumerate staff by phone number.
+      const { data: settings } = await admin
+        .from('app_settings').select('bootstrap_completed').eq('id', 1).maybeSingle();
+      if (settings && !settings.bootstrap_completed) {
+        throw new HttpError(409,
+          'This academy has not been registered yet. Use “Register your academy” to create the admin account first.');
+      }
+      throw new HttpError(401, GENERIC_FAIL);
+    }
 
     if (appUser.locked_until && new Date(appUser.locked_until).getTime() > Date.now()) {
       const mins = Math.ceil((new Date(appUser.locked_until).getTime() - Date.now()) / 60000);
