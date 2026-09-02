@@ -1,4 +1,14 @@
 {
+  "$comment": [
+    "Two halves, both committed on purpose:",
+    "  permissions - RosiFit's git guard (binding per CLAUDE.md): origin is the",
+    "    only remote, and only `git push origin ...` can ever run.",
+    "  hooks - the app framework's commit guard. The PreToolUse hook fires on",
+    "    every Bash call in every session; .claude/hooks/pre-tool-use-guard.mjs",
+    "    bridges it to scripts/hooks/pre-commit-guard.sh and fails OPEN on its",
+    "    own bugs (only exit 2 blocks), so it cannot wedge a session.",
+    "Personal overrides belong in .claude/settings.local.json (gitignored)."
+  ],
   "permissions": {
     "allow": [
       "Bash(git push origin:*)"
@@ -9,6 +19,20 @@
       "Bash(git push https:*)",
       "Bash(git push http:*)",
       "Bash(git push git@:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/pre-tool-use-guard.mjs",
+            "timeout": 120
+          }
+        ]
+      }
     ]
   }
 }
