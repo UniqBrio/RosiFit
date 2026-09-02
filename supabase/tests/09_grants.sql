@@ -30,7 +30,9 @@ with intended(tbl, privs) as (values
   ('email_messages','SELECT'),
   ('email_templates','INSERT,SELECT,UPDATE'),
   ('follow_up_config','SELECT,UPDATE'),
-  ('holidays','INSERT,SELECT,UPDATE'),
+  -- DELETE added by 0017: removing a holiday is a real action, and C-92
+  -- promises the sessions it covered go back to `scheduled`.
+  ('holidays','DELETE,INSERT,SELECT,UPDATE'),
   ('member_aliases','DELETE,INSERT,SELECT,UPDATE'),
   ('member_emails','INSERT,SELECT,UPDATE'),
   ('member_enrollments','SELECT'),
