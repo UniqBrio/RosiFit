@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { View, Text, Pressable, Image } from 'react-native';
+import { View, Text, Pressable, Image, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePathname, useRouter, type Href } from 'expo-router';
 import type { BottomTabBarProps } from 'expo-router/build/react-navigation/bottom-tabs';
 import { Icon } from './Icon';
 import { Sheet } from './Sheet';
+import { DropdownPanel, DropdownList } from './Dropdown';
 import { useTheme } from '../theme/ThemeProvider';
 import { useToast } from './Toast';
 import { RADIUS, SPACE, TAP_MIN } from '../theme/tokens';
@@ -17,8 +18,8 @@ import { useFilterOptions } from '../data/hooks';
  * The prototype's own caption calls it "seven tabs", and its `showTabs` list
  * names them: home, members, courses, weekly, calendar, reports, more. They
  * are not seven slots in one bar. They are a persistent academy header
- * carrying a four-chip quick-nav row (Members · Courses · Weekly · Sessions)
- * above a three-item floating bar (Home · Reports · More). Upload is NOT a
+ * carrying a quick-nav chip row (Overview · Members · Courses · Weekly ·
+ * Attendance) above a three-item floating bar (Home · Reports · More). Upload is NOT a
  * tab in the canvas -- it is reached from Home's "what needs you" card and
  * from the header's + button, which is why it moved out of the bar here.
  *
@@ -26,18 +27,31 @@ import { useFilterOptions } from '../data/hooks';
  * so it lives in AcademyProvider rather than in the dashboard.
  */
 
-/** The four quick-nav chips, in the canvas' order, with the canvas' icons. */
+/**
+ * The quick-nav chips.
+ *
+ * Overview leads, and it is the dashboard's OWN chip. Home is reachable from
+ * the floating bar too, but the bar sits at the bottom of a long scroll and
+ * reads as a separate place -- so from Members or Courses there was no
+ * one-tap way back to the figures, which is the screen people switch to and
+ * from most. A chip in the same row as the others makes that a sideways move
+ * rather than a trip.
+ *
+ * Attendance replaces the month calendar that used to sit here: the register
+ * people read is a filterable list of attendance facts, not a grid of days.
+ */
 const CHIPS: { href: Href; match: string; icon: string; label: string }[] = [
-  { href: '/(tabs)/members',  match: '/members',  icon: 'group',      label: 'Members' },
-  { href: '/(tabs)/courses',  match: '/courses',  icon: 'school',     label: 'Courses' },
-  { href: '/(tabs)/weekly',   match: '/weekly',   icon: 'favorite',   label: 'Weekly' },
-  { href: '/(tabs)/sessions', match: '/sessions', icon: 'fact_check', label: 'Sessions' },
+  { href: '/(tabs)',           match: '/',           icon: 'space_dashboard', label: 'Overview' },
+  { href: '/(tabs)/members',   match: '/members',    icon: 'group',      label: 'Members' },
+  { href: '/(tabs)/courses',   match: '/courses',    icon: 'school',     label: 'Courses' },
+  { href: '/(tabs)/weekly',    match: '/weekly',     icon: 'favorite',   label: 'Weekly' },
+  { href: '/(tabs)/attendance',match: '/attendance', icon: 'fact_check', label: 'Attendance' },
 ];
 
 /** The three destinations the floating bar shows. */
 const NAV: { href: Href; match: string; icon: string; label: string; also?: string[] }[] = [
   { href: '/(tabs)',         match: '/',        icon: 'space_dashboard', label: 'Home',
-    also: ['/members', '/courses', '/weekly', '/sessions'] },
+    also: ['/members', '/courses', '/weekly', '/attendance'] },
   { href: '/(tabs)/reports', match: '/reports', icon: 'pie_chart',       label: 'Reports' },
   { href: '/(tabs)/more',    match: '/more',    icon: 'more_horiz',      label: 'More' },
 ];
@@ -50,7 +64,10 @@ export function AcademyHeader() {
   const insets = useSafeAreaInsets();
   const { branch, chooseBranch } = useAcademy();
   const options = useFilterOptions();
-  const [sheet, setSheet] = useState<null | 'branch' | 'add'>(null);
+  const [sheet, setSheet] = useState<null | 'add'>(null);
+  // The branch is a filter, not an action, so it opens in place under the
+  // name it changes rather than as a sheet over the figures it drives.
+  const [branchOpen, setBranchOpen] = useState(false);
 
   const branches = options.data?.branches ?? [ALL_BRANCHES];
   // The canvas spells the flagship branch out in the header and nowhere else.
@@ -61,6 +78,9 @@ export function AcademyHeader() {
     { icon: 'school',       label: 'Course',     note: 'What you teach, not when',   to: '/course/edit' },
     { icon: 'badge',        label: 'Staff',      note: 'Access is a separate step',  to: '/staff/add' },
     { icon: 'cloud_upload', label: 'Attendance', note: 'Upload a Meet CSV',          to: '/upload' },
+    // Home's quick action is now Upload attendance, so the holiday flow keeps
+    // its one-tap route from the shell rather than losing one (C-90).
+    { icon: 'event_busy',   label: 'Holiday',    note: 'Close a date range',        to: '/holiday' },
   ];
 
   return (
@@ -73,8 +93,10 @@ export function AcademyHeader() {
           accessibilityIgnoresInvertColors
           style={{ width: 36, height: 36, resizeMode: 'contain' }} />
 
-        <Pressable onPress={() => setSheet('branch')}
+        <Pressable testID="shell-branch-field"
+          onPress={() => setBranchOpen(o => !o)}
           accessibilityRole="button"
+          accessibilityState={{ expanded: branchOpen }}
           accessibilityLabel={`RosiFit Academy, showing ${branchLabel}. Change branch`}
           style={({ pressed }) => ({ flex: 1, minHeight: TAP_MIN, justifyContent: 'center', opacity: pressed ? 0.7 : 1 })}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -85,7 +107,7 @@ export function AcademyHeader() {
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
             <Text numberOfLines={1} style={{ fontSize: 12, color: theme.muted }}>{branchLabel}</Text>
-            <Icon name="arrow_drop_down" size={16} color={theme.muted} />
+            <Icon name={branchOpen ? 'arrow_drop_up' : 'arrow_drop_down'} size={16} color={theme.muted} />
           </View>
         </Pressable>
 
@@ -100,20 +122,44 @@ export function AcademyHeader() {
         </Pressable>
       </View>
 
-      <View style={{
-        flexDirection: 'row', gap: 7, paddingHorizontal: SPACE.lg, paddingBottom: 10,
-        borderBottomWidth: 1, borderBottomColor: theme.line,
-      }}>
+      {branchOpen ? (
+        <DropdownPanel inset={SPACE.xl} flow>
+          <Text style={{ fontSize: 12, color: theme.muted, marginBottom: SPACE.sm, lineHeight: 18 }}>
+            Every figure follows this. Picking one branch switches Home to Branch wise.
+          </Text>
+          <DropdownList testID="shell-branch"
+            options={branches.map(label => ({
+              label, meta: label === ALL_BRANCHES ? 'every branch' : '',
+            }))}
+            value={branch}
+            onSelect={b => {
+              chooseBranch(b);
+              setBranchOpen(false);
+              flash(b === ALL_BRANCHES ? 'Showing every branch' : `Showing ${b}`);
+            }} />
+        </DropdownPanel>
+      ) : null}
+
+      {/* Five chips no longer divide a phone's width into readable thirds, so
+          the row scrolls instead of truncating every label to "Attend...".
+          Sized by content, it fits whole on a tablet and slides on a phone. */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        accessibilityRole="tablist"
+        style={{ borderBottomWidth: 1, borderBottomColor: theme.line }}
+        contentContainerStyle={{ gap: 7, paddingHorizontal: SPACE.lg, paddingBottom: 10 }}>
         {CHIPS.map(c => {
           const on = path === c.match;
           return (
             <Pressable key={c.label} onPress={() => router.push(c.href)}
+              testID={`nav-chip-${c.label.toLowerCase()}`}
               accessibilityRole="tab" accessibilityState={{ selected: on }}
               accessibilityLabel={c.label}
               style={({ pressed }) => ({
-                flex: 1, minWidth: 0, height: 36, borderRadius: RADIUS.pill,
-                flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
-                paddingHorizontal: 4,
+                height: 36, borderRadius: RADIUS.pill,
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+                paddingHorizontal: 13,
                 backgroundColor: on ? theme.accent : 'transparent',
                 borderWidth: 1, borderColor: on ? theme.accent : theme.line,
                 opacity: pressed ? 0.75 : 1,
@@ -126,43 +172,7 @@ export function AcademyHeader() {
             </Pressable>
           );
         })}
-      </View>
-
-      <Sheet open={sheet === 'branch'} onClose={() => setSheet(null)} title="Branch">
-        <Text style={{ fontSize: 12, color: theme.muted, marginTop: 4, marginBottom: SPACE.md, lineHeight: 18 }}>
-          Every figure follows this. Picking one branch switches Home to Branch wise.
-        </Text>
-        <View style={{ gap: 2 }}>
-          {branches.map(b => {
-            const on = b === branch;
-            return (
-              <Pressable key={b}
-                onPress={() => {
-                  chooseBranch(b);
-                  setSheet(null);
-                  flash(b === ALL_BRANCHES ? 'Showing every branch' : `Showing ${b}`);
-                }}
-                accessibilityRole="radio" accessibilityState={{ selected: on }}
-                style={({ pressed }) => ({
-                  flexDirection: 'row', alignItems: 'center', gap: 14,
-                  minHeight: TAP_MIN + 6, paddingHorizontal: 6, paddingVertical: SPACE.md,
-                  borderBottomWidth: 1, borderBottomColor: theme.line,
-                  opacity: pressed ? 0.7 : 1,
-                })}>
-                <Icon name={on ? 'radio_button_checked' : 'radio_button_unchecked'}
-                  size={22} color={on ? theme.accentInk : theme.dim} />
-                <Text style={{ flex: 1, fontSize: 14.5, fontWeight: '700', color: on ? theme.accentInk : theme.fg }}>
-                  {b}
-                </Text>
-                {/* the chosen branch says so in words, not by the filled radio alone */}
-                <Text style={{ fontSize: 11.5, color: theme.muted }}>
-                  {on ? 'Selected' : b === ALL_BRANCHES ? 'every branch' : ''}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </Sheet>
+      </ScrollView>
 
       <Sheet open={sheet === 'add'} onClose={() => setSheet(null)} title="Add something">
         <View style={{ gap: 7, marginTop: SPACE.md }}>

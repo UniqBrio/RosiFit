@@ -4,16 +4,17 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useLocalSearchParams, type Href } from 'expo-router';
 import { Screen, H2, Muted, Label, Skeleton, ErrorState } from '../../src/components/ui';
 import { Icon } from '../../src/components/Icon';
-import { SearchPicker } from '../../src/components/Sheet';
+import { DropdownRow, DropdownField, DropdownPanel, DropdownList } from '../../src/components/Dropdown';
+import { PeriodPanel, periodFieldValue } from '../../src/components/PeriodFilter';
 import { Donut } from '../../src/components/Donut';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface, type StatusKey } from '../../src/theme/tokens';
-import { WEEK_STRIP, PERIODS, hasEmail, ruleSentence } from '../../src/data/mock';
+import { WEEK_STRIP, hasEmail, ruleSentence } from '../../src/data/mock';
 import { useFollowUp, useStaff, useFilterOptions, useWeekRows, usePendingSessions } from '../../src/data/hooks';
-import { currentWeek, lastWeek, lastFourWeeks } from '../../src/data/period';
+import { resolvePeriod, type PeriodChoice } from '../../src/data/period';
 import { useAcademy, ALL_BRANCHES } from '../../src/state/academy';
 
-type PickerKind = null | 'branch' | 'course' | 'period';
+type FilterKind = 'branch' | 'course' | 'period';
 
 export default function Home() {
   const { theme } = useTheme();
@@ -25,14 +26,16 @@ export default function Home() {
   // "Every figure follows this". Reading them from there is what makes the
   // header's choice reach the chart (C-84/85/86).
   const { scope, branch, setScope, setBranch } = useAcademy();
-  const [period, setPeriod] = useState('This week');
-  const [picker, setPicker] = useState<PickerKind>(null);
+  const [period, setPeriod] = useState<PeriodChoice>({ key: 'This week' });
+  // Only one dropdown is out at a time: two overlapping panels have no
+  // honest z-order, and the one underneath is unreachable.
+  const [open, setOpen] = useState<FilterKind | null>(null);
 
   // The period the filters name IS the period the queries run over, so a
   // tile can never quietly cover a different range from its own label (C-84).
-  const range = period === 'Last week' ? lastWeek()
-    : period === 'Last 4 weeks' ? lastFourWeeks()
-    : currentWeek();
+  // A custom range is resolved by the same function as a named one, so the
+  // two cannot drift apart.
+  const range = resolvePeriod(period);
 
   const followUp = useFollowUp(forced, range);
   const staff = useStaff(forced);
@@ -51,7 +54,8 @@ export default function Home() {
   const needAccess = (staff.data ?? []).filter(s => s.access !== 'active').length;
   const awaiting = pending.data?.length ?? WEEK_STRIP.filter(d => d.status === 'awaiting').length;
 
-  const periodLabel = PERIODS[period] ?? range.label;
+  // the dates the queries actually ran over, never a second, written copy
+  const periodLabel = range.label;
   const allCourses = courseOptions[0];
 
   // C-84/85/86. The filters are not decoration: the branch and the course
@@ -82,13 +86,13 @@ export default function Home() {
   // a 6-day member with poor attendance (C-87).
   const notExpected = members.reduce((n, m) => n + Math.max(6 - m.expected, 0), 0);
 
-  const rows = period === 'This week' ? allWeeks.slice(0, 1)
-    : period === 'Last week' ? allWeeks.slice(1, 2) : allWeeks;
+  const rows = period.key === 'This week' ? allWeeks.slice(0, 1)
+    : period.key === 'Last week' ? allWeeks.slice(1, 2) : allWeeks;
 
-  const filters: { label: string; value: string; kind: Exclude<PickerKind, null> }[] = [
+  const filters: { label: string; value: string; kind: FilterKind }[] = [
     ...(scope === 'branch' ? [{ label: 'Branch', value: branchValue, kind: 'branch' as const }] : []),
-    { label: 'Course', value: courseValue, kind: 'course' },
-    { label: 'Period', value: period, kind: 'period' },
+    { label: 'Course', value: courseValue, kind: 'course' as const },
+    { label: 'Period', value: periodFieldValue(period), kind: 'period' as const },
   ];
 
   const loading = followUp.state === 'loading' || weekRows.state === 'loading';
@@ -113,7 +117,8 @@ export default function Home() {
   ];
 
   const holidayInk = theme.isDark ? STATUS.holiday.fgDark : STATUS.holiday.fgLight;
-  const holidayBox = statusSurface(holidayInk);
+  const uploadInk = theme.isDark ? STATUS.awaiting.fgDark : STATUS.awaiting.fgLight;
+  const uploadBox = statusSurface(uploadInk);
 
   const controls = (
     <>
@@ -147,49 +152,69 @@ export default function Home() {
         })}
       </View>
 
-      <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.sm }}>
-        {filters.map(f => {
-          const narrowed = f.kind !== 'period' && !f.value.startsWith('All');
-          return (
-            <Pressable key={f.label} onPress={() => setPicker(f.kind)}
-              accessibilityRole="button" accessibilityLabel={`${f.label}, ${f.value}`}
-              style={{
-                flex: 1, minHeight: TAP_MIN, justifyContent: 'center', gap: 2,
-                paddingVertical: 9, paddingHorizontal: 11, borderRadius: 13,
-                backgroundColor: narrowed ? theme.control : theme.surface,
-                borderWidth: 1, borderColor: narrowed ? theme.accent : theme.line,
-              }}>
-              <Text style={{
-                fontSize: 9.5, fontWeight: '700', letterSpacing: 0.6,
-                textTransform: 'uppercase', color: theme.muted,
-              }}>{f.label}</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text numberOfLines={1} style={{ flex: 1, fontSize: 12.5, fontWeight: '700', color: theme.fgStrong }}>
-                  {f.value}
-                </Text>
-                <Icon name="arrow_drop_down" size={16} color={theme.muted} />
-              </View>
-            </Pressable>
-          );
-        })}
-      </View>
+      {/* The filters open in place. A bottom sheet hid the very figures the
+          filter is meant to narrow, so the choice was made blind; a panel
+          under the field keeps the tiles in view while it is open. */}
+      <DropdownRow open={open !== null} style={{ marginTop: SPACE.sm }}>
+        <View style={{ flexDirection: 'row', gap: SPACE.sm }}>
+          {filters.map(f => (
+            <DropdownField key={f.label}
+              label={f.label} value={f.value}
+              open={open === f.kind}
+              highlight={f.kind !== 'period' && !f.value.startsWith('All')}
+              onPress={() => setOpen(o => (o === f.kind ? null : f.kind))}
+              testID={`home-filter-${f.kind}`} />
+          ))}
+        </View>
 
-      <Pressable onPress={() => router.push('/holiday')}
+        {open === 'branch' ? (
+          <DropdownPanel>
+            <DropdownList options={branchOptions.map(label => ({ label }))} value={branchValue}
+              onSelect={l => { setBranch(l); setOpen(null); }} testID="home-branch" />
+          </DropdownPanel>
+        ) : null}
+        {open === 'course' ? (
+          <DropdownPanel>
+            <DropdownList options={courseOptions.map(label => ({ label }))} value={courseValue}
+              onSelect={l => { setCourse(l); setOpen(null); }} testID="home-course" />
+          </DropdownPanel>
+        ) : null}
+        {open === 'period' ? (
+          <DropdownPanel maxHeight={430}>
+            <PeriodPanel choice={period} onChange={setPeriod}
+              onDone={() => setOpen(null)} testID="home-period" />
+          </DropdownPanel>
+        ) : null}
+      </DropdownRow>
+
+      {/* The dashboard's quick action is the upload. A festival is decided a
+          few times a year; the attendance file arrives after every session,
+          and until it does that session counts for NOBODY -- so this is the
+          act the dashboard exists to prompt. Add Holiday keeps its one-tap
+          route from the header's + sheet (C-90). */}
+      <Pressable testID="home-upload-attendance"
+        onPress={() => router.push('/upload')}
         accessibilityRole="button"
-        style={{
-          marginTop: 9, height: TAP_MIN, borderRadius: 13, flexDirection: 'row',
+        accessibilityLabel={`Upload attendance. ${awaiting} sessions are awaiting a file`}
+        style={({ pressed }) => ({
+          marginTop: 9, minHeight: TAP_MIN, borderRadius: 13, flexDirection: 'row',
           alignItems: 'center', justifyContent: 'center', gap: SPACE.sm,
-          backgroundColor: holidayBox.bg, borderWidth: 1, borderColor: holidayBox.border,
-        }}>
-        <Icon name="event_busy" size={19} color={holidayInk} />
-        <Text style={{ fontSize: 13.5, fontWeight: '800', color: theme.fg }}>Add Holiday</Text>
+          paddingHorizontal: SPACE.lg,
+          backgroundColor: uploadBox.bg, borderWidth: 1, borderColor: uploadBox.border,
+          opacity: pressed ? 0.8 : 1,
+        })}>
+        <Icon name="cloud_upload" size={19} color={uploadInk} />
+        <Text style={{ fontSize: 13.5, fontWeight: '800', color: theme.fg }}>Upload attendance</Text>
+        <Text style={{ fontSize: 11.5, color: theme.muted, fontVariant: ['tabular-nums'] }}>
+          {`${awaiting} awaiting`}
+        </Text>
       </Pressable>
     </>
   );
 
   // Zeros during a load would be a lie -- "0 members need you" reads as good
   // news -- so the FIGURES wait behind a skeleton. The scope tabs, the
-  // filters and Add holiday do not: they are controls, they are correct
+  // filters and Upload attendance do not: they are controls, they are correct
   // before any figure arrives, and blanking them was what made the dashboard
   // look like it had no tabs whenever a fetch was slow or failing.
   if (loading) return <Screen>{controls}<View style={{ marginTop: SPACE.lg }}><Skeleton lines={5} /></View></Screen>;
@@ -410,21 +435,6 @@ export default function Home() {
         </Muted>
       </View>
 
-      <SearchPicker
-        open={picker === 'branch'} onClose={() => setPicker(null)}
-        title="Choose a branch" placeholder="Search branches"
-        options={branchOptions.map(label => ({ label }))} value={branchValue}
-        onSelect={l => { setBranch(l); setPicker(null); }} />
-      <SearchPicker
-        open={picker === 'course'} onClose={() => setPicker(null)}
-        title="Choose a course" placeholder="Search courses"
-        options={courseOptions.map(label => ({ label }))} value={courseValue}
-        onSelect={l => { setCourse(l); setPicker(null); }} />
-      <SearchPicker
-        open={picker === 'period'} onClose={() => setPicker(null)}
-        title="Choose a period" placeholder="Search periods"
-        options={Object.entries(PERIODS).map(([label, meta]) => ({ label, meta }))} value={period}
-        onSelect={l => { setPeriod(l); setPicker(null); }} />
     </Screen>
   );
 }

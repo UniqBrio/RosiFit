@@ -44,7 +44,7 @@ const AUDIT = () => {
   }
   return out;
 };
-const ROUTES=['/weekly','/upload','/members','/courses','/course/rules','/sessions','/holiday',
+const ROUTES=['/weekly','/upload','/members','/courses','/course/rules','/attendance','/holiday',
   '/templates','/staff','/reports','/audit','/send','/register','/more'];
 const b = await chromium.launch({ executablePath:'/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
 for (const theme of ['dark','light']) {

@@ -3,6 +3,8 @@ import { View, Text, Pressable, TextInput } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Screen, Muted, Label, Button } from '../../src/components/ui';
 import { Field } from '../../src/components/Field';
+import { DateField } from '../../src/components/DateTimePicker';
+import { iso } from '../../src/data/period';
 import { Icon } from '../../src/components/Icon';
 import { SearchPicker } from '../../src/components/Sheet';
 import { useTheme } from '../../src/theme/ThemeProvider';
@@ -82,7 +84,12 @@ export default function MemberEdit() {
       <PickRow icon="apartment" value={branch} onPress={() => setPicker('branch')} />
 
       <View style={{ marginTop: SPACE.md }}>
-        <Field label="Joined on" value={joined} onChange={setJoined} placeholder="25-Aug-26" />
+        {/* No future joining date: a member cannot have started next week,
+            and a picker that offers one invites the typo it then has to
+            validate. */}
+        <DateField label="Joined on" value={joined} onChange={setJoined}
+          placeholder="When she started" max={iso(new Date())}
+          testID="member-joined-on" />
       </View>
 
       <View style={{ flexDirection: 'row', gap: SPACE.sm, alignItems: 'flex-start', marginTop: -4 }}>

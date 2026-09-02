@@ -14,5 +14,10 @@
     "lib": ["ESNext"],
     "types": ["node"]
   },
-  "include": ["*.ts", "../src/theme/tokens.ts", "../src/components/iconAlias.ts"]
+  "include": [
+    "*.ts",
+    "../src/theme/tokens.ts",
+    "../src/components/iconAlias.ts",
+    "../src/**/*.test.ts"
+  ]
 }

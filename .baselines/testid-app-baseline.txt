@@ -2,13 +2,12 @@
 # A NEW signature BLOCKS. A signature fixed but still listed here ALSO BLOCKS (regenerate).
 # Signature: <path>|<count of interactive elements with no test id>.
 # Regenerate: node scripts/audits/check-testid-coverage.mjs --write-baseline
-# Generated: 2026-09-02 - 29 entries
+# Generated: 2026-09-02 - 28 entries
 app/(tabs)/courses.tsx|4
-app/(tabs)/index.tsx|6
+app/(tabs)/index.tsx|4
 app/(tabs)/members.tsx|4
 app/(tabs)/more.tsx|2
 app/(tabs)/reports.tsx|1
-app/(tabs)/sessions.tsx|1
 app/(tabs)/weekly.tsx|2
 app/appearance.tsx|3
 app/change-mobile.tsx|2

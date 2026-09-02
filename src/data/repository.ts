@@ -15,9 +15,10 @@ import { supabase, isConfigured } from '../lib/supabase';
 import type { Period } from './period';
 import {
   MEMBERS, COURSE_LIST, GLOBAL_RULE, COURSE_RULES, TEMPLATES, STAFF, AUDIT,
-  BRANCHES, COURSES, MONTH_DAYS, PENDING_SESSIONS, WEEK_ROWS,
+  BRANCHES, COURSES, MONTH_DAYS, PENDING_SESSIONS, WEEK_ROWS, attendanceFixture,
   type Member, type Course, type FollowUpRule, type Template, type Staff,
   type StaffAccess, type AuditEntry, type SessionDay, type WeekRow,
+  type AttendanceRow, type AttendanceStatus,
 } from './mock';
 
 export const dataSource: 'live' | 'fixtures' = isConfigured ? 'live' : 'fixtures';
@@ -200,6 +201,141 @@ export async function fetchCourses(): Promise<Course[]> {
   }));
 }
 
+/**
+ * Adding or renaming a course.
+ *
+ * This is a DIRECT write, not an Edge Function, and deliberately so: 0005
+ * gives `authenticated` INSERT and UPDATE on public.courses behind an RLS
+ * policy of `is_super_admin() and is_subscription_writable()`, and the
+ * audit_courses trigger records who changed what either way. There is
+ * nothing an Edge Function would add here except a second place for the
+ * rule to drift.
+ *
+ * Because the policy is the gate, a refusal is what a staff member who is
+ * not the super admin gets — and it must be SAID, not swallowed. The screen
+ * that calls this previously flashed "saved" unconditionally and never wrote
+ * anything at all, which is the defect this function exists to close.
+ */
+/**
+ * A write has to reach the LIST, not just the database.
+ *
+ * Without this, adding a course succeeded and the Courses tab still showed
+ * the set it fetched when it mounted -- indistinguishable, on screen, from
+ * the save having done nothing, which is the very complaint this work
+ * started from. The tab stays mounted behind the edit screen, so returning
+ * to it is not a remount and refetches nothing on its own.
+ *
+ * A counter every useCourses reads, bumped by every course write. Not a
+ * cache: nothing is stored here, it only says "ask again".
+ */
+const courseListeners = new Set<() => void>();
+
+export function onCoursesChanged(listener: () => void): () => void {
+  courseListeners.add(listener);
+  return () => { courseListeners.delete(listener); };
+}
+
+function coursesChanged(): void {
+  for (const listener of courseListeners) listener();
+}
+
+export type CourseInput = {
+  name: string;
+  /** 'HH:MM' or null. A DEFAULT for new offerings only (CR-06) — writing it
+   *  never touches an offering that already exists. */
+  start_time: string | null;
+  end_time: string | null;
+  /** stated intent (C-59); the engine never reads it */
+  frequency: number | null;
+};
+
+/** RLS and the CHECK constraints answer in Postgres' words. These are the
+ *  three a person can actually act on, so they are translated; anything else
+ *  keeps the database's own message rather than a guess at what it meant. */
+function courseWriteError(error: { code?: string; message?: string } | null): string {
+  const code = error?.code ?? '';
+  const message = error?.message ?? '';
+  if (code === '42501' || /row-level security/i.test(message)) {
+    return 'Only the super admin can add or change a course, and only while the subscription is active. Nothing has been saved.';
+  }
+  if (code === '23505' || /courses_name_live/.test(message)) {
+    return 'A course with this name already exists. Nothing has been saved.';
+  }
+  if (/default_end_time|courses_check/.test(message)) {
+    return 'The end time must be after the start time. Nothing has been saved.';
+  }
+  return `${message || 'The course could not be saved'}. Nothing has been saved.`;
+}
+
+export async function createCourse(input: CourseInput): Promise<Course> {
+  if (!isConfigured) {
+    // Offline the list IS the store, so the new course has to land in it or
+    // the screen would say "saved" over a list that never changed -- the
+    // same lie, moved one layer down.
+    const course: Course = {
+      id: `local-${Date.now()}`, name: input.name,
+      start_time: input.start_time, end_time: input.end_time,
+      frequency: input.frequency, offerings: [],
+    };
+    COURSE_LIST.push(course);
+    coursesChanged();
+    return course;
+  }
+
+  const { data, error } = await supabase.from('courses')
+    .insert({
+      name: input.name,
+      default_start_time: input.start_time,
+      default_end_time: input.end_time,
+      default_frequency: input.frequency,
+    })
+    .select('id, name, default_start_time, default_end_time, default_frequency')
+    .single();
+  if (error || !data) {
+    console.error('createCourse:', error?.message ?? 'no row returned');
+    throw new Error(courseWriteError(error));
+  }
+
+  coursesChanged();
+  return {
+    id: data.id as string,
+    name: data.name as string,
+    start_time: (data.default_start_time as string | null)?.slice(0, 5) ?? null,
+    end_time: (data.default_end_time as string | null)?.slice(0, 5) ?? null,
+    frequency: (data.default_frequency as number | null) ?? null,
+    offerings: [],
+  };
+}
+
+export async function updateCourse(id: string, input: CourseInput): Promise<void> {
+  if (!isConfigured) {
+    const course = COURSE_LIST.find(c => c.id === id);
+    if (course) Object.assign(course, input);
+    coursesChanged();
+    return;
+  }
+
+  const { data, error } = await supabase.from('courses')
+    .update({
+      name: input.name,
+      default_start_time: input.start_time,
+      default_end_time: input.end_time,
+      default_frequency: input.frequency,
+    })
+    .eq('id', id)
+    .select('id');
+  if (error) {
+    console.error('updateCourse:', error.message);
+    throw new Error(courseWriteError(error));
+  }
+  // RLS refuses an UPDATE by returning NO ROWS, not an error. Without this
+  // the screen would report a save that the policy silently declined.
+  if (!data || data.length === 0) {
+    throw new Error('That course could not be changed — only the super admin may, and only while the subscription is active. Nothing has been saved.');
+  }
+  coursesChanged();
+}
+
 // ---------------------------------------------------------------- templates
 export async function fetchTemplates(): Promise<Template[]> {
   if (!isConfigured) return TEMPLATES;
@@ -307,6 +443,30 @@ export async function fetchFilterOptions(): Promise<{ branches: string[]; course
   return {
     branches: ['All branches', ...(b.data ?? []).map(x => x.name as string)],
     courses: ['All courses', ...(c.data ?? []).map(x => x.name as string)],
+  };
+}
+
+// ------------------------------------------------------------------ academy
+/**
+ * The academy the signed-in person administers. Both tables are readable by
+ * any active account (app_settings_read, branches_read), so a staff member
+ * sees the same academy line the super admin does.
+ */
+export async function fetchAcademy(): Promise<{ name: string; branches: string[] }> {
+  if (!isConfigured) {
+    return { name: 'RosiFit', branches: BRANCHES.filter(b => b !== 'All branches') };
+  }
+
+  const [settings, branches] = await Promise.all([
+    supabase.from('app_settings').select('academy_name').eq('id', 1).maybeSingle(),
+    supabase.from('branches').select('name').is('deleted_at', null).order('name'),
+  ]);
+  if (settings.error) fail('The academy details could not be loaded', settings.error);
+  if (branches.error) fail('The branch list could not be loaded', branches.error);
+
+  return {
+    name: settings.data?.academy_name ?? 'RosiFit',
+    branches: (branches.data ?? []).map(x => x.name as string),
   };
 }
 
@@ -438,4 +598,79 @@ export async function savePreferences(appUserId: string, prefs: Partial<Preferen
   await supabase.from('user_preferences').upsert(
     { app_user_id: appUserId, ...prefs }, { onConflict: 'app_user_id' }
   );
+}
+
+// -------------------------------------------------------- attendance list
+/**
+ * Every attendance fact in a period, one row per member per session.
+ *
+ * The Attendance tab lists these; it does not compute anything from them.
+ * Totals on that screen are counts of these rows, so the list and its own
+ * summary cannot disagree — and neither can restate a figure the engine
+ * (member_period_metrics) would put differently, because a count of facts is
+ * all either one is.
+ */
+export async function fetchAttendance(period: Period): Promise<AttendanceRow[]> {
+  if (!isConfigured) return attendanceFixture(period.from, period.to);
+
+  const { data: sessions, error } = await supabase.from('sessions')
+    .select('id, offering_id, session_date, start_time')
+    .gte('session_date', period.from).lte('session_date', period.to)
+    .is('deleted_at', null)
+    .order('session_date', { ascending: false });
+  if (error) fail('Could not load attendance', error);
+
+  const sessionIds = (sessions ?? []).map(s => s.id as string);
+  if (sessionIds.length === 0) return [];
+
+  const { data: records, error: recordError } = await supabase.from('attendance_records')
+    .select('id, session_id, member_id, status, expected, minutes_in_call')
+    .in('session_id', sessionIds).is('deleted_at', null);
+  if (recordError) fail('Could not load attendance', recordError);
+  if (!records || records.length === 0) return [];
+
+  // The same manual joins the rest of this file uses, rather than a PostgREST
+  // embed: an embed silently returns null for a row RLS hides on the far
+  // side, and a member who vanished that way would read as a blank name.
+  const memberIds = [...new Set(records.map(r => r.member_id as string))];
+  const offeringIds = [...new Set((sessions ?? []).map(s => s.offering_id as string))];
+  const [membersRes, offeringsRes] = await Promise.all([
+    supabase.from('members').select('id, member_code, full_name').in('id', memberIds),
+    supabase.from('course_offerings').select('id, course_id, branch_id').in('id', offeringIds),
+  ]);
+  const courseIds = [...new Set((offeringsRes.data ?? []).map(o => o.course_id as string))];
+  const branchIds = [...new Set((offeringsRes.data ?? []).map(o => o.branch_id as string))];
+  const [coursesRes, branchesRes] = await Promise.all([
+    courseIds.length ? supabase.from('courses').select('id, name').in('id', courseIds)
+                     : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+    branchIds.length ? supabase.from('branches').select('id, name').in('id', branchIds)
+                     : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+  ]);
+
+  const sessionById = new Map((sessions ?? []).map(s => [s.id as string, s]));
+  const memberById = new Map((membersRes.data ?? []).map(m => [m.id as string, m]));
+  const offeringById = new Map((offeringsRes.data ?? []).map(o => [o.id as string, o]));
+  const courseName = new Map((coursesRes.data ?? []).map(c => [c.id as string, c.name as string]));
+  const branchName = new Map((branchesRes.data ?? []).map(b => [b.id as string, b.name as string]));
+
+  return records.map(r => {
+    const session = sessionById.get(r.session_id as string);
+    const offering = session ? offeringById.get(session.offering_id as string) : undefined;
+    const member = memberById.get(r.member_id as string);
+    return {
+      id: r.id as string,
+      member_id: r.member_id as string,
+      // '—' rather than '' so a row RLS hid the member of still reads as a
+      // row, instead of an unexplained blank
+      member: (member?.full_name as string) ?? '—',
+      code: (member?.member_code as string) ?? '—',
+      course: offering ? (courseName.get(offering.course_id as string) ?? '—') : '—',
+      branch: offering ? (branchName.get(offering.branch_id as string) ?? '—') : '—',
+      date: (session?.session_date as string) ?? '',
+      time: (session?.start_time as string | null)?.slice(0, 5) ?? '',
+      status: r.status as AttendanceStatus,
+      expected: Boolean(r.expected),
+      minutes: (r.minutes_in_call as number | null) ?? null,
+    };
+  }).sort((a, b) => (a.date === b.date ? a.member.localeCompare(b.member) : b.date.localeCompare(a.date)));
 }

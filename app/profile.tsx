@@ -1,10 +1,12 @@
 import { View, Text, Pressable } from 'react-native';
-import { useRouter } from 'expo-router';
-import { Screen, Button } from '../src/components/ui';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { Screen, Button, Skeleton, EmptyState } from '../src/components/ui';
 import { Icon } from '../src/components/Icon';
 import { useTheme } from '../src/theme/ThemeProvider';
 import { useToast } from '../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS } from '../src/theme/tokens';
+import { useIdentity, signOut, type Identity } from '../src/data/session';
+import { useAcademyDetails } from '../src/data/hooks';
 
 type Row = { label: string; value: string; note: string; editable?: boolean; to?: '/change-mobile' };
 
@@ -14,19 +16,71 @@ type Row = { label: string; value: string; note: string; editable?: boolean; to?
  * reversed that, and §26.2 F-1 of the plan calls the canvas' version blocking
  * -- so the plan wins here and the row is editable, behind the authenticated,
  * PIN-gated flow on /change-mobile rather than a pre-auth affordance.
+ *
+ * Every value below comes from the signed-in account. This screen used to
+ * render a literal ROWS array -- 'Priya Menon', '+91 80563 29742', 'Academy
+ * admin' -- so it showed the fixture persona to whoever was actually signed
+ * in, including a staff member.
  */
-const ROWS: Row[] = [
-  { label: 'Full name',     value: 'Priya Menon',        note: 'Shown to your staff and on emails you send', editable: true },
-  { label: 'Mobile number', value: '+91 80563 29742',
-    note: 'Your sign-in ID — changing it asks for your PIN first', editable: true, to: '/change-mobile' },
-  { label: 'Role label',    value: 'Academy admin',      note: 'A label only — access is the same for everyone', editable: true },
-  { label: 'Academy',       value: 'RosiFit · 3 branches', note: 'Coimbatore, Madurai, Chennai' },
-];
+function rowsFor(me: Identity, academy: string): Row[] {
+  return [
+    { label: 'Full name', value: me.name,
+      note: 'Shown to your staff and on emails you send', editable: true },
+    { label: 'Mobile number', value: me.phone,
+      note: 'Your sign-in ID — changing it asks for your PIN first', editable: true, to: '/change-mobile' },
+    { label: 'Role label', value: me.roleLabel,
+      note: me.isSuperAdmin
+        ? 'A label only — you are the super admin'
+        : 'A label only — your access is set by the super admin',
+      editable: true },
+    { label: 'Academy', value: academy, note: 'The academy this account belongs to' },
+  ];
+}
 
 export default function Profile() {
   const { theme } = useTheme();
   const { flash } = useToast();
   const router = useRouter();
+  const { state: forced } = useLocalSearchParams<{ state?: string }>();
+
+  const { identity, loading, signedOut } = useIdentity();
+  const academy = useAcademyDetails(forced);
+
+  const leave = async () => {
+    // The session has to actually END. Replacing the route on its own left a
+    // live session behind, so re-opening the app walked straight back in.
+    await signOut();
+    router.replace('/');
+  };
+
+  if (loading) {
+    return <Screen><Skeleton lines={6} /></Screen>;
+  }
+
+  if (signedOut || !identity) {
+    return (
+      <Screen>
+        {/* Being signed out is not a failure, so it does not get the error
+            card's "Something went wrong / Try again" words. */}
+        <EmptyState
+          title="You are signed out"
+          body="Your session has ended. Sign in with your mobile number and PIN to see your profile."
+          action="Sign in"
+          onAction={() => router.replace('/')} />
+      </Screen>
+    );
+  }
+
+  // The academy line is secondary: if it fails to load the profile still
+  // shows who you are rather than collapsing into an error screen.
+  const academyValue =
+    academy.state === 'ready' && academy.data
+      ? [academy.data.name, academy.data.branches.length === 1
+          ? '1 branch'
+          : `${academy.data.branches.length} branches`].join(' · ')
+      : academy.state === 'error' ? 'Could not be loaded' : 'Loading…';
+
+  const rows = rowsFor(identity, academyValue);
 
   return (
     <Screen>
@@ -35,11 +89,16 @@ export default function Profile() {
           width: 84, height: 84, borderRadius: 42, backgroundColor: theme.accentAvatar,
           borderWidth: 2, borderColor: theme.lineStrong, alignItems: 'center', justifyContent: 'center',
         }}>
-          <Text style={{ fontSize: 30, fontWeight: '700', color: theme.onAccent }}>PM</Text>
+          <Text style={{ fontSize: 30, fontWeight: '700', color: theme.onAccent }}>{identity.initials}</Text>
         </View>
         <View style={{ alignItems: 'center' }}>
-          <Text style={{ fontSize: 24, fontWeight: '800', color: theme.fgStrong, letterSpacing: -0.5 }}>Priya Menon</Text>
-          <Text style={{ fontSize: 13, color: theme.accentInk, marginTop: 4 }}>Academy admin · RosiFit</Text>
+          <Text style={{ fontSize: 24, fontWeight: '800', color: theme.fgStrong, letterSpacing: -0.5 }}>
+            {identity.name}
+          </Text>
+          <Text style={{ fontSize: 13, color: theme.accentInk, marginTop: 4 }}>
+            {identity.roleLabel}
+            {academy.state === 'ready' && academy.data ? ` · ${academy.data.name}` : ''}
+          </Text>
         </View>
       </View>
 
@@ -47,7 +106,7 @@ export default function Profile() {
         borderRadius: RADIUS.lg, backgroundColor: theme.surface,
         borderWidth: 1, borderColor: theme.line, overflow: 'hidden', marginTop: SPACE.sm,
       }}>
-        {ROWS.map((r, i) => (
+        {rows.map((r, i) => (
           <Pressable key={r.label}
             onPress={() => (r.to
               ? router.push(r.to)
@@ -62,7 +121,7 @@ export default function Profile() {
             style={({ pressed }) => ({
               flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
               minHeight: TAP_MIN + 22, padding: 15, opacity: pressed ? 0.7 : 1,
-              borderBottomWidth: i === ROWS.length - 1 ? 0 : 1, borderBottomColor: theme.line,
+              borderBottomWidth: i === rows.length - 1 ? 0 : 1, borderBottomColor: theme.line,
             })}>
             <View style={{ flex: 1 }}>
               <Text style={{
@@ -78,9 +137,9 @@ export default function Profile() {
         ))}
       </View>
 
-      <Button label="Change My PIN" onPress={() => router.push('/set-pin')} style={{ marginTop: SPACE.lg }} />
+      <Button label="Change My PIN" onPress={() => router.push('/set-pin?for=self')} style={{ marginTop: SPACE.lg }} />
 
-      <Pressable onPress={() => router.replace('/')}
+      <Pressable onPress={leave}
         accessibilityRole="button"
         style={({ pressed }) => ({
           marginTop: SPACE.md, minHeight: TAP_MIN + 8, borderRadius: RADIUS.lg,

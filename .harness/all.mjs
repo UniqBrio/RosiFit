@@ -1,6 +1,6 @@
 import { chromium } from '/opt/node22/lib/node_modules/playwright/index.mjs';
 const ROUTES = ['/', '/register', '/set-pin', '/forgot-pin', '/weekly', '/upload', '/members',
-  '/member/1', '/member/edit', '/courses', '/course/edit', '/course/rules', '/sessions',
+  '/member/1', '/member/edit', '/courses', '/course/edit', '/course/rules', '/attendance',
   '/holiday', '/templates', '/staff', '/reports', '/audit', '/change-mobile',
   '/send', '/send/review', '/send/result', '/more'];
 const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });

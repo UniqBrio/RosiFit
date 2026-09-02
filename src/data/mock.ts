@@ -280,6 +280,13 @@ export const STAFF: Staff[] = [
   { id: 's5', name: 'Priya Menon',   phone: '+91 80563 29742', role: 'Academy admin', access: 'active',     meta: 'that\u2019s you' },
 ];
 
+/**
+ * Which STAFF row the fixtures treat as the signed-in person. It is an id
+ * rather than a second copy of the row, so the staff list and the profile
+ * cannot drift the way two lists always do.
+ */
+export const FIXTURE_SELF_ID = 's5';
+
 export const ROLE_LABELS = ['Academy admin', 'Coach', 'Front desk'];
 
 /** A number is enough to identify someone; the middle is not needed on screen. */
@@ -452,3 +459,62 @@ export const PENDING_SESSIONS = [
     meta: 'Madurai · 12 expected · awaiting upload',
     label: 'Sat 23 Aug · Postnatal Core 8:00 am' },
 ];
+
+// ------------------------------------------------------- attendance list
+/**
+ * One row per member per session — the fact the Attendance tab lists, and
+ * the same shape public.attendance_records returns (0008).
+ *
+ * `expected` travels with the status because the table's own invariant
+ * (`status <> 'absent' or expected`) is what makes "missed <= expected"
+ * true, and a row that hides it would let the list imply a miss that the
+ * database could not represent. An 'extra' is the reverse: she turned up
+ * when she was not expected, so it never counts as a miss.
+ */
+export type AttendanceStatus = 'present' | 'absent' | 'extra';
+
+export type AttendanceRow = {
+  id: string; member_id: string; member: string; code: string;
+  course: string; branch: string;
+  /** ISO yyyy-mm-dd — the query filters on this, the screen formats it */
+  date: string;
+  /** 'HH:MM' 24-hour, or '' when the offering carries no time */
+  time: string;
+  status: AttendanceStatus;
+  expected: boolean;
+  /** Time in Call, the third and last column the Meet export carries */
+  minutes: number | null;
+};
+
+/**
+ * Offline rows, generated relative to TODAY rather than pinned to August
+ * 2026 like the rest of this file. The attendance list is the one screen
+ * whose whole point is a date filter, and fixtures dated a month in the past
+ * would show an empty list under every period a person is likely to pick —
+ * which reads as "no attendance", not as "no fixtures".
+ */
+export function attendanceFixture(from: string, to: string): AttendanceRow[] {
+  const rows: AttendanceRow[] = [];
+  const start = new Date(`${from}T00:00:00`);
+  const end = new Date(`${to}T00:00:00`);
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const dow = d.getDay();                       // 0 = Sun
+    if (![1, 3, 5].includes(dow)) continue;       // Mon / Wed / Fri offerings
+    if (d > new Date()) continue;                 // a future session has no attendance yet
+    const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    MEMBERS.forEach((m, i) => {
+      // deterministic, so the same day always reads the same way
+      const seed = (d.getDate() + i * 3) % 5;
+      const status: AttendanceStatus = seed === 0 ? 'absent' : seed === 4 && i === 2 ? 'extra' : 'present';
+      rows.push({
+        id: `${date}-${m.id}`, member_id: m.id, member: m.name, code: m.code,
+        course: m.course, branch: m.branch, date,
+        time: m.course === 'Postnatal Core' ? '08:00' : '18:00',
+        status,
+        expected: status !== 'extra',
+        minutes: status === 'absent' ? null : 45 + ((d.getDate() + i) % 20),
+      });
+    });
+  }
+  return rows.sort((a, b) => (a.date === b.date ? a.member.localeCompare(b.member) : b.date.localeCompare(a.date)));
+}

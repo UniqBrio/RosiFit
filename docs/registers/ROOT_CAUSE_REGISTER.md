@@ -59,6 +59,59 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-008 — Add Course reported a save it had never attempted
+**Date:** 02-Sep-2026 · **Severity:** S2 · **Modules:** `app/course/edit.tsx`, `src/data/repository.ts`
+
+**Symptom** — Reported by the repo owner: *"Add course is not working, it says course is saved but
+course is not getting stored in supabase."*
+
+**Root cause** — `save()` in `app/course/edit.tsx` was `flash(...)` followed by `router.back()`.
+There was no write of any kind — no Supabase call, no Edge Function, not even a mutation of the
+fixture list. The screen was built as a layout with a plausible confirmation and the persistence
+was never added; the confirmation is what made that invisible. A form that says "saved"
+unconditionally is indistinguishable from a working one until somebody goes looking for the
+record, which is why this survived a build, a typecheck, three audits and a visual review.
+
+Two things hid it further. `.env` did not exist, so `isConfigured` was false and the app was on
+fixtures — a real write would have been a no-op anyway. And the edit screen read `COURSE_LIST`
+from `src/data/mock.ts` directly rather than the repository, so it could not have opened a
+database-backed course to edit either.
+
+**Fix** — `repository.createCourse` / `updateCourse` do the write and the screen awaits them.
+Direct PostgREST, not an Edge Function: 0005 already grants `authenticated` INSERT/UPDATE on
+`public.courses` behind `is_super_admin() and is_subscription_writable()`, and `audit_courses`
+fires either way — an Edge Function would only add a second place for that rule to drift. A
+refusal is rendered on the screen instead of being swallowed. An RLS-refused UPDATE returns **no
+rows rather than an error**, so that case is checked explicitly, or the same false "saved" would
+have come back by another route. `onCoursesChanged` notifies every mounted `useCourses`, because
+a saved course missing from the list it was saved to reads exactly like a save that did nothing.
+
+**Files** — `app/course/edit.tsx`, `src/data/repository.ts`, `src/data/hooks.ts`, `.env`
+
+**How to verify** — Sign in as the super admin, add a course, and read it back:
+`GET {SUPABASE_URL}/rest/v1/courses?select=name&name=eq.<name>` with the session's JWT. Then sign
+in as a non-super-admin staff member and add one: the screen must show the refusal and the row
+must not exist. Both are the point — a screen that cannot report a refusal is the defect.
+
+**Recurrence risk** — High, and it is a class rather than an incident. Every other "saves" in this
+app is the same shape and was written the same way: `app/holiday.tsx` (apply), `app/member/edit.tsx`
+(save), `app/course/rules.tsx`, `app/staff/add.tsx`, `app/templates.tsx`. **Each of these still
+flashes a confirmation for a write that does not happen.** They are unfixed, deliberately — they
+were outside the reported defect — and they are recorded here and in `TECH_DEBT.md` so the next
+person does not have to rediscover each one from a user report.
+
+**Prevention** — A confirmation may only be emitted by the resolution of a write. Where there is no
+write yet, the screen says so in the words the user needs ("saved on this device only — the academy
+database is not configured"), which is what `dataSource` is read for in `app/course/edit.tsx`.
+
+**Process check** — **Yes.** Five gates, three ratcheted audits and a contrast checker all passed
+over a form that persisted nothing. Every one of them examines the code's shape; none executes a
+user journey and asserts on the database afterwards. The gate has a G8 "Functional / integration"
+step and it has been FAILing on a missing `test:functional` script since before this change — the
+one step that could have caught this is the one that has never run.
+
+---
+
 ## RC-007 — Every narrow table grant in 0002-0010 was a no-op, and the harness could not see it
 **Date:** 02-Sep-2026  ·  **Severity:** S1  ·  **Modules:** supabase/migrations, db/harness
 

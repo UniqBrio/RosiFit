@@ -17,10 +17,12 @@ import { currentWeek, type Period } from './period';
 import {
   fetchMembers, fetchRules, fetchCourses, fetchTemplates, fetchStaff, fetchAudit,
   fetchFilterOptions, fetchMonthSessions, fetchPendingSessions, fetchWeekRows,
+  fetchAcademy,
+  fetchAttendance, onCoursesChanged,
   type Rules, type PendingSession,
 } from './repository';
 import { flagged } from './followup';
-import type { Member, Course, Template, Staff, AuditEntry, SessionDay, WeekRow } from './mock';
+import type { Member, Course, Template, Staff, AuditEntry, SessionDay, WeekRow, AttendanceRow } from './mock';
 
 export type Async<T> = {
   state: ScreenState;
@@ -107,8 +109,18 @@ export function useFollowUp(forced?: string, period: Period = currentWeek()):
   }, [period.from, period.to], forced);
 }
 
+/**
+ * The course list, refetched whenever a course is written.
+ *
+ * Every mounted list hears the same notification, so the Courses tab is
+ * correct the moment you come back from the edit screen rather than at its
+ * next remount -- a saved course that is not on the list it was saved to
+ * reads exactly like a save that did nothing.
+ */
 export function useCourses(forced?: string): Async<Course[]> {
-  return useAsync(() => fetchCourses(), [], forced);
+  const [version, setVersion] = useState(0);
+  useEffect(() => onCoursesChanged(() => setVersion(v => v + 1)), []);
+  return useAsync(() => fetchCourses(), [version], forced);
 }
 
 export function useTemplates(forced?: string): Async<Template[]> {
@@ -127,8 +139,22 @@ export function useFilterOptions(forced?: string): Async<{ branches: string[]; c
   return useAsync(() => fetchFilterOptions(), [], forced);
 }
 
+/** The academy name and its branches, for the profile's academy row. Named
+ *  for the DETAILS to keep it distinct from state/academy's useAcademy,
+ *  which is the branch-scope picker and fetches nothing. */
+export function useAcademyDetails(forced?: string): Async<{ name: string; branches: string[] }> {
+  return useAsync(() => fetchAcademy(), [], forced);
+}
+
 export function useMonthSessions(year: number, month: number, forced?: string): Async<SessionDay[]> {
   return useAsync(() => fetchMonthSessions(year, month), [year, month], forced);
+}
+
+/** Every attendance fact in the period, for the Attendance tab. The period
+ *  is part of the key, so changing the filter refetches rather than
+ *  re-labelling rows that were counted over a different range. */
+export function useAttendance(period: Period, forced?: string): Async<AttendanceRow[]> {
+  return useAsync(() => fetchAttendance(period), [period.from, period.to], forced);
 }
 
 export function usePendingSessions(forced?: string): Async<PendingSession[]> {

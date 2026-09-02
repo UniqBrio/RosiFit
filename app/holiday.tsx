@@ -3,6 +3,7 @@ import { View, Text, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Screen, Muted, Label, Button } from '../src/components/ui';
 import { Field } from '../src/components/Field';
+import { DateField, formatDate } from '../src/components/DateTimePicker';
 import { Icon } from '../src/components/Icon';
 import { useTheme } from '../src/theme/ThemeProvider';
 import { useToast } from '../src/components/Toast';
@@ -55,16 +56,29 @@ export default function Holiday() {
 
       <Field label="Name or reason" value={name} onChange={setName} placeholder="e.g. Diwali" />
 
+      {/* Pickers, not typed dates. Both values are ISO yyyy-mm-dd, which is
+          what holidays.start_date / end_date take, so there is no format to
+          get wrong and no parse to fail. The end picker will not offer a day
+          before the start, which is the same rule as the CHECK constraint --
+          stated once in the control instead of only caught at save. */}
       <View style={{ flexDirection: 'row', gap: SPACE.md }}>
         <View style={{ flex: 1 }}>
-          <Field label="Start date" value={start} onChange={setStart} placeholder="20-Oct-26" />
+          <DateField label="Start date" value={start} onChange={setStart}
+            placeholder="First day" testID="holiday-start-date" />
         </View>
         <View style={{ flex: 1 }}>
-          <Field label="End date" value={end} onChange={setEnd} placeholder="22-Oct-26"
+          <DateField label="End date" value={end} onChange={setEnd}
+            placeholder="Last day" min={start || undefined} testID="holiday-end-date"
             error={reversed ? 'The end date falls before the start date. Fix it and the impact recalculates.' : undefined} />
         </View>
       </View>
-      {!reversed && <Muted style={{ marginTop: -4 }}>One day? Put the same date in both. Dates are dd-MMM-yy.</Muted>}
+      {!reversed && (
+        <Muted style={{ marginTop: -4 }}>
+          {start && !end
+            ? `One day only? Put ${formatDate(start)} in both.`
+            : 'One day? Choose the same date in both.'}
+        </Muted>
+      )}
 
       <Label style={{ marginTop: SPACE.xl }}>Scope</Label>
       <View style={{ gap: SPACE.sm, marginTop: SPACE.md }}>

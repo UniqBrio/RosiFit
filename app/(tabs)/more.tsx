@@ -1,22 +1,42 @@
 import { View, Text, Pressable } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
-import { Screen, Muted, Label } from '../../src/components/ui';
+import { Screen, Muted, Label, Skeleton, EmptyState } from '../../src/components/ui';
 import { ScreenHeader } from '../../src/components/AppShell';
 import { Icon } from '../../src/components/Icon';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS } from '../../src/theme/tokens';
 import { STAFF, TEMPLATES, BRANCHES, GLOBAL_RULE, SUPPORT_PHONE } from '../../src/data/mock';
+import { useIdentity, signOut } from '../../src/data/session';
 
 type Item = {
   icon: string; label: string; meta: string;
   to?: Href; onPress?: () => void; danger?: boolean;
+  /**
+   * Rows a staff account cannot READ at all, per the RLS policies:
+   * app_users_read and audit_logs_read are `is_super_admin()`, and
+   * security_questions_read (registration) is too. Offering them to staff
+   * showed an admin-shaped app that answered every tap with an error.
+   *
+   * Rows that staff can read but not WRITE -- follow-up rules, holidays,
+   * branches -- stay visible on purpose: seeing the rule is part of the job.
+   */
+  adminOnly?: boolean;
 };
 
 export default function More() {
   const { theme, mode, accentKey, accents, isCustom } = useTheme();
   const { flash } = useToast();
   const router = useRouter();
+  const { identity, loading, signedOut } = useIdentity();
+
+  const leave = async () => {
+    // Signing out has to end the SESSION, not just the route. Replacing the
+    // route alone left a live session behind and the next launch walked
+    // straight back in as the previous account.
+    await signOut();
+    router.replace('/');
+  };
 
   const activeTemplates = TEMPLATES.filter(t => t.active).length;
   const accentName = isCustom ? 'custom' : (accents.find(a => a.key === accentKey)?.label ?? '');
@@ -34,11 +54,11 @@ export default function More() {
     },
     {
       title: 'Access', items: [
-        { icon: 'badge',           label: 'Staff & access',        meta: String(STAFF.length), to: '/staff' },
+        { icon: 'badge',           label: 'Staff & access',        meta: String(STAFF.length), to: '/staff', adminOnly: true },
         { icon: 'phonelink_lock',  label: 'First-time PIN setup',  meta: 'staff view',         to: '/set-pin' },
         { icon: 'help_center',     label: 'PIN recovery questions', meta: '2 set',             to: '/forgot-pin' },
-        { icon: 'how_to_reg',      label: 'Super admin registration', meta: 'PIN recovery',    to: '/register' },
-        { icon: 'history',         label: 'Audit log',             meta: 'today',              to: '/audit' },
+        { icon: 'how_to_reg',      label: 'Super admin registration', meta: 'PIN recovery',    to: '/register', adminOnly: true },
+        { icon: 'history',         label: 'Audit log',             meta: 'today',              to: '/audit', adminOnly: true },
       ],
     },
     {
@@ -47,12 +67,43 @@ export default function More() {
         { icon: 'translate',     label: 'Language',       meta: 'English', onPress: () => flash('Tamil is coming') },
         { icon: 'support_agent', label: 'Help & support', meta: SUPPORT_PHONE, to: '/help' },
         { icon: 'logout',        label: 'Sign out',       meta: '', danger: true,
-          onPress: () => router.replace('/') },
+          onPress: () => { void leave(); } },
       ],
     },
   ];
 
   const dangerInk = theme.isDark ? STATUS.absent.fgDark : STATUS.absent.fgLight;
+
+  // Hidden until the role is KNOWN. Rendering admin rows during the load and
+  // pulling them away a moment later would offer a staff member a tap that
+  // was never hers to make.
+  const visible = groups
+    .map(g => ({ ...g, items: g.items.filter(i => !i.adminOnly || identity?.isSuperAdmin) }))
+    .filter(g => g.items.length > 0);
+
+  if (loading) {
+    return (
+      <Screen>
+        <ScreenHeader title="More" subtitle="Your account, your academy, your rules" />
+        <Skeleton lines={8} />
+      </Screen>
+    );
+  }
+
+  if (signedOut || !identity) {
+    return (
+      <Screen>
+        <ScreenHeader title="More" subtitle="Your account, your academy, your rules" />
+        {/* Being signed out is not a failure, so it does not get the error
+            card's "Something went wrong / Try again" words. */}
+        <EmptyState
+          title="You are signed out"
+          body="Your session has ended. Sign in with your mobile number and PIN to reach your account and settings."
+          action="Sign in"
+          onAction={() => router.replace('/')} />
+      </Screen>
+    );
+  }
 
   return (
     <Screen>
@@ -60,7 +111,7 @@ export default function More() {
 
       <Pressable onPress={() => router.push('/profile')}
         accessibilityRole="button"
-        accessibilityLabel="Priya Menon, Academy admin. Open your profile"
+        accessibilityLabel={`${identity.name}, ${identity.roleLabel}. Open your profile`}
         style={({ pressed }) => ({
           flexDirection: 'row', alignItems: 'center', gap: 14, padding: SPACE.lg,
           borderRadius: 20, backgroundColor: theme.accentDeep,
@@ -70,20 +121,20 @@ export default function More() {
           width: 52, height: 52, borderRadius: 26, backgroundColor: theme.accentAvatar,
           borderWidth: 2, borderColor: theme.lineStrong, alignItems: 'center', justifyContent: 'center',
         }}>
-          <Text style={{ fontSize: 18, fontWeight: '800', color: theme.onAccent }}>PM</Text>
+          <Text style={{ fontSize: 18, fontWeight: '800', color: theme.onAccent }}>{identity.initials}</Text>
         </View>
         <View style={{ flex: 1 }}>
           {/* the deep header is the same dark plum in both themes, so the
               name is white in both -- theme.onDeep is the softer body ink */}
-          <Text style={{ fontSize: 19, fontWeight: '800', color: '#FFFFFF' }}>Priya Menon</Text>
+          <Text style={{ fontSize: 19, fontWeight: '800', color: '#FFFFFF' }}>{identity.name}</Text>
           <Text style={{ fontSize: 12, color: theme.onDeep, marginTop: 3, fontVariant: ['tabular-nums'] }}>
-            Academy admin · +91 80563 29742
+            {`${identity.roleLabel} · ${identity.phone}`}
           </Text>
         </View>
         <Icon name="chevron_right" size={22} color={theme.onDeep} />
       </Pressable>
 
-      {groups.map(g => (
+      {visible.map(g => (
         <View key={g.title} style={{ marginTop: SPACE.xxl }}>
           <Label style={{ marginBottom: SPACE.sm }}>{g.title}</Label>
           <View style={{
