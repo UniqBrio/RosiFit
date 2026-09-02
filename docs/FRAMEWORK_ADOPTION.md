@@ -119,9 +119,9 @@ icons) and `npm run audit:all` green across both trees. `.claude/commands/gate.m
 addendum recording exactly this, so its documented contract and its observed behaviour no longer
 disagree silently.
 
-### Three framework defects found — `/promote` candidates, not patched locally
+### Four framework defects found — `/promote` candidates, not patched locally
 
-Found by running the gate rather than reading it. All three live in Half A, which an app may not
+Found by running the gate rather than reading it. All four live in Half A, which an app may not
 edit; the framework's own rule is that needing to edit a process file is the signal to run
 `/promote`, not to fork.
 
@@ -152,5 +152,123 @@ edit; the framework's own rule is that needing to edit a process file is the sig
   machine, so `bash db/harness/test.sh` aborts in `reset.sh` and the 124 assertions were not
   executed. This was already true before the pass and nothing here touched `supabase/` or
   `db/harness/`. TD-010.
+
+---
+
+## Verification pass — 02-Sep-2026, same branch
+
+> Run after the adoption commits above, on `chore/framework-adoption`. Five items. **Three pass,
+> one is BLOCKED, and one assertion inside item 2 fails** — recorded rather than fixed forward.
+
+### 1. Every ratchet was proven to bite ✅
+
+Each audit was given a synthetic violation in a scratch directory (`.tmp-ratchet-proof/`, never
+`src/` or `app/`), with a scratch baseline so the real ones were never touched. Both halves of the
+two-sided contract were exercised.
+
+| Audit | Scoped by | New violation | Fixed-but-still-listed | Verdict |
+|---|---|---|---|---|
+| hardcoded-colors | `--dir` | exit 2 — blocks | exit 2 — blocks | PASS |
+| testid-coverage | `--dir` | exit 2 — blocks | exit 2 — blocks | PASS |
+| column-control | `--dir` | exit 2 — blocks | exit 2 — blocks | PASS |
+| rule-coverage | `--registers` | exit 2 — blocks | exit 2 — blocks | PASS |
+| dead-weight | `--dirs` | exit 2 — blocks | exit 2 — blocks | PASS |
+
+**No ratchet had to be declared UNPROVABLE.** The two audits without a `--dir` were provable
+without editing a real register: `check-rule-coverage.mjs` accepts `--registers` and
+`check-dead-weight.mjs` accepts `--dirs`, so both were pointed at scratch input instead. That is
+strictly safer than the temporary-edit-and-revert fallback, because no tracked file was ever left
+in a modified state.
+
+Scratch directory deleted; `git status` clean and `.baselines/` byte-identical afterwards.
+
+### 2. `npm run gate` end to end — FAIL, exit 2 ⚠️
+
+Reproduced exactly as recorded in ADR 003: 5 pass, 5 fail, 1 blocked. Report prepended to
+`TEST_SUMMARY.md`; step logs in `.gate-logs/`.
+
+**The assertion "every accepted-BLOCKED rung reports as blocked and does not silently pass" does
+NOT hold, and the failure is G10.**
+
+| Accepted class | Reports as | Silent? |
+|---|---|---|
+| G1 · G2 · G3 | FAIL | no — loud, but misclassified (F-1) |
+| G6 | BLOCKED | no — the only correctly classified step |
+| G7 · G8 | FAIL, **empty log** | no — loud, but misclassified (F-2) |
+| **G10** | **PASS** | **YES — it silently passes** |
+
+G10 prints `this gate is INERT and is telling you so`, exits 0, and the runner records PASS. Six of
+the seven accepted classes are at least loud about it; G10 is not, and a false green is worse than
+a red step. Not fixed here: `check-backward-compat.mjs` and `lib/ratchet.mjs` are Half A. TD-007,
+promote candidate F-3.
+
+**Diff against `.claude/commands/gate.md`:** the RosiFit addendum added in this pass matches the
+observed run row for row, so the command's documentation and its behaviour now agree. The
+framework's contract table above the addendum still does not: it defines exit `3` / BLOCKED as the
+verdict for a class that could not be verified, and here five such classes produce exit `2` /
+FAIL. **That residual disagreement is a finding, left in place** — patching the local copy would
+launder a framework defect into app configuration, and it would never be fixed upstream.
+
+### 3. `check-rule-coverage.mjs` does not descend into `_archive/` ✅
+
+Settled by reading the source, and it is structural rather than incidental: `REGISTERS` is a
+literal three-path list (line 32), overridable only by `--registers`, and the rule-parsing loop
+iterates that list. There is no directory walk in the rule path. Confirmed empirically by the
+post-supersession count — **20 dead rungs to 1** — which could not happen if the 21 archived rows
+were still being read.
+
+The single `readdirSync` (line 101) is the rung-*existence* basename fallback. It does walk the
+repository, but it searches for the basenames of claimed rung paths, never for register files, so
+a markdown archive cannot revive a rung. **Q2 is resolved.** The standing constraint is recorded
+in the archive header: never archive a file whose basename matches a rung-claimed source file.
+
+### 4. Green checks — two green, one BLOCKED ⚠️
+
+- `npm run check` gives **exit 0**. Types clean, **2,800/2,800** contrast pairs, **71/71** icons.
+  Identical to the pre-pass baseline.
+- `npm run audit:all` gives **exit 0**, both trees, all five ratchets.
+- `bash db/harness/test.sh` is **BLOCKED, not run.** Neither `psql` nor Docker is on PATH on this
+  machine; it aborts in `reset.sh` at `psql: command not found`. **The 124 assertions were not
+  executed, and the same-count comparison could not be made.**
+
+  This was measured **before** any commit on this branch and failed identically then, so it is a
+  pre-existing environment gap, not a regression. This pass changed nothing under `supabase/` or
+  `db/`, so the harness precondition ("if you touch anything DB-adjacent") is N/A for the change
+  itself. TD-010. It remains an unverified class and is recorded as one rather than waved through.
+
+### 5. Scope held ✅
+
+`git diff --stat main...HEAD` gives **26 files, 1,264 insertions, 134 deletions.**
+
+**Zero changed paths under `app/`, `src/`, `supabase/`, `assets/`, `design/`, `.harness/` or
+`db/`.** Asserted mechanically, not by inspection.
+
+Everything changed is process: `.baselines/` (8) · `docs/registers/` (8) · `docs/decisions/` (4) ·
+`docs/FRAMEWORK_ADOPTION.md` · `ci/` · `.claude/commands/` · `package.json` · `.gitignore`.
+
+### Definition of done
+
+`checklists/DEFINITION_OF_DONE.md`, closed item by item. The large N/A block is itself the finding:
+this pass changed no application code, which is exactly what it promised.
+
+| Section | Status |
+|---|---|
+| Code — traces to request, no unrequested scope | ✅ every changed line traces to an approved queue item |
+| Code — canonical pattern per concern | ✅ CP-001 to CP-016 blessed in this pass |
+| Code — no colour literals / magic numbers | **N/A** — no application code changed |
+| Code — dead weight deleted | ✅ `audit:deadweight` is a clean gate, 0 unreferenced |
+| Code — dependencies verified and pinned | **N/A** — none added; `npm ci` from the existing lockfile |
+| Behaviour — states, loading, failure paths, writes, transactions | **N/A** — no runtime behaviour changed |
+| Appearance — screen checklist, both themes | **N/A** — no UI changed |
+| Appearance — contrast asserted | ✅ 2,800 pairs green before and after |
+| Security — five permission questions, matrix row | ✅ `RBAC_MATRIX.md` backfilled for every policy through `0014` |
+| Security — no secret in code, log or repo | ✅ `.env.example` unchanged; no secret added |
+| Tests — cases added, registry delta | **N/A** — no behaviour to case. The ratchet proofs are this pass's evidence |
+| Tests — fail-first evidence | ✅ every ratchet was **observed failing** on a synthetic violation before being trusted |
+| Tests — gate ran; verdict PASS, or BLOCKED classes named | ⚠️ **verdict FAIL.** All classes named, each with a DECISION_LOG entry and a TECH_DEBT row |
+| Documentation — module doc, feature register, root cause, limitations, decision record | ✅ four registers filled, four ADRs written, adoption log instantiated |
+| Documentation — changelog in the language of the user | **N/A** — nothing user-visible changed |
+| Business readiness — tier stated | **T0.** No user-visible surface is affected |
+| The learning check — would a correct process have caught this? | ✅ **Yes, and it did.** Running the gate rather than reading it surfaced F-1 to F-4. Four `/promote` candidates raised instead of four local patches |
 
 ---
