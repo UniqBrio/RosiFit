@@ -202,7 +202,7 @@ export default function MemberEdit() {
         })}
       </View>
 
-      <Button label={existing ? 'Save member' : 'Add member'} onPress={save} disabled={!valid}
+      <Button label={existing ? 'Save Member' : 'Add Member'} onPress={save} disabled={!valid}
         style={{ marginTop: SPACE.xl }} />
       <Muted style={{ marginTop: 9, textAlign: 'center' }}>
         {valid

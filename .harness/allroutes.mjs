@@ -1,7 +1,7 @@
 import { chromium } from '/opt/node22/lib/node_modules/playwright/index.mjs';
 const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
 const routes = [
-  ['/','signin'],['/(tabs)','home'],['/(tabs)/weekly','weekly'],['/(tabs)/upload','upload'],
+  ['/','signin'],['/(tabs)','home'],['/(tabs)/weekly','weekly'],['/upload','upload'],
   ['/(tabs)/members','members'],['/(tabs)/more','more'],['/member/1','member'],['/member/edit','member-edit'],
   ['/courses','courses'],['/course/edit','course-edit'],['/course/rules','rules'],['/sessions','sessions'],
   ['/holiday','holiday'],['/templates','templates'],['/reports','reports'],['/staff','staff'],

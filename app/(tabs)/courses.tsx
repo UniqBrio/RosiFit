@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { View, Text, Pressable, TextInput } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Screen, Muted, Button, Skeleton, EmptyState, ErrorState } from '../src/components/ui';
-import { Icon } from '../src/components/Icon';
-import { useTheme } from '../src/theme/ThemeProvider';
-import { useToast } from '../src/components/Toast';
-import { SPACE, RADIUS, TAP_MIN, STATUS } from '../src/theme/tokens';
-import { DAY_NAMES, ruleSentence, AVATAR_TINTS, initials } from '../src/data/mock';
-import { useCourses, useFollowUp } from '../src/data/hooks';
+import { Screen, Muted, Button, Skeleton, EmptyState, ErrorState } from '../../src/components/ui';
+import { ScreenHeader } from '../../src/components/AppShell';
+import { Icon } from '../../src/components/Icon';
+import { useTheme } from '../../src/theme/ThemeProvider';
+import { useToast } from '../../src/components/Toast';
+import { SPACE, RADIUS, TAP_MIN, STATUS } from '../../src/theme/tokens';
+import { DAY_NAMES, ruleSentence, AVATAR_TINTS, initials } from '../../src/data/mock';
+import { useCourses, useFollowUp } from '../../src/data/hooks';
 
 /** '06:00' -> '6:00 AM', for reading out a course's default time */
 const ampm = (t: string) => {
@@ -44,12 +45,9 @@ export default function Courses() {
 
   return (
     <Screen>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.md }}>
-        <Muted style={{ flex: 1 }}>
-          {`${all.length} courses · ${all.reduce((n, c) => n + c.offerings.length, 0)} offerings`}
-        </Muted>
-        <Button label="Add" onPress={() => router.push('/course/edit')} />
-      </View>
+      <ScreenHeader title="Courses"
+        subtitle={`${all.length} courses · ${all.reduce((n, c) => n + c.offerings.length, 0)} offerings`}
+        right={<Button label="Add" onPress={() => router.push('/course/edit')} />} />
 
       <View style={{
         flexDirection: 'row', alignItems: 'center', gap: SPACE.md, marginTop: SPACE.md,

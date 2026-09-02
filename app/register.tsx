@@ -38,18 +38,30 @@ export default function Register() {
   const [questions, setQuestions] = useState([SECURITY_QUESTIONS[0], SECURITY_QUESTIONS[1]]);
   const [answers, setAnswers] = useState(['', '']);
   const [picking, setPicking] = useState<number | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isConfigured) return;
     fetchSecurityQuestions()
-      .then(({ questions: list }) => {
+      .then(({ questions: list, bootstrap_completed }) => {
+        // Already registered: filling this form in would only earn a 409 at
+        // the end of it, so say so at the start instead.
+        if (bootstrap_completed) {
+          setNotice('This academy is already registered. Sign in with your mobile number and PIN instead.');
+          return;
+        }
         if (list.length < 2) return;
         setBank(list);
         setQuestions([list[0].text, list[1].text]);
       })
-      .catch(() => {
-        // The seeded list is the same list; falling back to it lets her
-        // register rather than blocking on a fetch she cannot retry.
+      .catch((err: unknown) => {
+        // The seeded list is the same list, so falling back to it lets her
+        // register rather than blocking on a fetch she cannot retry -- but a
+        // silent fallback also hides a real outage, so it says so.
+        setNotice(
+          `${err instanceof Error ? err.message : 'The question list could not be loaded.'} ` +
+          'Showing the standard questions — registration will still work.'
+        );
       });
   }, []);
 
@@ -82,6 +94,19 @@ export default function Register() {
   return (
     <Screen>
       <Muted>{`Step ${step} of 2 · recovery answers on record`}</Muted>
+
+      {notice && (
+        <View
+          accessibilityRole="alert"
+          style={{
+            marginTop: SPACE.md, padding: SPACE.lg, borderRadius: RADIUS.md,
+            flexDirection: 'row', gap: SPACE.md, alignItems: 'flex-start',
+            backgroundColor: theme.surface2, borderWidth: 1, borderColor: theme.lineStrong,
+          }}>
+          <Icon name="error" size={18} color={theme.accentInk} />
+          <Muted style={{ flex: 1 }}>{notice}</Muted>
+        </View>
+      )}
 
       <View style={{ flexDirection: 'row', gap: 6, marginTop: SPACE.md, marginBottom: SPACE.lg }}>
         {STEPS.map((label, i) => {

@@ -91,7 +91,7 @@ export default function CourseEdit() {
         </Muted>
       </View>
 
-      <Button label={existing ? 'Save course' : 'Add course'} onPress={save} disabled={!valid}
+      <Button label={existing ? 'Save Course' : 'Add Course'} onPress={save} disabled={!valid}
         style={{ marginTop: SPACE.xl }} />
       <Muted style={{ marginTop: 9, textAlign: 'center' }}>
         {valid ? 'Saved with no offerings — it has no schedule until it runs somewhere'

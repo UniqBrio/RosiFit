@@ -1,18 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Screen, H2, Body, Muted, Label, Button, Skeleton, ErrorState, EmptyState } from '../../src/components/ui';
-import { Icon } from '../../src/components/Icon';
-import { useTheme } from '../../src/theme/ThemeProvider';
-import { useToast } from '../../src/components/Toast';
-import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../../src/theme/tokens';
-import { MATCH_ROWS, OUTCOME_META } from '../../src/data/mock';
-import { usePendingSessions } from '../../src/data/hooks';
-import type { PendingSession } from '../../src/data/repository';
-import { isConfigured } from '../../src/lib/supabase';
-import { parseMeetCsv, sha256Hex, pickCsvFile, CSV_COLUMNS } from '../../src/data/csv';
-import { csvPreview, type PreviewResult } from '../../src/data/api';
-import { setStagedImport } from '../../src/data/pending';
+import { Screen, H2, Body, Muted, Label, Button, Skeleton, ErrorState, EmptyState } from '../src/components/ui';
+import { Icon } from '../src/components/Icon';
+import { useTheme } from '../src/theme/ThemeProvider';
+import { useToast } from '../src/components/Toast';
+import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../src/theme/tokens';
+import { MATCH_ROWS, OUTCOME_META } from '../src/data/mock';
+import { usePendingSessions } from '../src/data/hooks';
+import type { PendingSession } from '../src/data/repository';
+import { isConfigured } from '../src/lib/supabase';
+import { parseMeetCsv, sha256Hex, pickCsvFile, CSV_COLUMNS } from '../src/data/csv';
+import { csvPreview, type PreviewResult } from '../src/data/api';
+import { setStagedImport } from '../src/data/pending';
 
 const STEPS = ['Session', 'File', 'Process', 'Summary'] as const;
 
@@ -195,6 +195,9 @@ export default function Upload() {
             <H2 style={{ marginTop: SPACE.md }}>Choose the Google Meet CSV</H2>
             {/* C-74: name the three columns, so an operator handed a
                 different export can tell at a glance that it will not parse */}
+            <Muted style={{ marginTop: 6, textAlign: 'center' }}>
+              Meet exports one row per participant with join and leave times.
+            </Muted>
             <Muted style={{ marginTop: 6, textAlign: 'center' }}>
               {`RosiFit reads the Meet export: ${CSV_COLUMNS.join(' · ')}. There is no email column.`}
             </Muted>

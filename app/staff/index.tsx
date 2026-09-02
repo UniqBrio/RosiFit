@@ -164,6 +164,19 @@ export default function StaffList() {
 
       <Button label="Add staff" onPress={() => router.push('/staff/add')} />
 
+      {/* the canvas closes this list by saying why there is no "show PIN" */}
+      <View style={{
+        marginTop: SPACE.lg, padding: 15, borderRadius: RADIUS.md,
+        flexDirection: 'row', gap: 11,
+        backgroundColor: theme.surface2, borderWidth: 1, borderColor: theme.line,
+      }}>
+        <Icon name="lock_reset" size={19} color={theme.isDark ? STATUS.holiday.fgDark : STATUS.holiday.fgLight} />
+        <Muted style={{ flex: 1 }}>
+          A PIN is shown once, on this device, when you create it. Nobody can read it back later —
+          you reset it instead.
+        </Muted>
+      </View>
+
       <Sheet open={!!target} onClose={() => setTarget(null)}
         title={target
           ? (target.access === 'active' ? `Reset ${target.name}’s PIN?` : `Generate a PIN for ${target.name}?`)

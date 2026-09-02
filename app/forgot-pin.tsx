@@ -140,7 +140,7 @@ export default function ForgotPin() {
           <Body style={{ marginTop: SPACE.sm, textAlign: 'center' }}>
             Set a new PIN now. Your old one stopped working the moment you passed this check.
           </Body>
-          <Button label="Set a new PIN" style={{ marginTop: SPACE.xl, alignSelf: 'stretch' }}
+          <Button label="Choose a new PIN" style={{ marginTop: SPACE.xl, alignSelf: 'stretch' }}
             onPress={() => router.replace('/set-pin?for=self')} />
         </View>
       </Screen>

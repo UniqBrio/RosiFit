@@ -11,8 +11,8 @@ import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface, type StatusKey } from '.
 import { WEEK_STRIP, PERIODS, hasEmail, ruleSentence } from '../../src/data/mock';
 import { useFollowUp, useStaff, useFilterOptions, useWeekRows, usePendingSessions } from '../../src/data/hooks';
 import { currentWeek, lastWeek, lastFourWeeks } from '../../src/data/period';
+import { useAcademy, ALL_BRANCHES } from '../../src/state/academy';
 
-type Scope = 'academy' | 'branch';
 type PickerKind = null | 'branch' | 'course' | 'period';
 
 export default function Home() {
@@ -20,7 +20,11 @@ export default function Home() {
   const router = useRouter();
   const { state: forced } = useLocalSearchParams<{ state?: string }>();
 
-  const [scope, setScope] = useState<Scope>('academy');
+  // The scope and the branch belong to the shell, not to this screen: the
+  // header above renders on every tabbed screen and its branch selector says
+  // "Every figure follows this". Reading them from there is what makes the
+  // header's choice reach the chart (C-84/85/86).
+  const { scope, branch, setScope, setBranch } = useAcademy();
   const [period, setPeriod] = useState('This week');
   const [picker, setPicker] = useState<PickerKind>(null);
 
@@ -38,35 +42,45 @@ export default function Home() {
 
   const branchOptions = filterOptions.data?.branches ?? ['All branches'];
   const courseOptions = filterOptions.data?.courses ?? ['All courses'];
-  const [branch, setBranch] = useState<string | null>(null);
   const [course, setCourse] = useState<string | null>(null);
-  const branchValue = branch ?? branchOptions[1] ?? 'All branches';
+  const firstBranch = branchOptions[1] ?? ALL_BRANCHES;
+  const branchValue = branch === ALL_BRANCHES ? firstBranch : branch;
   const courseValue = course ?? courseOptions[0];
 
-  const flagged = followUp.data?.flagged ?? [];
   const rules = followUp.data?.rules;
-  const noEmail = flagged.filter(m => !hasEmail(m)).length;
   const needAccess = (staff.data ?? []).filter(s => s.access !== 'active').length;
   const awaiting = pending.data?.length ?? WEEK_STRIP.filter(d => d.status === 'awaiting').length;
 
   const periodLabel = PERIODS[period] ?? range.label;
-
-  // C-86: the scope is named, so an academy-wide number can never be read as
-  // a branch number.
   const allCourses = courseOptions[0];
+
+  // C-84/85/86. The filters are not decoration: the branch and the course
+  // NARROW the set every figure below is counted from, so the label and the
+  // number can never describe different populations. The narrowing is applied
+  // to the one member list -- the follow-up set is still the same derivation
+  // (src/data/followup.ts), just shown for the branch you are looking at.
+  const narrowed = (m: { branch: string; course: string }) =>
+    (scope === 'academy' || branchValue === ALL_BRANCHES || m.branch === branchValue)
+    && (courseValue === allCourses || m.course === courseValue);
+
+  const members = (followUp.data?.members ?? []).filter(narrowed);
+  const flagged = (followUp.data?.flagged ?? []).filter(narrowed);
+  const noEmail = flagged.filter(m => !hasEmail(m)).length;
+
   const scopeLabel =
     scope === 'academy'
       ? (courseValue === allCourses ? 'Academy-wide attendance' : `${courseValue} · whole academy`)
       : (courseValue === allCourses ? `${branchValue} branch attendance` : `${courseValue} · ${branchValue}`);
 
   const allWeeks = weekRows.data ?? [];
-  const week = allWeeks.find(w => w.current) ?? allWeeks[0] ?? { label: range.label, expected: 0, attended: 0 };
-  const attended = week.attended;
-  const missed = week.expected - week.attended;
+  // The donut is counted from the member list itself -- the same rows the
+  // member report reads -- which is what its own caption promises and what
+  // lets the branch and course filters reach the chart.
+  const attended = members.reduce((n, m) => n + m.attended, 0);
+  const missed = members.reduce((n, m) => n + Math.max(m.expected - m.attended, 0), 0);
   // "Not expected" is shown so a member on a 4-day override does not read as
   // a 6-day member with poor attendance (C-87).
-  const notExpected = (followUp.data?.members ?? [])
-    .reduce((n, m) => n + Math.max(6 - m.expected, 0), 0);
+  const notExpected = members.reduce((n, m) => n + Math.max(6 - m.expected, 0), 0);
 
   const rows = period === 'This week' ? allWeeks.slice(0, 1)
     : period === 'Last week' ? allWeeks.slice(1, 2) : allWeeks;
@@ -86,7 +100,7 @@ export default function Home() {
   const needs: {
     icon: string; tone: StatusKey; title: string; sub: string; to: Href; accent?: boolean;
   }[] = [
-    { icon: 'cloud_upload', tone: 'awaiting', to: '/(tabs)/upload',
+    { icon: 'cloud_upload', tone: 'awaiting', to: '/upload',
       title: `${awaiting} sessions awaiting upload`, sub: 'Counts for nobody until the file is in' },
     { icon: 'favorite', tone: 'absent', to: '/(tabs)/weekly', accent: true,
       title: `${flagged.length} members to reach out to`,
@@ -98,26 +112,11 @@ export default function Home() {
       title: `${needAccess} staff cannot sign in yet`, sub: 'Saved, but no PIN generated' },
   ];
 
-  // Every hook above has already run, so these returns cannot change the
-  // hook order. Zeros during a load would be a lie -- "0 members need you"
-  // reads as good news -- so the figures wait behind a skeleton instead.
-  if (loading) return <Screen><Skeleton lines={6} /></Screen>;
-  if (failed) {
-    return (
-      <Screen>
-        <ErrorState
-          onRetry={() => { followUp.retry(); weekRows.retry(); }}
-          message={followUp.error ?? weekRows.error
-            ?? 'The dashboard figures could not be loaded. Nothing has been changed.'} />
-      </Screen>
-    );
-  }
-
   const holidayInk = theme.isDark ? STATUS.holiday.fgDark : STATUS.holiday.fgLight;
   const holidayBox = statusSurface(holidayInk);
 
-  return (
-    <Screen>
+  const controls = (
+    <>
       {/* ------------------------------------------------- scope + filters */}
       <View style={{
         flexDirection: 'row', gap: 5, padding: 4, borderRadius: RADIUS.md,
@@ -126,7 +125,15 @@ export default function Home() {
         {([['academy', 'Academy wise', 'apartment'], ['branch', 'Branch wise', 'store']] as const).map(([k, label, icon]) => {
           const on = scope === k;
           return (
-            <Pressable key={k} onPress={() => setScope(k)}
+            <Pressable key={k}
+              onPress={() => {
+                setScope(k);
+                // Branch wise with no branch chosen would show an
+                // academy-wide figure under a branch label. Narrowing to the
+                // first branch keeps the label and the number honest.
+                setBranch(k === 'academy' ? ALL_BRANCHES
+                  : branch === ALL_BRANCHES ? firstBranch : branch);
+              }}
               accessibilityRole="radio" accessibilityState={{ selected: on }}
               style={{
                 flex: 1, height: 38, borderRadius: 11, flexDirection: 'row',
@@ -175,8 +182,34 @@ export default function Home() {
           backgroundColor: holidayBox.bg, borderWidth: 1, borderColor: holidayBox.border,
         }}>
         <Icon name="event_busy" size={19} color={holidayInk} />
-        <Text style={{ fontSize: 13.5, fontWeight: '800', color: theme.fg }}>Add holiday</Text>
+        <Text style={{ fontSize: 13.5, fontWeight: '800', color: theme.fg }}>Add Holiday</Text>
       </Pressable>
+    </>
+  );
+
+  // Zeros during a load would be a lie -- "0 members need you" reads as good
+  // news -- so the FIGURES wait behind a skeleton. The scope tabs, the
+  // filters and Add holiday do not: they are controls, they are correct
+  // before any figure arrives, and blanking them was what made the dashboard
+  // look like it had no tabs whenever a fetch was slow or failing.
+  if (loading) return <Screen>{controls}<View style={{ marginTop: SPACE.lg }}><Skeleton lines={5} /></View></Screen>;
+  if (failed) {
+    return (
+      <Screen>
+        {controls}
+        <View style={{ marginTop: SPACE.lg }}>
+          <ErrorState
+            onRetry={() => { followUp.retry(); weekRows.retry(); }}
+            message={followUp.error ?? weekRows.error
+              ?? 'The dashboard figures could not be loaded. Nothing has been changed.'} />
+        </View>
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen>
+      {controls}
 
       {/* ------------------------------------------------------- the donut */}
       <View style={{
@@ -268,7 +301,7 @@ export default function Home() {
       </View>
 
       <View style={{ flexDirection: 'row', gap: SPACE.md, marginTop: SPACE.md }}>
-        {([['Members', 'group', '/(tabs)/members'], ['Courses', 'school', '/courses']] as const).map(([label, icon, to]) => (
+        {([['Members', 'group', '/(tabs)/members'], ['Courses', 'school', '/(tabs)/courses']] as const).map(([label, icon, to]) => (
           <Pressable key={label} onPress={() => router.push(to)}
             accessibilityRole="button"
             style={{
@@ -289,7 +322,7 @@ export default function Home() {
       }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
           <H2 style={{ flex: 1 }}>Week by week</H2>
-          <Pressable onPress={() => router.push('/reports')} accessibilityRole="button">
+          <Pressable onPress={() => router.push('/(tabs)/reports')} accessibilityRole="button">
             <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.accentInk }}>Member report</Text>
           </Pressable>
         </View>
@@ -336,6 +369,11 @@ export default function Home() {
           {rows.some(w => w.partial)
             ? 'Weeks run Monday to Sunday. The partial week at the start is shown separately rather than blended in.'
             : 'Weeks run Monday to Sunday. Awaiting-upload sessions are counted as expected but not yet attended.'}
+          {/* the branch and course filters narrow the chart above; this table
+              is whole-academy, and says so rather than looking filtered */}
+          {scope === 'branch' || courseValue !== allCourses
+            ? ' These rows are academy-wide — the branch and course filters do not narrow them.'
+            : ''}
         </Muted>
       </View>
 

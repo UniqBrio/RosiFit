@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { View, Text, Pressable, ScrollView } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Screen, Muted, Label, Button, Skeleton, EmptyState, ErrorState } from '../../src/components/ui';
+import { ScreenHeader } from '../../src/components/AppShell';
 import { Icon } from '../../src/components/Icon';
 import { MemberRow } from '../../src/components/MemberRow';
 import { useTheme } from '../../src/theme/ThemeProvider';
@@ -36,7 +37,8 @@ export default function Weekly() {
 
   return (
     <Screen>
-      <Muted>{`${week.label} · ${members.length} members`}</Muted>
+      <ScreenHeader title="Weekly review"
+        subtitle={`${week.label} · ${members.length} members`} />
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false}
         contentContainerStyle={{ gap: SPACE.sm, paddingVertical: SPACE.md }}>

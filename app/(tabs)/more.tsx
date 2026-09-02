@@ -1,6 +1,7 @@
 import { View, Text, Pressable } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import { Screen, Muted, Label } from '../../src/components/ui';
+import { ScreenHeader } from '../../src/components/AppShell';
 import { Icon } from '../../src/components/Icon';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
@@ -55,7 +56,7 @@ export default function More() {
 
   return (
     <Screen>
-      <Muted style={{ marginBottom: SPACE.lg }}>Your account, your academy, your rules</Muted>
+      <ScreenHeader title="More" subtitle="Your account, your academy, your rules" />
 
       <Pressable onPress={() => router.push('/profile')}
         accessibilityRole="button"
@@ -117,6 +118,10 @@ export default function More() {
           </View>
         </View>
       ))}
+
+      <Muted style={{ textAlign: 'center', marginTop: SPACE.xxl, lineHeight: 20 }}>
+        RosiFit staff · v1.4 (build 212){'\n'}Preparing, Thriving and Beyond
+      </Muted>
     </Screen>
   );
 }

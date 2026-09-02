@@ -1,15 +1,23 @@
 import { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { Screen, Muted, Label } from '../src/components/ui';
-import { Icon } from '../src/components/Icon';
-import { Sheet } from '../src/components/Sheet';
-import { useTheme } from '../src/theme/ThemeProvider';
-import { SPACE, RADIUS, STATUS, statusSurface, type StatusKey } from '../src/theme/tokens';
+import { Screen, Muted, Label } from '../../src/components/ui';
+import { ScreenHeader } from '../../src/components/AppShell';
+import { Icon } from '../../src/components/Icon';
+import { Sheet } from '../../src/components/Sheet';
+import { useTheme } from '../../src/theme/ThemeProvider';
+import { SPACE, RADIUS, STATUS, statusSurface, type StatusKey } from '../../src/theme/tokens';
 
 /**
- * August 2026, as the canvas draws it: a Monday-start grid where every
- * session-bearing day carries an icon, with the legend spelling out that the
- * icon and its WORD carry the meaning, never the colour alone.
+ * August 2026, as the canvas draws it: every session-bearing day carries an
+ * icon, with the legend spelling out that the icon and its WORD carry the
+ * meaning, never the colour alone.
+ *
+ * The grid is Monday-start because that is how weeks are counted everywhere
+ * else in the app. The canvas labels its columns Sunday-first but pads by 5,
+ * which puts 1 August under Friday -- a month that does not exist. The dates
+ * here are real; only the two awaiting-upload days move, onto the first two
+ * teaching days that follow the last uploaded one, so the "2 awaiting upload"
+ * in the header and the legend's Awaiting row both have something to point at.
  */
 type Day = { n: number; status: StatusKey | null };
 
@@ -25,7 +33,7 @@ function buildMonth(): (Day | null)[] {
     if (d === 19) status = 'holiday';
     else if (d === 21) status = 'cancelled';
     else if (teach && d <= 20) status = 'present';
-    else if (teach && (d === 22 || d === 23)) status = 'awaiting';
+    else if (teach && (d === 24 || d === 26)) status = 'awaiting';
     else if (teach) status = 'scheduled';
     cells.push({ n: d, status });
   }
@@ -52,7 +60,7 @@ export default function Sessions() {
 
   return (
     <Screen>
-      <Muted>26 sessions · 2 awaiting upload</Muted>
+      <ScreenHeader title="August 2026" subtitle="26 sessions · 2 awaiting upload" />
 
       <View style={{ flexDirection: 'row', marginTop: SPACE.lg }}>
         {DOW.map(d => (

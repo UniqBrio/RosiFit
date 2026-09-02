@@ -6,11 +6,19 @@ import { useTheme } from '../src/theme/ThemeProvider';
 import { useToast } from '../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS } from '../src/theme/tokens';
 
-type Row = { label: string; value: string; note: string; editable?: boolean };
+type Row = { label: string; value: string; note: string; editable?: boolean; to?: '/change-mobile' };
 
+/**
+ * The canvas locks the mobile number ("it cannot be changed") and offers the
+ * only change-number button on the PRE-authentication PIN screen. C-99
+ * reversed that, and §26.2 F-1 of the plan calls the canvas' version blocking
+ * -- so the plan wins here and the row is editable, behind the authenticated,
+ * PIN-gated flow on /change-mobile rather than a pre-auth affordance.
+ */
 const ROWS: Row[] = [
   { label: 'Full name',     value: 'Priya Menon',        note: 'Shown to your staff and on emails you send', editable: true },
-  { label: 'Mobile number', value: '+91 80563 29742',    note: 'Your sign-in ID — it cannot be changed' },
+  { label: 'Mobile number', value: '+91 80563 29742',
+    note: 'Your sign-in ID — changing it asks for your PIN first', editable: true, to: '/change-mobile' },
   { label: 'Role label',    value: 'Academy admin',      note: 'A label only — access is the same for everyone', editable: true },
   { label: 'Academy',       value: 'RosiFit · 3 branches', note: 'Coimbatore, Madurai, Chennai' },
 ];
@@ -41,9 +49,11 @@ export default function Profile() {
       }}>
         {ROWS.map((r, i) => (
           <Pressable key={r.label}
-            onPress={() => flash(
-              r.editable ? `Editing ${r.label.toLowerCase()}` : `${r.label} cannot be changed`,
-              r.editable ? 'ok' : 'warn')}
+            onPress={() => (r.to
+              ? router.push(r.to)
+              : flash(
+                  r.editable ? `Editing ${r.label.toLowerCase()}` : `${r.label} cannot be changed`,
+                  r.editable ? 'ok' : 'warn'))}
             accessibilityRole="button"
             // the lock is not left to the icon: a screen reader is told which
             // rows are fixed before the row is activated
@@ -68,7 +78,7 @@ export default function Profile() {
         ))}
       </View>
 
-      <Button label="Change my PIN" onPress={() => router.push('/set-pin')} style={{ marginTop: SPACE.lg }} />
+      <Button label="Change My PIN" onPress={() => router.push('/set-pin')} style={{ marginTop: SPACE.lg }} />
 
       <Pressable onPress={() => router.replace('/')}
         accessibilityRole="button"
@@ -80,7 +90,7 @@ export default function Profile() {
         <Text style={{
           fontSize: 14, fontWeight: '800',
           color: theme.isDark ? STATUS.absent.fgDark : STATUS.absent.fgLight,
-        }}>Sign out</Text>
+        }}>Sign Out</Text>
       </Pressable>
     </Screen>
   );

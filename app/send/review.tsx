@@ -3,6 +3,7 @@ import { View, Text, Pressable } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Screen, Body, Muted, Label, Button, Skeleton, ErrorState } from '../../src/components/ui';
 import { Icon } from '../../src/components/Icon';
+import { ConfirmDialog } from '../../src/components/Sheet';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, STATUS, statusSurface } from '../../src/theme/tokens';
@@ -27,6 +28,7 @@ export default function ReviewSend() {
   const templates = useTemplates(forced);
   const followUp = useFollowUp(forced, week);
   const [sending, setSending] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
   const list = templates.data ?? [];
   const tpl = list.find(t => t.id === template) ?? list[0];
@@ -164,7 +166,17 @@ export default function ReviewSend() {
       <Button
         label={sending ? 'Sending…' : `Send to ${recipients.length} members`}
         disabled={sending || recipients.length === 0}
-        style={{ marginTop: SPACE.lg }} onPress={() => void send()} />
+        style={{ marginTop: SPACE.lg }} onPress={() => setConfirming(true)} />
+
+      {/* Sending is the one irreversible act here, so the canvas puts a
+          confirmation in front of it that restates the count AND why anyone
+          is excluded (C-76) before a single message leaves. */}
+      <ConfirmDialog
+        open={confirming} onClose={() => setConfirming(false)}
+        title={`Send ${recipients.length} check-in email${recipients.length === 1 ? '' : 's'}?`}
+        body={`Each email carries her own attendance figures. ${excluded.length} member${excluded.length === 1 ? ' is' : 's are'} excluded because we have no usable email for ${excluded.length === 1 ? 'her' : 'them'} — ${excluded.length === 1 ? 'she stays' : 'they stay'} on your list.`}
+        confirmLabel="Send"
+        onConfirm={() => { setConfirming(false); void send(); }} />
     </Screen>
   );
 }
