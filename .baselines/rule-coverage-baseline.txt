@@ -1,0 +1,6 @@
+# RULE COVERAGE BASELINE - accepted, temporary debt. Not an allowlist: this file may only shrink.
+# A NEW signature BLOCKS. A signature fixed but still listed here ALSO BLOCKS (regenerate).
+# PROSE-ONLY entries are honest debt. DEAD-RUNG and DUPLICATE entries should be fixed, not baselined.
+# Regenerate: node scripts/audits/check-rule-coverage.mjs --write-baseline
+# Generated: 2026-09-02 - 1 entry
+DEAD-RUNG|RC-003|claims src/components/Dialog.tsx, which does not exist
