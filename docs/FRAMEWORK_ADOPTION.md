@@ -119,9 +119,9 @@ icons) and `npm run audit:all` green across both trees. `.claude/commands/gate.m
 addendum recording exactly this, so its documented contract and its observed behaviour no longer
 disagree silently.
 
-### Four framework defects found — `/promote` candidates, not patched locally
+### Five framework defects found — `/promote` candidates, not patched locally
 
-Found by running the gate rather than reading it. All four live in Half A, which an app may not
+Found by running the gate rather than reading it. All five live in Half A, which an app may not
 edit; the framework's own rule is that needing to edit a process file is the signal to run
 `/promote`, not to fork.
 
@@ -138,6 +138,13 @@ edit; the framework's own rule is that needing to edit a process file is the sig
   is telling you so` and exits 0, which the runner reads as PASS. Root cause: `RATCHET_SKIP = 0`
   is right for a commit guard that must never block on a tooling gap, and wrong under a runner
   that maps 0 to PASS. Two consumers, one exit code.
+- **F-5 — the documented contract and the runner disagree on the exit code for an unverifiable
+  class, so the three-valued verdict collapses to two.** `gate.md` defines exit `3` / BLOCKED as
+  *"a class could not be verified — an owner decision, never a pass"*. In practice the runner
+  reaches `3` only if a step itself exits `3`, and none here do: five unverifiable classes exit
+  `2` / FAIL instead. The consequence is not cosmetic — **the owner is never actually asked to
+  accept a BLOCKED class**, because the gate calls it a failure. F-5 is downstream of F-1, F-2 and
+  F-3: fix those three and exit `3` becomes reachable and the contract becomes true. TD-011.
 - **F-4 — `gate-runner.mjs` cannot gate an app whose code is not all under `src/`.** It passes no
   `--dir`, and `--dir` is single-valued anyway. RosiFit's 30 screens live in `app/`, so the gate
   never sees roughly two-thirds of the codebase. It should accept a repeatable `--dir` or read its
