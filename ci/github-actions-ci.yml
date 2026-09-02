@@ -1,9 +1,25 @@
-# CI — runs exactly the same gate developers run locally.
+# CI - runs exactly the same gate developers run locally.
 #
-# If CI and local run different checks, one of them is decoration — and it is always the one
+# If CI and local run different checks, one of them is decoration - and it is always the one
 # that is slower to fix.
 #
 # Copy to .github/workflows/ci.yml
+#
+# ---------------------------------------------------------------------------------------------
+# RECONCILED FOR RosiFit, 02-Sep-2026, at framework adoption.
+#
+# The framework's shipped version of this file ran eleven steps against a scaffolded layout:
+# `theme:check`, `theme:contrast`, `theme:assets`, `audit:compat`, and an application half under
+# `working-directory: starter` running `lint`, `test:unit` and `test:functional`.
+#
+# NONE of those exist here. RosiFit was adopted from a copy of the framework, not scaffolded:
+# there is no starter/, no fixtures/ and no design/tokens.json, and the app is at the repository
+# root. Every one of those steps would have failed on a missing script or a missing file - which
+# is a red CI that says nothing, and a red CI that says nothing is switched off within a week.
+#
+# What follows is only what can actually run. Each omission is recorded with its reason, and the
+# accepted-unverifiable classes carry a DECISION_LOG entry and a TECH_DEBT row each (ADR 003).
+# ---------------------------------------------------------------------------------------------
 
 name: CI
 
@@ -35,71 +51,49 @@ jobs:
       # not testing what will ship.
       - run: npm ci
 
-      # ---- Cheap, always-runnable gates first -------------------------------------------
-      # These need no browser and no credentials, so they run in every environment and
-      # therefore always actually run.
+      # ---- The app's own gates ------------------------------------------------------------
+      # `npm run check` is the definition of done for this repository: types, then 2,800
+      # contrast pairs across all 360 custom hues in both themes, then all 71 canvas glyphs.
+      # These are the SUBSTITUTE RUNGS for the framework's G1-G3 (ADR 001) and they are
+      # stronger than the steps they replace, not weaker.
 
-      - name: Theme artifacts are in sync with the token source
-        run: npm run theme:check
+      - name: Types, contrast (2,800 pairs) and icons (71 glyphs)
+        run: npm run check
 
-      - name: Contrast, all declared pairs, both themes
-        run: npm run theme:contrast
+      # ---- Ratcheted audits ---------------------------------------------------------------
+      # audit:all, NOT gate. `npm run gate` passes no --dir, so its ratcheted steps see src/
+      # only and never app/, where all 30 screens live (ADR 004, TD-008). audit:* runs each
+      # audit twice - once per tree, with distinct baselines - so this is the complete check.
+      #
+      # Every one of these blocks only on a NEW violation, or on a baselined one that was fixed
+      # and left listed. Day one blocks nothing that was not already broken.
 
-      - name: Theme assets present per theme
-        run: npm run theme:assets
+      - name: All ratchets, both app/ and src/
+        run: npm run audit:all
 
-      - name: No hard-coded colours
-        run: npm run audit:colors
+      # ---- The guards ---------------------------------------------------------------------
+      # EXECUTES every commit guard against scratch repositories. A source scan cannot tell a
+      # live guard from a commented-out one; only running it proves each can still fire.
 
-      - name: Every rule names its enforcement point
-        run: npm run audit:rules
-
-      - name: Automation addressability
-        run: npm run audit:testids
-
-      - name: Wide tables are configurable
-        run: npm run audit:columns
-
-      - name: Commit guards are reachable (incl. upgrade/lineage suite)
+      - name: Commit guards are reachable
         run: npm run guard:test
 
-      - name: Backward compatibility - fixtures must not go green to red
-        run: npm run audit:compat
-
-      # ---- Application gates --------------------------------------------------------------
-      # The application's dependencies are separate from the framework's. Without this step
-      # every gate below fails on a missing toolchain, not on the code - and `npx tsc` with no
-      # local TypeScript would fetch an unrelated registry package of that name and run it.
-      # The starter ships deliberately unpinned (a shape, not a lockfile), hence `install`;
-      # in a scaffolded app, commit the lockfile and change this to `npm ci`.
-      - name: Install application dependencies
-        working-directory: starter
-        run: npm install
-
-      - name: Types
-        working-directory: starter
-        run: npm run typecheck
-
-      - name: Lint
-        working-directory: starter
-        run: npm run lint
-
-      - name: Unit + pure specs
-        working-directory: starter
-        run: npm run test:unit
-
-      - name: Install browsers
-        working-directory: starter
-        run: npx playwright install --with-deps chromium
-
-      - name: Render + functional
-        working-directory: starter
-        run: npm run test:functional
-
-      # Uploaded on failure only. A green run does not need 200MB of traces.
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: playwright-report
-          path: starter/playwright-report/
-          retention-days: 14
+      # ---- Deliberately NOT run here, each with its reason --------------------------------
+      #
+      #   theme:build / theme:check   no design/tokens.json - colour is src/theme/tokens.ts.
+      #                               Covered by `npm run check` above.        ADR 001, TD-001
+      #   theme:assets                no per-theme brand assets are declared.           TD-003
+      #   audit:compat                needs fixtures/ + starter/. It is a FRAMEWORK self-test,
+      #                               and here it exits 0 while printing "INERT" - a false
+      #                               green, so running it would be worse than not.      TD-007
+      #   conformance                 same: framework self-test, needs fixtures/.
+      #   lint                        no ESLint configured in this project.              TD-004
+      #   test:unit / test:functional no JS test runner configured. The only automated suite is
+      #                               supabase/tests/*.sql (124 assertions), which needs a live
+      #                               Postgres 16 and is not wired to CI yet.     TD-005, TD-006
+      #   gate                        under-covers this repo (src/ only) and exits 2 on the
+      #                               five steps whose input does not exist.      ADR 004, TD-008
+      #
+      # Adding any of them today would produce a permanently red CI whose redness carries no
+      # information. Each becomes a real step the moment its input exists; the TECH_DEBT row
+      # names the condition.
