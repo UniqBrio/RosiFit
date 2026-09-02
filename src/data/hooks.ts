@@ -17,7 +17,8 @@ import { currentWeek, type Period } from './period';
 import {
   fetchMembers, fetchRules, fetchCourses, fetchTemplates, fetchStaff, fetchAudit,
   fetchFilterOptions, fetchMonthSessions, fetchPendingSessions, fetchWeekRows,
-  fetchAcademy,
+  fetchAcademy, fetchBranches, fetchOfferings,
+  type Branch, type OfferingDetail,
   fetchAttendance, onCoursesChanged, onMembersChanged,
   fetchHolidays, onHolidaysChanged,
   type Rules, type PendingSession, type Holiday,
@@ -157,6 +158,24 @@ export function useFilterOptions(forced?: string): Async<{ branches: string[]; c
  *  which is the branch-scope picker and fetches nothing. */
 export function useAcademyDetails(forced?: string): Async<{ name: string; branches: string[] }> {
   return useAsync(() => fetchAcademy(), [], forced);
+}
+
+/**
+ * Everything the offering editor needs, from ONE load: the course it belongs
+ * to, the branches it could run at, and the offerings it already has. They
+ * are fetched together because the screen compares them -- the course's
+ * stated frequency against the days actually scheduled (C-59/CR-07) -- and
+ * two separate loads could show a frequency from one moment against weekdays
+ * from another.
+ */
+export function useOfferingEditor(courseId: string, forced?: string):
+  Async<{ course: Course | null; branches: Branch[]; offerings: OfferingDetail[] }> {
+  return useAsync(async () => {
+    const [courses, branches, offerings] = await Promise.all([
+      fetchCourses(), fetchBranches(), fetchOfferings(courseId),
+    ]);
+    return { course: courses.find(c => c.id === courseId) ?? null, branches, offerings };
+  }, [courseId], forced);
 }
 
 export function useMonthSessions(year: number, month: number, forced?: string): Async<SessionDay[]> {

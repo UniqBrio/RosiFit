@@ -75,10 +75,6 @@ export default function Courses() {
         {list.map((c, i) => {
           const enrolled = members.filter(m => m.course === c.name).length;
           const rule = rules?.byCourseName[c.name];
-          const offerings = c.offerings.length
-            ? c.offerings.map(o =>
-                `${o.branch} ${o.weekdays.map(d => DAY_NAMES[d]).join(' ')}`).join(' · ')
-            : 'No offering yet — so no schedule';
           return (
             <View key={c.id} style={{
               padding: SPACE.lg, borderRadius: RADIUS.lg, backgroundColor: theme.surface,
@@ -108,17 +104,70 @@ export default function Courses() {
                   onPress={() => flash(`Removing ${c.name} needs a confirmation`, 'warn')} />
               </View>
 
+              {/* The offerings ARE the schedule, so each one is the way in to
+                  editing its days. Listing them as dead text is what left the
+                  course form telling people to "set its days there" with no
+                  there to go to. */}
               <View style={{
-                flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, marginTop: SPACE.md,
+                gap: 6, marginTop: SPACE.md,
                 paddingTop: SPACE.md, borderTopWidth: 1, borderTopColor: theme.line,
               }}>
-                <Text numberOfLines={2} style={{ flex: 1, fontSize: 11.5, color: theme.muted, lineHeight: 16 }}>
-                  {offerings}
-                </Text>
-                <Pressable onPress={() => router.push('/(tabs)/members')} accessibilityRole="button"
-                  accessibilityLabel={`Members of ${c.name}`}>
-                  <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.accentInk }}>Members</Text>
-                </Pressable>
+                {c.offerings.length === 0 ? (
+                  <Text style={{ fontSize: 11.5, color: theme.muted, lineHeight: 16 }}>
+                    No offering yet — so no schedule, and nobody is expected anywhere.
+                  </Text>
+                ) : c.offerings.map(o => {
+                  const days = o.weekdays.length
+                    ? o.weekdays.map(d => DAY_NAMES[d]).join(' ')
+                    : 'No days set';
+                  return (
+                    <Pressable testID={`courses-offering-${o.id}`}
+                      key={o.id}
+                      onPress={() => router.push({
+                        pathname: '/offering/edit',
+                        params: { courseId: c.id, offeringId: o.id },
+                      })}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${c.name} at ${o.branch}, ${days}. Edit the days it runs`}
+                      style={({ pressed }) => ({
+                        flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
+                        minHeight: TAP_MIN - 8, opacity: pressed ? 0.7 : 1,
+                      })}>
+                      <Icon name="apartment" size={14} color={theme.dim} />
+                      <Text style={{ fontSize: 11.5, fontWeight: '700', color: theme.fgStrong }}>
+                        {o.branch}
+                      </Text>
+                      {/* the word carries it, not the absence of colour */}
+                      <Text style={{
+                        flex: 1, fontSize: 11.5, lineHeight: 16,
+                        color: o.weekdays.length ? theme.muted : dangerInk,
+                        fontWeight: o.weekdays.length ? '400' : '800',
+                      }}>{days}</Text>
+                      <Icon name="chevron_right" size={16} color={theme.dim} />
+                    </Pressable>
+                  );
+                })}
+
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.lg, marginTop: 2 }}>
+                  <Pressable testID={`courses-add-offering-${c.id}`}
+                    onPress={() => router.push({
+                      pathname: '/offering/edit', params: { courseId: c.id },
+                    })}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Add a branch and days for ${c.name}`}
+                    style={{ minHeight: TAP_MIN / 2, justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.accentInk }}>
+                      {c.offerings.length ? 'Add offering' : 'Set where and when'}
+                    </Text>
+                  </Pressable>
+                  <View style={{ flex: 1 }} />
+                  <Pressable testID={`courses-members-${c.id}`}
+                    onPress={() => router.push('/(tabs)/members')} accessibilityRole="button"
+                    accessibilityLabel={`Members of ${c.name}`}
+                    style={{ minHeight: TAP_MIN / 2, justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.accentInk }}>Members</Text>
+                  </Pressable>
+                </View>
               </View>
 
               <Muted style={{ marginTop: SPACE.sm }}>

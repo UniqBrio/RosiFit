@@ -13,6 +13,7 @@
  */
 import { supabase, isConfigured } from '../lib/supabase';
 import type { Period } from './period';
+import { currentSchedules, today } from './schedule';
 import {
   MEMBERS, COURSE_LIST, GLOBAL_RULE, COURSE_RULES, TEMPLATES, STAFF, AUDIT,
   BRANCHES, COURSES, MONTH_DAYS, PENDING_SESSIONS, WEEK_ROWS, attendanceFixture,
@@ -177,15 +178,16 @@ export async function fetchCourses(): Promise<Course[]> {
   if (coursesRes.error) fail('Could not load courses', coursesRes.error);
 
   const branchName = new Map((branchesRes.data ?? []).map(b => [b.id as string, b.name as string]));
-  // the schedule effective now, per offering: the latest one whose window is open
-  const today = new Date().toISOString().slice(0, 10);
-  const weekdaysByOffering = new Map<string, number[]>();
-  for (const s of schedulesRes.data ?? []) {
-    const from = s.effective_from as string;
-    const to = s.effective_to as string | null;
-    if (from > today || (to && to < today)) continue;
-    weekdaysByOffering.set(s.offering_id as string, (s.weekdays as number[]) ?? []);
-  }
+  // The version in force today, per offering. One shared, tested resolver --
+  // this and fetchOfferings each carried their own copy of the window
+  // arithmetic and had to agree with each other by hand.
+  const weekdaysByOffering = currentSchedules(
+    (schedulesRes.data ?? []).map(s => ({
+      offering_id: s.offering_id as string,
+      weekdays: (s.weekdays as number[]) ?? [],
+      effective_from: s.effective_from as string,
+      effective_to: (s.effective_to as string | null) ?? null,
+    })), today());
 
   return (coursesRes.data ?? []).map(c => ({
     id: c.id as string,
@@ -200,7 +202,7 @@ export async function fetchCourses(): Promise<Course[]> {
         // course AT a branch, and that is this row, not the course
         id: o.id as string,
         branch: branchName.get(o.branch_id as string) ?? '—',
-        weekdays: weekdaysByOffering.get(o.id as string) ?? [],
+        weekdays: weekdaysByOffering.get(o.id as string)?.weekdays ?? [],
       })),
   }));
 }
@@ -336,6 +338,171 @@ export async function updateCourse(id: string, input: CourseInput): Promise<void
   // the screen would report a save that the policy silently declined.
   if (!data || data.length === 0) {
     throw new Error('That course could not be changed — only the super admin may, and only while the subscription is active. Nothing has been saved.');
+  }
+  coursesChanged();
+}
+
+// ----------------------------------------------------------------- offerings
+/**
+ * An OFFERING is the course at one branch -- the thing that actually runs --
+ * and its SCHEDULE is the weekdays it runs on. 0005 calls offering_schedules
+ * *** THE source of expected attendance ***, and until 0018 there was no way
+ * for the app to write one: the table carries a read policy and, on purpose,
+ * no INSERT/UPDATE policy at all. So a course could state a frequency and
+ * never acquire the days that frequency is an intent ABOUT.
+ *
+ * Offerings are inserted directly (0005 grants that to the super admin behind
+ * `is_super_admin() and is_subscription_writable()`); the SCHEDULE goes
+ * through set_offering_schedule, which is the only path that exists.
+ */
+export type Branch = { id: string; name: string };
+
+export async function fetchBranches(): Promise<Branch[]> {
+  if (!isConfigured) {
+    return BRANCHES.filter(b => b !== 'All branches')
+      .map(name => ({ id: `local-branch-${name.toLowerCase()}`, name }));
+  }
+  const { data, error } = await supabase.from('branches')
+    .select('id, name').is('deleted_at', null).order('name');
+  if (error) fail('The branch list could not be loaded', error);
+  return (data ?? []).map(b => ({ id: b.id as string, name: b.name as string }));
+}
+
+export type OfferingDetail = {
+  id: string;
+  branch_id: string;
+  branch: string;
+  start_time: string | null;
+  end_time: string | null;
+  /** the schedule in force today; empty means this offering has none yet */
+  weekdays: number[];
+  effective_from: string | null;
+};
+
+export async function fetchOfferings(courseId: string): Promise<OfferingDetail[]> {
+  if (!isConfigured) {
+    const course = COURSE_LIST.find(c => c.id === courseId);
+    return (course?.offerings ?? []).map(o => ({
+      id: o.id,
+      branch_id: `local-branch-${o.branch.toLowerCase()}`,
+      branch: o.branch,
+      start_time: course?.start_time ?? null,
+      end_time: course?.end_time ?? null,
+      weekdays: o.weekdays,
+      effective_from: null,
+    }));
+  }
+
+  const [offeringsRes, branchesRes, schedulesRes] = await Promise.all([
+    supabase.from('course_offerings')
+      .select('id, branch_id, start_time, end_time')
+      .eq('course_id', courseId).is('deleted_at', null),
+    supabase.from('branches').select('id, name').is('deleted_at', null),
+    supabase.from('offering_schedules')
+      .select('offering_id, weekdays, effective_from, effective_to'),
+  ]);
+  if (offeringsRes.error) fail('The offerings could not be loaded', offeringsRes.error);
+
+  const branchName = new Map((branchesRes.data ?? []).map(b => [b.id as string, b.name as string]));
+  // the version in force TODAY -- the same resolver fetchCourses reads, so the
+  // Courses tab and this screen cannot disagree about an offering's days
+  const current = currentSchedules(
+    (schedulesRes.data ?? []).map(sc => ({
+      offering_id: sc.offering_id as string,
+      weekdays: (sc.weekdays as number[]) ?? [],
+      effective_from: sc.effective_from as string,
+      effective_to: (sc.effective_to as string | null) ?? null,
+    })), today());
+
+  return (offeringsRes.data ?? []).map(o => ({
+    id: o.id as string,
+    branch_id: o.branch_id as string,
+    branch: branchName.get(o.branch_id as string) ?? '—',
+    start_time: (o.start_time as string | null)?.slice(0, 5) ?? null,
+    end_time: (o.end_time as string | null)?.slice(0, 5) ?? null,
+    weekdays: current.get(o.id as string)?.weekdays ?? [],
+    effective_from: current.get(o.id as string)?.effective_from ?? null,
+  }));
+}
+
+export type OfferingInput = {
+  course_id: string;
+  branch_id: string;
+  start_time: string | null;
+  end_time: string | null;
+};
+
+function offeringWriteError(error: { code?: string; message?: string } | null): string {
+  const code = error?.code ?? '';
+  const message = error?.message ?? '';
+  if (code === '42501' || /row-level security/i.test(message)) {
+    return 'Only the super admin can add an offering, and only while the subscription is active. Nothing has been saved.';
+  }
+  if (code === '23505' || /offerings_unique_live/.test(message)) {
+    return 'This course already runs at that branch. Edit that offering instead of adding a second one.';
+  }
+  return `${message || 'The offering could not be saved'}. Nothing has been saved.`;
+}
+
+export async function createOffering(input: OfferingInput): Promise<string> {
+  if (!isConfigured) {
+    const course = COURSE_LIST.find(c => c.id === input.course_id);
+    if (!course) throw new Error('That course no longer exists. Nothing has been saved.');
+    const branch = input.branch_id.replace('local-branch-', '');
+    const id = `local-offering-${Date.now()}`;
+    course.offerings.push({
+      id,
+      branch: branch.charAt(0).toUpperCase() + branch.slice(1),
+      weekdays: [],
+    });
+    coursesChanged();
+    return id;
+  }
+
+  const { data, error } = await supabase.from('course_offerings')
+    .insert({
+      course_id: input.course_id,
+      branch_id: input.branch_id,
+      start_time: input.start_time,
+      end_time: input.end_time,
+    })
+    .select('id')
+    .single();
+  if (error || !data) {
+    console.error('createOffering:', error?.message ?? 'no row returned');
+    throw new Error(offeringWriteError(error));
+  }
+  coursesChanged();
+  return data.id as string;
+}
+
+/**
+ * The ONLY write path to offering_schedules (0018). Its refusals are written
+ * for an operator -- "this offering has a completed session on 6 Oct, so a
+ * schedule cannot start on or before it" -- so they are surfaced as-is rather
+ * than flattened into a generic failure.
+ */
+export async function setOfferingSchedule(
+  offeringId: string, weekdays: number[], effectiveFrom: string,
+): Promise<void> {
+  if (!isConfigured) {
+    for (const course of COURSE_LIST) {
+      const offering = course.offerings.find(o => o.id === offeringId);
+      if (offering) { offering.weekdays = [...weekdays].sort((a, b) => a - b); break; }
+    }
+    coursesChanged();
+    return;
+  }
+
+  const { error } = await supabase.rpc('set_offering_schedule', {
+    p_offering_id: offeringId,
+    p_weekdays: weekdays,
+    p_effective_from: effectiveFrom,
+    p_note: null,
+  });
+  if (error) {
+    console.error('setOfferingSchedule:', error.message);
+    throw new Error(`${error.message || 'The schedule could not be saved'}. Nothing has been saved.`);
   }
   coursesChanged();
 }

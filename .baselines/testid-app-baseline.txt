@@ -3,7 +3,7 @@
 # Signature: <path>|<count of interactive elements with no test id>.
 # Regenerate: node scripts/audits/check-testid-coverage.mjs --write-baseline
 # Generated: 2026-09-02 - 26 entries
-app/(tabs)/courses.tsx|4
+app/(tabs)/courses.tsx|3
 app/(tabs)/index.tsx|4
 app/(tabs)/members.tsx|4
 app/(tabs)/more.tsx|2

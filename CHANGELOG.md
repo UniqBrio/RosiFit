@@ -1,5 +1,43 @@
 # Changelog
 
+## Unreleased — a course can be given the days it actually runs
+
+**Frequency was orphaned intent.** The course form collects "3 sessions per week" and says,
+correctly, that weekdays live on the offering — "create an offering, the course at one branch,
+and set its days there". There was no such screen, and no write path either: migration 0005
+created `offering_schedules`, called it in its own header *the source of expected attendance*,
+and deliberately left it with a read policy and **no** insert or update policy, noting that a
+schedule write "has to be validated against completed sessions first". The policy was written;
+the RPC it deferred to never was. So a course could state a frequency and never acquire the days
+that frequency is an intent *about* — no weekdays means no sessions, no expected attendance and
+no follow-up. The stepper worked perfectly, which is what made it hard to see: the missing piece
+was not the control, it was everywhere the control was supposed to lead.
+
+Migration **0018** `set_offering_schedule` is that write path. It restates the super-admin and
+subscription checks inside the function, because `SECURITY DEFINER` bypasses RLS and would
+otherwise be a hole straight through the policy the organisation tables carry. It refuses any
+`effective_from` on or before the offering's last **completed** session — a completed session has
+a frozen expected set, and moving a schedule back over one would leave history describing days
+the schedule no longer contains — and it names the first date that would work rather than
+silently clamping. Changes **version**: the open schedule is closed the day before the new one
+starts. It does not generate sessions; that is a separate decision and this does not quietly make
+it. **New screen** `app/offering/edit.tsx`, and in the Courses tab each offering is now the way
+in to editing its days rather than dead text pointing at a "there" that did not exist.
+
+**A frequency/weekday mismatch warns and is never reconciled**, which 0005's own column comment
+has required from the start and no UI could honour until now. Pick two days against a stated
+three and the screen says both numbers stand and attendance counts the two.
+
+**One resolver for "which schedule version is in force".** `fetchCourses` and the new
+`fetchOfferings` each carried their own copy of the effective-dating arithmetic and had to agree
+by hand. They now share `src/data/schedule.ts`, whose cases caught two real defects in the
+inline version they replace: an exclusive `effective_to` leaves the changeover day covered by
+neither version — one day on which every member is expected at nothing, with nothing to see —
+and a plain overwrite loop lets row order decide which version wins.
+
+**0018 is committed but NOT applied.** The live schema is 0001–0015. Applying it is the repo
+owner's call.
+
 ## Unreleased — holidays can be removed, and adding one now writes
 
 **A holiday can be deleted.** C-92 has promised since the beginning that removing a holiday
