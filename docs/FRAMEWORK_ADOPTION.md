@@ -272,3 +272,42 @@ this pass changed no application code, which is exactly what it promised.
 | The learning check — would a correct process have caught this? | ✅ **Yes, and it did.** Running the gate rather than reading it surfaced F-1 to F-4. Four `/promote` candidates raised instead of four local patches |
 
 ---
+
+## Register template residue removed — 02-Sep-2026, same branch
+
+A sweep of `docs/` for surviving scaffolding. **This is not an append-only violation**: a
+placeholder row is the template's illustration of a row, not a register entry. It is the same
+class as the `CANONICAL_PATTERNS` archive — removing scaffolding, not history. Nothing with an
+issued ID, a date, or an author was touched.
+
+**Removed (2)** — both single placeholder rows in registers this adoption had not otherwise
+touched, each leaving a valid header-only table plus an explicit statement that the register is
+empty, so it reads as a fact rather than as an oversight:
+
+| File | Removed |
+|---|---|
+| `docs/registers/KNOWN_LIMITATIONS.md` | the `_KL-001_ / _e.g. iOS Safari_ / …` illustration row |
+| `docs/registers/PRODUCT_LEXICON.md` | the `_e.g. a recurring amount owed_ / _Monthly fee_ / … / _DD-MMM-YYYY_` illustration row |
+
+**Kept, deliberately — these are content, not residue (3):**
+
+- `docs/registers/ROOT_CAUSE_REGISTER.md:14–38` — `RC-000 — <one-line title>` and its
+  `DD-MMM-YYYY`. This sits inside a fenced ```` ```markdown ```` block under a heading that reads
+  **Template**: it is the register's own instructions for writing an entry. Deleting it would
+  remove the documentation, not the scaffolding. `check-rule-coverage.mjs` already skips fenced
+  blocks by design — *"a fenced block is a TEMPLATE or an example, not a rule definition"* — so it
+  was never counted as a rule and never affected the ratchet.
+- `docs/registers/CANONICAL_PATTERNS.md:52` (and its archive copy) — `rung: <path>` in the
+  **Adding a row** instructions. Live guidance for the next author.
+- `docs/03-PROJECT-STRUCTURE.md:107` — `<name>.taxonomy.ts`, a naming-convention illustration in a
+  reference document, not a register placeholder.
+
+**Searched for and not present (6).** These were expected but had already been removed by the
+register rewrites earlier in this pass, when `FEATURE_TRUTH`, `RBAC_MATRIX`, `ENVIRONMENTS` and
+`TEST_ACCOUNTS` were replaced wholesale rather than edited: the literal `<Module name>`,
+`_example:`, `_test-owner@example.test_`, duplicated `Legend:` lines (one occurrence),
+duplicated numbered rules in `ENVIRONMENTS.md` (rules 1–5 appear once each) and in
+`TEST_ACCOUNTS.md` (rules 1–7 appear once each), and duplicated table header rows (none; no two
+consecutive identical lines exist anywhere in `docs/registers/`).
+
+---

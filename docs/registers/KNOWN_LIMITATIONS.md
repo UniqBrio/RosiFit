@@ -23,7 +23,9 @@ screenshots, old support answers and old test cases still refer to it.
 
 | ID | Platform | Capability | Why it cannot work | Reference | What we tell the user | Fallback | Affected modules |
 |---|---|---|---|---|---|---|---|
-| _KL-001_ | _e.g. iOS Safari_ | _e.g. contact picker_ | _one sentence_ | _link to platform docs / MDN / caniuse_ | _the support answer, in plain language_ | _what the user does instead_ | _list_ |
+
+_No entries. RosiFit has not yet hit a genuine platform limit that needed recording — a row
+here requires a **reference** proving the limit is the platform's and not ours._
 
 ## Resolved / expired
 

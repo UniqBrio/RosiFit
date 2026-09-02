@@ -27,7 +27,9 @@ what the user reads is a product decision, and they are allowed to differ.
 
 | Concept | **Approved term** | Not this | Status | Occurrences | Decided |
 |---|---|---|---|---|---|
-| _e.g. a recurring amount owed_ | _Monthly fee_ | _charge, dues, billing, subscription_ | FROZEN | _47_ | _DD-MMM-YYYY_ |
+
+_No entries. The product's vocabulary has not been frozen yet; until it is, the copy freeze rule
+has nothing to enforce against._
 
 - **Approved term** — exactly as it appears in the interface, including capitalisation.
 - **Not this** — the synonyms that have actually appeared, or that people reach for. This column
