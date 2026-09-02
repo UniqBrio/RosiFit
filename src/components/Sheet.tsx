@@ -155,3 +155,59 @@ export function SearchPicker({ open, onClose, title, placeholder, options, value
     </Sheet>
   );
 }
+
+/**
+ * The canvas' centred confirmation dialog. Sending email is the one
+ * irreversible act in this app, so the prototype puts a modal in front of it
+ * that restates the count AND the exclusions before anything leaves. "Not
+ * yet" is the canvas' own wording for the way out.
+ */
+export function ConfirmDialog({ open, onClose, title, body, cancelLabel = 'Not yet', confirmLabel, onConfirm }:
+  {
+    open: boolean; onClose: () => void; title: string; body: string;
+    cancelLabel?: string; confirmLabel: string; onConfirm: () => void;
+  }) {
+  const { theme } = useTheme();
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const active = document.activeElement as HTMLElement | null;
+    if (active && active !== document.body && typeof active.blur === 'function') active.blur();
+  }, [open]);
+
+  if (!open) return null;
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 26 }}>
+        <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel={`Close ${title}`}
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.scrim }} />
+        <View accessibilityViewIsModal style={{
+          width: '100%', maxWidth: 420, borderRadius: 24, padding: 22,
+          backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
+        }}>
+          <Text style={{ fontSize: 20, fontWeight: '800', color: theme.fgStrong, lineHeight: 26 }}>{title}</Text>
+          <Text style={{ fontSize: 13, color: theme.muted, lineHeight: 20, marginTop: SPACE.md }}>{body}</Text>
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: SPACE.xl }}>
+            <Pressable onPress={onClose} accessibilityRole="button"
+              style={({ pressed }) => ({
+                flex: 1, minHeight: TAP_MIN + 6, borderRadius: RADIUS.md,
+                alignItems: 'center', justifyContent: 'center',
+                borderWidth: 1, borderColor: theme.lineStrong, opacity: pressed ? 0.7 : 1,
+              })}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: theme.fgStrong }}>{cancelLabel}</Text>
+            </Pressable>
+            <Pressable onPress={onConfirm} accessibilityRole="button"
+              style={({ pressed }) => ({
+                flex: 1, minHeight: TAP_MIN + 6, borderRadius: RADIUS.md,
+                alignItems: 'center', justifyContent: 'center',
+                backgroundColor: theme.accent, opacity: pressed ? 0.85 : 1,
+              })}>
+              <Text style={{ fontSize: 14, fontWeight: '800', color: theme.onAccent }}>{confirmLabel}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}

@@ -11,8 +11,8 @@ import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface, type StatusKey } from '.
 import { WEEK_STRIP, PERIODS, hasEmail, ruleSentence } from '../../src/data/mock';
 import { useFollowUp, useStaff, useFilterOptions, useWeekRows, usePendingSessions } from '../../src/data/hooks';
 import { currentWeek, lastWeek, lastFourWeeks } from '../../src/data/period';
+import { useAcademy, ALL_BRANCHES } from '../../src/state/academy';
 
-type Scope = 'academy' | 'branch';
 type PickerKind = null | 'branch' | 'course' | 'period';
 
 export default function Home() {
@@ -20,7 +20,11 @@ export default function Home() {
   const router = useRouter();
   const { state: forced } = useLocalSearchParams<{ state?: string }>();
 
-  const [scope, setScope] = useState<Scope>('academy');
+  // The scope and the branch belong to the shell, not to this screen: the
+  // header above renders on every tabbed screen and its branch selector says
+  // "Every figure follows this". Reading them from there is what makes the
+  // header's choice reach the chart (C-84/85/86).
+  const { scope, branch, setScope, setBranch } = useAcademy();
   const [period, setPeriod] = useState('This week');
   const [picker, setPicker] = useState<PickerKind>(null);
 
@@ -38,9 +42,9 @@ export default function Home() {
 
   const branchOptions = filterOptions.data?.branches ?? ['All branches'];
   const courseOptions = filterOptions.data?.courses ?? ['All courses'];
-  const [branch, setBranch] = useState<string | null>(null);
   const [course, setCourse] = useState<string | null>(null);
-  const branchValue = branch ?? branchOptions[1] ?? 'All branches';
+  const firstBranch = branchOptions[1] ?? ALL_BRANCHES;
+  const branchValue = branch === ALL_BRANCHES ? firstBranch : branch;
   const courseValue = course ?? courseOptions[0];
 
   const flagged = followUp.data?.flagged ?? [];
@@ -86,7 +90,7 @@ export default function Home() {
   const needs: {
     icon: string; tone: StatusKey; title: string; sub: string; to: Href; accent?: boolean;
   }[] = [
-    { icon: 'cloud_upload', tone: 'awaiting', to: '/(tabs)/upload',
+    { icon: 'cloud_upload', tone: 'awaiting', to: '/upload',
       title: `${awaiting} sessions awaiting upload`, sub: 'Counts for nobody until the file is in' },
     { icon: 'favorite', tone: 'absent', to: '/(tabs)/weekly', accent: true,
       title: `${flagged.length} members to reach out to`,
@@ -98,26 +102,11 @@ export default function Home() {
       title: `${needAccess} staff cannot sign in yet`, sub: 'Saved, but no PIN generated' },
   ];
 
-  // Every hook above has already run, so these returns cannot change the
-  // hook order. Zeros during a load would be a lie -- "0 members need you"
-  // reads as good news -- so the figures wait behind a skeleton instead.
-  if (loading) return <Screen><Skeleton lines={6} /></Screen>;
-  if (failed) {
-    return (
-      <Screen>
-        <ErrorState
-          onRetry={() => { followUp.retry(); weekRows.retry(); }}
-          message={followUp.error ?? weekRows.error
-            ?? 'The dashboard figures could not be loaded. Nothing has been changed.'} />
-      </Screen>
-    );
-  }
-
   const holidayInk = theme.isDark ? STATUS.holiday.fgDark : STATUS.holiday.fgLight;
   const holidayBox = statusSurface(holidayInk);
 
-  return (
-    <Screen>
+  const controls = (
+    <>
       {/* ------------------------------------------------- scope + filters */}
       <View style={{
         flexDirection: 'row', gap: 5, padding: 4, borderRadius: RADIUS.md,
@@ -126,7 +115,15 @@ export default function Home() {
         {([['academy', 'Academy wise', 'apartment'], ['branch', 'Branch wise', 'store']] as const).map(([k, label, icon]) => {
           const on = scope === k;
           return (
-            <Pressable key={k} onPress={() => setScope(k)}
+            <Pressable key={k}
+              onPress={() => {
+                setScope(k);
+                // Branch wise with no branch chosen would show an
+                // academy-wide figure under a branch label. Narrowing to the
+                // first branch keeps the label and the number honest.
+                setBranch(k === 'academy' ? ALL_BRANCHES
+                  : branch === ALL_BRANCHES ? firstBranch : branch);
+              }}
               accessibilityRole="radio" accessibilityState={{ selected: on }}
               style={{
                 flex: 1, height: 38, borderRadius: 11, flexDirection: 'row',
@@ -175,8 +172,34 @@ export default function Home() {
           backgroundColor: holidayBox.bg, borderWidth: 1, borderColor: holidayBox.border,
         }}>
         <Icon name="event_busy" size={19} color={holidayInk} />
-        <Text style={{ fontSize: 13.5, fontWeight: '800', color: theme.fg }}>Add holiday</Text>
+        <Text style={{ fontSize: 13.5, fontWeight: '800', color: theme.fg }}>Add Holiday</Text>
       </Pressable>
+    </>
+  );
+
+  // Zeros during a load would be a lie -- "0 members need you" reads as good
+  // news -- so the FIGURES wait behind a skeleton. The scope tabs, the
+  // filters and Add holiday do not: they are controls, they are correct
+  // before any figure arrives, and blanking them was what made the dashboard
+  // look like it had no tabs whenever a fetch was slow or failing.
+  if (loading) return <Screen>{controls}<View style={{ marginTop: SPACE.lg }}><Skeleton lines={5} /></View></Screen>;
+  if (failed) {
+    return (
+      <Screen>
+        {controls}
+        <View style={{ marginTop: SPACE.lg }}>
+          <ErrorState
+            onRetry={() => { followUp.retry(); weekRows.retry(); }}
+            message={followUp.error ?? weekRows.error
+              ?? 'The dashboard figures could not be loaded. Nothing has been changed.'} />
+        </View>
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen>
+      {controls}
 
       {/* ------------------------------------------------------- the donut */}
       <View style={{
@@ -268,7 +291,7 @@ export default function Home() {
       </View>
 
       <View style={{ flexDirection: 'row', gap: SPACE.md, marginTop: SPACE.md }}>
-        {([['Members', 'group', '/(tabs)/members'], ['Courses', 'school', '/courses']] as const).map(([label, icon, to]) => (
+        {([['Members', 'group', '/(tabs)/members'], ['Courses', 'school', '/(tabs)/courses']] as const).map(([label, icon, to]) => (
           <Pressable key={label} onPress={() => router.push(to)}
             accessibilityRole="button"
             style={{
@@ -289,7 +312,7 @@ export default function Home() {
       }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
           <H2 style={{ flex: 1 }}>Week by week</H2>
-          <Pressable onPress={() => router.push('/reports')} accessibilityRole="button">
+          <Pressable onPress={() => router.push('/(tabs)/reports')} accessibilityRole="button">
             <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.accentInk }}>Member report</Text>
           </Pressable>
         </View>

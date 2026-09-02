@@ -1,9 +1,12 @@
 import { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { Screen, Muted, H2 } from '../src/components/ui';
-import { useTheme } from '../src/theme/ThemeProvider';
-import { SPACE, RADIUS, TAP_MIN, STATUS } from '../src/theme/tokens';
-import { MEMBERS, WEEK_ROWS, attendancePct } from '../src/data/mock';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Screen, Muted, H2 } from '../../src/components/ui';
+import { ScreenHeader } from '../../src/components/AppShell';
+import { MiniPie } from '../../src/components/Donut';
+import { useTheme } from '../../src/theme/ThemeProvider';
+import { SPACE, RADIUS, TAP_MIN, STATUS } from '../../src/theme/tokens';
+import { MEMBERS, WEEK_ROWS, attendancePct } from '../../src/data/mock';
 
 type Scope = 'Members' | 'Courses' | 'Branches';
 
@@ -53,7 +56,7 @@ export default function Reports() {
 
   return (
     <Screen>
-      <Muted>{period}</Muted>
+      <ScreenHeader title="Reports" subtitle={period} />
 
       <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.md }}>
         {(['Members', 'Courses', 'Branches'] as Scope[]).map(s => {
@@ -73,47 +76,64 @@ export default function Reports() {
         })}
       </View>
 
-      <View style={{
-        marginTop: SPACE.lg, padding: SPACE.lg, borderRadius: RADIUS.lg,
-        backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
-      }}>
-        <H2>{headline}</H2>
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: SPACE.md, marginTop: SPACE.sm }}>
-          <Text style={{ fontSize: 44, fontWeight: '800', color: theme.fgStrong, fontVariant: ['tabular-nums'] }}>
+      <LinearGradient
+        colors={[theme.accentDeep, theme.accentDeep2]}
+        start={{ x: 0.1, y: 0 }} end={{ x: 0.9, y: 1 }}
+        style={{
+          marginTop: SPACE.lg, padding: SPACE.xl, borderRadius: 20,
+          borderWidth: 1, borderColor: theme.lineStrong,
+        }}>
+        <Text style={{
+          fontSize: 11, fontWeight: '700', letterSpacing: 0.9,
+          textTransform: 'uppercase', color: theme.accentInk,
+        }}>{headline}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: SPACE.sm, marginTop: 10 }}>
+          <Text style={{ fontSize: 44, fontWeight: '800', color: '#FFFFFF', fontVariant: ['tabular-nums'] }}>
             {big}
           </Text>
-          <Muted style={{ flex: 1 }}>{bigNote}</Muted>
+          <Text style={{ flex: 1, fontSize: 13, color: theme.onDeep, lineHeight: 19 }}>{bigNote}</Text>
         </View>
+      </LinearGradient>
+
+      {/* The canvas draws a pie per member, course or branch -- not a bar --
+          and pairs each with its own written percentage and counts, so the
+          ring never carries the meaning alone. */}
+      <View style={{
+        flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.md, marginTop: SPACE.lg,
+      }}>
+        {bars.map(b => (
+          <View key={b.label}
+            style={{
+              flexGrow: 1, flexBasis: 150, alignItems: 'center', gap: 10,
+              padding: 14, borderRadius: RADIUS.lg, backgroundColor: theme.surface,
+              borderWidth: 1, borderColor: theme.line,
+            }}>
+            <MiniPie pct={b.value === '—' ? null : b.n}
+              label={`${b.label}: ${b.value === '—' ? 'no sessions' : b.value}. ${b.meta}`} />
+            <View style={{ alignItems: 'center' }}>
+              <Text style={{ fontSize: 12.5, fontWeight: '800', color: theme.fgStrong, textAlign: 'center' }}>
+                {b.label}
+              </Text>
+              <Text style={{ fontSize: 10.5, color: theme.muted, marginTop: 4, textAlign: 'center', fontVariant: ['tabular-nums'] }}>
+                {b.meta}
+              </Text>
+            </View>
+          </View>
+        ))}
       </View>
 
-      <View style={{ gap: SPACE.md, marginTop: SPACE.md }}>
-        {bars.map(b => {
-          const tone = b.value === '—' ? theme.muted
-            : b.n >= 70 ? ink('present') : b.n >= 45 ? ink('awaiting') : ink('absent');
-          return (
-            <View key={b.label}
-              accessible accessibilityLabel={`${b.label}: ${b.value === '—' ? 'no sessions' : b.value}. ${b.meta}`}
-              style={{
-                padding: SPACE.lg, borderRadius: RADIUS.lg, backgroundColor: theme.surface,
-                borderWidth: 1, borderColor: theme.line,
-              }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text numberOfLines={1} style={{ flex: 1, fontSize: 14, fontWeight: '700', color: theme.fgStrong }}>
-                  {b.label}
-                </Text>
-                <Text style={{ fontSize: 16, fontWeight: '800', color: tone, fontVariant: ['tabular-nums'] }}>
-                  {b.value}
-                </Text>
-              </View>
-              {/* the bar is a second encoding of the number beside it, never
-                  the only one */}
-              <View style={{ height: 8, borderRadius: 4, backgroundColor: theme.control, marginTop: 8, overflow: 'hidden' }}>
-                <View style={{ width: `${Math.max(b.n, 0)}%`, height: 8, backgroundColor: tone }} />
-              </View>
-              <Muted style={{ marginTop: 6 }}>{b.meta}</Muted>
+      <View style={{
+        flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.md, marginTop: SPACE.md,
+        paddingVertical: 13, paddingHorizontal: 15, borderRadius: RADIUS.md,
+        backgroundColor: theme.surface2, borderWidth: 1, borderColor: theme.line,
+      }}>
+        {([['Attended', ink('present')], ['Missed', ink('absent')], ['No sessions scheduled', theme.muted]] as const)
+          .map(([label, color]) => (
+            <View key={label} style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+              <View style={{ width: 11, height: 11, borderRadius: 6, backgroundColor: color }} />
+              <Text style={{ fontSize: 11.5, fontWeight: '600', color: theme.fg }}>{label}</Text>
             </View>
-          );
-        })}
+          ))}
       </View>
 
       {scope !== 'Members' && (
@@ -150,9 +170,15 @@ export default function Reports() {
         </View>
       )}
 
-      <Muted style={{ marginTop: SPACE.md, textAlign: 'center' }}>
-        Holidays, cancellations and awaiting-upload sessions are excluded everywhere on this screen.
-      </Muted>
+      <View style={{
+        marginTop: SPACE.lg, padding: 15, borderRadius: RADIUS.md,
+        backgroundColor: theme.surface2, borderWidth: 1, borderColor: theme.line,
+      }}>
+        <Muted>
+          Sessions still awaiting upload are counted for nobody here. Holidays and cancellations are
+          excluded from every figure.
+        </Muted>
+      </View>
     </Screen>
   );
 }

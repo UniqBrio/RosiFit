@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { Screen, Muted, Label } from '../src/components/ui';
-import { Icon } from '../src/components/Icon';
-import { Sheet } from '../src/components/Sheet';
-import { useTheme } from '../src/theme/ThemeProvider';
-import { SPACE, RADIUS, STATUS, statusSurface, type StatusKey } from '../src/theme/tokens';
+import { Screen, Muted, Label } from '../../src/components/ui';
+import { ScreenHeader } from '../../src/components/AppShell';
+import { Icon } from '../../src/components/Icon';
+import { Sheet } from '../../src/components/Sheet';
+import { useTheme } from '../../src/theme/ThemeProvider';
+import { SPACE, RADIUS, STATUS, statusSurface, type StatusKey } from '../../src/theme/tokens';
 
 /**
  * August 2026, as the canvas draws it: a Monday-start grid where every
@@ -52,7 +53,7 @@ export default function Sessions() {
 
   return (
     <Screen>
-      <Muted>26 sessions · 2 awaiting upload</Muted>
+      <ScreenHeader title="August 2026" subtitle="26 sessions · 2 awaiting upload" />
 
       <View style={{ flexDirection: 'row', marginTop: SPACE.lg }}>
         {DOW.map(d => (
