@@ -17,10 +17,14 @@ import { currentWeek, type Period } from './period';
 import {
   fetchMembers, fetchRules, fetchCourses, fetchTemplates, fetchStaff, fetchAudit,
   fetchFilterOptions, fetchMonthSessions, fetchPendingSessions, fetchWeekRows,
-  type Rules, type PendingSession,
+  fetchAcademy, fetchBranches, fetchOfferings,
+  type Branch, type OfferingDetail,
+  fetchAttendance, onCoursesChanged, onMembersChanged,
+  fetchHolidays, onHolidaysChanged,
+  type Rules, type PendingSession, type Holiday,
 } from './repository';
 import { flagged } from './followup';
-import type { Member, Course, Template, Staff, AuditEntry, SessionDay, WeekRow } from './mock';
+import type { Member, Course, Template, Staff, AuditEntry, SessionDay, WeekRow, AttendanceRow } from './mock';
 
 export type Async<T> = {
   state: ScreenState;
@@ -86,8 +90,18 @@ export function useAsync<T>(load: () => Promise<T>, deps: unknown[], forced?: st
   return { state, data, error, retry };
 }
 
+/**
+ * The member list, refetched whenever a member is written.
+ *
+ * The same reason useCourses carries a version: a member added and then
+ * missing from the list she was added to reads exactly like a save that did
+ * nothing -- which is the complaint this work started from. The tab stays
+ * mounted behind the edit screen and refetches nothing on its own.
+ */
 export function useMembers(forced?: string, period: Period = currentWeek()): Async<Member[]> {
-  return useAsync(() => fetchMembers(period), [period.from, period.to], forced);
+  const [version, setVersion] = useState(0);
+  useEffect(() => onMembersChanged(() => setVersion(v => v + 1)), []);
+  return useAsync(() => fetchMembers(period), [period.from, period.to, version], forced);
 }
 
 export function useRules(forced?: string): Async<Rules> {
@@ -101,14 +115,26 @@ export function useRules(forced?: string): Async<Rules> {
  */
 export function useFollowUp(forced?: string, period: Period = currentWeek()):
   Async<{ members: Member[]; rules: Rules; flagged: Member[] }> {
+  const [version, setVersion] = useState(0);
+  useEffect(() => onMembersChanged(() => setVersion(v => v + 1)), []);
   return useAsync(async () => {
     const [members, rules] = await Promise.all([fetchMembers(period), fetchRules()]);
     return { members, rules, flagged: flagged(members, rules.global, rules.byCourseName) };
-  }, [period.from, period.to], forced);
+  }, [period.from, period.to, version], forced);
 }
 
+/**
+ * The course list, refetched whenever a course is written.
+ *
+ * Every mounted list hears the same notification, so the Courses tab is
+ * correct the moment you come back from the edit screen rather than at its
+ * next remount -- a saved course that is not on the list it was saved to
+ * reads exactly like a save that did nothing.
+ */
 export function useCourses(forced?: string): Async<Course[]> {
-  return useAsync(() => fetchCourses(), [], forced);
+  const [version, setVersion] = useState(0);
+  useEffect(() => onCoursesChanged(() => setVersion(v => v + 1)), []);
+  return useAsync(() => fetchCourses(), [version], forced);
 }
 
 export function useTemplates(forced?: string): Async<Template[]> {
@@ -127,8 +153,49 @@ export function useFilterOptions(forced?: string): Async<{ branches: string[]; c
   return useAsync(() => fetchFilterOptions(), [], forced);
 }
 
+/** The academy name and its branches, for the profile's academy row. Named
+ *  for the DETAILS to keep it distinct from state/academy's useAcademy,
+ *  which is the branch-scope picker and fetches nothing. */
+export function useAcademyDetails(forced?: string): Async<{ name: string; branches: string[] }> {
+  return useAsync(() => fetchAcademy(), [], forced);
+}
+
+/**
+ * Everything the offering editor needs, from ONE load: the course it belongs
+ * to, the branches it could run at, and the offerings it already has. They
+ * are fetched together because the screen compares them -- the course's
+ * stated frequency against the days actually scheduled (C-59/CR-07) -- and
+ * two separate loads could show a frequency from one moment against weekdays
+ * from another.
+ */
+export function useOfferingEditor(courseId: string, forced?: string):
+  Async<{ course: Course | null; branches: Branch[]; offerings: OfferingDetail[] }> {
+  return useAsync(async () => {
+    const [courses, branches, offerings] = await Promise.all([
+      fetchCourses(), fetchBranches(), fetchOfferings(courseId),
+    ]);
+    return { course: courses.find(c => c.id === courseId) ?? null, branches, offerings };
+  }, [courseId], forced);
+}
+
 export function useMonthSessions(year: number, month: number, forced?: string): Async<SessionDay[]> {
   return useAsync(() => fetchMonthSessions(year, month), [year, month], forced);
+}
+
+/** Every attendance fact in the period, for the Attendance tab. The period
+ *  is part of the key, so changing the filter refetches rather than
+ *  re-labelling rows that were counted over a different range. */
+export function useAttendance(period: Period, forced?: string): Async<AttendanceRow[]> {
+  return useAsync(() => fetchAttendance(period), [period.from, period.to], forced);
+}
+
+/** Holidays, refetched whenever one is added or removed -- the list a person
+ *  deletes from must be the list the delete changed, or removing one leaves
+ *  its row on screen and reads as a delete that did nothing. */
+export function useHolidays(forced?: string): Async<Holiday[]> {
+  const [version, setVersion] = useState(0);
+  useEffect(() => onHolidaysChanged(() => setVersion(v => v + 1)), []);
+  return useAsync(() => fetchHolidays(), [version], forced);
 }
 
 export function usePendingSessions(forced?: string): Async<PendingSession[]> {

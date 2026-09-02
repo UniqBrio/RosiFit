@@ -3,7 +3,7 @@ const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-119
 const routes = [
   ['/','signin'],['/(tabs)','home'],['/(tabs)/weekly','weekly'],['/upload','upload'],
   ['/(tabs)/members','members'],['/(tabs)/more','more'],['/member/1','member'],['/member/edit','member-edit'],
-  ['/courses','courses'],['/course/edit','course-edit'],['/course/rules','rules'],['/sessions','sessions'],
+  ['/courses','courses'],['/course/edit','course-edit'],['/course/rules','rules'],['/attendance','attendance'],
   ['/holiday','holiday'],['/templates','templates'],['/reports','reports'],['/staff','staff'],
   ['/staff/add','staff-add'],['/audit','audit'],['/register','register'],['/set-pin','set-pin'],
   ['/forgot-pin','forgot-pin'],['/change-mobile','change-mobile'],['/send','send'],

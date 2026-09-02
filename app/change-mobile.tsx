@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Screen, Card, H1, H2, Body, Muted, Label, Button, Row, Divider } from '../src/components/ui';
+import { Screen, Card, H1, H2, Body, Muted, Label, Button, Row, Divider, Skeleton } from '../src/components/ui';
 import { Field } from '../src/components/Field';
 import { useTheme } from '../src/theme/ThemeProvider';
 import { SPACE } from '../src/theme/tokens';
+import { useIdentity } from '../src/data/session';
 
 /**
  * C-99. Authenticated, verified, audited.
@@ -17,10 +18,17 @@ export default function ChangeMobile() {
   const router = useRouter();
   const [pin, setPin] = useState('');
   const [next, setNext] = useState('');
-  const current = '+91 80563 29742';
+  // The number being moved is the SIGNED-IN account's. This read a literal
+  // before, so it offered to move the fixture persona's number whoever asked.
+  const { identity, loading } = useIdentity();
 
   const pinOk = /^\d{4}$/.test(pin);
   const nextOk = next.replace(/\D/g, '').length === 10;
+
+  if (loading || !identity) {
+    return <Screen><Skeleton lines={5} /></Screen>;
+  }
+  const current = identity.phone;
 
   return (
     <Screen>

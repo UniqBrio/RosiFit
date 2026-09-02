@@ -53,12 +53,18 @@ export const Label = ({ children, style }: TxtProps) => {
     textTransform: 'uppercase', color: theme.muted }, style]}>{children}</Text>;
 };
 
-export function Button({ label, onPress, variant = 'primary', disabled, style }:
-  { label: string; onPress?: () => void; variant?: 'primary' | 'secondary'; disabled?: boolean; style?: ViewStyle }) {
+export function Button({ label, onPress, variant = 'primary', disabled, style, testID }:
+  { label: string; onPress?: () => void; variant?: 'primary' | 'secondary'; disabled?: boolean;
+    style?: ViewStyle;
+    /** Optional so the ~40 existing Buttons keep compiling, but pass it on
+     *  anything a runner needs to press: a label is not an address, and it
+     *  changes the moment the copy does. */
+    testID?: string }) {
   const { theme } = useTheme();
   const primary = variant === 'primary';
   return (
     <Pressable
+      testID={testID}
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"

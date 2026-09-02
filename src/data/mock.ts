@@ -154,16 +154,19 @@ export type Course = {
   id: string; name: string;
   start_time: string | null; end_time: string | null;
   frequency: number | null;              // stated intent, never counted
-  offerings: { branch: string; weekdays: number[] }[];
+  /** `id` is the course_offerings row -- the course AT one branch. Enrolling
+   *  a member names the OFFERING, not the course, so dropping the id here is
+   *  what left the member form unable to enrol anyone. */
+  offerings: { id: string; branch: string; weekdays: number[] }[];
 };
 
 export const COURSE_LIST: Course[] = [
   { id: 'c1', name: 'Prenatal Flow', start_time: '06:00', end_time: '07:00', frequency: 3,
-    offerings: [{ branch: 'Coimbatore', weekdays: [1,3,5] }, { branch: 'Chennai', weekdays: [1,3,5] }] },
+    offerings: [{ id: 'o1', branch: 'Coimbatore', weekdays: [1,3,5] }, { id: 'o2', branch: 'Chennai', weekdays: [1,3,5] }] },
   { id: 'c2', name: 'Postnatal Core', start_time: '07:00', end_time: '08:00', frequency: 3,
-    offerings: [{ branch: 'Madurai', weekdays: [2,4,6] }, { branch: 'Coimbatore', weekdays: [2,4,6] }] },
+    offerings: [{ id: 'o3', branch: 'Madurai', weekdays: [2,4,6] }, { id: 'o4', branch: 'Coimbatore', weekdays: [2,4,6] }] },
   { id: 'c3', name: 'Trimester 3 Gentle', start_time: '07:00', end_time: '08:15', frequency: 4,
-    offerings: [{ branch: 'Chennai', weekdays: [1,4] }] },
+    offerings: [{ id: 'o5', branch: 'Chennai', weekdays: [1,4] }] },
   // no offering on purpose: a course with no offering has no schedule, and
   // the UI must say so rather than invent one
   { id: 'c4', name: 'Pelvic Floor Foundations', start_time: null, end_time: null, frequency: 2,
@@ -279,6 +282,13 @@ export const STAFF: Staff[] = [
   { id: 's4', name: 'Revathi Anand', phone: '+91 98431 55210', role: 'Coach',         access: 'active',     meta: 'signed in today' },
   { id: 's5', name: 'Priya Menon',   phone: '+91 80563 29742', role: 'Academy admin', access: 'active',     meta: 'that\u2019s you' },
 ];
+
+/**
+ * Which STAFF row the fixtures treat as the signed-in person. It is an id
+ * rather than a second copy of the row, so the staff list and the profile
+ * cannot drift the way two lists always do.
+ */
+export const FIXTURE_SELF_ID = 's5';
 
 export const ROLE_LABELS = ['Academy admin', 'Coach', 'Front desk'];
 
@@ -451,4 +461,96 @@ export const PENDING_SESSIONS = [
   { dayNum: '23', mon: 'AUG', title: 'Postnatal Core · 8:00 am',
     meta: 'Madurai · 12 expected · awaiting upload',
     label: 'Sat 23 Aug · Postnatal Core 8:00 am' },
+];
+
+// ------------------------------------------------------- attendance list
+/**
+ * One row per member per session — the fact the Attendance tab lists, and
+ * the same shape public.attendance_records returns (0008).
+ *
+ * `expected` travels with the status because the table's own invariant
+ * (`status <> 'absent' or expected`) is what makes "missed <= expected"
+ * true, and a row that hides it would let the list imply a miss that the
+ * database could not represent. An 'extra' is the reverse: she turned up
+ * when she was not expected, so it never counts as a miss.
+ */
+export type AttendanceStatus = 'present' | 'absent' | 'extra';
+
+export type AttendanceRow = {
+  id: string; member_id: string; member: string; code: string;
+  course: string; branch: string;
+  /** ISO yyyy-mm-dd — the query filters on this, the screen formats it */
+  date: string;
+  /** 'HH:MM' 24-hour, or '' when the offering carries no time */
+  time: string;
+  status: AttendanceStatus;
+  expected: boolean;
+  /** Time in Call, the third and last column the Meet export carries */
+  minutes: number | null;
+};
+
+/**
+ * Offline rows, generated relative to TODAY rather than pinned to August
+ * 2026 like the rest of this file. The attendance list is the one screen
+ * whose whole point is a date filter, and fixtures dated a month in the past
+ * would show an empty list under every period a person is likely to pick —
+ * which reads as "no attendance", not as "no fixtures".
+ */
+export function attendanceFixture(from: string, to: string): AttendanceRow[] {
+  const rows: AttendanceRow[] = [];
+  const start = new Date(`${from}T00:00:00`);
+  const end = new Date(`${to}T00:00:00`);
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const dow = d.getDay();                       // 0 = Sun
+    if (![1, 3, 5].includes(dow)) continue;       // Mon / Wed / Fri offerings
+    if (d > new Date()) continue;                 // a future session has no attendance yet
+    const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    MEMBERS.forEach((m, i) => {
+      // deterministic, so the same day always reads the same way
+      const seed = (d.getDate() + i * 3) % 5;
+      const status: AttendanceStatus = seed === 0 ? 'absent' : seed === 4 && i === 2 ? 'extra' : 'present';
+      rows.push({
+        id: `${date}-${m.id}`, member_id: m.id, member: m.name, code: m.code,
+        course: m.course, branch: m.branch, date,
+        time: m.course === 'Postnatal Core' ? '08:00' : '18:00',
+        status,
+        expected: status !== 'extra',
+        minutes: status === 'absent' ? null : 45 + ((d.getDate() + i) % 20),
+      });
+    });
+  }
+  return rows.sort((a, b) => (a.date === b.date ? a.member.localeCompare(b.member) : b.date.localeCompare(a.date)));
+}
+
+// ---------------------------------------------------------------- holidays
+/**
+ * Offline holidays. `sessions` is what deleting one would return to
+ * `scheduled`, which is the number the delete confirmation promises -- so it
+ * is a property of the holiday here, exactly as it is a count of
+ * sessions.holiday_id against the live database, and not a second derivation
+ * from the date range that could disagree with what deleting actually does.
+ */
+export type Holiday = {
+  id: string;
+  name: string;
+  /** ISO yyyy-mm-dd, inclusive at both ends */
+  from: string;
+  to: string;
+  /** null means every branch -- the column's own meaning, not a sentinel */
+  branch: string | null;
+  /** sessions this holiday currently holds; deleting it returns exactly these */
+  sessions: number;
+};
+
+export const HOLIDAYS: Holiday[] = [
+  { id: 'h1', name: 'Diwali',  from: '2026-10-20', to: '2026-10-22', branch: null,         sessions: 14 },
+  { id: 'h2', name: 'Pongal',  from: '2027-01-14', to: '2027-01-16', branch: null,         sessions: 12 },
+  { id: 'h3', name: 'Local strike', from: '2026-09-18', to: '2026-09-18', branch: 'Coimbatore', sessions: 2 },
+];
+
+/** What preview_holiday() answers with, per offering, for the impact panel. */
+export const HOLIDAY_PREVIEW = [
+  { label: 'Prenatal Flow · Coimbatore', n: 6 },
+  { label: 'Postnatal Core · Madurai', n: 5 },
+  { label: 'Trimester 3 Gentle · Chennai', n: 3 },
 ];

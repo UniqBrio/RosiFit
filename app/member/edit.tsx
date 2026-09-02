@@ -3,12 +3,16 @@ import { View, Text, Pressable, TextInput } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Screen, Muted, Label, Button } from '../../src/components/ui';
 import { Field } from '../../src/components/Field';
+import { DateField } from '../../src/components/DateTimePicker';
+import { iso } from '../../src/data/period';
 import { Icon } from '../../src/components/Icon';
 import { SearchPicker } from '../../src/components/Sheet';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../../src/theme/tokens';
-import { MEMBERS, COURSE_LIST, BRANCHES, DAY_NAMES, primaryEmail } from '../../src/data/mock';
+import { MEMBERS, DAY_NAMES } from '../../src/data/mock';
+import { useCourses } from '../../src/data/hooks';
+import { createMember } from '../../src/data/repository';
 
 const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -24,9 +28,15 @@ export default function MemberEdit() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const existing = MEMBERS.find(m => m.id === id);
 
+  // The courses she can join are the LIVE ones, not the fixture list: she is
+  // enrolled into a course_offerings row, and a name picked from a hardcoded
+  // list names nothing the database has.
+  const courses = useCourses();
+  const courseList = courses.data ?? [];
+
   const [name, setName] = useState(existing?.name ?? '');
-  const [course, setCourse] = useState(existing?.course ?? COURSE_LIST[0].name);
-  const [branch, setBranch] = useState(existing?.branch ?? 'Coimbatore');
+  const [course, setCourse] = useState(existing?.course ?? '');
+  const [branch, setBranch] = useState(existing?.branch ?? '');
   const [joined, setJoined] = useState('');
   const [aliases, setAliases] = useState<string[]>(existing?.aliases ?? []);
   const [aliasDraft, setAliasDraft] = useState('');
@@ -34,17 +44,30 @@ export default function MemberEdit() {
   const [emailDraft, setEmailDraft] = useState('');
   const [days, setDays] = useState<string[]>([]);
   const [picker, setPicker] = useState<null | 'course' | 'branch'>(null);
+  const [saving, setSaving] = useState(false);
+  const [refusal, setRefusal] = useState<string | null>(null);
 
-  const valid = name.trim().length > 0;
+  const chosenCourse = courseList.find(c => c.name === course) ?? null;
+  // Only branches where this course actually RUNS: the pair is the offering,
+  // and a branch with no offering is not somewhere she can be enrolled.
+  const branchOptions = chosenCourse?.offerings.map(o => o.branch) ?? [];
+  const offering = chosenCourse?.offerings.find(o => o.branch === branch) ?? null;
+
   const ink = (k: keyof typeof STATUS) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
+
+  // Her name is the only field SHE needs (C-70/C-73), but a member with no
+  // offering cannot be enrolled, and an unenrolled member is expected at no
+  // session and appears in no follow-up list -- so the offering is required
+  // by the save, and the form says which piece is missing.
+  const valid = name.trim().length > 0 && !!offering;
 
   // days she may pick are only days her course's offerings actually run
   const courseDays = useMemo(() => {
-    const c = COURSE_LIST.find(x => x.name === course);
     const set = new Set<string>();
-    c?.offerings.forEach(o => o.weekdays.forEach(d => set.add(DAY_NAMES[d])));
+    (offering ? [offering] : chosenCourse?.offerings ?? [])
+      .forEach(o => o.weekdays.forEach(d => set.add(DAY_NAMES[d])));
     return set;
-  }, [course]);
+  }, [chosenCourse, offering]);
 
   const addAlias = () => {
     const a = aliasDraft.trim();
@@ -64,10 +87,38 @@ export default function MemberEdit() {
     setEmailDraft('');
   };
 
-  const save = () => {
-    if (!valid) return;
-    flash(`${name.trim().split(' ')[0]} ${existing ? 'updated' : 'added'} · ${course} · ${branch}`);
-    router.back();
+  /**
+   * This used to flash "<name> added" and go back, having written nothing.
+   * The save now WAITS for the database to answer and reports a refusal
+   * instead of swallowing it -- a form that cannot tell a save from a
+   * refusal is indistinguishable from one that works, until somebody goes
+   * looking for the member.
+   */
+  const save = async () => {
+    if (!valid || !offering || saving) return;
+    setSaving(true);
+    setRefusal(null);
+    try {
+      const { code } = await createMember({
+        full_name: name.trim(),
+        offering_id: offering.id,
+        joined_on: joined || null,
+        aliases,
+        // the primary address goes first; create_member makes the first one
+        // primary, so the order here IS the meaning
+        emails: [...emails].sort((a, b) => Number(b.primary) - Number(a.primary))
+          .map(e => e.address),
+        // blank means she follows the offering's days, which is not the same
+        // as an empty list
+        weekdays: days.length ? days.map(d => DAY_NAMES.indexOf(d)) : null,
+      });
+      flash(`${name.trim().split(' ')[0]} added · ${code} · ${course} · ${branch}`);
+      router.back();
+    } catch (e) {
+      setRefusal(e instanceof Error ? e.message : 'The member could not be saved. Nothing has been saved.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -77,12 +128,30 @@ export default function MemberEdit() {
       <Field label="Her name" value={name} onChange={setName} placeholder="e.g. Anitha Rajesh" />
 
       <Label>Course</Label>
-      <PickRow icon="school" value={course} onPress={() => setPicker('course')} />
+      <PickRow testID="member-course" icon="school" value={course || 'Choose a course'} muted={!course}
+        onPress={() => courseList.length
+          ? setPicker('course')
+          : flash(courses.state === 'loading'
+              ? 'The course list is still loading'
+              : 'No course has been added yet — a member joins a course at a branch', 'warn')} />
       <Label style={{ marginTop: SPACE.md }}>Branch</Label>
-      <PickRow icon="apartment" value={branch} onPress={() => setPicker('branch')} />
+      {/* The branch list is the branches THIS course runs at, so it cannot be
+          opened before the course is chosen -- and picking a pair that has no
+          offering is how she would end up enrolled in nothing. */}
+      <PickRow testID="member-branch" icon="apartment" value={branch || 'Choose a branch'} muted={!branch}
+        onPress={() => !course
+          ? flash('Choose her course first — the branches are the ones that course runs at', 'warn')
+          : branchOptions.length
+            ? setPicker('branch')
+            : flash(`${course} does not run at any branch yet`, 'warn')} />
 
       <View style={{ marginTop: SPACE.md }}>
-        <Field label="Joined on" value={joined} onChange={setJoined} placeholder="25-Aug-26" />
+        {/* No future joining date: a member cannot have started next week,
+            and a picker that offers one invites the typo it then has to
+            validate. */}
+        <DateField label="Joined on" value={joined} onChange={setJoined}
+          placeholder="When she started" max={iso(new Date())}
+          testID="member-joined-on" />
       </View>
 
       <View style={{ flexDirection: 'row', gap: SPACE.sm, alignItems: 'flex-start', marginTop: -4 }}>
@@ -107,7 +176,8 @@ export default function MemberEdit() {
           }}>
             <Icon name="badge" size={17} color={theme.accentInk} />
             <Text style={{ flex: 1, fontSize: 13.5, fontWeight: '700', color: theme.fgStrong }}>{a}</Text>
-            <Pressable onPress={() => setAliases(p => p.filter(x => x !== a))}
+            <Pressable testID={`member-alias-remove-${a}`}
+              onPress={() => setAliases(p => p.filter(x => x !== a))}
               accessibilityRole="button" accessibilityLabel={`Remove display name ${a}`}
               style={{ minHeight: TAP_MIN / 2, justifyContent: 'center' }}>
               <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.muted }}>Remove</Text>
@@ -115,7 +185,8 @@ export default function MemberEdit() {
           </View>
         ))}
       </View>
-      <AddRow value={aliasDraft} onChange={setAliasDraft} placeholder="e.g. Anitha R" onAdd={addAlias} />
+      <AddRow testID="member-alias" value={aliasDraft} onChange={setAliasDraft}
+        placeholder="e.g. Anitha R" onAdd={addAlias} />
 
       {/* -------------------------------------------------- emails (C-73) */}
       <Label style={{ marginTop: SPACE.xl }}>Email addresses</Label>
@@ -127,6 +198,7 @@ export default function MemberEdit() {
             borderWidth: 1, borderColor: e.primary ? theme.accent : theme.line,
           }}>
             <Pressable
+              testID={`member-email-primary-${e.address}`}
               onPress={() => setEmails(p => p.map(x => ({ ...x, primary: x.address === e.address })))}
               accessibilityRole="radio" accessibilityState={{ selected: e.primary }}
               accessibilityLabel={`Make ${e.address} the primary address`}
@@ -143,6 +215,7 @@ export default function MemberEdit() {
               </Text>
             </View>
             <Pressable
+              testID={`member-email-remove-${e.address}`}
               onPress={() => setEmails(p => {
                 const rest = p.filter(x => x.address !== e.address);
                 // removing the primary promotes the next -- there is never
@@ -157,7 +230,8 @@ export default function MemberEdit() {
           </View>
         ))}
       </View>
-      <AddRow value={emailDraft} onChange={setEmailDraft} placeholder="anitha@gmail.com" onAdd={addEmail} />
+      <AddRow testID="member-email" value={emailDraft} onChange={setEmailDraft}
+        placeholder="anitha@gmail.com" onAdd={addEmail} />
       <View style={{ flexDirection: 'row', gap: SPACE.sm, alignItems: 'flex-start', marginTop: SPACE.sm }}>
         <Icon name={emails.length ? 'mark_email_read' : 'mail_off'} size={15}
           color={emails.length ? ink('present') : ink('absent')} />
@@ -180,7 +254,7 @@ export default function MemberEdit() {
           const allowed = courseDays.has(d);
           const on = days.includes(d);
           return (
-            <Pressable key={d}
+            <Pressable key={d} testID={`member-day-${d}`}
               onPress={() => allowed
                 ? setDays(p => on ? p.filter(x => x !== d) : [...p, d])
                 : flash(`${course} does not run on ${d}`, 'warn')}
@@ -202,30 +276,77 @@ export default function MemberEdit() {
         })}
       </View>
 
-      <Button label={existing ? 'Save Member' : 'Add Member'} onPress={save} disabled={!valid}
-        style={{ marginTop: SPACE.xl }} />
-      <Muted style={{ marginTop: 9, textAlign: 'center' }}>
-        {valid
-          ? `${course} · ${branch}${emails.length ? '' : ' · no email, she will be excluded from sends'}`
-          : 'Her name is all that is required'}
-      </Muted>
+      {/* The refusal is SHOWN. The database's own words -- the display name
+          that belongs to someone else, the expired subscription -- are what
+          the operator can act on; swallowing them is what made this form
+          report a save it never made. */}
+      {refusal ? (
+        <View style={{
+          flexDirection: 'row', gap: SPACE.md, marginTop: SPACE.xl, padding: SPACE.lg,
+          borderRadius: RADIUS.md, backgroundColor: statusSurface(ink('absent')).bg,
+          borderWidth: 1, borderColor: statusSurface(ink('absent')).border,
+        }}>
+          <Icon name="error" size={19} color={ink('absent')} />
+          <Muted accessibilityLiveRegion="polite" style={{ flex: 1, color: theme.fg }}>{refusal}</Muted>
+        </View>
+      ) : null}
+
+      {existing ? (
+        <>
+          <Button testID="member-save" label="Save Member" disabled style={{ marginTop: SPACE.xl }} />
+          <Muted style={{ marginTop: 9, textAlign: 'center' }}>
+            Changing a member she already is — her course, her branch, her days — has no write path
+            yet, and a button that reported a save without making one is the defect this screen was
+            just fixed for. Adding a member works; this does not, and says so.
+          </Muted>
+        </>
+      ) : (
+        <>
+          <Button testID="member-add" label={saving ? 'Adding…' : 'Add Member'}
+            onPress={save} disabled={!valid || saving} style={{ marginTop: SPACE.xl }} />
+          <Muted style={{ marginTop: 9, textAlign: 'center' }}>
+            {!name.trim()
+              ? 'Her name is all that is required'
+              : !course ? 'Choose the course she joins'
+              : !offering ? `Choose the branch — ${course} runs at ${branchOptions.length || 'no'} of them`
+              : `${course} · ${branch}${emails.length ? '' : ' · no email, she will be excluded from sends'}`}
+          </Muted>
+        </>
+      )}
 
       <SearchPicker open={picker === 'course'} onClose={() => setPicker(null)}
         title="Choose a course" placeholder="Search courses"
-        options={COURSE_LIST.map(c => ({ label: c.name }))} value={course}
-        onSelect={l => { setCourse(l); setDays([]); setPicker(null); }} />
+        options={courseList.map(c => ({
+          label: c.name,
+          meta: c.offerings.length ? `${c.offerings.length} branch${c.offerings.length > 1 ? 'es' : ''}` : 'no branch yet',
+        }))}
+        value={course}
+        emptyNote="No course has been added yet. A member joins a course at a branch, so add the course first."
+        onSelect={l => {
+          setCourse(l);
+          // her branch and her days both belong to the OLD course; keeping
+          // either would enrol her into an offering she was never shown
+          setBranch('');
+          setDays([]);
+          setPicker(null);
+        }} />
       <SearchPicker open={picker === 'branch'} onClose={() => setPicker(null)}
         title="Choose a branch" placeholder="Search branches"
-        options={BRANCHES.filter(b => b !== 'All branches').map(label => ({ label }))} value={branch}
-        onSelect={l => { setBranch(l); setPicker(null); }} />
+        options={branchOptions.map(label => ({ label }))} value={branch}
+        emptyNote={course
+          ? `${course} does not run at any branch yet. Add an offering for it and she can join there.`
+          : 'Choose her course first — the branches are the ones that course runs at.'}
+        onSelect={l => { setBranch(l); setDays([]); setPicker(null); }} />
     </Screen>
   );
 }
 
-function PickRow({ icon, value, onPress }: { icon: string; value: string; onPress: () => void }) {
+function PickRow({ icon, value, onPress, muted, testID }:
+  { icon: string; value: string; onPress: () => void; muted?: boolean; testID: string }) {
   const { theme } = useTheme();
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={value}
+    <Pressable testID={testID} onPress={onPress}
+      accessibilityRole="button" accessibilityLabel={value}
       accessibilityHint="Opens a searchable list"
       style={{
         marginTop: 8, minHeight: TAP_MIN + 8, borderRadius: RADIUS.md,
@@ -233,18 +354,23 @@ function PickRow({ icon, value, onPress }: { icon: string; value: string; onPres
         paddingHorizontal: SPACE.lg, flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
       }}>
       <Icon name={icon} size={20} color={theme.accentInk} />
-      <Text style={{ flex: 1, fontSize: 15, fontWeight: '600', color: theme.fgStrong }}>{value}</Text>
+      {/* nothing chosen yet is a real state and is drawn as one, rather than
+          as a value somebody has already picked */}
+      <Text style={{ flex: 1, fontSize: 15, fontWeight: muted ? '400' : '600',
+        color: muted ? theme.muted : theme.fgStrong }}>{value}</Text>
       <Icon name="arrow_drop_down" size={22} color={theme.muted} />
     </Pressable>
   );
 }
 
-function AddRow({ value, onChange, placeholder, onAdd }:
-  { value: string; onChange: (v: string) => void; placeholder: string; onAdd: () => void }) {
+function AddRow({ value, onChange, placeholder, onAdd, testID }:
+  { value: string; onChange: (v: string) => void; placeholder: string;
+    onAdd: () => void; testID: string }) {
   const { theme } = useTheme();
   return (
     <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.sm }}>
-      <TextInput value={value} onChangeText={onChange} placeholder={placeholder}
+      <TextInput testID={`${testID}-input`}
+        value={value} onChangeText={onChange} placeholder={placeholder}
         placeholderTextColor={theme.muted} accessibilityLabel={placeholder}
         onSubmitEditing={onAdd}
         style={{
@@ -252,7 +378,7 @@ function AddRow({ value, onChange, placeholder, onAdd }:
           backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
           color: theme.fgStrong, fontSize: 14, fontWeight: '600',
         }} />
-      <Button label="+ Add" variant="secondary" onPress={onAdd} />
+      <Button testID={`${testID}-add`} label="+ Add" variant="secondary" onPress={onAdd} />
     </View>
   );
 }

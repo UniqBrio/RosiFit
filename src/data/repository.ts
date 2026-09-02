@@ -13,11 +13,14 @@
  */
 import { supabase, isConfigured } from '../lib/supabase';
 import type { Period } from './period';
+import { currentSchedules, today } from './schedule';
 import {
   MEMBERS, COURSE_LIST, GLOBAL_RULE, COURSE_RULES, TEMPLATES, STAFF, AUDIT,
-  BRANCHES, COURSES, MONTH_DAYS, PENDING_SESSIONS, WEEK_ROWS,
+  BRANCHES, COURSES, MONTH_DAYS, PENDING_SESSIONS, WEEK_ROWS, attendanceFixture,
+  HOLIDAYS, HOLIDAY_PREVIEW,
   type Member, type Course, type FollowUpRule, type Template, type Staff,
   type StaffAccess, type AuditEntry, type SessionDay, type WeekRow,
+  type AttendanceRow, type AttendanceStatus, type Holiday,
 } from './mock';
 
 export const dataSource: 'live' | 'fixtures' = isConfigured ? 'live' : 'fixtures';
@@ -175,15 +178,16 @@ export async function fetchCourses(): Promise<Course[]> {
   if (coursesRes.error) fail('Could not load courses', coursesRes.error);
 
   const branchName = new Map((branchesRes.data ?? []).map(b => [b.id as string, b.name as string]));
-  // the schedule effective now, per offering: the latest one whose window is open
-  const today = new Date().toISOString().slice(0, 10);
-  const weekdaysByOffering = new Map<string, number[]>();
-  for (const s of schedulesRes.data ?? []) {
-    const from = s.effective_from as string;
-    const to = s.effective_to as string | null;
-    if (from > today || (to && to < today)) continue;
-    weekdaysByOffering.set(s.offering_id as string, (s.weekdays as number[]) ?? []);
-  }
+  // The version in force today, per offering. One shared, tested resolver --
+  // this and fetchOfferings each carried their own copy of the window
+  // arithmetic and had to agree with each other by hand.
+  const weekdaysByOffering = currentSchedules(
+    (schedulesRes.data ?? []).map(s => ({
+      offering_id: s.offering_id as string,
+      weekdays: (s.weekdays as number[]) ?? [],
+      effective_from: s.effective_from as string,
+      effective_to: (s.effective_to as string | null) ?? null,
+    })), today());
 
   return (coursesRes.data ?? []).map(c => ({
     id: c.id as string,
@@ -194,10 +198,313 @@ export async function fetchCourses(): Promise<Course[]> {
     offerings: (offeringsRes.data ?? [])
       .filter(o => o.course_id === c.id)
       .map(o => ({
+        // the id travels with the offering: enrolling a member names the
+        // course AT a branch, and that is this row, not the course
+        id: o.id as string,
         branch: branchName.get(o.branch_id as string) ?? '—',
-        weekdays: weekdaysByOffering.get(o.id as string) ?? [],
+        weekdays: weekdaysByOffering.get(o.id as string)?.weekdays ?? [],
       })),
   }));
+}
+
+/**
+ * Adding or renaming a course.
+ *
+ * This is a DIRECT write, not an Edge Function, and deliberately so: 0005
+ * gives `authenticated` INSERT and UPDATE on public.courses behind an RLS
+ * policy of `is_super_admin() and is_subscription_writable()`, and the
+ * audit_courses trigger records who changed what either way. There is
+ * nothing an Edge Function would add here except a second place for the
+ * rule to drift.
+ *
+ * Because the policy is the gate, a refusal is what a staff member who is
+ * not the super admin gets — and it must be SAID, not swallowed. The screen
+ * that calls this previously flashed "saved" unconditionally and never wrote
+ * anything at all, which is the defect this function exists to close.
+ */
+/**
+ * A write has to reach the LIST, not just the database.
+ *
+ * Without this, adding a course succeeded and the Courses tab still showed
+ * the set it fetched when it mounted -- indistinguishable, on screen, from
+ * the save having done nothing, which is the very complaint this work
+ * started from. The tab stays mounted behind the edit screen, so returning
+ * to it is not a remount and refetches nothing on its own.
+ *
+ * A counter every useCourses reads, bumped by every course write. Not a
+ * cache: nothing is stored here, it only says "ask again".
+ */
+const courseListeners = new Set<() => void>();
+
+export function onCoursesChanged(listener: () => void): () => void {
+  courseListeners.add(listener);
+  return () => { courseListeners.delete(listener); };
+}
+
+function coursesChanged(): void {
+  for (const listener of courseListeners) listener();
+}
+
+export type CourseInput = {
+  name: string;
+  /** 'HH:MM' or null. A DEFAULT for new offerings only (CR-06) — writing it
+   *  never touches an offering that already exists. */
+  start_time: string | null;
+  end_time: string | null;
+  /** stated intent (C-59); the engine never reads it */
+  frequency: number | null;
+};
+
+/** RLS and the CHECK constraints answer in Postgres' words. These are the
+ *  three a person can actually act on, so they are translated; anything else
+ *  keeps the database's own message rather than a guess at what it meant. */
+function courseWriteError(error: { code?: string; message?: string } | null): string {
+  const code = error?.code ?? '';
+  const message = error?.message ?? '';
+  if (code === '42501' || /row-level security/i.test(message)) {
+    return 'Only the super admin can add or change a course, and only while the subscription is active. Nothing has been saved.';
+  }
+  if (code === '23505' || /courses_name_live/.test(message)) {
+    return 'A course with this name already exists. Nothing has been saved.';
+  }
+  if (/default_end_time|courses_check/.test(message)) {
+    return 'The end time must be after the start time. Nothing has been saved.';
+  }
+  return `${message || 'The course could not be saved'}. Nothing has been saved.`;
+}
+
+export async function createCourse(input: CourseInput): Promise<Course> {
+  if (!isConfigured) {
+    // Offline the list IS the store, so the new course has to land in it or
+    // the screen would say "saved" over a list that never changed -- the
+    // same lie, moved one layer down.
+    const course: Course = {
+      id: `local-${Date.now()}`, name: input.name,
+      start_time: input.start_time, end_time: input.end_time,
+      frequency: input.frequency, offerings: [],
+    };
+    COURSE_LIST.push(course);
+    coursesChanged();
+    return course;
+  }
+
+  const { data, error } = await supabase.from('courses')
+    .insert({
+      name: input.name,
+      default_start_time: input.start_time,
+      default_end_time: input.end_time,
+      default_frequency: input.frequency,
+    })
+    .select('id, name, default_start_time, default_end_time, default_frequency')
+    .single();
+  if (error || !data) {
+    console.error('createCourse:', error?.message ?? 'no row returned');
+    throw new Error(courseWriteError(error));
+  }
+
+  coursesChanged();
+  return {
+    id: data.id as string,
+    name: data.name as string,
+    start_time: (data.default_start_time as string | null)?.slice(0, 5) ?? null,
+    end_time: (data.default_end_time as string | null)?.slice(0, 5) ?? null,
+    frequency: (data.default_frequency as number | null) ?? null,
+    offerings: [],
+  };
+}
+
+export async function updateCourse(id: string, input: CourseInput): Promise<void> {
+  if (!isConfigured) {
+    const course = COURSE_LIST.find(c => c.id === id);
+    if (course) Object.assign(course, input);
+    coursesChanged();
+    return;
+  }
+
+  const { data, error } = await supabase.from('courses')
+    .update({
+      name: input.name,
+      default_start_time: input.start_time,
+      default_end_time: input.end_time,
+      default_frequency: input.frequency,
+    })
+    .eq('id', id)
+    .select('id');
+  if (error) {
+    console.error('updateCourse:', error.message);
+    throw new Error(courseWriteError(error));
+  }
+  // RLS refuses an UPDATE by returning NO ROWS, not an error. Without this
+  // the screen would report a save that the policy silently declined.
+  if (!data || data.length === 0) {
+    throw new Error('That course could not be changed — only the super admin may, and only while the subscription is active. Nothing has been saved.');
+  }
+  coursesChanged();
+}
+
+// ----------------------------------------------------------------- offerings
+/**
+ * An OFFERING is the course at one branch -- the thing that actually runs --
+ * and its SCHEDULE is the weekdays it runs on. 0005 calls offering_schedules
+ * *** THE source of expected attendance ***, and until 0018 there was no way
+ * for the app to write one: the table carries a read policy and, on purpose,
+ * no INSERT/UPDATE policy at all. So a course could state a frequency and
+ * never acquire the days that frequency is an intent ABOUT.
+ *
+ * Offerings are inserted directly (0005 grants that to the super admin behind
+ * `is_super_admin() and is_subscription_writable()`); the SCHEDULE goes
+ * through set_offering_schedule, which is the only path that exists.
+ */
+export type Branch = { id: string; name: string };
+
+export async function fetchBranches(): Promise<Branch[]> {
+  if (!isConfigured) {
+    return BRANCHES.filter(b => b !== 'All branches')
+      .map(name => ({ id: `local-branch-${name.toLowerCase()}`, name }));
+  }
+  const { data, error } = await supabase.from('branches')
+    .select('id, name').is('deleted_at', null).order('name');
+  if (error) fail('The branch list could not be loaded', error);
+  return (data ?? []).map(b => ({ id: b.id as string, name: b.name as string }));
+}
+
+export type OfferingDetail = {
+  id: string;
+  branch_id: string;
+  branch: string;
+  start_time: string | null;
+  end_time: string | null;
+  /** the schedule in force today; empty means this offering has none yet */
+  weekdays: number[];
+  effective_from: string | null;
+};
+
+export async function fetchOfferings(courseId: string): Promise<OfferingDetail[]> {
+  if (!isConfigured) {
+    const course = COURSE_LIST.find(c => c.id === courseId);
+    return (course?.offerings ?? []).map(o => ({
+      id: o.id,
+      branch_id: `local-branch-${o.branch.toLowerCase()}`,
+      branch: o.branch,
+      start_time: course?.start_time ?? null,
+      end_time: course?.end_time ?? null,
+      weekdays: o.weekdays,
+      effective_from: null,
+    }));
+  }
+
+  const [offeringsRes, branchesRes, schedulesRes] = await Promise.all([
+    supabase.from('course_offerings')
+      .select('id, branch_id, start_time, end_time')
+      .eq('course_id', courseId).is('deleted_at', null),
+    supabase.from('branches').select('id, name').is('deleted_at', null),
+    supabase.from('offering_schedules')
+      .select('offering_id, weekdays, effective_from, effective_to'),
+  ]);
+  if (offeringsRes.error) fail('The offerings could not be loaded', offeringsRes.error);
+
+  const branchName = new Map((branchesRes.data ?? []).map(b => [b.id as string, b.name as string]));
+  // the version in force TODAY -- the same resolver fetchCourses reads, so the
+  // Courses tab and this screen cannot disagree about an offering's days
+  const current = currentSchedules(
+    (schedulesRes.data ?? []).map(sc => ({
+      offering_id: sc.offering_id as string,
+      weekdays: (sc.weekdays as number[]) ?? [],
+      effective_from: sc.effective_from as string,
+      effective_to: (sc.effective_to as string | null) ?? null,
+    })), today());
+
+  return (offeringsRes.data ?? []).map(o => ({
+    id: o.id as string,
+    branch_id: o.branch_id as string,
+    branch: branchName.get(o.branch_id as string) ?? '—',
+    start_time: (o.start_time as string | null)?.slice(0, 5) ?? null,
+    end_time: (o.end_time as string | null)?.slice(0, 5) ?? null,
+    weekdays: current.get(o.id as string)?.weekdays ?? [],
+    effective_from: current.get(o.id as string)?.effective_from ?? null,
+  }));
+}
+
+export type OfferingInput = {
+  course_id: string;
+  branch_id: string;
+  start_time: string | null;
+  end_time: string | null;
+};
+
+function offeringWriteError(error: { code?: string; message?: string } | null): string {
+  const code = error?.code ?? '';
+  const message = error?.message ?? '';
+  if (code === '42501' || /row-level security/i.test(message)) {
+    return 'Only the super admin can add an offering, and only while the subscription is active. Nothing has been saved.';
+  }
+  if (code === '23505' || /offerings_unique_live/.test(message)) {
+    return 'This course already runs at that branch. Edit that offering instead of adding a second one.';
+  }
+  return `${message || 'The offering could not be saved'}. Nothing has been saved.`;
+}
+
+export async function createOffering(input: OfferingInput): Promise<string> {
+  if (!isConfigured) {
+    const course = COURSE_LIST.find(c => c.id === input.course_id);
+    if (!course) throw new Error('That course no longer exists. Nothing has been saved.');
+    const branch = input.branch_id.replace('local-branch-', '');
+    const id = `local-offering-${Date.now()}`;
+    course.offerings.push({
+      id,
+      branch: branch.charAt(0).toUpperCase() + branch.slice(1),
+      weekdays: [],
+    });
+    coursesChanged();
+    return id;
+  }
+
+  const { data, error } = await supabase.from('course_offerings')
+    .insert({
+      course_id: input.course_id,
+      branch_id: input.branch_id,
+      start_time: input.start_time,
+      end_time: input.end_time,
+    })
+    .select('id')
+    .single();
+  if (error || !data) {
+    console.error('createOffering:', error?.message ?? 'no row returned');
+    throw new Error(offeringWriteError(error));
+  }
+  coursesChanged();
+  return data.id as string;
+}
+
+/**
+ * The ONLY write path to offering_schedules (0018). Its refusals are written
+ * for an operator -- "this offering has a completed session on 6 Oct, so a
+ * schedule cannot start on or before it" -- so they are surfaced as-is rather
+ * than flattened into a generic failure.
+ */
+export async function setOfferingSchedule(
+  offeringId: string, weekdays: number[], effectiveFrom: string,
+): Promise<void> {
+  if (!isConfigured) {
+    for (const course of COURSE_LIST) {
+      const offering = course.offerings.find(o => o.id === offeringId);
+      if (offering) { offering.weekdays = [...weekdays].sort((a, b) => a - b); break; }
+    }
+    coursesChanged();
+    return;
+  }
+
+  const { error } = await supabase.rpc('set_offering_schedule', {
+    p_offering_id: offeringId,
+    p_weekdays: weekdays,
+    p_effective_from: effectiveFrom,
+    p_note: null,
+  });
+  if (error) {
+    console.error('setOfferingSchedule:', error.message);
+    throw new Error(`${error.message || 'The schedule could not be saved'}. Nothing has been saved.`);
+  }
+  coursesChanged();
 }
 
 // ---------------------------------------------------------------- templates
@@ -307,6 +614,30 @@ export async function fetchFilterOptions(): Promise<{ branches: string[]; course
   return {
     branches: ['All branches', ...(b.data ?? []).map(x => x.name as string)],
     courses: ['All courses', ...(c.data ?? []).map(x => x.name as string)],
+  };
+}
+
+// ------------------------------------------------------------------ academy
+/**
+ * The academy the signed-in person administers. Both tables are readable by
+ * any active account (app_settings_read, branches_read), so a staff member
+ * sees the same academy line the super admin does.
+ */
+export async function fetchAcademy(): Promise<{ name: string; branches: string[] }> {
+  if (!isConfigured) {
+    return { name: 'RosiFit', branches: BRANCHES.filter(b => b !== 'All branches') };
+  }
+
+  const [settings, branches] = await Promise.all([
+    supabase.from('app_settings').select('academy_name').eq('id', 1).maybeSingle(),
+    supabase.from('branches').select('name').is('deleted_at', null).order('name'),
+  ]);
+  if (settings.error) fail('The academy details could not be loaded', settings.error);
+  if (branches.error) fail('The branch list could not be loaded', branches.error);
+
+  return {
+    name: settings.data?.academy_name ?? 'RosiFit',
+    branches: (branches.data ?? []).map(x => x.name as string),
   };
 }
 
@@ -438,4 +769,349 @@ export async function savePreferences(appUserId: string, prefs: Partial<Preferen
   await supabase.from('user_preferences').upsert(
     { app_user_id: appUserId, ...prefs }, { onConflict: 'app_user_id' }
   );
+}
+
+// -------------------------------------------------------- attendance list
+/**
+ * Every attendance fact in a period, one row per member per session.
+ *
+ * The Attendance tab lists these; it does not compute anything from them.
+ * Totals on that screen are counts of these rows, so the list and its own
+ * summary cannot disagree — and neither can restate a figure the engine
+ * (member_period_metrics) would put differently, because a count of facts is
+ * all either one is.
+ */
+export async function fetchAttendance(period: Period): Promise<AttendanceRow[]> {
+  if (!isConfigured) return attendanceFixture(period.from, period.to);
+
+  const { data: sessions, error } = await supabase.from('sessions')
+    .select('id, offering_id, session_date, start_time')
+    .gte('session_date', period.from).lte('session_date', period.to)
+    .is('deleted_at', null)
+    .order('session_date', { ascending: false });
+  if (error) fail('Could not load attendance', error);
+
+  const sessionIds = (sessions ?? []).map(s => s.id as string);
+  if (sessionIds.length === 0) return [];
+
+  const { data: records, error: recordError } = await supabase.from('attendance_records')
+    .select('id, session_id, member_id, status, expected, minutes_in_call')
+    .in('session_id', sessionIds).is('deleted_at', null);
+  if (recordError) fail('Could not load attendance', recordError);
+  if (!records || records.length === 0) return [];
+
+  // The same manual joins the rest of this file uses, rather than a PostgREST
+  // embed: an embed silently returns null for a row RLS hides on the far
+  // side, and a member who vanished that way would read as a blank name.
+  const memberIds = [...new Set(records.map(r => r.member_id as string))];
+  const offeringIds = [...new Set((sessions ?? []).map(s => s.offering_id as string))];
+  const [membersRes, offeringsRes] = await Promise.all([
+    supabase.from('members').select('id, member_code, full_name').in('id', memberIds),
+    supabase.from('course_offerings').select('id, course_id, branch_id').in('id', offeringIds),
+  ]);
+  const courseIds = [...new Set((offeringsRes.data ?? []).map(o => o.course_id as string))];
+  const branchIds = [...new Set((offeringsRes.data ?? []).map(o => o.branch_id as string))];
+  const [coursesRes, branchesRes] = await Promise.all([
+    courseIds.length ? supabase.from('courses').select('id, name').in('id', courseIds)
+                     : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+    branchIds.length ? supabase.from('branches').select('id, name').in('id', branchIds)
+                     : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+  ]);
+
+  const sessionById = new Map((sessions ?? []).map(s => [s.id as string, s]));
+  const memberById = new Map((membersRes.data ?? []).map(m => [m.id as string, m]));
+  const offeringById = new Map((offeringsRes.data ?? []).map(o => [o.id as string, o]));
+  const courseName = new Map((coursesRes.data ?? []).map(c => [c.id as string, c.name as string]));
+  const branchName = new Map((branchesRes.data ?? []).map(b => [b.id as string, b.name as string]));
+
+  return records.map(r => {
+    const session = sessionById.get(r.session_id as string);
+    const offering = session ? offeringById.get(session.offering_id as string) : undefined;
+    const member = memberById.get(r.member_id as string);
+    return {
+      id: r.id as string,
+      member_id: r.member_id as string,
+      // '—' rather than '' so a row RLS hid the member of still reads as a
+      // row, instead of an unexplained blank
+      member: (member?.full_name as string) ?? '—',
+      code: (member?.member_code as string) ?? '—',
+      course: offering ? (courseName.get(offering.course_id as string) ?? '—') : '—',
+      branch: offering ? (branchName.get(offering.branch_id as string) ?? '—') : '—',
+      date: (session?.session_date as string) ?? '',
+      time: (session?.start_time as string | null)?.slice(0, 5) ?? '',
+      status: r.status as AttendanceStatus,
+      expected: Boolean(r.expected),
+      minutes: (r.minutes_in_call as number | null) ?? null,
+    };
+  }).sort((a, b) => (a.date === b.date ? a.member.localeCompare(b.member) : b.date.localeCompare(a.date)));
+}
+
+// ----------------------------------------------------------------- holidays
+/**
+ * Holidays, and the two writes that keep their sessions honest.
+ *
+ * The session effects are NOT applied from here. 0017 puts them on triggers
+ * on public.holidays, so inserting the row marks its sessions and deleting
+ * the row returns them to `scheduled` (C-92) without the client being trusted
+ * to remember either step. apply_holiday and remove_holiday stay
+ * service_role-only as direct calls, which is what stops a staff member
+ * rewriting the status of every session in a date range.
+ *
+ * What this file does is the row, behind the RLS policies 0005 already wrote:
+ * super admin, and only while the subscription is writable.
+ */
+// One shape, declared beside the fixtures that have to satisfy it (mock.ts)
+// and re-exported here so screens keep reading it from the repository like
+// every other row type. Two identical declarations is how the fixture and the
+// live row quietly stop matching.
+export type { Holiday };
+
+const holidayListeners = new Set<() => void>();
+
+export function onHolidaysChanged(listener: () => void): () => void {
+  holidayListeners.add(listener);
+  return () => { holidayListeners.delete(listener); };
+}
+
+function holidaysChanged(): void {
+  for (const listener of holidayListeners) listener();
+}
+
+/** RLS and the CHECK constraints answer in Postgres' own words; these are the
+ *  three a person can act on. Anything else keeps the database's message
+ *  rather than a guess at what it meant. */
+function holidayWriteError(error: { code?: string; message?: string } | null, verb: string): string {
+  const code = error?.code ?? '';
+  const message = error?.message ?? '';
+  if (code === '42501' || /row-level security|permission denied/i.test(message)) {
+    return `Only the super admin can ${verb} a holiday, and only while the subscription is active. Nothing has been changed.`;
+  }
+  if (/holiday_range_valid/.test(message)) {
+    return 'The end date must be on or after the start date. Nothing has been changed.';
+  }
+  if (/length\(btrim/.test(message)) {
+    return 'A holiday needs a name of at least two characters. Nothing has been changed.';
+  }
+  return `${message || 'The holiday could not be saved'}. Nothing has been changed.`;
+}
+
+export async function fetchHolidays(): Promise<Holiday[]> {
+  if (!isConfigured) return HOLIDAYS.map(h => ({ ...h }));
+
+  const { data, error } = await supabase.from('holidays')
+    .select('id, name, start_date, end_date, branch_id')
+    .order('start_date', { ascending: false });
+  if (error) fail('Could not load holidays', error);
+  if (!data || data.length === 0) return [];
+
+  // The session count is what the delete confirmation promises to restore, so
+  // it is counted from sessions.holiday_id -- the same link remove_holiday
+  // walks -- rather than re-derived from the date range. A range recount could
+  // disagree with what deleting actually does.
+  const branchIds = [...new Set(data.map(h => h.branch_id).filter(Boolean))] as string[];
+  const [branchesRes, sessionsRes] = await Promise.all([
+    branchIds.length
+      ? supabase.from('branches').select('id, name').in('id', branchIds)
+      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+    supabase.from('sessions')
+      .select('holiday_id')
+      .in('holiday_id', data.map(h => h.id as string))
+      .eq('status', 'holiday').is('deleted_at', null),
+  ]);
+  const branchName = new Map((branchesRes.data ?? []).map(b => [b.id as string, b.name as string]));
+  const held = new Map<string, number>();
+  for (const s of sessionsRes.data ?? []) {
+    const id = s.holiday_id as string;
+    held.set(id, (held.get(id) ?? 0) + 1);
+  }
+
+  return data.map(h => ({
+    id: h.id as string,
+    name: h.name as string,
+    from: h.start_date as string,
+    to: h.end_date as string,
+    branch: h.branch_id ? (branchName.get(h.branch_id as string) ?? '-') : null,
+    sessions: held.get(h.id as string) ?? 0,
+  }));
+}
+
+/**
+ * The impact, before the act (C-91). preview_holiday() is the SAME query
+ * apply_holiday() runs, which is what stops the number shown from disagreeing
+ * with the number marked. It is `stable` and 0011 grants it to authenticated,
+ * so no new permission is involved.
+ */
+export async function previewHoliday(from: string, to: string, branchName: string | null):
+  Promise<{ label: string; n: number }[]> {
+  if (!isConfigured) {
+    return HOLIDAY_PREVIEW.filter(p => branchName === null || p.label.endsWith(branchName));
+  }
+  let branchId: string | null = null;
+  if (branchName) {
+    const { data } = await supabase.from('branches').select('id').eq('name', branchName).maybeSingle();
+    branchId = (data?.id as string) ?? null;
+  }
+  const { data, error } = await supabase.rpc('preview_holiday', {
+    p_start: from, p_end: to, p_branch_id: branchId,
+  });
+  if (error) fail('Could not work out which sessions this would affect', error);
+  return ((data ?? []) as { course_name: string; branch_name: string; session_count: number }[])
+    .map(r => ({ label: `${r.course_name} - ${r.branch_name}`, n: Number(r.session_count) }));
+}
+
+export async function createHoliday(input:
+  { name: string; from: string; to: string; branch: string | null }): Promise<void> {
+  if (!isConfigured) {
+    HOLIDAYS.unshift({
+      id: `local-${Date.now()}`, name: input.name,
+      from: input.from, to: input.to, branch: input.branch,
+      sessions: HOLIDAY_PREVIEW
+        .filter(p => input.branch === null || p.label.endsWith(input.branch))
+        .reduce((n, p) => n + p.n, 0),
+    });
+    holidaysChanged();
+    return;
+  }
+
+  let branchId: string | null = null;
+  if (input.branch) {
+    const { data } = await supabase.from('branches').select('id').eq('name', input.branch).maybeSingle();
+    // A scope naming a branch nobody has would fall through to branch_id null,
+    // which the column reads as EVERY branch -- the widest possible blast
+    // radius from a typo. Refuse it rather than widen it.
+    if (!data?.id) throw new Error(`There is no branch called ${input.branch}. Nothing has been changed.`);
+    branchId = data.id as string;
+  }
+
+  const { error } = await supabase.from('holidays').insert({
+    name: input.name, start_date: input.from, end_date: input.to, branch_id: branchId,
+  });
+  if (error) {
+    console.error('createHoliday:', error.message);
+    throw new Error(holidayWriteError(error, 'add'));
+  }
+  holidaysChanged();
+}
+
+/**
+ * Deleting the row is the whole operation: the BEFORE DELETE trigger from
+ * 0017 restores the sessions first, which is also what lets the delete past
+ * the foreign key on sessions.holiday_id.
+ */
+export async function deleteHoliday(id: string): Promise<void> {
+  if (!isConfigured) {
+    const at = HOLIDAYS.findIndex(h => h.id === id);
+    if (at >= 0) HOLIDAYS.splice(at, 1);
+    holidaysChanged();
+    return;
+  }
+
+  const { data, error } = await supabase.from('holidays').delete().eq('id', id).select('id');
+  if (error) {
+    console.error('deleteHoliday:', error.message);
+    throw new Error(holidayWriteError(error, 'remove'));
+  }
+  // RLS refuses a DELETE by matching NO ROWS, not by erroring -- the same
+  // shape that let updateCourse report a save the policy had declined.
+  if (!data || data.length === 0) {
+    throw new Error('That holiday could not be removed - only the super admin may, and only while the subscription is active. Nothing has been changed.');
+  }
+  holidaysChanged();
+}
+
+/* ------------------------------------------------------------------ members
+ *
+ * Adding a member, as ONE call.
+ *
+ * app/member/edit.tsx flashed "<name> added" and called router.back(). It
+ * wrote nothing -- the same defect as Add Course (RC-008), and the reason
+ * this function exists.
+ *
+ * Unlike createCourse this is an RPC, not a direct write, and not by
+ * preference: 0006 gives `authenticated` INSERT on members, member_emails and
+ * member_aliases, but member_enrollments and member_schedules have a READ
+ * policy and nothing else -- by design, because the weekday-subset rule needs
+ * the offering schedule effective on the same dates, which no CHECK
+ * constraint can see. A member inserted directly would land with no
+ * enrolment: expected at no session, in no follow-up list, counted by
+ * nobody. public.create_member (0016) does the whole write in one
+ * transaction so that cannot half-happen.
+ */
+const memberListeners = new Set<() => void>();
+
+export function onMembersChanged(listener: () => void): () => void {
+  memberListeners.add(listener);
+  return () => { memberListeners.delete(listener); };
+}
+
+function membersChanged(): void {
+  for (const listener of memberListeners) listener();
+}
+
+export type MemberInput = {
+  full_name: string;
+  /** the course AT one branch — course_offerings.id */
+  offering_id: string;
+  /** ISO, or null for "not recorded" */
+  joined_on: string | null;
+  /** Google Meet display names (C-71) */
+  aliases: string[];
+  /** the FIRST address becomes primary (C-73); an empty list is a real answer */
+  emails: string[];
+  /** her own days as 1..7, or null to follow the offering's schedule */
+  weekdays: number[] | null;
+};
+
+/**
+ * Every refusal create_member raises is already written for a person to read
+ * — the offering that does not exist, the display name that belongs to
+ * somebody else, the subscription that has expired. So the database's own
+ * words are kept and only the guarantee is added; inventing a friendlier
+ * sentence here would be a second place for the rule to drift.
+ */
+function memberWriteError(error: { message?: string } | null): string {
+  const message = (error?.message ?? '').trim();
+  return `${message || 'The member could not be saved'}. Nothing has been saved.`;
+}
+
+export async function createMember(input: MemberInput): Promise<{ id: string; code: string }> {
+  if (!isConfigured) {
+    // Offline the fixture list IS the store, so she has to land in it — a
+    // screen that says "added" over a list that never changed is the same
+    // lie, moved one layer down.
+    const course = COURSE_LIST.find(c => c.offerings.some(o => o.id === input.offering_id));
+    const offering = course?.offerings.find(o => o.id === input.offering_id);
+    const member: Member = {
+      id: `local-${Date.now()}`,
+      code: `RF-${String(MEMBERS.length + 1).padStart(6, '0')}`,
+      name: input.full_name,
+      course: course?.name ?? '—',
+      branch: offering?.branch ?? '—',
+      aliases: input.aliases,
+      emails: input.emails.map((address, i) => ({ address, primary: i === 0 })),
+      expected: 0, attended: 0, missed: 0, streak: 0, last: '\u2014',
+    };
+    MEMBERS.push(member);
+    membersChanged();
+    return { id: member.id, code: member.code };
+  }
+
+  const { data, error } = await supabase.rpc('create_member', {
+    p_full_name: input.full_name,
+    p_offering_id: input.offering_id,
+    p_joined_on: input.joined_on,
+    p_aliases: input.aliases,
+    p_emails: input.emails,
+    p_weekdays: input.weekdays,
+  });
+  if (error || !data) {
+    console.error('createMember:', error?.message ?? 'no row returned');
+    throw new Error(memberWriteError(error));
+  }
+
+  membersChanged();
+  return {
+    id: (data as { member_id: string }).member_id,
+    code: (data as { member_code: string }).member_code,
+  };
 }
