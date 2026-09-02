@@ -18,8 +18,9 @@ import {
   fetchMembers, fetchRules, fetchCourses, fetchTemplates, fetchStaff, fetchAudit,
   fetchFilterOptions, fetchMonthSessions, fetchPendingSessions, fetchWeekRows,
   fetchAcademy,
-  fetchAttendance, onCoursesChanged,
-  type Rules, type PendingSession,
+  fetchAttendance, onCoursesChanged, onMembersChanged,
+  fetchHolidays, onHolidaysChanged,
+  type Rules, type PendingSession, type Holiday,
 } from './repository';
 import { flagged } from './followup';
 import type { Member, Course, Template, Staff, AuditEntry, SessionDay, WeekRow, AttendanceRow } from './mock';
@@ -88,8 +89,18 @@ export function useAsync<T>(load: () => Promise<T>, deps: unknown[], forced?: st
   return { state, data, error, retry };
 }
 
+/**
+ * The member list, refetched whenever a member is written.
+ *
+ * The same reason useCourses carries a version: a member added and then
+ * missing from the list she was added to reads exactly like a save that did
+ * nothing -- which is the complaint this work started from. The tab stays
+ * mounted behind the edit screen and refetches nothing on its own.
+ */
 export function useMembers(forced?: string, period: Period = currentWeek()): Async<Member[]> {
-  return useAsync(() => fetchMembers(period), [period.from, period.to], forced);
+  const [version, setVersion] = useState(0);
+  useEffect(() => onMembersChanged(() => setVersion(v => v + 1)), []);
+  return useAsync(() => fetchMembers(period), [period.from, period.to, version], forced);
 }
 
 export function useRules(forced?: string): Async<Rules> {
@@ -103,10 +114,12 @@ export function useRules(forced?: string): Async<Rules> {
  */
 export function useFollowUp(forced?: string, period: Period = currentWeek()):
   Async<{ members: Member[]; rules: Rules; flagged: Member[] }> {
+  const [version, setVersion] = useState(0);
+  useEffect(() => onMembersChanged(() => setVersion(v => v + 1)), []);
   return useAsync(async () => {
     const [members, rules] = await Promise.all([fetchMembers(period), fetchRules()]);
     return { members, rules, flagged: flagged(members, rules.global, rules.byCourseName) };
-  }, [period.from, period.to], forced);
+  }, [period.from, period.to, version], forced);
 }
 
 /**
@@ -155,6 +168,15 @@ export function useMonthSessions(year: number, month: number, forced?: string): 
  *  re-labelling rows that were counted over a different range. */
 export function useAttendance(period: Period, forced?: string): Async<AttendanceRow[]> {
   return useAsync(() => fetchAttendance(period), [period.from, period.to], forced);
+}
+
+/** Holidays, refetched whenever one is added or removed -- the list a person
+ *  deletes from must be the list the delete changed, or removing one leaves
+ *  its row on screen and reads as a delete that did nothing. */
+export function useHolidays(forced?: string): Async<Holiday[]> {
+  const [version, setVersion] = useState(0);
+  useEffect(() => onHolidaysChanged(() => setVersion(v => v + 1)), []);
+  return useAsync(() => fetchHolidays(), [version], forced);
 }
 
 export function usePendingSessions(forced?: string): Async<PendingSession[]> {

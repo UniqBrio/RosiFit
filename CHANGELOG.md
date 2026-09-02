@@ -1,5 +1,45 @@
 # Changelog
 
+## Unreleased — holidays can be removed, and adding one now writes
+
+**A holiday can be deleted.** C-92 has promised since the beginning that removing a holiday
+returns its sessions to `scheduled`, and `remove_holiday()` has done exactly that since
+migration 0007 — but nothing could reach it. There was no list to delete from, no DELETE grant
+and no DELETE policy on `public.holidays`, and 0011/0012 had deliberately taken
+`apply_holiday`/`remove_holiday` away from `authenticated`. A holiday could be created and never
+removed. Migration **0017** closes it with triggers on `public.holidays` rather than a new grant:
+inserting the row marks its sessions, deleting the row restores them, and the two RPCs stay
+service_role-only as direct calls, so no staff member can rewrite the status of every session in
+a date range. The delete trigger is `BEFORE DELETE` because `sessions.holiday_id` has a foreign
+key with no `ON DELETE` clause — an `AFTER` trigger does not merely read worse there, it fails.
+
+**Add Holiday wrote nothing before this.** It flashed `"<name> applied · N sessions marked
+Holiday"` and navigated back; N was the literal `14` or `6`, not a count of anything. Same defect
+as Add Course (**RC-008**), and the `holiday` row of **TD-012**. It now writes the row, shows the
+real impact from `preview_holiday()` — the same query `apply_holiday()` runs, so the number shown
+cannot disagree with the number marked — and renders an RLS refusal instead of swallowing it.
+The scope list reads the academy's real branches instead of a hardcoded `'Coimbatore'`, and a
+scope naming a branch that does not exist is refused rather than falling through to `branch_id
+null`, which the column reads as *every* branch.
+
+**Adding a member never saved either** — written by a parallel session, carried in the same
+commit. `app/member/edit.tsx` flashed `"<name> added"` and navigated back; her record, her display
+names, her addresses and her enrolment existed only on screen. It is an RPC (**0016**
+`create_member`) rather than a direct write, and not by preference: `member_enrollments` and
+`member_schedules` carry a read policy and nothing else, so a member added by direct insert lands
+with **no enrolment** — expected at no session, in no follow-up list, counted by nobody. That is
+the same lie one layer down. `create_member` writes her record, her aliases, her addresses with
+the first as primary, her enrolment and her optional weekday override in one transaction, or none
+of them. Changing an existing member is deliberately still not fixed: that needs an enrolment RPC
+that does not exist, so on that path the button is disabled and says so.
+
+**⚠ Migrations 0016 and 0017 are not applied anywhere.** The live Supabase project is never an automated
+target without explicit instruction (`CLAUDE.md`), and the local harness cannot run on the
+adopting machine (**TD-010**). Until they are applied, the delete button and the Add Member save are both present and
+will be refused by PostgREST, because neither the DELETE grant nor `create_member` exists yet.
+On screen that reads as a permissions bug rather than a missing migration (**TD-013**).
+
+
 ## Unreleased — the attendance register, and a form that only said it saved
 
 **Add Course wrote nothing.** `app/course/edit.tsx` flashed "saved" and navigated back; there

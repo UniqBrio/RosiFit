@@ -154,16 +154,19 @@ export type Course = {
   id: string; name: string;
   start_time: string | null; end_time: string | null;
   frequency: number | null;              // stated intent, never counted
-  offerings: { branch: string; weekdays: number[] }[];
+  /** `id` is the course_offerings row -- the course AT one branch. Enrolling
+   *  a member names the OFFERING, not the course, so dropping the id here is
+   *  what left the member form unable to enrol anyone. */
+  offerings: { id: string; branch: string; weekdays: number[] }[];
 };
 
 export const COURSE_LIST: Course[] = [
   { id: 'c1', name: 'Prenatal Flow', start_time: '06:00', end_time: '07:00', frequency: 3,
-    offerings: [{ branch: 'Coimbatore', weekdays: [1,3,5] }, { branch: 'Chennai', weekdays: [1,3,5] }] },
+    offerings: [{ id: 'o1', branch: 'Coimbatore', weekdays: [1,3,5] }, { id: 'o2', branch: 'Chennai', weekdays: [1,3,5] }] },
   { id: 'c2', name: 'Postnatal Core', start_time: '07:00', end_time: '08:00', frequency: 3,
-    offerings: [{ branch: 'Madurai', weekdays: [2,4,6] }, { branch: 'Coimbatore', weekdays: [2,4,6] }] },
+    offerings: [{ id: 'o3', branch: 'Madurai', weekdays: [2,4,6] }, { id: 'o4', branch: 'Coimbatore', weekdays: [2,4,6] }] },
   { id: 'c3', name: 'Trimester 3 Gentle', start_time: '07:00', end_time: '08:15', frequency: 4,
-    offerings: [{ branch: 'Chennai', weekdays: [1,4] }] },
+    offerings: [{ id: 'o5', branch: 'Chennai', weekdays: [1,4] }] },
   // no offering on purpose: a course with no offering has no schedule, and
   // the UI must say so rather than invent one
   { id: 'c4', name: 'Pelvic Floor Foundations', start_time: null, end_time: null, frequency: 2,
@@ -518,3 +521,36 @@ export function attendanceFixture(from: string, to: string): AttendanceRow[] {
   }
   return rows.sort((a, b) => (a.date === b.date ? a.member.localeCompare(b.member) : b.date.localeCompare(a.date)));
 }
+
+// ---------------------------------------------------------------- holidays
+/**
+ * Offline holidays. `sessions` is what deleting one would return to
+ * `scheduled`, which is the number the delete confirmation promises -- so it
+ * is a property of the holiday here, exactly as it is a count of
+ * sessions.holiday_id against the live database, and not a second derivation
+ * from the date range that could disagree with what deleting actually does.
+ */
+export type Holiday = {
+  id: string;
+  name: string;
+  /** ISO yyyy-mm-dd, inclusive at both ends */
+  from: string;
+  to: string;
+  /** null means every branch -- the column's own meaning, not a sentinel */
+  branch: string | null;
+  /** sessions this holiday currently holds; deleting it returns exactly these */
+  sessions: number;
+};
+
+export const HOLIDAYS: Holiday[] = [
+  { id: 'h1', name: 'Diwali',  from: '2026-10-20', to: '2026-10-22', branch: null,         sessions: 14 },
+  { id: 'h2', name: 'Pongal',  from: '2027-01-14', to: '2027-01-16', branch: null,         sessions: 12 },
+  { id: 'h3', name: 'Local strike', from: '2026-09-18', to: '2026-09-18', branch: 'Coimbatore', sessions: 2 },
+];
+
+/** What preview_holiday() answers with, per offering, for the impact panel. */
+export const HOLIDAY_PREVIEW = [
+  { label: 'Prenatal Flow · Coimbatore', n: 6 },
+  { label: 'Postnatal Core · Madurai', n: 5 },
+  { label: 'Trimester 3 Gentle · Chennai', n: 3 },
+];
