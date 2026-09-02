@@ -19,6 +19,24 @@ is more useful than leaving an empty row that looks like an oversight.
 and then goes to production; there is no third place for it to sit. Recorded here so nobody plans
 around a staging environment that does not exist — see TECH_DEBT if that becomes a constraint.
 
+## Running the harness
+
+```
+npm run test:db     # start the cluster if it is not up, then run all 135 assertions
+npm run db:start    # just the cluster
+```
+
+`db/harness/start.sh` brings up a local Postgres 16 on the socket and port in the table above. It
+finds the server binaries by searching the platform bin directories rather than trusting `PATH`:
+Debian and Ubuntu link only the *client* tools into `/usr/bin`, which is how a complete Postgres 16
+came to be recorded as absent (TD-010, ADR 013).
+
+`PGHOST`, `PGPORT` and `PGUSER` override the defaults. When `PGHOST` names a TCP host, `start.sh`
+confirms that server is reachable and starts nothing — which is how the `db-harness` job in
+`.github/workflows/ci.yml` runs *the same command* against `services: postgres:16`. The suite
+therefore no longer depends on any one machine, and rule 3 below is enforceable rather than
+aspirational.
+
 ## How the app chooses
 
 `src/data/repository.ts` decides once, at module load, and exports `dataSource`:

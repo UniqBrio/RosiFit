@@ -3,7 +3,11 @@
 # depending on filename order, which is worse than no test at all.
 set -uo pipefail
 cd "$(dirname "$0")/../.."
-PG="psql -h /tmp -p 5433 -U postgres -X -q -v ON_ERROR_STOP=1"
+# Defaults are the local socket cluster db/harness/start.sh brings up. CI
+# overrides them: a `services: postgres` container listens on TCP, not /tmp.
+PGHOST="${PGHOST:-/tmp}"; PGPORT="${PGPORT:-5433}"; PGUSER="${PGUSER:-postgres}"
+export PGHOST PGPORT PGUSER
+PG="psql -h $PGHOST -p $PGPORT -U $PGUSER -X -q -v ON_ERROR_STOP=1"
 fail=0; pass=0
 for f in supabase/tests/*.sql; do
   [ -e "$f" ] || continue

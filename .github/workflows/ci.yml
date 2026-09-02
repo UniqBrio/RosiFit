@@ -3,8 +3,8 @@
 # If CI and local run different checks, one of them is decoration - and it is always the one
 # that is slower to fix.
 #
-# Copy to .github/workflows/ci.yml -- and keep the two identical. This file is the template;
-# .github/workflows/ci.yml is what actually runs.
+# This is the live workflow. The template it was copied from is ci/github-actions-ci.yml;
+# change both together, or the template quietly stops describing what runs.
 #
 # ---------------------------------------------------------------------------------------------
 # RECONCILED FOR RosiFit, 02-Sep-2026, at framework adoption.

@@ -24,7 +24,7 @@ real credential on the only live project there is. It is **not** a test account 
 used as one. `one_super_admin` permits exactly one, so there is no second admin to test with.
 
 The harness environment has no accounts at all: `db/harness/` exercises policies by setting the
-session role directly in SQL (`supabase/tests/01_auth.sql`), which is why the 124 assertions can
+session role directly in SQL (`supabase/tests/01_auth.sql`), which is why the 135 assertions can
 run with no credentials anywhere.
 
 **Nothing here grants anything in production.**
