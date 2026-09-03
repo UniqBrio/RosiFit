@@ -2,9 +2,8 @@
 # A NEW signature BLOCKS. A signature fixed but still listed here ALSO BLOCKS (regenerate).
 # Signature: <path>|<count>. Count is included so a file may only get BETTER, never quietly worse.
 # Regenerate: node scripts/audits/check-hardcoded-colors.mjs --write-baseline
-# Generated: 2026-09-02 - 13 entries
+# Generated: 2026-09-03 - 12 entries
 app/(tabs)/courses.tsx|1
-app/(tabs)/index.tsx|2
 app/(tabs)/members.tsx|1
 app/(tabs)/more.tsx|1
 app/(tabs)/reports.tsx|1

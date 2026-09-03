@@ -43,6 +43,34 @@ export function reasonFor(m: Member, r: FollowUpRule): string {
 export const attendancePct = (m: Member): number | null =>
   m.expected === 0 ? null : Math.round((m.attended / m.expected) * 100);
 
+/**
+ * The three numbers the attendance donut draws, counted from the SAME member
+ * list the report reads.
+ *
+ * Here rather than inline in the dashboard because that is the whole promise
+ * the chart's own caption makes -- "one source, so the chart and the report
+ * cannot disagree" (C-87) -- and a promise computed inside a render body is
+ * one nobody can test.
+ *
+ * `notExpected` is the segment that stops a reduced schedule reading as poor
+ * attendance: a member expected at 4 sessions in a 6-session week has 2 not
+ * expected, not 2 missed. Drop the segment and she is indistinguishable from
+ * a 6-day member who skipped twice.
+ */
+export const FULL_WEEK_SESSIONS = 6;
+
+export function distribution(members: Member[], perWeek = FULL_WEEK_SESSIONS):
+  { attended: number; missed: number; notExpected: number } {
+  return {
+    attended: members.reduce((n, m) => n + m.attended, 0),
+    // Attending MORE than expected is an extra, not a negative miss -- a
+    // member who turned up to a session she was not due at would otherwise
+    // subtract from somebody else's absence.
+    missed: members.reduce((n, m) => n + Math.max(m.expected - m.attended, 0), 0),
+    notExpected: members.reduce((n, m) => n + Math.max(perWeek - m.expected, 0), 0),
+  };
+}
+
 /** The plain-language sentence is GENERATED from the values (C-67), never
  *  hardcoded, so it cannot drift away from what the rule actually does. */
 export function ruleSentence(r: FollowUpRule, courseName: string): string {

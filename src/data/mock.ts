@@ -384,16 +384,6 @@ export const PERIODS: Record<string, string> = {
   'This month':   '1\u201324 Aug 2026',
 };
 
-/** Mon..Sun for the current week, as attendance statuses. */
-export const WEEK_STRIP: { day: string; status: StatusKeyName }[] = [
-  { day: 'Mon', status: 'present' },
-  { day: 'Tue', status: 'holiday' },
-  { day: 'Wed', status: 'present' },
-  { day: 'Thu', status: 'cancelled' },
-  { day: 'Fri', status: 'awaiting' },
-  { day: 'Sat', status: 'awaiting' },
-  { day: 'Sun', status: 'none' },
-];
 type StatusKeyName = 'present' | 'absent' | 'awaiting' | 'scheduled' | 'cancelled' | 'holiday' | 'extra' | 'none';
 
 /* ------------------------------------------------------- follow-up, derived
