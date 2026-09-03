@@ -80,12 +80,62 @@ export function reportHeadline(rows: ReportRow[], scope: ReportScope): string {
   return `Attendance across ${rows.length} ${rows.length === 1 ? noun : plural}`;
 }
 
-/** One row's second line. States the absence of sessions as words, not 0%. */
-export function reportMeta(row: ReportRow, scope: ReportScope): string {
-  if (row.expected === 0) {
-    return scope === 'Members'
-      ? 'no sessions scheduled for her'
-      : 'no sessions scheduled in this period';
-  }
-  return `${row.expected} scheduled · ${row.attended} attended`;
+/**
+ * One row's second line: every figure the bar encodes, written out.
+ *
+ * All THREE numbers, because the bar has three lengths in it -- the track is
+ * scheduled, the green is attended, the orange is missed -- and a caption
+ * naming two of them leaves the third to be inferred from a picture. That is
+ * exactly the "colour is never the only signal" rule (guardrail 3) applied to
+ * length rather than hue.
+ *
+ * Nothing scheduled says so in words rather than showing "0 scheduled · 0
+ * attended · 0 missed", which reads as a course everybody skipped.
+ */
+export function reportMeta(row: ReportRow): string {
+  if (row.expected === 0) return 'No sessions scheduled — nothing to measure';
+  const missed = Math.max(row.expected - row.attended, 0);
+  return `${row.expected} scheduled · ${row.attended} attended · ${missed} missed`;
+}
+
+/* ------------------------------------------------------------------ bars
+ *
+ * The canvas draws attended-vs-missed BARS, not rings, and the bar's total
+ * length is itself a figure: "Bar length = sessions scheduled", says its own
+ * legend. So a course with 40 scheduled draws a bar twice the length of one
+ * with 20, and the green/orange split inside it is that course's attendance.
+ * Two numbers per row, in one shape, comparable down the column.
+ */
+
+/** Counts are written INSIDE a segment only when it is wide enough to hold
+ *  them. Below this the number is cramped against the edge and unreadable --
+ *  the row's `meta` line carries every figure in words regardless. */
+const LABEL_MIN = 4;
+
+export type ReportBar = ReportRow & {
+  /** attended width, as a percentage of the widest row's scheduled count */
+  attendedPct: number;
+  missedPct: number;
+  missed: number;
+  /** '' when the segment is too narrow to letter */
+  attendedLabel: string;
+  missedLabel: string;
+};
+
+export function reportBars(rows: ReportRow[]): ReportBar[] {
+  // The widest row sets the scale. Max of 1 so an all-empty report divides by
+  // something -- every bar is then zero-length, which is the truth.
+  const widest = Math.max(1, ...rows.map(r => r.expected));
+  return rows.map(r => {
+    const missed = Math.max(r.expected - r.attended, 0);
+    const span = (r.expected / widest) * 100;
+    return {
+      ...r,
+      missed,
+      attendedPct: r.expected === 0 ? 0 : span * (r.attended / r.expected),
+      missedPct: r.expected === 0 ? 0 : span * (missed / r.expected),
+      attendedLabel: r.attended >= LABEL_MIN ? String(r.attended) : '',
+      missedLabel: missed >= LABEL_MIN ? String(missed) : '',
+    };
+  });
 }

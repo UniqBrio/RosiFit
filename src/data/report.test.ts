@@ -117,12 +117,78 @@ test('one of a thing is singular, and branches pluralise correctly', () => {
 
 test('a row with no sessions says so in words rather than showing counts', () => {
   const [row] = reportRows([member({ expected: 0 })], 'Members');
-  assert.equal(reportMeta(row, 'Members'), 'no sessions scheduled for her');
-  const [group] = reportRows([member({ course: 'X', expected: 0 })], 'Courses');
-  assert.equal(reportMeta(group, 'Courses'), 'no sessions scheduled in this period');
+  assert.equal(reportMeta(row), 'No sessions scheduled — nothing to measure');
 });
 
-test('an ordinary row states both counts, so the ring is never the only signal', () => {
+test('an ordinary row states all THREE figures the bar encodes', () => {
+  // The track is scheduled, the green is attended, the orange is missed.
+  // Naming two of them leaves the third to be read off a picture.
   const [row] = reportRows([member({ expected: 6, attended: 4 })], 'Members');
-  assert.equal(reportMeta(row, 'Members'), '6 scheduled · 4 attended');
+  assert.equal(reportMeta(row), '6 scheduled · 4 attended · 2 missed');
+});
+
+test('an extra never prints a negative missed count', () => {
+  const [row] = reportRows([member({ expected: 3, attended: 5 })], 'Members');
+  assert.equal(reportMeta(row), '3 scheduled · 5 attended · 0 missed');
+});
+
+// ---------------------------------------------------------------- the bars
+import { reportBars } from './report';
+
+test('the bar LENGTH is the scheduled count, which is what its legend claims', () => {
+  // "Bar length = sessions scheduled". A course with half the sessions of the
+  // widest draws half the bar, however well it attended.
+  const [wide, half] = reportBars([
+    { label: 'Wide', expected: 40, attended: 40, pct: 100 },
+    { label: 'Half', expected: 20, attended: 20, pct: 100 },
+  ]);
+  assert.equal(wide.attendedPct + wide.missedPct, 100);
+  assert.equal(half.attendedPct + half.missedPct, 50);
+});
+
+test('the split inside a bar is that row’s attendance', () => {
+  const [b] = reportBars([{ label: 'C', expected: 40, attended: 30, pct: 75 }]);
+  assert.equal(b.missed, 10);
+  assert.equal(Math.round(b.attendedPct), 75);
+  assert.equal(Math.round(b.missedPct), 25);
+});
+
+test('a row with nothing scheduled draws NO bar rather than a full one', () => {
+  // Zero-width is the honest picture: there is nothing to measure. A full
+  // grey bar would read as a course that ran and nobody came.
+  const [b] = reportBars([{ label: 'Empty', expected: 0, attended: 0, pct: null }]);
+  assert.equal(b.attendedPct, 0);
+  assert.equal(b.missedPct, 0);
+});
+
+test('an all-empty report does not divide by zero', () => {
+  const bars = reportBars([
+    { label: 'A', expected: 0, attended: 0, pct: null },
+    { label: 'B', expected: 0, attended: 0, pct: null },
+  ]);
+  assert.deepEqual(bars.map(b => b.attendedPct + b.missedPct), [0, 0]);
+});
+
+test('a count is written inside a segment only when it fits', () => {
+  // Below four the number is cramped against the segment edge; the row's meta
+  // line states every figure in words either way, so nothing is lost.
+  const [b] = reportBars([{ label: 'C', expected: 10, attended: 8, pct: 80 }]);
+  assert.equal(b.attendedLabel, '8');
+  assert.equal(b.missedLabel, '');           // 2 missed -- too narrow
+});
+
+test('attending more than scheduled never draws a negative segment', () => {
+  const [b] = reportBars([{ label: 'C', expected: 3, attended: 5, pct: 167 }]);
+  assert.equal(b.missed, 0);
+  assert.equal(b.missedPct, 0);
+});
+
+test('the widest row fills the track exactly, never overflows it', () => {
+  const bars = reportBars([
+    { label: 'A', expected: 40, attended: 10, pct: 25 },
+    { label: 'B', expected: 12, attended: 12, pct: 100 },
+  ]);
+  for (const b of bars) {
+    assert.ok(b.attendedPct + b.missedPct <= 100.001, `${b.label} overflows`);
+  }
 });

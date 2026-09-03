@@ -1,18 +1,16 @@
 import { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams } from 'expo-router';
-import { Screen, Muted, H2, Skeleton, EmptyState, ErrorState } from '../../src/components/ui';
+import { Screen, Muted, Skeleton, EmptyState, ErrorState } from '../../src/components/ui';
 import { ScreenHeader } from '../../src/components/AppShell';
-import { MiniPie } from '../../src/components/Donut';
 import { Icon } from '../../src/components/Icon';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
-import { SPACE, RADIUS, TAP_MIN, STATUS } from '../../src/theme/tokens';
-import { useFollowUp, useWeekRows } from '../../src/data/hooks';
+import { SPACE, RADIUS, TAP_MIN, STATUS, onStatusFill } from '../../src/theme/tokens';
+import { useFollowUp } from '../../src/data/hooks';
 import { resolvePeriod, type PeriodChoice } from '../../src/data/period';
 import {
-  reportRows, reportTotal, reportHeadline, reportMeta,
+  reportRows, reportBars, reportMeta,
   REPORT_SCOPES, type ReportScope,
 } from '../../src/data/report';
 import { toCsv } from '../../src/data/csvFormat';
@@ -51,14 +49,16 @@ export default function Reports() {
   const range = resolvePeriod(period);
 
   const followUp = useFollowUp(forced, range);
-  const weekRows = useWeekRows(forced);
 
   const ink = (k: keyof typeof STATUS) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
 
   const members = followUp.data?.members ?? [];
   const rows = reportRows(members, scope);
-  const overall = reportTotal(members);
-  const headline = reportHeadline(rows, scope);
+  const bars = reportBars(rows);
+
+  // The count sits ON the coloured segment, so its ink follows the THEME, not
+  // the canvas: see onStatusFill. Swept in scripts/check-contrast.ts.
+  const onBar = onStatusFill(theme.isDark);
 
   const exportReport = () => {
     try {
@@ -140,113 +140,114 @@ export default function Reports() {
         </View>
       ) : (
         <>
-          <LinearGradient
-            colors={[theme.accentDeep, theme.accentDeep2]}
-            start={{ x: 0.1, y: 0 }} end={{ x: 0.9, y: 1 }}
-            style={{
-              marginTop: SPACE.lg, padding: SPACE.xl, borderRadius: 20,
-              borderWidth: 1, borderColor: theme.lineStrong,
-            }}>
-            <Text style={{
-              fontSize: 11, fontWeight: '700', letterSpacing: 0.9,
-              textTransform: 'uppercase', color: theme.accentInk,
-            }}>{headline}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: SPACE.sm, marginTop: 10 }}>
-              <Text style={{
-                fontSize: 44, fontWeight: '800', color: theme.onAccent,
-                fontVariant: ['tabular-nums'],
-              }}>{overall.pct === null ? '—' : `${overall.pct}%`}</Text>
-              <Text style={{ flex: 1, fontSize: 13, color: theme.onDeep, lineHeight: 19 }}>
-                {overall.pct === null
-                  ? 'No session was scheduled in this period, so there is nothing to attend'
-                  : `of ${overall.expected} scheduled sessions attended`}
-              </Text>
-            </View>
-          </LinearGradient>
-
-          {/* The canvas draws a pie per member, course or branch -- not a bar
-              -- and pairs each with its own written percentage and counts, so
-              the ring never carries the meaning alone. */}
+          {/* ONE card, as the canvas draws it: a title, "attended vs missed",
+              and a stacked bar per row. The hero gradient that used to sit
+              above this is not in the canvas -- it restated as a headline the
+              same figure the bars already carry, and it is the second-place-
+              a-number-lives pattern the dashboard was just cleared of. */}
           <View style={{
-            flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.md, marginTop: SPACE.lg,
+            marginTop: SPACE.xl, padding: 16, borderRadius: 20,
+            backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
           }}>
-            {rows.map(r => {
-              const meta = reportMeta(r, scope);
-              return (
-                <View key={r.label}
-                  style={{
-                    flexGrow: 1, flexBasis: 150, alignItems: 'center', gap: 10,
-                    padding: 14, borderRadius: RADIUS.lg, backgroundColor: theme.surface,
-                    borderWidth: 1, borderColor: theme.line,
-                  }}>
-                  <MiniPie pct={r.pct}
-                    label={`${r.label}: ${r.pct === null ? 'no sessions' : `${r.pct}%`}. ${meta}`} />
-                  <View style={{ alignItems: 'center' }}>
-                    <Text style={{ fontSize: 12.5, fontWeight: '800', color: theme.fgStrong, textAlign: 'center' }}>
-                      {r.label}
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: SPACE.sm }}>
+              <Text style={{ flex: 1, fontSize: 13, fontWeight: '800', color: theme.fgStrong }}>
+                {`By ${scope.toLowerCase().replace(/s$/, '')}`}
+              </Text>
+              <Text style={{ fontSize: 10.5, color: theme.muted }}>attended vs missed</Text>
+            </View>
+
+            <View style={{ gap: 14, marginTop: 16 }}>
+              {bars.map(b => {
+                const valueInk = b.pct === null ? theme.muted
+                  : b.pct >= 70 ? ink('present') : b.pct >= 45 ? ink('awaiting') : ink('absent');
+                const meta = reportMeta(b);
+                return (
+                  <View key={b.label}
+                    accessible
+                    accessibilityLabel={`${b.label}. ${b.pct === null ? 'No sessions scheduled' : `${b.pct} per cent`}. ${meta}`}>
+                    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: SPACE.sm }}>
+                      <Text numberOfLines={1} style={{ flex: 1, fontSize: 12.5, fontWeight: '700', color: theme.fgStrong }}>
+                        {b.label}
+                      </Text>
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: valueInk, fontVariant: ['tabular-nums'] }}>
+                        {b.pct === null ? '—' : `${b.pct}%`}
+                      </Text>
+                    </View>
+
+                    <View style={{
+                      flexDirection: 'row', height: 22, marginTop: 7, borderRadius: 7,
+                      overflow: 'hidden', backgroundColor: theme.surface2,
+                      borderWidth: 1, borderColor: theme.line,
+                    }}>
+                      {/* padding only when there is a count to inset. A flex
+                          item cannot shrink below its own padding, so a 5px
+                          gutter gave every ZERO-width segment a 5px stub --
+                          a course with nothing scheduled drew a green and red
+                          sliver, which reads as data where there is none. */}
+                      <View style={{
+                        width: `${b.attendedPct}%`, minWidth: 0,
+                        backgroundColor: ink('present'),
+                        alignItems: 'flex-end', justifyContent: 'center',
+                        paddingRight: b.attendedLabel ? 5 : 0,
+                      }}>
+                        {b.attendedLabel ? (
+                          <Text style={{ fontSize: 9.5, fontWeight: '800', color: onBar, fontVariant: ['tabular-nums'] }}>
+                            {b.attendedLabel}
+                          </Text>
+                        ) : null}
+                      </View>
+                      <View style={{
+                        width: `${b.missedPct}%`, minWidth: 0,
+                        backgroundColor: ink('absent'),
+                        alignItems: 'flex-end', justifyContent: 'center',
+                        paddingRight: b.missedLabel ? 5 : 0,
+                      }}>
+                        {b.missedLabel ? (
+                          <Text style={{ fontSize: 9.5, fontWeight: '800', color: onBar, fontVariant: ['tabular-nums'] }}>
+                            {b.missedLabel}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+
+                    {/* every figure in words, so the bar is never the only
+                        signal and a zero-length one still says why */}
+                    <Text style={{ fontSize: 10.5, color: theme.muted, marginTop: 5, fontVariant: ['tabular-nums'] }}>
+                      {meta}
                     </Text>
-                    <Text style={{
-                      fontSize: 10.5, color: theme.muted, marginTop: 4,
-                      textAlign: 'center', fontVariant: ['tabular-nums'],
-                    }}>{meta}</Text>
                   </View>
-                </View>
-              );
-            })}
+                );
+              })}
+            </View>
           </View>
 
           <View style={{
-            flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.md, marginTop: SPACE.md,
-            paddingVertical: 13, paddingHorizontal: 15, borderRadius: RADIUS.md,
+            flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.md, marginTop: 14,
+            paddingVertical: 13, paddingHorizontal: 15, borderRadius: RADIUS.lg,
             backgroundColor: theme.surface2, borderWidth: 1, borderColor: theme.line,
           }}>
-            {([['Attended', ink('present')], ['Missed', ink('absent')], ['No sessions scheduled', theme.muted]] as const)
+            {([['Attended', ink('present')], ['Missed', ink('absent')],
+               ['Bar length = sessions scheduled', theme.lineStrong]] as const)
               .map(([label, color]) => (
                 <View key={label} style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                  <View style={{ width: 11, height: 11, borderRadius: 6, backgroundColor: color }} />
+                  <View style={{ width: 11, height: 11, borderRadius: 3, backgroundColor: color }} />
                   <Text style={{ fontSize: 11.5, fontWeight: '600', color: theme.fg }}>{label}</Text>
                 </View>
               ))}
           </View>
 
-          {/* The week table is academy-wide by construction (fetchWeekRows
-              takes no scope), so it renders under the course and branch views
-              and says which weeks it covers -- not under Members, where a
-              per-member reading of it would be wrong. */}
-          {scope !== 'Members' && weekRows.state === 'ready' && (weekRows.data ?? []).length > 0 && (
-            <View style={{
-              marginTop: SPACE.md, padding: SPACE.lg, borderRadius: RADIUS.lg,
-              backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
-            }}>
-              <H2>Week by week</H2>
-              <Muted style={{ marginTop: 4, marginBottom: SPACE.md }}>
-                Weeks run Monday to Sunday, academy-wide — the scope above does not narrow these rows.
-              </Muted>
-              {(weekRows.data ?? []).map(w => {
-                const pct = w.expected ? Math.round((w.attended / w.expected) * 100) : null;
-                const tone = pct === null ? theme.muted
-                  : pct >= 70 ? ink('present') : pct >= 45 ? ink('awaiting') : ink('absent');
-                return (
-                  <View key={w.label} style={{ marginBottom: SPACE.md }}>
-                    <View style={{ flexDirection: 'row' }}>
-                      <Text style={{ flex: 1, fontSize: 13.5, fontWeight: '700', color: theme.fgStrong }}>
-                        {w.label}{w.current ? ' · this week' : ''}{w.partial ? ' · partial' : ''}
-                      </Text>
-                      <Text style={{ fontSize: 13.5, fontWeight: '800', color: tone, fontVariant: ['tabular-nums'] }}>
-                        {pct === null ? '—' : `${pct}%`}
-                      </Text>
-                    </View>
-                    <View style={{ height: 8, borderRadius: 4, backgroundColor: theme.control, marginTop: 6, overflow: 'hidden' }}>
-                      <View style={{ width: `${pct ?? 0}%`, height: 8, backgroundColor: tone }} />
-                    </View>
-                    <Muted style={{ marginTop: 4 }}>
-                      {`${w.expected} expected · ${w.attended} attended · ${w.expected - w.attended} missed`}
-                    </Muted>
-                  </View>
-                );
-              })}
-            </View>
-          )}
+          <Pressable testID="reports-export-excel" onPress={exportReport}
+            accessibilityRole="button"
+            accessibilityLabel={`Export this ${scope.toLowerCase()} report as a spreadsheet`}
+            style={({ pressed }) => ({
+              marginTop: 14, height: 50, borderRadius: RADIUS.lg,
+              flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.sm,
+              backgroundColor: theme.control, borderWidth: 1, borderColor: theme.lineStrong,
+              opacity: pressed ? 0.75 : 1,
+            })}>
+            <Icon name="download" size={19} color={theme.accentInk} />
+            <Text style={{ fontSize: 13.5, fontWeight: '800', color: theme.accentInk }}>Export as Excel</Text>
+          </Pressable>
         </>
       )}
 

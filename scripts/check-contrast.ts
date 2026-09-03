@@ -3,7 +3,7 @@
  * threshold. Run in CI: a palette regression is silent otherwise -- it looks
  * fine to whoever picked the colour and is unreadable to everyone else.
  */
-import { ACCENTS, DARK, LIGHT, STATUS, customAccent } from '../src/theme/tokens.ts';
+import { ACCENTS, DARK, LIGHT, STATUS, customAccent, onStatusFill } from '../src/theme/tokens.ts';
 
 const hex = (c: string): [number, number, number] => {
   const m = c.replace('#', '');
@@ -85,6 +85,17 @@ for (let hue = 0; hue < 360; hue++) {
     for (const [sName, s] of [['bg', T.bg], ['surface', T.surface], ['control', T.control]] as const) {
       checks.push({ label: `custom hue ${hue} (${themeName}): ink on ${sName}`, fg: ink, bg: s, need: 4.5 });
     }
+  }
+}
+
+/* A count written ON a status fill -- the report's bar segments. The ink is
+ * theme-dependent because the light theme darkens the fill, and a single ink
+ * across both measured 2.5-2.9:1 on the light fills. */
+for (const [themeName, isDark] of [['dark', true], ['light', false]] as const) {
+  const ink = onStatusFill(isDark);
+  for (const key of ['present', 'absent'] as const) {
+    const fill = isDark ? STATUS[key].fgDark : STATUS[key].fgLight;
+    checks.push({ label: `${themeName}: count on the ${key} bar segment`, fg: ink, bg: fill, need: 4.5 });
   }
 }
 

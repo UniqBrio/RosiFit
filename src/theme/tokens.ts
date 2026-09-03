@@ -115,6 +115,27 @@ export const STATUS: Record<StatusKey, StatusTone> = {
   none:      { fgDark: '#A78E9E', fgLight: '#6B5563', word: 'Not expected',    icon: 'remove' },
 };
 
+/**
+ * The ink for text written ON a status fill -- a count inside a bar segment.
+ *
+ * Theme-dependent, and it has to be: the canvas is a dark-only prototype and
+ * letters its bar counts in a near-black. That ink measures 7.01:1 on the
+ * DARK green and 2.91:1 on the LIGHT one, because the light theme darkens the
+ * fill itself -- so copying the prototype's literal ships an unreadable
+ * number in light mode. White is the correct ink there (5.70:1 on the light
+ * green, 6.54:1 on the light red).
+ *
+ * Both directions are swept in scripts/check-contrast.ts, so neither can
+ * regress silently. Guardrail 2: colour ships measured, never trusted.
+ */
+const ON_STATUS_FILL_DARK = '#06231B';
+
+export function onStatusFill(isDark: boolean): string {
+  // DARK.onAccent rather than a second white literal -- it is the same ink
+  // the accent buttons already use, and it is already measured.
+  return isDark ? ON_STATUS_FILL_DARK : DARK.onAccent;
+}
+
 /** A status fill/border, derived from its ink at the alphas the canvas uses. */
 export function statusSurface(ink: string): { bg: string; border: string } {
   const [r, g, b] = hexToRgb(ink);
