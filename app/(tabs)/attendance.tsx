@@ -3,6 +3,7 @@ import { View, Text, Pressable, TextInput } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Screen, Muted, Label, Skeleton, EmptyState, ErrorState } from '../../src/components/ui';
 import { ScreenHeader } from '../../src/components/AppShell';
+import { safeBackTarget } from '../../src/data/nav';
 import { Icon } from '../../src/components/Icon';
 import { DropdownRow, DropdownField, DropdownPanel, DropdownList } from '../../src/components/Dropdown';
 import { PeriodPanel, periodFieldValue } from '../../src/components/PeriodFilter';
@@ -60,7 +61,13 @@ type FilterKind = 'branch' | 'course' | 'status' | 'period';
 export default function Attendance() {
   const { theme } = useTheme();
   const router = useRouter();
-  const { state: forced } = useLocalSearchParams<{ state?: string }>();
+  const { state: forced, from } = useLocalSearchParams<{ state?: string; from?: string }>();
+  // Where back goes. These three sit INSIDE the tab group -- the canvas keeps
+  // the academy header and the nav pill on them -- so router.back() pops to
+  // the first tab rather than to the screen that opened this one. The caller
+  // names its origin instead; `from` is a URL parameter, so it is validated
+  // (src/data/nav.ts) rather than navigated to on trust.
+  const backTo = safeBackTarget(from, '/courses');
   const { branch, chooseBranch } = useAcademy();
 
   const [choice, setChoice] = useState<PeriodChoice>({ key: 'This week' });
@@ -204,7 +211,8 @@ export default function Attendance() {
   if (attendance.state === 'loading') {
     return (
       <Screen>
-        <ScreenHeader title="Attendance" subtitle={range.label} right={uploadButton} />
+        <ScreenHeader title="Attendance" subtitle={range.label}
+          onBack={() => router.navigate(backTo)} right={uploadButton} />
         {controls}
         <View style={{ marginTop: SPACE.lg }}><Skeleton lines={5} /></View>
       </Screen>
@@ -214,7 +222,8 @@ export default function Attendance() {
   if (attendance.state === 'error') {
     return (
       <Screen>
-        <ScreenHeader title="Attendance" subtitle={range.label} right={uploadButton} />
+        <ScreenHeader title="Attendance" subtitle={range.label}
+          onBack={() => router.navigate(backTo)} right={uploadButton} />
         {controls}
         <View style={{ marginTop: SPACE.lg }}>
           <ErrorState onRetry={attendance.retry}
@@ -228,7 +237,7 @@ export default function Attendance() {
     <Screen>
       <ScreenHeader title="Attendance"
         subtitle={`${rows.length} record${rows.length === 1 ? '' : 's'} · ${scopeLabel} · ${range.label}`}
-        right={uploadButton} />
+        onBack={() => router.navigate(backTo)} right={uploadButton} />
 
       {controls}
 

@@ -237,8 +237,15 @@ export function ScreenHeader({ title, subtitle, right, onBack }:
     <View style={{
       flexDirection: 'row', alignItems: 'center', gap: SPACE.md, marginBottom: SPACE.md,
     }}>
+      {/* Passed by the screens that were PUSHED and can genuinely pop. It is
+          deliberately not derived from router.canGoBack(): inside the tab
+          group that answers about the STACK the tabs sit in, so Overview,
+          Reports and More would each grow a back button that left the app
+          for the sign-in screen. A back button that goes somewhere unexpected
+          is worse than none. */}
       {onBack ? (
-        <Pressable onPress={onBack} accessibilityRole="button" accessibilityLabel="Go back"
+        <Pressable testID="screen-back" onPress={onBack}
+          accessibilityRole="button" accessibilityLabel="Go back"
           style={({ pressed }) => ({
             width: 38, height: 38, borderRadius: RADIUS.md,
             alignItems: 'center', justifyContent: 'center',

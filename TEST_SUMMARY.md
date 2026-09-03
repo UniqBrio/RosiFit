@@ -1,3 +1,24 @@
+NOT OBSERVED FAILING: src/data/nav.test.ts - safeBackTarget was written after the defect it
+serves was reproduced in a BROWSER, and every case passed on its first run. The defect itself was
+observed, twice, against the exported build:
+
+  BEFORE: course detail -> "Weekly review" -> back  ==>  http://127.0.0.1:8100/
+  AFTER : course detail -> "Weekly review" -> back  ==>  http://127.0.0.1:8100/course/c1
+
+The first is Overview, not the course the person opened Weekly review from. Weekly lives inside
+the tab group (the canvas keeps the academy header and nav pill on it), and navigating to a screen
+in a Tabs navigator switches the focused tab rather than pushing -- so router.back() pops to the
+FIRST tab. Nothing in the code says so; only running it does.
+
+The refusal cases are the substance, and one of them was also driven in the browser:
+
+  /weekly?from=https%3A%2F%2Fevil.example  ->  back  ==>  http://127.0.0.1:8100/courses
+
+`from` is a URL parameter on a control whose whole promise is "you will end up where you were", so
+an unvalidated one is an open redirect wearing an arrow icon. //host and /\host are asserted
+separately from the absolute-URL case because both START WITH A SLASH and would otherwise read as
+in-app paths.
+
 FAIL-FIRST: scripts/audits/check-audit-attribution.test.sh - the gate it tests was observed
 failing and passing by hand before the cases were written: reverting send-followups' one call
 site from audit_log_as back to audit_log made `npm run audit:auditactor` exit 1 naming that file,
@@ -32,6 +53,52 @@ The defect was reproduced first, in one statement on the harness, before any cod
     select public.audit_log('communication.batch_sent','email_batch','b1'); commit;
     -->  actor_app_user_id | actor_kind |          action
          ------------------+------------+--------------------------
+
+## Gate run - 2026-09-03 - VERDICT: FAIL
+
+Steps: 5 pass, 5 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - FAIL
+
+```
+BLOCKED [TEST ID COVERAGE] - 1 new violation(s):
+BLOCKED [TEST ID COVERAGE] - 1 baselined item(s) now pass but are still listed:
+```
+
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
 
 ## Gate run - 2026-09-03 - VERDICT: FAIL
 

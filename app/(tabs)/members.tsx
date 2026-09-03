@@ -3,6 +3,7 @@ import { View, Text, Pressable, TextInput, ScrollView } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Screen, Muted, Button, Skeleton, EmptyState, ErrorState } from '../../src/components/ui';
 import { ScreenHeader } from '../../src/components/AppShell';
+import { safeBackTarget } from '../../src/data/nav';
 import { Icon } from '../../src/components/Icon';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
@@ -18,7 +19,13 @@ export default function Members() {
   const { theme } = useTheme();
   const { flash } = useToast();
   const router = useRouter();
-  const { state: forced } = useLocalSearchParams<{ state?: string }>();
+  const { state: forced, from } = useLocalSearchParams<{ state?: string; from?: string }>();
+  // Where back goes. These three sit INSIDE the tab group -- the canvas keeps
+  // the academy header and the nav pill on them -- so router.back() pops to
+  // the first tab rather than to the screen that opened this one. The caller
+  // names its origin instead; `from` is a URL parameter, so it is validated
+  // (src/data/nav.ts) rather than navigated to on trust.
+  const backTo = safeBackTarget(from, '/courses');
   // ONE fetch for the members AND the rule, so "needs follow-up" here is the
   // same derivation the dashboard and the send flow use -- not a second list.
   const { state, data, error, retry } = useFollowUp(forced);
@@ -62,6 +69,7 @@ export default function Members() {
     <Screen>
       <ScreenHeader title="Members"
         subtitle={`${members.length} members · ${branches} branches · ${courses} courses`}
+        onBack={() => router.navigate(backTo)}
         right={<Button label="Add" onPress={() => router.push('/member/edit')} />} />
 
       <View style={{

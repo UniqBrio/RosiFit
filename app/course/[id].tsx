@@ -560,7 +560,10 @@ export default function CourseDetail() {
                 go: () => router.push('/upload'), testID: 'course-action-upload' },
               { icon: 'fact_check', label: 'Weekly Review', ink: theme.accentInk,
                 note: 'Run the Saturday check for this course',
-                go: () => router.push('/(tabs)/weekly'), testID: 'course-action-weekly' },
+                // The origin travels with the push, so Weekly review's back button
+                //  returns HERE rather than to Overview -- see src/data/nav.ts.
+                go: () => router.push(`/(tabs)/weekly?from=/course/${id}`),
+                testID: 'course-action-weekly' },
               { icon: 'send', label: 'Send Communication', ink: okInk,
                 note: rule ? ruleSentence(rule, course.name) : 'Uses the stored template',
                 go: () => router.push({ pathname: '/send', params: { id } }), testID: 'course-action-send' },

@@ -218,6 +218,24 @@ identical database rights (see RBAC_MATRIX).
 
 ---
 
+**Navigation — where "back" goes.** Weekly review, Members and Attendance live *inside* the tab
+group, because the canvas keeps the academy header, the two-tab row and the nav pill on them
+(`showTabs` in the prototype lists weekly and members by name). That placement costs them a back
+stack: navigating to a screen in a Tabs navigator switches the focused tab rather than pushing, so
+`router.back()` pops to the **first** tab. Opening Weekly review from a course and pressing back
+landed on Overview — verified in a browser, not assumed.
+
+So the caller names its origin (`?from=/course/c1`) and the screen goes there, falling back to
+`/courses`. `from` is a URL parameter and therefore untrusted input, so it is validated by
+`safeBackTarget` (`src/data/nav.ts`, 11 cases): only an in-app absolute path is followed, because
+a back button that navigates to whatever a link said is an open redirect wearing an arrow icon.
+
+Overview, Reports and More get **no** back button. They are tab roots, and inside the tab group
+`canGoBack()` answers about the stack the tabs sit in — so each would grow an arrow that left the
+app for the sign-in screen.
+
+---
+
 ### Identity — `index` · `register` · `set-pin` · `forgot-pin` · `change-mobile` · `profile`
 **Last confirmed:** 03-Sep-2026
 
