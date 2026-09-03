@@ -28,7 +28,9 @@ function Nav() {
         <Stack.Screen name="course/edit"   options={{ presentation: 'modal', headerShown: false }} />
         <Stack.Screen name="offering/edit" options={{ title: 'Where and when' }} />
         <Stack.Screen name="member/[id]"   options={{ title: 'Member' }} />
-        <Stack.Screen name="member/edit"   options={{ title: 'Member' }} />
+        {/* A dialog over the workspace, like course/edit -- see the note at
+            the top of app/member/edit.tsx. */}
+        <Stack.Screen name="member/edit"   options={{ presentation: 'modal', headerShown: false }} />
         <Stack.Screen name="holiday"       options={{ title: 'Add holiday' }} />
         <Stack.Screen name="branches"      options={{ title: 'Branches' }} />
         <Stack.Screen name="staff/index"   options={{ title: 'Staff & access' }} />
