@@ -4,9 +4,8 @@ import { Screen, Muted, Label, Skeleton, EmptyState } from '../../src/components
 import { ScreenHeader } from '../../src/components/AppShell';
 import { Icon } from '../../src/components/Icon';
 import { useTheme } from '../../src/theme/ThemeProvider';
-import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS } from '../../src/theme/tokens';
-import { STAFF, TEMPLATES, BRANCHES, GLOBAL_RULE, SUPPORT_PHONE } from '../../src/data/mock';
+import { STAFF, BRANCHES, SUPPORT_PHONE } from '../../src/data/mock';
 import { useIdentity, signOut } from '../../src/data/session';
 
 type Item = {
@@ -26,7 +25,6 @@ type Item = {
 
 export default function More() {
   const { theme, mode, accentKey, accents, isCustom } = useTheme();
-  const { flash } = useToast();
   const router = useRouter();
   const { identity, loading, signedOut } = useIdentity();
 
@@ -38,33 +36,47 @@ export default function More() {
     router.replace('/');
   };
 
-  const activeTemplates = TEMPLATES.filter(t => t.active).length;
   const accentName = isCustom ? 'custom' : (accents.find(a => a.key === accentKey)?.label ?? '');
   const themeName = mode === 'system' ? 'System' : mode === 'dark' ? 'Dark' : 'Light';
 
+  /**
+   * The canvas' three groups, and only what it lists in them.
+   *
+   * WHAT CAME OUT, and why none of it is stranded:
+   *   Follow-up rules      -> the course card on the Attendance workspace
+   *   Message templates    -> Send, which is where a template is chosen
+   *   Language             -> not in the canvas at all, and it only ever
+   *                           flashed "Tamil is coming"
+   *   First-time PIN setup -> Staff & access issues a PIN; your own is
+   *                           changed from your profile
+   *   PIN recovery questions -> Forgot PIN, on the sign-in screen
+   *   Super admin registration -> sign-in sends an unknown number there
+   *
+   * The canvas is explicit about the first two: "A course's message wording,
+   * sender and follow-up rule are edited in the course form itself -- there
+   * is no separate Message Templates or Follow-up Rules screen in settings."
+   *
+   * HOLIDAYS is kept although the canvas drops it. The holiday feature stays
+   * by an explicit decision of the repo owner, and with the shell's add sheet
+   * gone this row is now its ONLY route -- removing it would leave a
+   * migrated, tested feature unreachable rather than merely unlisted.
+   */
   const groups: { title: string; items: Item[] }[] = [
     {
       title: 'Configuration', items: [
-        { icon: 'rule',        label: 'Follow-up rules',   meta: `${GLOBAL_RULE.weekly_threshold}+ missed`, to: '/course/rules' },
-        { icon: 'mail',        label: 'Message templates', meta: `${activeTemplates} active`,           to: '/templates' },
-        { icon: 'event_busy',  label: 'Holidays',          meta: 'add',                                 to: '/holiday' },
-        { icon: 'apartment',   label: 'Branches',          meta: String(BRANCHES.length - 1),
-          to: '/branches' },
+        { icon: 'apartment',   label: 'Branches',  meta: String(BRANCHES.length - 1), to: '/branches' },
+        { icon: 'event_busy',  label: 'Holidays',  meta: 'add',                       to: '/holiday' },
       ],
     },
     {
       title: 'Access', items: [
-        { icon: 'badge',           label: 'Staff & access',        meta: String(STAFF.length), to: '/staff', adminOnly: true },
-        { icon: 'phonelink_lock',  label: 'First-time PIN setup',  meta: 'staff view',         to: '/set-pin' },
-        { icon: 'help_center',     label: 'PIN recovery questions', meta: '2 set',             to: '/forgot-pin' },
-        { icon: 'how_to_reg',      label: 'Super admin registration', meta: 'PIN recovery',    to: '/register', adminOnly: true },
-        { icon: 'history',         label: 'Audit log',             meta: 'today',              to: '/audit', adminOnly: true },
+        { icon: 'badge',   label: 'Staff & access', meta: String(STAFF.length), to: '/staff', adminOnly: true },
+        { icon: 'history', label: 'Audit log',      meta: 'today',              to: '/audit', adminOnly: true },
       ],
     },
     {
       title: 'App', items: [
         { icon: 'palette',       label: 'Appearance',     meta: `${themeName} · ${accentName}`, to: '/appearance' },
-        { icon: 'translate',     label: 'Language',       meta: 'English', onPress: () => flash('Tamil is coming') },
         { icon: 'support_agent', label: 'Help & support', meta: SUPPORT_PHONE, to: '/help' },
         { icon: 'logout',        label: 'Sign out',       meta: '', danger: true,
           onPress: () => { void leave(); } },
