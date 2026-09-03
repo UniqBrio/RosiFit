@@ -342,6 +342,73 @@ export async function updateCourse(id: string, input: CourseInput): Promise<void
   coursesChanged();
 }
 
+/** What a deletion actually did, so the toast can say it rather than guess. */
+export type CourseDeletion = {
+  name: string | null;
+  offerings: number;
+  sessionsRemoved: number;
+  sessionsKept: number;
+  enrolmentsEnded: number;
+  alreadyDeleted: boolean;
+};
+
+/**
+ * Deleting a course, as ONE call.
+ *
+ * An RPC and not a direct write, and not by preference. The confirmation
+ * promises that attendance history STAYS while the course and its sessions
+ * go, and a client cannot keep that promise:
+ *
+ *   * hiding the courses row leaves its offerings live, and every read of
+ *     expected attendance goes through course_offerings ->
+ *     offering_schedules -> sessions, never through courses. The course would
+ *     leave the list and go on expecting attendance and emailing members.
+ *   * sessions cannot be hidden from a client at all: 0007 grants
+ *     authenticated `update (status, cancellation_reason)` and nothing else,
+ *     deliberately.
+ *
+ * public.delete_course (0020) does the whole thing in one transaction, and
+ * draws the line where the promise draws it: COMPLETED sessions, their frozen
+ * expectations and every attendance record are untouched.
+ */
+export async function deleteCourse(id: string): Promise<CourseDeletion> {
+  if (!isConfigured) {
+    const at = COURSE_LIST.findIndex(c => c.id === id);
+    if (at < 0) {
+      return { name: null, offerings: 0, sessionsRemoved: 0, sessionsKept: 0,
+               enrolmentsEnded: 0, alreadyDeleted: true };
+    }
+    const [course] = COURSE_LIST.splice(at, 1);
+    coursesChanged();
+    return {
+      name: course.name, offerings: course.offerings.length,
+      sessionsRemoved: 0, sessionsKept: 0,
+      enrolmentsEnded: MEMBERS.filter(m => m.course === course.name).length,
+      alreadyDeleted: false,
+    };
+  }
+
+  const { data, error } = await supabase.rpc('delete_course', { p_course_id: id });
+  if (error) {
+    console.error('deleteCourse:', error.message);
+    if (/only the super admin|not writable/i.test(error.message)) {
+      throw new Error('Only the super admin can delete a course, and only while the subscription is active. Nothing has been changed.');
+    }
+    throw new Error(`${error.message}. Nothing has been changed.`);
+  }
+  coursesChanged();
+
+  const r = (data ?? {}) as Record<string, unknown>;
+  return {
+    name: (r.name as string | null) ?? null,
+    offerings: Number(r.offerings ?? 0),
+    sessionsRemoved: Number(r.sessions_removed ?? 0),
+    sessionsKept: Number(r.sessions_kept ?? 0),
+    enrolmentsEnded: Number(r.enrolments_ended ?? 0),
+    alreadyDeleted: Boolean(r.already_deleted),
+  };
+}
+
 // ----------------------------------------------------------------- offerings
 /**
  * An OFFERING is the course at one branch -- the thing that actually runs --

@@ -49,6 +49,11 @@ for (const [themeName, T] of [['dark', DARK], ['light', LIGHT]] as const) {
     // on all three stops, so all three are checked rather than just the first
     for (const [stop, bg] of [['deep', a.deep], ['deep2', a.deep2], ['deep3', a.deep3]] as const) {
       checks.push({ label: `${themeName}: onDeep text on ${a.label} ${stop}`, fg: T.onDeep, bg, need: 4.5 });
+      // The icon inside a deepControl button. deepControl is a translucent
+      // NEAR-BLACK over the same stop, so it can only darken the ground --
+      // measuring the ink against the bare stop is the conservative bound,
+      // and it holds without having to composite the alpha.
+      checks.push({ label: `${themeName}: deepControl icon on ${a.label} ${stop}`, fg: T.onAccent, bg, need: 4.5 });
     }
   }
 }

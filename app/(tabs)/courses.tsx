@@ -9,6 +9,10 @@ import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS } from '../../src/theme/tokens';
 import { DAY_NAMES, ruleSentence, AVATAR_TINTS, initials } from '../../src/data/mock';
 import { useCourses, useFollowUp } from '../../src/data/hooks';
+import { useIdentity } from '../../src/data/session';
+import { ConfirmDialog } from '../../src/components/Sheet';
+import { deleteCourse, dataSource } from '../../src/data/repository';
+import type { Course } from '../../src/data/mock';
 
 /** '06:00' -> '6:00 AM', for reading out a course's default time */
 const ampm = (t: string) => {
@@ -25,6 +29,34 @@ export default function Courses() {
   const courses = useCourses(forced);
   const followUp = useFollowUp(forced);
   const [query, setQuery] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState<Course | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const { identity } = useIdentity();
+
+  const enrolledIn = (name: string) => (followUp.data?.members ?? []).filter(m => m.course === name).length;
+
+  /**
+   * The canvas' DELETE COURSE CONFIRM, behind a real deletion. The row's
+   * delete used to answer `flash('Removing X needs a confirmation')` -- which
+   * was accurate and was the whole implementation.
+   */
+  const remove = async (course: Course) => {
+    setConfirmDelete(null);
+    setDeleting(true);
+    try {
+      const result = await deleteCourse(course.id);
+      flash(result.alreadyDeleted
+        ? `${course.name} was already deleted`
+        : dataSource === 'live'
+        ? `${course.name} deleted, ${result.sessionsKept} completed ${result.sessionsKept === 1 ? 'session' : 'sessions'} kept`
+        : `${course.name} deleted on this device only. The academy database is not configured.`,
+        result.alreadyDeleted || dataSource !== 'live' ? 'warn' : 'ok');
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'The course could not be deleted. Nothing has been changed.', 'warn');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const all = courses.data ?? [];
   const members = followUp.data?.members ?? [];
@@ -88,7 +120,14 @@ export default function Courses() {
                 }}>
                   <Text style={{ fontSize: 14, fontWeight: '800', color: '#FFFFFF' }}>{initials(c.name)}</Text>
                 </View>
-                <View style={{ flex: 1 }}>
+                {/* The name is the way IN to the course. "Members" used to
+                    go to the members tab unscoped -- every member of every
+                    course -- so this course's own roster was unreachable. */}
+                <Pressable testID={`courses-open-${c.id}`}
+                  onPress={() => router.push({ pathname: '/course/[id]', params: { id: c.id } })}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${c.name}, ${enrolled} member${enrolled === 1 ? '' : 's'}. Open the course`}
+                  style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.7 : 1 })}>
                   <Text style={{ fontSize: 15, fontWeight: '800', color: theme.fgStrong }}>{c.name}</Text>
                   <Text style={{ fontSize: 11.5, color: theme.muted, marginTop: 2, fontVariant: ['tabular-nums'] }}>
                     {`${enrolled} member${enrolled === 1 ? '' : 's'} · `}
@@ -97,11 +136,17 @@ export default function Courses() {
                         never what attendance is counted against */}
                     {`${c.frequency}/week intended`}
                   </Text>
-                </View>
+                </Pressable>
                 <RowIcon icon="edit" label={`Edit ${c.name}`} tint={theme.accentInk}
                   onPress={() => router.push({ pathname: '/course/edit', params: { id: c.id } })} />
-                <RowIcon icon="delete" label={`Remove ${c.name}`} tint={dangerInk}
-                  onPress={() => flash(`Removing ${c.name} needs a confirmation`, 'warn')} />
+                {/* Deleting a course is the super admin's, and only while the
+                    subscription is writable -- the predicate delete_course
+                    (0020) re-checks. Hiding it from staff beats offering a tap
+                    that answers with a refusal. */}
+                {identity?.isSuperAdmin ? (
+                  <RowIcon icon="delete" label={`Delete ${c.name}`} tint={dangerInk}
+                    onPress={() => setConfirmDelete(c)} />
+                ) : null}
               </View>
 
               {/* The offerings ARE the schedule, so each one is the way in to
@@ -162,7 +207,8 @@ export default function Courses() {
                   </Pressable>
                   <View style={{ flex: 1 }} />
                   <Pressable testID={`courses-members-${c.id}`}
-                    onPress={() => router.push('/(tabs)/members')} accessibilityRole="button"
+                    onPress={() => router.push({ pathname: '/course/[id]', params: { id: c.id } })}
+                    accessibilityRole="button"
                     accessibilityLabel={`Members of ${c.name}`}
                     style={{ minHeight: TAP_MIN / 2, justifyContent: 'center' }}>
                     <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.accentInk }}>Members</Text>
@@ -197,6 +243,25 @@ export default function Courses() {
           different days at different branches.
         </Muted>
       </View>
+
+      {/* The confirmation states what SURVIVES as well as what goes, because
+          the promise the deletion keeps is that attendance history is not
+          rewritten -- delete_course (0020) leaves every completed session,
+          its frozen expectations and every attendance record alone. */}
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        onClose={() => setConfirmDelete(null)}
+        title={confirmDelete ? `Delete ${confirmDelete.name}?` : ''}
+        body={confirmDelete
+          ? `${(() => { const n = enrolledIn(confirmDelete.name);
+              return n === 0 ? 'Nobody is enrolled.'
+                : `${n} ${n === 1 ? 'member is' : 'members are'} enrolled, and their enrolment ends today.`; })()} `
+            + 'Their attendance history stays: every completed session and every record of who was there is untouched. '
+            + `The course, its ${confirmDelete.offerings.length} ${confirmDelete.offerings.length === 1 ? 'offering' : 'offerings'} and every session still to come are removed. Recorded in the audit log.`
+          : ''}
+        cancelLabel="Cancel"
+        confirmLabel={deleting ? 'Deleting…' : 'Delete'}
+        onConfirm={() => { if (confirmDelete) void remove(confirmDelete); }} />
     </Screen>
   );
 }

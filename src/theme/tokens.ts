@@ -49,6 +49,12 @@ export const DARK = {
   fgStrong: '#FFFFFF', fg: '#EDE3EA', muted: '#A78E9E', dim: '#8A7C86',
   line: 'rgba(255,255,255,0.12)', lineStrong: 'rgba(255,255,255,0.28)',
   onAccent: '#FFFFFF', onDeep: '#E4C4D8',
+  // The controls that sit ON the deep header gradient -- the back button, the
+  // course delete. The header is the SAME dark plum in both themes, so these
+  // are too: a theme-varying fill there would be a light control on a dark
+  // ground in one of them. Measured in check-contrast.ts against every
+  // accent's deep stops.
+  deepControl: 'rgba(12,4,9,0.4)', deepControlLine: 'rgba(255,255,255,0.16)', // allow-literal-color: this file IS the token source, and the pair is measured in check-contrast.ts
   success: '#2FBE8C', warning: '#E8B93B', danger: '#F2683C', possible: '#B487EA',
   scrim: 'rgba(6,2,7,0.7)',
 };
@@ -58,6 +64,12 @@ export const LIGHT = {
   fgStrong: '#1C0A17', fg: '#2E1727', muted: '#6B5563', dim: '#6E5A68',
   line: 'rgba(28,10,23,0.14)', lineStrong: 'rgba(28,10,23,0.42)',
   onAccent: '#FFFFFF', onDeep: '#FFFFFF',
+  // The controls that sit ON the deep header gradient -- the back button, the
+  // course delete. The header is the SAME dark plum in both themes, so these
+  // are too: a theme-varying fill there would be a light control on a dark
+  // ground in one of them. Measured in check-contrast.ts against every
+  // accent's deep stops.
+  deepControl: 'rgba(12,4,9,0.4)', deepControlLine: 'rgba(255,255,255,0.16)', // allow-literal-color: this file IS the token source, and the pair is measured in check-contrast.ts
   success: '#0F7551', warning: '#7A5300', danger: '#B3261E', possible: '#6B3FA0',
   scrim: 'rgba(28,10,23,0.42)',
 };
