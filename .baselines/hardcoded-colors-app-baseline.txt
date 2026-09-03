@@ -6,7 +6,7 @@
 app/(tabs)/courses.tsx|1
 app/(tabs)/members.tsx|1
 app/(tabs)/more.tsx|1
-app/appearance.tsx|11
+app/appearance.tsx|3
 app/help.tsx|2
 app/index.tsx|1
 app/member/[id].tsx|1

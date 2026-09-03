@@ -1,5 +1,40 @@
 # Changelog
 
+## Unreleased — Appearance, rebuilt
+
+Three numbered steps, because two routes to one setting read as two unrelated
+controls without ordinals: **1. Choose a preset colour** (six swatches, tick
+on the active one) → *or* → **2. Choose a custom colour** → **3. Light or
+dark**.
+
+The custom step gains a saturation/value field beside the hue rail and the
+hex box, the four derived shades named (Accent, Tint, Header, Avatar), and the
+**measured** ratio printed rather than promised — "Now #148514 · white text
+4.8:1".
+
+**Every route contributes a HUE and nothing else**, and that is guardrail 2
+rather than a limitation. `customAccent()` darkens the hue until white text
+clears 4.5:1 and `check-contrast.ts` sweeps all 360 positions in both themes;
+a picker that stored its own saturation and lightness would walk straight
+round that sweep. The note under it promises "no custom pick can fail
+contrast", and this is what makes the promise true rather than hopeful — type
+a pure green and it ships as `#148514`.
+
+The Preview is now a card that reads like a real screen: an accent app bar
+with the academy name and a bell, "Welcome back", three stat tiles, a "Needs
+you" card with a filled button, and a mini tab bar — all recolouring with the
+chosen accent and theme.
+
+The theme picker offers Dark and Light, as the canvas does. `system` is still
+honoured by ThemeProvider and by any preference already stored against an
+account, so nobody who has it saved is stranded; it is simply not offered as
+a new choice.
+
+`app/appearance.tsx` drops from 11 hardcoded colours to 3 — the white and
+black ramps a colour field is literally made of.
+
+---
+
 ## Unreleased — a course decides its own message
 
 The canvas moves a course's sender, template, wording and follow-up trigger
