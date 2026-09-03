@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { View, Text, Pressable, TextInput } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Screen, Muted, Button, Skeleton, EmptyState, ErrorState } from '../../src/components/ui';
+import { Screen, Muted, Label, Button, Skeleton, EmptyState, ErrorState } from '../../src/components/ui';
 import { ScreenHeader } from '../../src/components/AppShell';
 import { Icon } from '../../src/components/Icon';
 import { DropdownRow, DropdownField, DropdownPanel, DropdownList } from '../../src/components/Dropdown';
@@ -10,6 +10,7 @@ import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS } from '../../src/theme/tokens';
 import { DAY_NAMES, ruleSentence, AVATAR_TINTS, initials } from '../../src/data/mock';
 import { useCourses, useFollowUp } from '../../src/data/hooks';
+import { courseSummary, coursesHeadline } from '../../src/data/course';
 import { useIdentity } from '../../src/data/session';
 import { ALL_BRANCHES } from '../../src/state/academy';
 import { ConfirmDialog } from '../../src/components/Sheet';
@@ -78,6 +79,20 @@ export default function Courses() {
     .filter(c => branch === ALL_BRANCHES || c.offerings.some(o => o.branch === branch))
     .filter(c => !query.trim() || c.name.toLowerCase().includes(query.trim().toLowerCase()));
   const dangerInk = theme.isDark ? STATUS.absent.fgDark : STATUS.absent.fgLight;
+  const okInk = theme.isDark ? STATUS.present.fgDark : STATUS.present.fgLight;
+
+  /* The header sentence, counted from what is on screen rather than typed.
+   * It sums the SAME per-course summary the cards show, so the header and the
+   * list cannot disagree about how many members need following up. */
+  const branchCount = new Set(all.flatMap(c => c.offerings.map(o => o.branch))).size;
+  const needFollowUp = all.reduce((n, c) => {
+    const rule = rules?.byCourseName[c.name] ?? rules?.global;
+    if (!rule) return n;
+    const enrolled = members.filter(m => m.course === c.name);
+    const days = c.offerings.reduce((d, o) => Math.max(d, o.weekdays.length), 0);
+    return n + courseSummary(enrolled, days, rule).flagged;
+  }, 0);
+  const headline = coursesHeadline(all.length, branchCount, needFollowUp);
 
   if (courses.state === 'loading') return <Screen><Skeleton lines={4} /></Screen>;
   if (courses.state === 'error') {
@@ -91,11 +106,24 @@ export default function Courses() {
 
   return (
     <Screen>
-      <ScreenHeader title="Courses"
-        subtitle={branch === ALL_BRANCHES
-          ? `${all.length} ${all.length === 1 ? 'course' : 'courses'} · ${all.reduce((n, c) => n + c.offerings.length, 0)} offerings`
-          : `${list.length} of ${all.length} ${all.length === 1 ? 'course' : 'courses'} · ${branch}`}
-        right={<Button label="Add" onPress={() => router.push('/course/edit')} />} />
+      {/* "Attendance", not "Courses". This is the canvas' second TAB and its
+          landing screen -- the workspace where a course is opened, its
+          register uploaded and its weekly review run. The course list is how
+          you get at all of that, not the subject of the screen. */}
+      <ScreenHeader title="Attendance" subtitle={headline}
+        right={
+          <Pressable testID="courses-add"
+            onPress={() => router.push('/course/edit')}
+            accessibilityRole="button" accessibilityLabel="Add a course"
+            style={({ pressed }) => ({
+              flexDirection: 'row', alignItems: 'center', gap: 5,
+              height: 36, paddingHorizontal: 12, borderRadius: 11,
+              backgroundColor: theme.accent, opacity: pressed ? 0.8 : 1,
+            })}>
+            <Icon name="add" size={17} color={theme.onAccent} />
+            <Text style={{ fontSize: 12, fontWeight: '800', color: theme.onAccent }}>Add Course</Text>
+          </Pressable>
+        } />
 
       {/* The canvas puts a branch chip in this header. Without it the only way
           to see one branch's courses was to read every course's offering
@@ -147,10 +175,22 @@ export default function Courses() {
             : 'No course matches that search. Clear it to see them all.'} />
       )}
 
-      <View style={{ gap: SPACE.md, marginTop: SPACE.lg }}>
+      {list.length > 0 ? (
+        <Label style={{ marginTop: SPACE.xl }}>
+          {branch === ALL_BRANCHES ? `All courses · ${list.length}` : `${branch} · ${list.length}`}
+        </Label>
+      ) : null}
+
+      <View style={{ gap: SPACE.md, marginTop: SPACE.md }}>
         {list.map((c, i) => {
-          const enrolled = members.filter(m => m.course === c.name).length;
-          const rule = rules?.byCourseName[c.name];
+          const enrolled = members.filter(m => m.course === c.name);
+          const rule = rules?.byCourseName[c.name] ?? rules?.global;
+          // Every line this card states, computed where it can be tested.
+          const summary = rule
+            ? courseSummary(enrolled, c.offerings.reduce((n, o) => Math.max(n, o.weekdays.length), 0), rule)
+            : null;
+          const flagInk = summary?.noDays ? dangerInk
+            : summary?.flagged ? theme.accentInk : okInk;
           return (
             <View key={c.id} style={{
               padding: SPACE.lg, borderRadius: RADIUS.lg, backgroundColor: theme.surface,
@@ -170,16 +210,41 @@ export default function Courses() {
                 <Pressable testID={`courses-open-${c.id}`}
                   onPress={() => router.push({ pathname: '/course/[id]', params: { id: c.id } })}
                   accessibilityRole="button"
-                  accessibilityLabel={`${c.name}, ${enrolled} member${enrolled === 1 ? '' : 's'}. Open the course`}
+                  accessibilityLabel={`${c.name}. ${summary ? summary.freqLine : ''}. ${summary ? summary.note : ''}`}
                   style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.7 : 1 })}>
                   <Text style={{ fontSize: 15, fontWeight: '800', color: theme.fgStrong }}>{c.name}</Text>
-                  <Text style={{ fontSize: 11.5, color: theme.muted, marginTop: 2, fontVariant: ['tabular-nums'] }}>
-                    {`${enrolled} member${enrolled === 1 ? '' : 's'} · `}
-                    {c.start_time ? `${ampm(c.start_time)}–${ampm(c.end_time!)} · ` : 'no default time · '}
-                    {/* "intended", because frequency is stated intent and is
-                        never what attendance is counted against */}
-                    {`${c.frequency}/week intended`}
+                  {/* The branch a course belongs to, as the canvas states it.
+                      A course running at several says so rather than naming
+                      one and being wrong about the others. */}
+                  <Text style={{ fontSize: 11.5, color: theme.accentInk, marginTop: 2 }}>
+                    {c.offerings.length === 0 ? 'No branch yet'
+                      : c.offerings.length === 1 ? `${c.offerings[0].branch} Branch`
+                      : `${c.offerings.length} branches`}
                   </Text>
+                  <Text style={{ fontSize: 11.5, color: theme.muted, marginTop: 2, fontVariant: ['tabular-nums'] }}>
+                    {summary ? summary.freqLine : `${enrolled.length} members`}
+                  </Text>
+
+                  {/* Who can actually be reached. A course whose members have
+                      no address cannot be followed up at all, and that is a
+                      fact about the course, not a detail of one member. */}
+                  {summary ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.md, marginTop: 5 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Icon name="mail" size={13} color={theme.dim} />
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: theme.muted, fontVariant: ['tabular-nums'] }}>
+                          {summary.withMail}
+                        </Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Icon name="mail_off" size={13} color={summary.noMail ? dangerInk : theme.dim} />
+                        <Text style={{
+                          fontSize: 11, fontWeight: '700', fontVariant: ['tabular-nums'],
+                          color: summary.noMail ? dangerInk : theme.muted,
+                        }}>{summary.noMail}</Text>
+                      </View>
+                    </View>
+                  ) : null}
                 </Pressable>
                 <RowIcon icon="edit" label={`Edit ${c.name}`} tint={theme.accentInk}
                   onPress={() => router.push({ pathname: '/course/edit', params: { id: c.id } })} />
@@ -192,6 +257,24 @@ export default function Courses() {
                     onPress={() => setConfirmDelete(c)} />
                 ) : null}
               </View>
+
+              {/* The canvas' status line: ONE sentence per course saying
+                  whether anybody in it needs following up -- and, ahead of
+                  that, whether the course has any weekdays at all. No
+                  weekdays is not "nobody needs follow-up": it is the more
+                  serious fact that nothing is expected of anyone, so no
+                  absence can be counted and the course sits outside the
+                  engine entirely. The word carries it; the icon repeats it. */}
+              {summary ? (
+                <View style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: SPACE.md,
+                }}>
+                  <Icon name={summary.icon} size={15} color={flagInk} />
+                  <Text style={{ flex: 1, fontSize: 11.5, fontWeight: '700', color: flagInk }}>
+                    {summary.note}
+                  </Text>
+                </View>
+              ) : null}
 
               {/* The offerings ARE the schedule, so each one is the way in to
                   editing its days. Listing them as dead text is what left the
