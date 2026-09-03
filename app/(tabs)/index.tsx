@@ -39,9 +39,8 @@ import { useAcademy, ALL_BRANCHES } from '../../src/state/academy';
  *
  * Everything removed is still reachable: the flagged set on Weekly, awaiting
  * uploads on the shell's bell and the Upload screen, staff without access on
- * Staff, and a week-by-week table on Reports -- though that one still reads
- * the WEEK_ROWS fixture rather than the live query, which is its own defect
- * and not this screen's to fix.
+ * Staff, and the week-by-week table on Reports -- which reads the same live
+ * query this screen used to duplicate.
  */
 
 type FilterKind = 'branch' | 'course' | 'period';

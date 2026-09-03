@@ -4,12 +4,14 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Screen, Muted, Button, Skeleton, EmptyState, ErrorState } from '../../src/components/ui';
 import { ScreenHeader } from '../../src/components/AppShell';
 import { Icon } from '../../src/components/Icon';
+import { DropdownRow, DropdownField, DropdownPanel, DropdownList } from '../../src/components/Dropdown';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS } from '../../src/theme/tokens';
 import { DAY_NAMES, ruleSentence, AVATAR_TINTS, initials } from '../../src/data/mock';
 import { useCourses, useFollowUp } from '../../src/data/hooks';
 import { useIdentity } from '../../src/data/session';
+import { ALL_BRANCHES } from '../../src/state/academy';
 import { ConfirmDialog } from '../../src/components/Sheet';
 import { deleteCourse, dataSource } from '../../src/data/repository';
 import type { Course } from '../../src/data/mock';
@@ -30,6 +32,8 @@ export default function Courses() {
   const followUp = useFollowUp(forced);
   const [query, setQuery] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<Course | null>(null);
+  const [branch, setBranch] = useState<string>(ALL_BRANCHES);
+  const [branchOpen, setBranchOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const { identity } = useIdentity();
 
@@ -61,8 +65,18 @@ export default function Courses() {
   const all = courses.data ?? [];
   const members = followUp.data?.members ?? [];
   const rules = followUp.data?.rules;
-  const list = all.filter(c =>
-    !query.trim() || c.name.toLowerCase().includes(query.trim().toLowerCase()));
+  // Only branches this academy actually runs a course at. The list is built
+  // from the offerings rather than from the branch table, so a branch with no
+  // offering never appears as a filter that empties the screen.
+  const branchOptions = [ALL_BRANCHES,
+    ...[...new Set(all.flatMap(c => c.offerings.map(o => o.branch)))].sort()];
+
+  // A course is AT a branch through its offerings, so the filter asks the
+  // offerings -- filtering on a course-level branch field would silently drop
+  // every course that runs at two.
+  const list = all
+    .filter(c => branch === ALL_BRANCHES || c.offerings.some(o => o.branch === branch))
+    .filter(c => !query.trim() || c.name.toLowerCase().includes(query.trim().toLowerCase()));
   const dangerInk = theme.isDark ? STATUS.absent.fgDark : STATUS.absent.fgLight;
 
   if (courses.state === 'loading') return <Screen><Skeleton lines={4} /></Screen>;
@@ -78,8 +92,30 @@ export default function Courses() {
   return (
     <Screen>
       <ScreenHeader title="Courses"
-        subtitle={`${all.length} courses · ${all.reduce((n, c) => n + c.offerings.length, 0)} offerings`}
+        subtitle={branch === ALL_BRANCHES
+          ? `${all.length} ${all.length === 1 ? 'course' : 'courses'} · ${all.reduce((n, c) => n + c.offerings.length, 0)} offerings`
+          : `${list.length} of ${all.length} ${all.length === 1 ? 'course' : 'courses'} · ${branch}`}
         right={<Button label="Add" onPress={() => router.push('/course/edit')} />} />
+
+      {/* The canvas puts a branch chip in this header. Without it the only way
+          to see one branch's courses was to read every course's offering
+          lines and filter by eye. Hidden when the academy runs one branch:
+          a filter with a single choice is furniture. */}
+      {branchOptions.length > 2 ? (
+        <DropdownRow open={branchOpen} style={{ marginTop: SPACE.md }}>
+          <DropdownField label="Branch" value={branch} open={branchOpen}
+            highlight={branch !== ALL_BRANCHES}
+            testID="courses-branch-field"
+            onPress={() => setBranchOpen(o => !o)} />
+          {branchOpen ? (
+            <DropdownPanel>
+              <DropdownList options={branchOptions.map(label => ({ label }))} value={branch}
+                testID="courses-branch"
+                onSelect={l => { setBranch(l); setBranchOpen(false); }} />
+            </DropdownPanel>
+          ) : null}
+        </DropdownRow>
+      ) : null}
 
       <View style={{
         flexDirection: 'row', alignItems: 'center', gap: SPACE.md, marginTop: SPACE.md,
@@ -100,7 +136,15 @@ export default function Courses() {
       )}
 
       {all.length > 0 && list.length === 0 && (
-        <EmptyState title="Nothing matches" body="No course matches that search. Clear it to see them all." />
+        // Which filter emptied the list, not just that it is empty: with two
+        // filters on screen, "nothing matches" leaves the person guessing
+        // which one to clear.
+        <EmptyState title="Nothing matches"
+          body={branch !== ALL_BRANCHES && query.trim()
+            ? `No course at ${branch} matches that search. Clear one or both to see more.`
+            : branch !== ALL_BRANCHES
+            ? `No course runs at ${branch}. Choose ${ALL_BRANCHES} to see them all.`
+            : 'No course matches that search. Clear it to see them all.'} />
       )}
 
       <View style={{ gap: SPACE.md, marginTop: SPACE.lg }}>
