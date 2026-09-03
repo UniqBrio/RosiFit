@@ -123,8 +123,11 @@ export default function MatchReview() {
         </View>
         <Button label={importing ? 'Importing…' : 'Import the file'} disabled={importing}
           style={{ marginTop: SPACE.lg }} onPress={() => void runImport()} />
-        <Button label="Back to upload" variant="secondary" style={{ marginTop: SPACE.sm }}
-          onPress={() => router.replace('/upload')} />
+        {/* router.back(), not replace('/upload'): replace DISCARDS the
+            history entry, so the upload screen it landed on had no way back
+            to wherever the person started. Going back returns them there. */}
+        <Button testID="match-back" label="Back" variant="secondary" style={{ marginTop: SPACE.sm }}
+          onPress={() => router.back()} />
       </Screen>
     );
   }

@@ -1,5 +1,64 @@
 # Changelog
 
+## Unreleased — the 3-Sep canvas, and two screens that were not counting
+
+The design canvas was revised on 3 Sep. Six sections are new — **Course detail**, **Delete
+course confirm**, **Branches**, **Notifications**, **Confirm send**, and an **Audit log** rebuilt
+as a scrollable table — and **Add holiday** is gone from it, its job folded into the calendar's
+day sheet. Eighteen existing sections changed too. `design/RosiFit App.dc.html` is updated to
+that revision and is the spec the rest of this entry is measured against.
+
+**Branches has a screen.** More offered a "Branches" row that flashed the names in a toast and
+went nowhere. It now adds a branch, counts the courses and members at each, and removes one.
+**0019** supplies the two things a client must not decide: the unique `code`, derived from the
+name by a trigger so two clients adding at once cannot collide, and the refusal to remove a
+branch that still has live offerings or scopes a holiday — both would go on affecting sessions
+at a branch no read can see. Removal is a soft delete through the policies **0005** already
+wrote, so no new grant or policy is involved. 11 assertions in
+`supabase/tests/13_branch_add_remove.sql`.
+
+**A real Google Meet export was being refused** — see **RC-009**. `parseMeetCsv` read `lines[0]`
+as the header, and a Meet export writes the meeting code and the created and ended times first.
+The file was right, the reader was wrong, and the error message blamed the file. Fixed, and the
+preamble it now reads past is captured and shown on the upload screen's "Mapped to this
+session" panel: the last point in the flow where a wrong file can be caught, since everything
+after it matches names without ever looking at which meeting the rows came from. A definite
+date mismatch warns; an unreadable or absent date says it cannot check, because warning when
+nothing can be checked trains people past the warning that matters.
+
+**Reports was not counting anything** — see **RC-010**. It was asked for an export; every figure
+on it was a literal, including the Members scope reading the `MEMBERS` fixture. A CSV of those
+numbers would have become a document somebody keeps, so the data source was fixed first. It now
+reads the same member rows the dashboard reads, aggregates them in `src/data/report.ts`, and
+exports what is on screen — including the words: a row the screen calls "no sessions scheduled"
+is not exported as `0%`.
+
+**The dashboard is the chart the canvas draws, and nothing else.** The hero "N members need
+you", the "What needs you" list, the quick links, the week table and the week strip are gone.
+Each was a second place a figure lived; the week table counted from a different query than the
+chart beside it while admitting its own filters did not reach it; and the week strip rendered
+`WEEK_STRIP`, a hardcoded fixture, on the live dashboard. Everything removed is still reachable
+elsewhere.
+
+**Smaller, from the same revision.** A branch filter on Courses, asking the offerings so a
+course running at two branches appears under both. A hex field on Appearance that contributes
+its **hue** and nothing else — the generator darkens it until white text clears 4.5:1, so a hex
+taken verbatim would walk round guardrail 2; typed as pure green it ships as `#148514`.
+Numbered preset/custom headings. A way back from Member detail, which had none, and
+`router.back()` on Match review, which had been replacing its history entry.
+
+**Ratchets paid down, not baselined:** hardcoded colours 13 → 11 and test ids 26 → 24 in `app/`.
+57 unit assertions added (56 → 113). The DB harness ran for the first time — Postgres 16 is
+available in this session — with 215 assertions passing; two pre-existing failures are recorded
+in `TEST_SUMMARY.md` and proved pre-existing rather than assumed to be.
+
+**The gate verdict is unchanged: FAIL, as it was on main.** G1/G2/G3 need
+`design/tokens.json`, which has never been committed; G6 is blocked because eslint is not a
+dependency; G8 runs a `test:functional` script that does not exist. `TEST_SUMMARY.md` says
+which classes are therefore unverified.
+
+---
+
 ## Unreleased — the three migrations the live project never got
 
 **Add Member fails in the live app.** It says so, at least: *"Could not find the function

@@ -16,26 +16,47 @@
 > confirmed against a running system — unless it is proven by a build-time gate or a SQL test,
 > which are marked ✅.
 
-**Route inventory — all 30, so the count is auditable:**
+**Route inventory — all 33, so the count is auditable** (35 `.tsx` files under `app/` less the
+two `_layout.tsx`; recounted 03-Sep-2026):
 
 | Module | Routes |
 |---|---|
 | Dashboard | `(tabs)/index` |
 | Members | `(tabs)/members` · `member/[id]` · `member/edit` · `match` |
-| Sessions | `(tabs)/sessions` · `holiday` · `upload` |
+| Sessions | `(tabs)/attendance` · `holiday` · `upload` |
 | Weekly review & send | `(tabs)/weekly` · `send/index` · `send/review` · `send/result` |
-| Courses | `(tabs)/courses` · `course/edit` · `course/rules` |
+| Courses | `(tabs)/courses` · `course/[id]` · `course/edit` · `course/rules` · `offering/edit` |
 | Reports | `(tabs)/reports` |
 | Staff & access | `staff/index` · `staff/add` · `staff/pin` |
 | Identity | `index` · `register` · `set-pin` · `forgot-pin` · `change-mobile` · `profile` |
-| Settings & support | `(tabs)/more` · `appearance` · `templates` · `audit` · `help` |
+| Settings & support | `(tabs)/more` · `appearance` · `branches` · `templates` · `audit` · `help` |
+
+Two corrections to the 02-Sep backfill, both found by recounting rather than reported: the
+sessions tab is `(tabs)/attendance`, not `(tabs)/sessions`, and `offering/edit` was omitted
+altogether. Added on 03-Sep: `branches` and `course/[id]`.
 
 ---
 
 ## Per module
 
 ### Dashboard — `app/(tabs)/index.tsx`
-**Last confirmed:** 02-Sep-2026
+**Last confirmed:** 03-Sep-2026
+
+**As of 03-Sep the dashboard is the scope tabs, the filters and ONE chart** — the attendance
+distribution — and nothing else. The canvas revision of that date drops the hero "N members
+need you" card, the "What needs you" list of four routes, the two quick links, the week-by-week
+table and the week strip. Each was a second place a figure lived, and the week table counted
+from a different query (`useWeekRows`) than the chart beside it while admitting in its own
+caption that the branch and course filters did not reach it. The week strip rendered
+`WEEK_STRIP`, a hardcoded fixture, on the live dashboard; that fixture is now deleted.
+
+Nothing removed is unreachable: the flagged set is on Weekly, awaiting uploads on the shell's
+bell and `upload`, staff without access on `staff/index`, the week table on Reports.
+
+The donut's arithmetic is `distribution()` in `src/data/followup.ts`, ✅ held by 10 assertions
+in `src/data/distribution.test.ts`.
+
+The description below is the 02-Sep state and is kept only for the history:
 
 The academy at a glance for the current week: attendance figures, the follow-up count, and a
 branch selector that every other figure follows.

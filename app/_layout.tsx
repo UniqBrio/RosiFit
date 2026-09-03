@@ -22,12 +22,14 @@ function Nav() {
         <Stack.Screen name="register"      options={{ title: 'Register' }} />
         <Stack.Screen name="set-pin"       options={{ title: 'Your PIN' }} />
         <Stack.Screen name="forgot-pin"    options={{ title: 'Forgot your PIN' }} />
+        <Stack.Screen name="course/[id]"   options={{ headerShown: false }} />
         <Stack.Screen name="course/edit"   options={{ title: 'Course' }} />
         <Stack.Screen name="course/rules"  options={{ title: 'Follow-up rules' }} />
         <Stack.Screen name="offering/edit" options={{ title: 'Where and when' }} />
         <Stack.Screen name="member/[id]"   options={{ title: 'Member' }} />
         <Stack.Screen name="member/edit"   options={{ title: 'Member' }} />
         <Stack.Screen name="holiday"       options={{ title: 'Add holiday' }} />
+        <Stack.Screen name="branches"      options={{ title: 'Branches' }} />
         <Stack.Screen name="templates"     options={{ title: 'Templates' }} />
         <Stack.Screen name="staff/index"   options={{ title: 'Staff & access' }} />
         <Stack.Screen name="staff/add"     options={{ title: 'Add staff' }} />

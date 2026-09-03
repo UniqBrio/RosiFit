@@ -10,7 +10,8 @@ import { MATCH_ROWS, OUTCOME_META } from '../src/data/mock';
 import { usePendingSessions } from '../src/data/hooks';
 import type { PendingSession } from '../src/data/repository';
 import { isConfigured } from '../src/lib/supabase';
-import { parseMeetCsv, sha256Hex, pickCsvFile, CSV_COLUMNS } from '../src/data/csv';
+import { parseMeetCsv, meetMatchesSession, CSV_COLUMNS, type MeetMeta } from '../src/data/meetCsv';
+import { sha256Hex, pickCsvFile } from '../src/data/csv';
 import { csvPreview, type PreviewResult } from '../src/data/api';
 import { setStagedImport } from '../src/data/pending';
 
@@ -25,7 +26,8 @@ export default function Upload() {
 
   const [step, setStep] = useState(1);
   const [session, setSession] = useState<PendingSession | null>(null);
-  const [file, setFile] = useState<{ name: string; text: string; rows: number } | null>(null);
+  const [file, setFile] = useState<
+    { name: string; text: string; rows: number; meta: MeetMeta } | null>(null);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [progress, setProgress] = useState(0);
   const [failure, setFailure] = useState<string | null>(null);
@@ -47,7 +49,13 @@ export default function Upload() {
       // Meet export actually has (C-74).
       const parsed = parseMeetCsv(chosenFile.text);
       if (parsed.rows.length === 0) throw new Error('That file has no attendance rows.');
-      setFile({ name: chosenFile.name, text: chosenFile.text, rows: parsed.rows.length });
+      setFile({
+        name: chosenFile.name, text: chosenFile.text, rows: parsed.rows.length,
+        // The lines Meet writes above the table. They are the only evidence
+        // in the file of WHICH meeting it came from, which is what lets the
+        // map below say whether it matches the session picked.
+        meta: parsed.meta,
+      });
       flash(`${chosenFile.name} selected`);
     } catch (err) {
       setFailure(err instanceof Error ? err.message : 'That file could not be read.');
@@ -105,6 +113,29 @@ export default function Upload() {
   const warnInk = theme.isDark ? STATUS.awaiting.fgDark : STATUS.awaiting.fgLight;
   const okInk = theme.isDark ? STATUS.present.fgDark : STATUS.present.fgLight;
 
+  /* ------------------------------------------------- mapped to this session
+   * `ok: null` is "cannot be checked", not "wrong". Course and branch are
+   * always null because they come from RosiFit, not from the file -- the
+   * lock icon says the file has no say in them.
+   */
+  const target = session ?? sessions[0] ?? null;
+  const mapMatches = meetMatchesSession(file?.meta.created ?? null, target?.session_date ?? null);
+  const sessionMap: { label: string; value: string; ok: boolean | null }[] = file ? [
+    { label: 'Meeting code', value: file.meta.code ?? 'not in this file',
+      ok: file.meta.code ? true : null },
+    { label: 'Meeting date', value: file.meta.created ?? 'not in this file',
+      ok: mapMatches },
+    { label: 'Session', value: chosen || '—', ok: mapMatches },
+    { label: 'Course', value: (target?.title ?? '—').split(' · ')[0], ok: null },
+    { label: 'Rows read', value: `${file.rows}`, ok: true },
+  ] : [];
+
+  const mapNote = mapMatches === false
+    ? `This file says ${file?.meta.created}, but the session you picked is ${chosen}. Check you have the right file before importing.`
+    : mapMatches === null
+    ? 'This file carries no meeting date, so RosiFit cannot check it against the session you picked. Course and branch come from RosiFit, not from the file.'
+    : 'The meeting code and date come from the lines above the table in the Meet file, and they match the session you picked. Course and branch come from RosiFit.';
+
   const goReview = () => {
     if (preview) {
       setStagedImport({
@@ -143,9 +174,12 @@ export default function Upload() {
       )}
 
       {step === 1 && pending.state === 'ready' && sessions.length === 0 && (
+        // "Every session has a file" is the canvas' wording, and it is the
+        // better one: "nothing awaiting upload" reads like an empty list that
+        // might be a loading failure, where this reads as the good news it is.
         <EmptyState
-          title="Nothing awaiting upload"
-          body="Every session that has run has its attendance file in. A new one appears here as soon as a session is due." />
+          title="Every session has a file"
+          body="No session across the academy is waiting on a file right now. A new one appears here as soon as a session has run." />
       )}
 
       {step === 1 && pending.state === 'ready' && sessions.length > 0 && (
@@ -201,6 +235,14 @@ export default function Upload() {
             <Muted style={{ marginTop: 6, textAlign: 'center' }}>
               {`RosiFit reads the Meet export: ${CSV_COLUMNS.join(' · ')}. There is no email column.`}
             </Muted>
+            {/* Said out loud because the parser USED to get this wrong: it
+                read the first line as the header, so a genuine Meet export --
+                which starts with the meeting code and the created and ended
+                times -- was refused for having no Full Name column. */}
+            <Muted style={{ marginTop: 6, textAlign: 'center' }}>
+              Meet writes its own lines first — meeting code, created and ended times — then the
+              table. RosiFit reads past those, so upload the file exactly as Meet gave it to you.
+            </Muted>
             <Button label="Browse files" variant="secondary" style={{ marginTop: SPACE.lg }}
               onPress={() => void choose()} />
           </View>
@@ -238,6 +280,56 @@ export default function Upload() {
               <Button label="Process" onPress={() => void run()} />
             </View>
           )}
+
+          {/* ------------------------------------------- mapped to this session
+              The canvas' session map. It is the last chance to notice the
+              wrong file: everything after this point matches names and asks
+              for decisions, and none of it looks at WHICH meeting the rows
+              came from. The meeting code and date are read from the lines
+              Meet writes above the table; course and branch come from
+              RosiFit and are not the file's to say. */}
+          {picked && file ? (
+            <View style={{
+              marginTop: SPACE.md, padding: SPACE.lg, borderRadius: RADIUS.lg,
+              backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                <Icon name="link" size={17} color={theme.accentInk} />
+                <Label style={{ flex: 1 }}>Mapped to this session</Label>
+              </View>
+
+              <View style={{ gap: 9, marginTop: SPACE.md }}>
+                {sessionMap.map(row => (
+                  <View key={row.label}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }}>
+                    <Text style={{ flex: 1, fontSize: 11.5, color: theme.muted }}>{row.label}</Text>
+                    <Text numberOfLines={1} style={{
+                      flexShrink: 1, fontSize: 12, fontWeight: '700',
+                      color: row.ok === false ? warnInk : theme.fgStrong,
+                      fontVariant: ['tabular-nums'],
+                    }}>{row.value}</Text>
+                    {/* the icon is a SECOND encoding of row.ok, never the
+                        only one -- the value itself changes colour and the
+                        note below spells the mismatch out */}
+                    <Icon
+                      name={row.ok === null ? 'lock' : row.ok ? 'check_circle' : 'warning'}
+                      size={15}
+                      color={row.ok === null ? theme.dim : row.ok ? okInk : warnInk} />
+                  </View>
+                ))}
+              </View>
+
+              <View style={{
+                marginTop: SPACE.md, paddingTop: SPACE.md,
+                borderTopWidth: 1, borderTopColor: theme.line,
+              }}>
+                <Text style={{
+                  fontSize: 11.5, lineHeight: 17,
+                  color: mapMatches ? theme.muted : warnInk,
+                }}>{mapNote}</Text>
+              </View>
+            </View>
+          ) : null}
         </>
       )}
 

@@ -49,7 +49,7 @@ export default function More() {
         { icon: 'mail',        label: 'Message templates', meta: `${activeTemplates} active`,           to: '/templates' },
         { icon: 'event_busy',  label: 'Holidays',          meta: 'add',                                 to: '/holiday' },
         { icon: 'apartment',   label: 'Branches',          meta: String(BRANCHES.length - 1),
-          onPress: () => flash(BRANCHES.filter(b => b !== 'All branches').join(' · ')) },
+          to: '/branches' },
       ],
     },
     {

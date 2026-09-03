@@ -59,6 +59,68 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-010 — Reports showed figures it had never counted
+**Date:** 03-Sep-2026 · **Severity:** S2 · **Modules:** `app/(tabs)/reports.tsx`, `src/data/report.ts`
+
+**Symptom** — the Reports screen showed per-course and per-branch attendance percentages, a
+headline count and a period, and none of them moved when the academy's data did.
+
+**Root cause** — every figure on the screen was a literal. `COURSE_BARS` and `BRANCH_BARS` were
+hardcoded arrays ("Prenatal Flow 74%, 40 scheduled · 30 attended"), the headline said
+"Attendance across 4 courses" whatever the academy ran, the total said `61%`, the period string
+said "1–24 Aug" forever, and the Members scope read the `MEMBERS` fixture rather than the live
+query. The screen was not computing a wrong answer; it was not computing.
+
+Found while implementing a request to add an **export** to this screen. The export was the
+reason it mattered: a CSV is an artefact somebody keeps and acts on months later, so exporting
+these numbers would have turned a screen defect into a filed document.
+
+**Fix** — the screen reads the same member rows the dashboard donut reads (guardrail 1, one
+member source), aggregation moved to `src/data/report.ts`, a real period control replaced the
+caption, and the week table was pointed at `useWeekRows`. 14 assertions in
+`src/data/report.test.ts`, fail-first evidence in `TEST_SUMMARY.md`.
+
+**Guard** — `reportRows` sums expected and attended per group rather than averaging its members'
+percentages, and returns `null` — never `0` — where nothing was expected. Both are asserted.
+
+**Not fixed here** — `app/member/[id].tsx` reads the `MEMBERS` fixture the same way. Noted, out
+of scope, and the same class of defect.
+
+---
+
+## RC-009 — a genuine Google Meet export was refused, and the message blamed the file
+**Date:** 03-Sep-2026 · **Severity:** S1 · **Modules:** `src/data/meetCsv.ts` (was `src/data/csv.ts`), `app/upload.tsx`
+
+**Symptom** — uploading a real Google Meet attendance export produced *"That file has no “Full
+Name” column. RosiFit reads the Google Meet export: Full Name, First Seen, Time in Call."* The
+file was correct and had that column.
+
+**Root cause** — `parseMeetCsv` read `lines[0]` as the header row. A Meet attendance export does
+not begin with the table: it writes the meeting code and the created and ended times first, and
+the `Full Name` header comes after them. So the header search never looked at the header line.
+
+S1 because attendance is the product's one irreplaceable input and this blocked it completely
+for the file the product tells people to use — while asserting the file was at fault, which
+sends the operator to check Meet rather than RosiFit.
+
+**Fix** — `findHeader` locates the header wherever Meet put it; a file that does start with the
+header still parses (index 0, no preamble). Reading past the preamble means reading it, so the
+meeting code and times are now captured as `MeetMeta` and shown on the upload screen's "Mapped
+to this session" panel — the last point in the flow where a wrong file can be noticed, since
+everything after it matches names without looking at which meeting the rows came from.
+
+**Guard** — 23 assertions in `src/data/meetCsv.test.ts`, including a preamble row never being
+imported as a member ("Meeting code" as a person's name), and the local-day rule that stops an
+11:30pm session being filed under the next day. Observed failing against the pre-fix parser: 6
+of 23, recorded in `TEST_SUMMARY.md`.
+
+**Why it was not caught** — the parsing lived in `src/data/csv.ts` alongside `document` and
+`FileReader`, so it was outside `scripts/tsconfig.json`'s DOM-free program and could not be
+unit-tested at all. The pure parsing is now `src/data/meetCsv.ts`; `csv.ts` keeps only the
+browser halves. The same split as `csvFormat.ts`, and for the same reason.
+
+---
+
 ## RC-008 — Add Course reported a save it had never attempted
 **Date:** 02-Sep-2026 · **Severity:** S2 · **Modules:** `app/course/edit.tsx`, `src/data/repository.ts`
 

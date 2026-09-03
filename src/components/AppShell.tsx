@@ -10,7 +10,8 @@ import { useTheme } from '../theme/ThemeProvider';
 import { useToast } from './Toast';
 import { RADIUS, SPACE, TAP_MIN } from '../theme/tokens';
 import { useAcademy, ALL_BRANCHES } from '../state/academy';
-import { useFilterOptions } from '../data/hooks';
+import { useFilterOptions, useNotifications } from '../data/hooks';
+import { NotificationBell, NotificationsSheet } from './Notifications';
 
 /**
  * The canvas' navigation shell, which the first build left out.
@@ -65,6 +66,10 @@ export function AcademyHeader() {
   const { branch, chooseBranch } = useAcademy();
   const options = useFilterOptions();
   const [sheet, setSheet] = useState<null | 'add'>(null);
+  const [notifsOpen, setNotifsOpen] = useState(false);
+  // ONE load for the bell's count and the sheet's list. Two calls would let
+  // the number on the bell and the rows under it be a fetch apart.
+  const notifications = useNotifications();
   // The branch is a filter, not an action, so it opens in place under the
   // name it changes rather than as a sheet over the figures it drives.
   const [branchOpen, setBranchOpen] = useState(false);
@@ -110,6 +115,11 @@ export function AcademyHeader() {
             <Icon name={branchOpen ? 'arrow_drop_up' : 'arrow_drop_down'} size={16} color={theme.muted} />
           </View>
         </Pressable>
+
+        {/* The canvas puts a bell in the shell beside the add button. It was
+            not here at all, so a session that ran with no attendance file
+            announced itself nowhere -- it had to be gone looking for. */}
+        <NotificationBell feed={notifications} onPress={() => setNotifsOpen(true)} />
 
         <Pressable onPress={() => setSheet('add')}
           accessibilityRole="button" accessibilityLabel="Add something"
@@ -173,6 +183,8 @@ export function AcademyHeader() {
           );
         })}
       </ScrollView>
+
+      <NotificationsSheet feed={notifications} open={notifsOpen} onClose={() => setNotifsOpen(false)} />
 
       <Sheet open={sheet === 'add'} onClose={() => setSheet(null)} title="Add something">
         <View style={{ gap: 7, marginTop: SPACE.md }}>

@@ -18,7 +18,9 @@ import {
   fetchMembers, fetchRules, fetchCourses, fetchTemplates, fetchStaff, fetchAudit,
   fetchFilterOptions, fetchMonthSessions, fetchPendingSessions, fetchWeekRows,
   fetchAcademy, fetchBranches, fetchOfferings,
-  type Branch, type OfferingDetail,
+  fetchBranchUsage, onBranchesChanged,
+  fetchNotifications, type Notification,
+  type Branch, type BranchUsage, type OfferingDetail,
   fetchAttendance, onCoursesChanged, onMembersChanged,
   fetchHolidays, onHolidaysChanged,
   type Rules, type PendingSession, type Holiday,
@@ -200,6 +202,23 @@ export function useHolidays(forced?: string): Async<Holiday[]> {
 
 export function usePendingSessions(forced?: string): Async<PendingSession[]> {
   return useAsync(() => fetchPendingSessions(), [], forced);
+}
+
+/** The notification tray. One load, three kinds -- see fetchNotifications. */
+export function useNotifications(forced?: string): Async<Notification[]> {
+  return useAsync(() => fetchNotifications(), [], forced);
+}
+
+/**
+ * The branches, each with what runs at it. Refetched whenever a branch is
+ * written, for the reason useHolidays carries a version: a branch added and
+ * then missing from the list it was added to reads exactly like a save that
+ * did nothing.
+ */
+export function useBranchUsage(forced?: string): Async<BranchUsage[]> {
+  const [version, setVersion] = useState(0);
+  useEffect(() => onBranchesChanged(() => setVersion(v => v + 1)), []);
+  return useAsync(() => fetchBranchUsage(), [version], forced);
 }
 
 /** The last four weeks, most recent first. Mon–Sun, per week_start_day. */
