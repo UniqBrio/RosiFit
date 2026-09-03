@@ -368,6 +368,162 @@ export async function fetchBranches(): Promise<Branch[]> {
   return (data ?? []).map(b => ({ id: b.id as string, name: b.name as string }));
 }
 
+/* ------------------------------------------------------- branches, written
+ *
+ * More offered a "Branches" row that flashed the names in a toast and went
+ * nowhere: the canvas gives it a screen that adds one, counts what runs at
+ * each, and removes one. Adding and removing are ordinary writes through the
+ * policies 0005 already states (`is_super_admin() and
+ * is_subscription_writable()`); 0019 supplies the two things a client must
+ * not decide for itself -- the unique `code`, derived from the name, and the
+ * refusal to remove a branch anything still points at.
+ */
+
+const branchListeners = new Set<() => void>();
+
+export function onBranchesChanged(listener: () => void): () => void {
+  branchListeners.add(listener);
+  return () => { branchListeners.delete(listener); };
+}
+
+function branchesChanged(): void {
+  for (const listener of branchListeners) listener();
+}
+
+/** A branch with the two counts the screen states before offering a delete. */
+export type BranchUsage = Branch & { courses: number; members: number };
+
+/**
+ * The branches AND what runs at each, from ONE load -- the same reason
+ * useFollowUp reads members and the flagged subset together. A count fetched
+ * separately from the row it labels can be a query apart from it, and the
+ * delete guard is stated FROM that count.
+ */
+export async function fetchBranchUsage(): Promise<BranchUsage[]> {
+  if (!isConfigured) {
+    // the same literal fetchBranches filters on -- ALL_BRANCHES lives in
+    // src/state, which reads FROM this file
+    return BRANCHES.filter(b => b !== 'All branches').map(name => ({
+      id: `local-branch-${name.toLowerCase()}`,
+      name,
+      courses: COURSE_LIST.filter(c => c.offerings.some(o => o.branch === name)).length,
+      members: MEMBERS.filter(m => m.branch === name).length,
+    }));
+  }
+
+  const [branchesRes, offeringsRes, enrolRes] = await Promise.all([
+    supabase.from('branches').select('id, name').is('deleted_at', null).order('name'),
+    supabase.from('course_offerings').select('id, course_id, branch_id').is('deleted_at', null),
+    supabase.from('member_enrollments').select('member_id, offering_id').eq('status', 'active'),
+  ]);
+  if (branchesRes.error) fail('The branch list could not be loaded', branchesRes.error);
+
+  // A course running at a branch twice is ONE course there, so the count is of
+  // distinct courses rather than of offerings -- the row reads "2 courses",
+  // and two offerings of the same course would otherwise make that say 2 when
+  // the person can name only one.
+  const coursesAt = new Map<string, Set<string>>();
+  const offeringBranch = new Map<string, string>();
+  for (const o of offeringsRes.data ?? []) {
+    const branchId = o.branch_id as string;
+    offeringBranch.set(o.id as string, branchId);
+    const set = coursesAt.get(branchId) ?? new Set<string>();
+    set.add(o.course_id as string);
+    coursesAt.set(branchId, set);
+  }
+
+  const membersAt = new Map<string, Set<string>>();
+  for (const e of enrolRes.data ?? []) {
+    const branchId = offeringBranch.get(e.offering_id as string);
+    if (!branchId) continue;
+    const set = membersAt.get(branchId) ?? new Set<string>();
+    set.add(e.member_id as string);
+    membersAt.set(branchId, set);
+  }
+
+  return (branchesRes.data ?? []).map(b => ({
+    id: b.id as string,
+    name: b.name as string,
+    courses: coursesAt.get(b.id as string)?.size ?? 0,
+    members: membersAt.get(b.id as string)?.size ?? 0,
+  }));
+}
+
+/** RLS and the two constraints 0019 adds answer in Postgres' own words.
+ *  These are the ones a person can act on; anything else keeps the
+ *  database's message rather than a guess at what it meant. */
+function branchWriteError(error: { code?: string; message?: string } | null, verb: string): string {
+  const code = error?.code ?? '';
+  const message = error?.message ?? '';
+  if (code === '42501' || /row-level security|permission denied/i.test(message)) {
+    return `Only the super admin can ${verb} a branch, and only while the subscription is active. Nothing has been changed.`;
+  }
+  if (code === '23505' || /branches_name_live/.test(message)) {
+    return 'A branch with this name already exists. Nothing has been changed.';
+  }
+  if (/still runs|is the scope of/.test(message)) {
+    // 0019 names the count in its own message, which is more use than a
+    // sentence written here that has to guess at it.
+    return `${message}. Nothing has been changed.`;
+  }
+  if (/length\(btrim/.test(message)) {
+    return 'A branch needs a name of at least two characters. Nothing has been changed.';
+  }
+  return `${message || 'The branch could not be saved'}. Nothing has been changed.`;
+}
+
+export async function createBranch(name: string): Promise<void> {
+  if (!isConfigured) {
+    // Offline the array IS the store, so the branch has to land in it or the
+    // screen would report an addition over a list that never changed.
+    if (BRANCHES.some(b => b.toLowerCase() === name.toLowerCase())) {
+      throw new Error('A branch with this name already exists. Nothing has been changed.');
+    }
+    BRANCHES.push(name);
+    branchesChanged();
+    return;
+  }
+
+  // `code` is deliberately absent: 0019 derives it from the name, so two
+  // clients adding at once cannot pick the same one.
+  const { error } = await supabase.from('branches').insert({ name });
+  if (error) {
+    console.error('createBranch:', error.message);
+    throw new Error(branchWriteError(error, 'add'));
+  }
+  branchesChanged();
+}
+
+/**
+ * Removal is a soft delete -- deleted_at, the column every read already
+ * filters on -- not a DELETE. course_offerings.branch_id and
+ * holidays.branch_id reference the row with no ON DELETE clause, so a hard
+ * delete is refused by the foreign key anyway; and keeping the row is what
+ * lets a past session still name the branch it happened at.
+ */
+export async function removeBranch(id: string, name: string): Promise<void> {
+  if (!isConfigured) {
+    const at = BRANCHES.indexOf(name);
+    if (at >= 0) BRANCHES.splice(at, 1);
+    branchesChanged();
+    return;
+  }
+
+  const { data, error } = await supabase.from('branches')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id).is('deleted_at', null).select('id');
+  if (error) {
+    console.error('removeBranch:', error.message);
+    throw new Error(branchWriteError(error, 'remove'));
+  }
+  // RLS refuses an UPDATE by matching NO ROWS rather than by erroring -- the
+  // same shape that let updateCourse report a save the policy had declined.
+  if (!data || data.length === 0) {
+    throw new Error(`${name} could not be removed — only the super admin may, and only while the subscription is active. Nothing has been changed.`);
+  }
+  branchesChanged();
+}
+
 export type OfferingDetail = {
   id: string;
   branch_id: string;

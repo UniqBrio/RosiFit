@@ -28,6 +28,7 @@ function Nav() {
         <Stack.Screen name="member/[id]"   options={{ title: 'Member' }} />
         <Stack.Screen name="member/edit"   options={{ title: 'Member' }} />
         <Stack.Screen name="holiday"       options={{ title: 'Add holiday' }} />
+        <Stack.Screen name="branches"      options={{ title: 'Branches' }} />
         <Stack.Screen name="templates"     options={{ title: 'Templates' }} />
         <Stack.Screen name="staff/index"   options={{ title: 'Staff & access' }} />
         <Stack.Screen name="staff/add"     options={{ title: 'Add staff' }} />
