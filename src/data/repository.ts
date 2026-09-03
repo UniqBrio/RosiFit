@@ -934,8 +934,8 @@ const DAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export async function fetchPendingSessions(): Promise<PendingSession[]> {
   if (!isConfigured) {
-    return PENDING_SESSIONS.map(p => ({
-      ...p, session_id: null, offering_id: '', session_date: '',
+    return PENDING_SESSIONS.map(({ date, ...p }) => ({
+      ...p, session_id: null, offering_id: '', session_date: date,
     }));
   }
 

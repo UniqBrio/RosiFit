@@ -443,12 +443,20 @@ export const NO_SESSIONS: MemberSession[] = [
 export const sessionsFor = (m: Member): MemberSession[] =>
   m.expected === 0 ? NO_SESSIONS : MEMBER_WEEK;
 
-/** Sessions whose attendance file has not arrived yet. */
+/**
+ * Sessions whose attendance file has not arrived yet.
+ *
+ * `date` is the ISO day the label already names in words. It is here because
+ * the upload screen checks the date INSIDE the chosen Meet file against the
+ * session being imported into -- and with no date on the fixture that check
+ * could only ever answer "cannot tell", so the one thing the panel exists to
+ * catch was undemonstrable offline.
+ */
 export const PENDING_SESSIONS = [
-  { dayNum: '22', mon: 'AUG', title: 'Prenatal Flow · 6:00 pm',
+  { dayNum: '22', mon: 'AUG', date: '2026-08-22', title: 'Prenatal Flow · 6:00 pm',
     meta: 'Coimbatore · 18 expected · awaiting upload',
     label: 'Fri 22 Aug · Prenatal Flow 6:00 pm' },
-  { dayNum: '23', mon: 'AUG', title: 'Postnatal Core · 8:00 am',
+  { dayNum: '23', mon: 'AUG', date: '2026-08-23', title: 'Postnatal Core · 8:00 am',
     meta: 'Madurai · 12 expected · awaiting upload',
     label: 'Sat 23 Aug · Postnatal Core 8:00 am' },
 ];
