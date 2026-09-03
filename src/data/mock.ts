@@ -472,11 +472,31 @@ export const sessionsFor = (m: Member): MemberSession[] =>
  * could only ever answer "cannot tell", so the one thing the panel exists to
  * catch was undemonstrable offline.
  */
+/**
+ * A session that has run and has no attendance file yet.
+ *
+ * Declared HERE rather than in repository.ts because repository.ts imports
+ * the Supabase client, which needs React Native and DOM globals -- so a pure
+ * module that named the type from there could not be type-checked by
+ * scripts/tsconfig.json, where the specs run under plain node. The fixture
+ * below is the same shape, which is the other reason it belongs beside it.
+ */
+export type PendingSession = {
+  session_id: string | null; offering_id: string; session_date: string;
+  /** the course this session belongs to, so the upload screen can be scoped */
+  course_id: string | null; course: string;
+  dayNum: string; mon: string; title: string; meta: string; label: string;
+};
+
 export const PENDING_SESSIONS = [
-  { dayNum: '22', mon: 'AUG', date: '2026-08-22', title: 'Prenatal Flow · 6:00 pm',
+  // course_id matches COURSES' ids, so the fixtures exercise the scoped
+  // upload entry points rather than only the academy-wide one.
+  { dayNum: '22', mon: 'AUG', date: '2026-08-22', course_id: 'c1', course: 'Prenatal Flow',
+    title: 'Prenatal Flow · 6:00 pm',
     meta: 'Coimbatore · 18 expected · awaiting upload',
     label: 'Fri 22 Aug · Prenatal Flow 6:00 pm' },
-  { dayNum: '23', mon: 'AUG', date: '2026-08-23', title: 'Postnatal Core · 8:00 am',
+  { dayNum: '23', mon: 'AUG', date: '2026-08-23', course_id: 'c2', course: 'Postnatal Core',
+    title: 'Postnatal Core · 8:00 am',
     meta: 'Madurai · 12 expected · awaiting upload',
     label: 'Sat 23 Aug · Postnatal Core 8:00 am' },
 ];

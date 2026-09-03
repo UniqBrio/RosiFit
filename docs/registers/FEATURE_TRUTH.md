@@ -111,7 +111,7 @@ for the academy.
 ---
 
 ### Sessions — `(tabs)/sessions` · `holiday` · `upload`
-**Last confirmed:** 02-Sep-2026
+**Last confirmed:** 03-Sep-2026
 
 The month calendar, closures, and the attendance register upload.
 
@@ -121,10 +121,28 @@ The month calendar, closures, and the attendance register upload.
 | Mark a session held or cancelled | ◻ | Status only — a session cannot be created or deleted from the client |
 | Declare a holiday over a date range | ◻ | A **closure**, not a cancellation |
 | Upload an attendance register (CSV) | ◻ | Preview then commit; the commit is server-side (`0014`, `csv-import`) |
+| The upload is scoped to where it was opened from | ✅ | A day opens straight into that session; a course narrows to its own; Attendance narrows nothing (`src/data/uploadScope.ts`) |
+| Five outcomes, blocking distinguished from not | ✅ | `OUTCOME_META` — a letter, a word and an icon each, and the count that blocks is stated |
 
 **Rules and validations** — a holiday shows its impact **before** anything is applied, and states
 out loud what it will not do. Attendance is never written by the client: `authenticated` holds no
 write grant on the engine tables, so a register can only arrive through the import function.
+
+**The upload screen is scoped by its entry point.** It had one door wearing three hats: opened
+from an awaiting **day** on a course, from the **course**, or from the academy-wide **Attendance**
+list, it offered the same list of every session anywhere awaiting a file and asked the person to
+find again the one she had just tapped. Picking wrong here attaches a real class's register to a
+different class, and the file-vs-session check can only compare against whatever she picked — so
+narrowing removes most of the ways to pick wrong. A day carries `?courseId=…&date=…` and opens
+straight into that session; a course carries `?courseId=…`; Attendance carries nothing.
+
+Two refusals matter more than the narrowing itself, and both are asserted
+(`src/data/uploadScope.test.ts`, 13 cases). A scope that matches **nothing does not widen back to
+everything** — it says the session is no longer waiting and offers the full list as a deliberate
+second tap. And **two sessions of one course on one day** (two branches) are never resolved to the
+first; she still chooses, from two rather than twenty. Every narrowed list says it is narrowed and
+carries "Show every session", and a preselected session carries "Change" — a filter that does not
+announce itself is a list that has silently lost rows.
 
 **Limits** — no live check-in. Attendance is a register that gets uploaded, not a door sensor.
 

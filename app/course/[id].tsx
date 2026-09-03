@@ -435,7 +435,10 @@ export default function CourseDetail() {
                       <Muted style={{ marginTop: 4 }}>{detail}</Muted>
                       {chosen.key === 'awaiting' ? (
                         <Pressable testID="course-day-upload"
-                          onPress={() => router.push('/upload')}
+                          // The DAY she tapped, not "the upload screen". It
+                          // opens straight into this session (uploadScope).
+                          onPress={() => router.push(
+                            `/upload?courseId=${id}&date=${chosen.iso}`)}
                           accessibilityRole="button" accessibilityLabel="Upload this session"
                           style={({ pressed }) => ({
                             marginTop: 10, alignSelf: 'flex-start',
@@ -481,7 +484,7 @@ export default function CourseDetail() {
               <Text style={{ fontSize: 12.5, fontWeight: '800', color: theme.accentInk }}>Add Member</Text>
             </Pressable>
             <Pressable testID="course-bulk-import"
-              onPress={() => router.push('/upload')}
+              onPress={() => router.push(`/upload?courseId=${id}`)}
               accessibilityRole="button" accessibilityLabel="Bulk import from a file"
               style={({ pressed }) => ({
                 flex: 1, minHeight: 46, borderRadius: RADIUS.md,
@@ -557,7 +560,10 @@ export default function CourseDetail() {
               { icon: 'cloud_upload', label: 'Upload Attendance', ink: warnInk,
                 note: `Google Meet CSV · ${awaitingHere.length === 0 ? 'nothing awaiting upload'
                   : `${awaitingHere.length} session${awaitingHere.length === 1 ? '' : 's'} awaiting upload`}`,
-                go: () => router.push('/upload'), testID: 'course-action-upload' },
+                // Scoped to THIS course: the list she is offered is its own
+                //  sessions, not every session in the academy.
+                go: () => router.push(`/upload?courseId=${id}`),
+                testID: 'course-action-upload' },
               { icon: 'fact_check', label: 'Weekly Review', ink: theme.accentInk,
                 note: 'Run the Saturday check for this course',
                 // The origin travels with the push, so Weekly review's back button

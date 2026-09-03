@@ -14,6 +14,7 @@ import { parseMeetCsv, meetMatchesSession, CSV_COLUMNS, type MeetMeta } from '..
 import { sha256Hex, pickCsvFile } from '../src/data/csv';
 import { csvPreview, type PreviewResult } from '../src/data/api';
 import { setStagedImport } from '../src/data/pending';
+import { scopeSessions } from '../src/data/uploadScope';
 
 const STEPS = ['Session', 'File', 'Process', 'Summary'] as const;
 
@@ -21,7 +22,12 @@ export default function Upload() {
   const { theme } = useTheme();
   const { flash } = useToast();
   const router = useRouter();
-  const { state: forced } = useLocalSearchParams<{ state?: string }>();
+  // Where she came FROM decides what she is offered. A day on a course opens
+  // straight into that session; the course itself narrows the list to its own
+  // sessions; the academy-wide Attendance list narrows nothing. One screen,
+  // three honest entry points -- see src/data/uploadScope.ts.
+  const { state: forced, courseId, date } = useLocalSearchParams<
+    { state?: string; courseId?: string; date?: string }>();
   const pending = usePendingSessions(forced);
 
   const [step, setStep] = useState(1);
@@ -35,8 +41,24 @@ export default function Upload() {
 
   useEffect(() => () => { if (timer.current) clearInterval(timer.current); }, []);
 
-  const sessions = pending.data ?? [];
+  const scope = scopeSessions(pending.data ?? [], courseId, date);
+  const sessions = scope.sessions;
   const chosen = session?.label ?? sessions[0]?.label ?? '';
+
+  /**
+   * One session means the choice was already made, on the screen she tapped.
+   * Asking her to make it again is where she picks the wrong one.
+   *
+   * Guarded on `session` rather than on a ran-once ref: if she uses "Choose a
+   * different session" the preselect must not put her straight back, and the
+   * back-out clears the params, so this stops applying rather than fighting
+   * her.
+   */
+  useEffect(() => {
+    if (!scope.preselect || session) return;
+    setSession(scope.preselect);
+    setStep(2);
+  }, [scope.preselect, session]);
   const picked = file !== null;
 
   const choose = async () => {
@@ -173,7 +195,19 @@ export default function Upload() {
           message={pending.error ?? 'The sessions awaiting upload could not be loaded. Nothing has been changed.'} />
       )}
 
-      {step === 1 && pending.state === 'ready' && sessions.length === 0 && (
+      {/* A scope that matched nothing does NOT widen back to every session on
+          its own. She tapped "Upload this session" about ONE session; handing
+          her twelve others as though that were the answer is how the wrong
+          file reaches the wrong class. Widening is offered, as a tap. */}
+      {step === 1 && pending.state === 'ready' && scope.empty && (
+        <EmptyState
+          title="Nothing to upload here"
+          body={scope.note ?? ''}
+          action="Show every session awaiting upload"
+          onAction={() => router.replace('/upload')} />
+      )}
+
+      {step === 1 && pending.state === 'ready' && !scope.empty && sessions.length === 0 && (
         // "Every session has a file" is the canvas' wording, and it is the
         // better one: "nothing awaiting upload" reads like an empty list that
         // might be a loading failure, where this reads as the good news it is.
@@ -185,8 +219,28 @@ export default function Upload() {
       {step === 1 && pending.state === 'ready' && sessions.length > 0 && (
         <>
           <Body>
-            {`${sessions.length} session${sessions.length === 1 ? ' is' : 's are'} still awaiting upload. Until a file is in, that session counts for nobody.`}
+            {scope.note
+              ? `${scope.note} ${sessions.length} awaiting upload. Until a file is in, that session counts for nobody.`
+              : `${sessions.length} session${sessions.length === 1 ? ' is' : 's are'} still awaiting upload. Until a file is in, that session counts for nobody.`}
           </Body>
+          {/* The narrowing is stated AND escapable. A filtered list that does
+              not say it is filtered is a list that has silently lost rows. */}
+          {scope.note ? (
+            <Pressable testID="upload-show-all" onPress={() => router.replace('/upload')}
+              accessibilityRole="button" accessibilityLabel="Show every session awaiting upload"
+              style={({ pressed }) => ({
+                alignSelf: 'flex-start', marginTop: SPACE.sm,
+                minHeight: 34, paddingHorizontal: 12, borderRadius: RADIUS.sm,
+                flexDirection: 'row', alignItems: 'center', gap: 6,
+                backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
+                opacity: pressed ? 0.7 : 1,
+              })}>
+              <Icon name="list" size={15} color={theme.accentInk} />
+              <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.fg }}>
+                Show every session
+              </Text>
+            </Pressable>
+          ) : null}
           <View style={{ gap: SPACE.md, marginTop: SPACE.lg }}>
             {sessions.map((s, i) => (
               <Pressable key={s.label}
@@ -217,8 +271,30 @@ export default function Upload() {
 
       {step === 2 && (
         <>
-          <Label>Session</Label>
-          <Text style={{ fontSize: 15, fontWeight: '700', color: theme.fgStrong, marginTop: 4 }}>{chosen}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: SPACE.md }}>
+            <View style={{ flex: 1 }}>
+              <Label>Session</Label>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: theme.fgStrong, marginTop: 4 }}>{chosen}</Text>
+            </View>
+            {/* The only way back to the picker, and it must exist: opening
+                from a day preselects the session, so without this a wrong
+                preselect would be a trap. router.replace drops the scope
+                params too -- otherwise the picker would reopen on the one
+                session she is trying to get away from. */}
+            <Pressable testID="upload-change-session" onPress={() => {
+                setSession(null); setFile(null); setPreview(null); setFailure(null); setStep(1);
+                router.replace('/upload');
+              }}
+              accessibilityRole="button" accessibilityLabel="Choose a different session"
+              style={({ pressed }) => ({
+                minHeight: 34, paddingHorizontal: 12, borderRadius: RADIUS.sm,
+                justifyContent: 'center',
+                backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
+                opacity: pressed ? 0.7 : 1,
+              })}>
+              <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.fg }}>Change</Text>
+            </Pressable>
+          </View>
 
           <View style={{
             marginTop: SPACE.lg, padding: SPACE.xl, borderRadius: RADIUS.lg,

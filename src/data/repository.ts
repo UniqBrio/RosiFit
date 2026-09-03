@@ -1078,18 +1078,19 @@ export async function fetchWeekRows(weeks: Period[]): Promise<WeekRow[]> {
 /** A session with no attendance file yet counts for NOBODY — it is neither
  *  attended nor missed — so these are surfaced as work to do rather than
  *  quietly treated as absences. */
-export type PendingSession = {
-  session_id: string | null; offering_id: string; session_date: string;
-  dayNum: string; mon: string; title: string; meta: string; label: string;
-};
+// Declared in mock.ts, beside the fixture of the same shape, so the pure
+// modules and their specs can name it without pulling in the Supabase client.
+// Re-exported here because this is where callers expect to find it.
+import type { PendingSession } from './mock';
+export type { PendingSession };
 
 const MONTHS_SHORT = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 const DAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export async function fetchPendingSessions(): Promise<PendingSession[]> {
   if (!isConfigured) {
-    return PENDING_SESSIONS.map(({ date, ...p }) => ({
-      ...p, session_id: null, offering_id: '', session_date: date,
+    return PENDING_SESSIONS.map(({ date, course_id, course, ...p }) => ({
+      ...p, session_id: null, offering_id: '', session_date: date, course_id, course,
     }));
   }
 
@@ -1124,6 +1125,8 @@ export async function fetchPendingSessions(): Promise<PendingSession[]> {
       session_id: s.id as string,
       offering_id: s.offering_id as string,
       session_date: s.session_date as string,
+      course_id: (offering?.course_id as string | undefined) ?? null,
+      course,
       dayNum: String(date.getDate()),
       mon: MONTHS_SHORT[date.getMonth()],
       title: `${course}${time ? ` · ${time}` : ''}`,

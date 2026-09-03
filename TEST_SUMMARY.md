@@ -1,3 +1,30 @@
+NOT OBSERVED FAILING: src/data/uploadScope.test.ts - scopeSessions is new and all 13 cases passed
+on their first run. The behaviour it replaces was not a wrong computation but an ABSENT one:
+app/upload.tsx read `const sessions = pending.data ?? []` and offered every session awaiting a
+file in the academy, whatever screen had opened it. There was no branch to fail.
+
+Verified instead by driving all six shapes against the exported build, which is where "did the
+narrowing happen" is actually answerable:
+
+  /upload                              -> 2 sessions, picker      (academy-wide, unchanged)
+  /upload?courseId=c1                  -> straight to step 2      (c1 has one pending session)
+  /upload?courseId=c1&date=2026-08-22  -> straight to step 2      (preselected)
+  /upload?courseId=c1&date=2026-08-19  -> "That session is no longer waiting for a file"
+  /upload?courseId=c9                  -> "No session for this course is waiting for a file."
+  /upload?courseId=c1&date=undefined   -> the course scope, date ignored
+  then "Change" on step 2              -> back to /upload, full picker
+
+THE TWO CASES THAT MATTER are refusals, and both are asserted rather than merely observed:
+
+  - a scope matching nothing does NOT widen back to every session. She tapped "Upload this
+    session" about ONE session; handing her twelve others as though that were the answer is how
+    the wrong file reaches the wrong class.
+  - two sessions of one course on one day (two branches) are NOT resolved to the first. Silently
+    taking one would attach Coimbatore's register to Chennai.
+
+'?date=undefined' is asserted because that is literally what `${maybeDate}` produces from a
+missing value; filtering on it would empty the list and blame the sessions.
+
 NOT OBSERVED FAILING: src/data/nav.test.ts - safeBackTarget was written after the defect it
 serves was reproduced in a BROWSER, and every case passed on its first run. The defect itself was
 observed, twice, against the exported build:
@@ -53,6 +80,46 @@ The defect was reproduced first, in one statement on the harness, before any cod
     select public.audit_log('communication.batch_sent','email_batch','b1'); commit;
     -->  actor_app_user_id | actor_kind |          action
          ------------------+------------+--------------------------
+
+## Gate run - 2026-09-03 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
 
 ## Gate run - 2026-09-03 - VERDICT: FAIL
 
