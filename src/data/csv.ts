@@ -125,3 +125,28 @@ export function pickCsvFile(): Promise<{ name: string; text: string } | null> {
     input.click();
   });
 }
+
+/**
+ * Hands the browser a file to save.
+ *
+ * Same reasoning as pickCsvFile: RosiFit ships as a PWA, so this is the
+ * anchor-and-blob the web actually saves from -- no extra dependency. On a
+ * native build there is nothing wired up, and it says so plainly rather than
+ * appearing to succeed. A button labelled Export that only flashed a toast is
+ * the same defect as a form that reports a save it never attempted.
+ */
+export function downloadCsv(filename: string, content: string): void {
+  const doc = (globalThis as { document?: Document }).document;
+  const url = (globalThis as { URL?: typeof URL }).URL;
+  if (!doc || !url?.createObjectURL) {
+    throw new Error('Exporting is available in the RosiFit web app.');
+  }
+  const href = url.createObjectURL(new Blob([content], { type: 'text/csv;charset=utf-8' }));
+  const link = doc.createElement('a');
+  link.href = href;
+  link.download = filename;
+  link.click();
+  // Revoked on the next tick, not immediately: Safari has not started the
+  // download by the time click() returns, and a revoked URL saves 0 bytes.
+  setTimeout(() => url.revokeObjectURL(href), 10_000);
+}
