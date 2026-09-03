@@ -1,5 +1,66 @@
 # Changelog
 
+## Unreleased — the shell the canvas actually draws
+
+The previous pass built the canvas' new SCREENS and missed its NAVIGATION.
+The header carried five scrolling chips and a branch dropdown; the canvas has
+two underline tabs and no branch control, and says so in its own words:
+
+> "Overview and Attendance are the two tabs under the academy name;
+> Home · Reports · More sit in the footer. **Branch is a filter, not a header
+> control.**"
+
+That caption — the prototype's own "Where to tap" — turned out to be the
+missing specification. It was found by RUNNING the prototype rather than
+reading its markup: `design/support.js` loads React from unpkg, which this
+environment blocks, so React 18 was vendored from the npm registry and the
+whole design driven in a browser, screen by screen, against the app.
+
+**The shell.** Two tabs (Overview · Attendance) as an underline row, the
+tagline back in the subtitle line the branch label had taken, and a settings
+gear where the + add sheet was. Attendance is a SECTION — the tab is active
+for the course list, a course's detail, the members list, the weekly review
+and the register alike. Fixed on the way: `href: null` on the courses route
+made it un-switchable, so every attempt to reach it STACKED a second copy of
+the whole shell instead of switching.
+
+**Reports draws bars, not rings.** The bar's length is itself a figure — "Bar
+length = sessions scheduled" — so courses are comparable down the column. The
+hero gradient and the week-by-week table go, because the canvas draws
+neither. Two defects were caught before shipping: the canvas is a dark-only
+prototype and its bar-count ink measures 2.91:1 on the LIGHT green, and a
+zero-width segment still drew a 5px stub, so a course with nothing scheduled
+showed a sliver of data that did not exist.
+
+**More lists seven rows, not thirteen.** Follow-up rules, Message templates,
+Language, First-time PIN setup, PIN recovery questions and Super admin
+registration all come out; every one keeps an entry point elsewhere, checked
+in the tree before the row was removed. Holidays stays: with the add sheet
+gone it is now the feature's only route.
+
+**Attendance is the workspace.** The card summarises rather than lists —
+branch, frequency, members, who can be emailed, and one sentence on who needs
+following up. It uses the app's real rule engine rather than the prototype's
+hardcoded `missed >= 4`, never counts a member with no address as needing
+follow-up, and says "No frequency days — nothing is expected" ahead of
+anything else, because a course with no weekdays is outside the engine
+entirely.
+
+**Still outstanding.** The canvas edits a course's branch, days, sender,
+template and follow-up rule inside the course FORM — "there is no separate
+Message Templates or Follow-up Rules screen in settings" — and that form does
+not exist yet. It needs a migration for course-scoped wording and a decision
+on guardrail 5. Until then the offerings list and the "Follow-up rules" link
+stay on each card as the only routes to them. Add Course is also still a
+route rather than the dialog the canvas opens.
+
+**A note on the canvas' own inconsistency:** its caption says Reports has "a
+week-by-week trend", and its view-model defines `trendBars` and `trendNote` —
+but no markup ever renders them. The drawing wins; the trend is unbuilt and
+`useWeekRows` is left in place rather than deleted.
+
+---
+
 ## Unreleased — the 3-Sep canvas, and two screens that were not counting
 
 The design canvas was revised on 3 Sep. Six sections are new — **Course detail**, **Delete

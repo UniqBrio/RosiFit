@@ -16,6 +16,13 @@
 > confirmed against a running system — unless it is proven by a build-time gate or a SQL test,
 > which are marked ✅.
 
+**Navigation, corrected 03-Sep-2026.** The shell has TWO structures, and the canvas' own
+"Where to tap" caption names both: *"Overview and Attendance are the two tabs under the academy
+name; Home · Reports · More sit in the footer. Branch is a filter, not a header control."*
+The first build had five scrolling chips and a branch dropdown in the header. **Attendance is a
+section, not a screen** — the tab covers the course list, a course's detail, the members list,
+the weekly review and the register, and its landing screen is the course list.
+
 **Route inventory — all 33, so the count is auditable** (35 `.tsx` files under `app/` less the
 two `_layout.tsx`; recounted 03-Sep-2026):
 
