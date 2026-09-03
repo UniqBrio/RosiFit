@@ -25,6 +25,11 @@ export default function MemberDetail() {
   const pctColor = pct === null ? theme.muted
     : pct >= 70 ? ink('present') : pct >= 40 ? ink('awaiting') : ink('absent');
 
+  /* The header gradient is the same dark plum in BOTH themes, so its strong
+   * ink is white in both -- theme.onDeep is the softer body ink beside it.
+   * Named once here rather than repeated as a literal at each use. */
+  const onDeepStrong = '#FFFFFF';
+
   const mail = hasEmail(m);
   const mailInk = mail ? ink('present') : ink('absent');
   const mailBox = statusSurface(mailInk);
@@ -39,6 +44,22 @@ export default function MemberDetail() {
           paddingHorizontal: SPACE.lg, paddingTop: SPACE.lg, paddingBottom: SPACE.xxl,
           borderBottomWidth: 1, borderBottomColor: theme.lineStrong,
         }}>
+        {/* This screen had no way back at all. It is reached from the member
+            list, from Weekly and from a course roster, so the target cannot
+            be a fixed route -- router.back() returns to whichever of them
+            opened it. */}
+        <Pressable testID="member-back" onPress={() => router.back()}
+          accessibilityRole="button" accessibilityLabel="Go back"
+          style={({ pressed }) => ({
+            width: 38, height: 38, borderRadius: RADIUS.md,
+            alignItems: 'center', justifyContent: 'center',
+            marginBottom: SPACE.md,
+            backgroundColor: theme.accentDeep3, borderWidth: 1, borderColor: theme.lineStrong,
+            opacity: pressed ? 0.7 : 1,
+          })}>
+          <Icon name="arrow_back" size={21} color={onDeepStrong} />
+        </Pressable>
+
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
           <View style={{
             width: 64, height: 64, borderRadius: 32,
@@ -46,10 +67,10 @@ export default function MemberDetail() {
             borderWidth: 2, borderColor: theme.lineStrong,
             alignItems: 'center', justifyContent: 'center',
           }}>
-            <Text style={{ fontSize: 22, fontWeight: '800', color: '#FFFFFF' }}>{initials(m.name)}</Text>
+            <Text style={{ fontSize: 22, fontWeight: '800', color: onDeepStrong }}>{initials(m.name)}</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 24, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.5 }}>{m.name}</Text>
+            <Text style={{ fontSize: 24, fontWeight: '800', color: onDeepStrong, letterSpacing: -0.5 }}>{m.name}</Text>
             <Text style={{ fontSize: 13, color: theme.accentInk, marginTop: 3 }}>{m.course}</Text>
             <Text style={{ fontSize: 12, color: theme.onDeep, marginTop: 2 }}>{`${m.branch} · ${m.code}`}</Text>
           </View>

@@ -9,7 +9,7 @@ app/(tabs)/more.tsx|1
 app/appearance.tsx|11
 app/help.tsx|2
 app/index.tsx|1
-app/member/[id].tsx|2
+app/member/[id].tsx|1
 app/send/review.tsx|1
 app/set-pin.tsx|6
 app/staff/index.tsx|1
