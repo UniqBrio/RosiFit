@@ -15,6 +15,11 @@ import { supabase, isConfigured } from '../lib/supabase';
 import type { Period } from './period';
 import { currentSchedules, today } from './schedule';
 import {
+  NOTIFICATION_LIMIT, orderNotifications,
+  awaitingNotification, sentNotification, excludedNotification,
+  type Notification,
+} from './notifications';
+import {
   MEMBERS, COURSE_LIST, GLOBAL_RULE, COURSE_RULES, TEMPLATES, STAFF, AUDIT,
   BRANCHES, COURSES, MONTH_DAYS, PENDING_SESSIONS, WEEK_ROWS, attendanceFixture,
   HOLIDAYS, HOLIDAY_PREVIEW,
@@ -994,37 +999,26 @@ export async function fetchPendingSessions(): Promise<PendingSession[]> {
  *             unlike a derived guess it carries the reason the send itself
  *             recorded.
  *
- * No new table, no new policy, no new grant.
+ * No new table, no new policy, no new grant. The SHAPING -- what counts, what
+ * comes first, how each line reads -- lives in ./notifications, which is pure
+ * and therefore tested; this function only fetches and hands over.
  */
-export type Notification = {
-  id: string;
-  kind: 'awaiting' | 'sent' | 'excluded';
-  title: string;
-  body: string;
-  /** already formatted -- the sheet only ever displays it */
-  when: string;
-};
-
-/** How many of each kind. A tray is a summary, not an archive: past a
- *  handful nobody reads it, and the screens themselves hold the full list. */
-const NOTIFICATION_LIMIT = 5;
+export type { Notification } from './notifications';
 
 export async function fetchNotifications(): Promise<Notification[]> {
   const pending = await fetchPendingSessions();
-  const awaiting: Notification[] = pending.slice(0, NOTIFICATION_LIMIT).map((p, i) => ({
-    id: `awaiting-${p.session_id ?? (p.offering_id || i)}`,
-    kind: 'awaiting' as const,
-    title: `${p.title} awaits upload`,
-    body: `${p.meta}. Until the Meet file is in, this session counts for nobody.`,
-    when: p.label,
-  }));
+  const awaiting = pending.slice(0, NOTIFICATION_LIMIT).map((p, i) =>
+    awaitingNotification({
+      id: p.session_id ?? (p.offering_id || String(i)),
+      title: p.title, meta: p.meta, label: p.label,
+    }));
 
   if (!isConfigured) {
     // Offline there is no send history to read, and inventing one is the
     // defect this function exists to remove. The awaiting entries are real
     // even on fixtures, so the sheet is not empty -- it is just honest about
     // having nothing else to say.
-    return awaiting;
+    return orderNotifications(awaiting);
   }
 
   const [batches, excluded] = await Promise.all([
@@ -1032,29 +1026,25 @@ export async function fetchNotifications(): Promise<Notification[]> {
       .select('id, sent_count, failed_count, subject_snapshot, created_at, completed_at')
       .order('created_at', { ascending: false }).limit(NOTIFICATION_LIMIT),
     supabase.from('email_messages')
-      .select('id, member_id, to_email, status, exclusion_reason, failure_reason, batch_id')
+      .select('id, member_id, status, exclusion_reason, failure_reason')
       .in('status', ['excluded', 'failed']).limit(NOTIFICATION_LIMIT),
   ]);
 
-  // A tray that fails is not worth failing a screen over: the awaiting half
-  // is already in hand, so a broken read costs its own entries and nothing
-  // else. The console keeps the reason.
+  // A tray that fails is not worth failing a screen over: the awaiting half is
+  // already in hand, so a broken read costs its own entries and nothing else.
+  // The console keeps the reason.
   if (batches.error) console.error('fetchNotifications batches:', batches.error.message);
   if (excluded.error) console.error('fetchNotifications excluded:', excluded.error.message);
 
-  const sent: Notification[] = (batches.data ?? [])
+  const sent = (batches.data ?? [])
     .filter(b => Number(b.sent_count) > 0)
-    .map(b => {
-      const n = Number(b.sent_count);
-      return {
-        id: `sent-${b.id as string}`,
-        kind: 'sent' as const,
-        title: `${n} check-in email${n === 1 ? '' : 's'} sent`,
-        body: `${b.subject_snapshot as string}${Number(b.failed_count) > 0
-          ? ` · ${b.failed_count} failed` : ''}. Every send stores the rule it used.`,
-        when: new Date((b.completed_at ?? b.created_at) as string).toLocaleString(),
-      };
-    });
+    .map(b => sentNotification({
+      id: b.id as string,
+      sent: Number(b.sent_count),
+      failed: Number(b.failed_count),
+      subject: b.subject_snapshot as string,
+      when: new Date((b.completed_at ?? b.created_at) as string).toLocaleString(),
+    }));
 
   const memberIds = [...new Set((excluded.data ?? []).map(m => m.member_id as string))];
   const names = memberIds.length
@@ -1062,19 +1052,15 @@ export async function fetchNotifications(): Promise<Notification[]> {
     : { data: [] as { id: string; full_name: string }[] };
   const nameById = new Map((names.data ?? []).map(m => [m.id, m.full_name]));
 
-  const notSent: Notification[] = (excluded.data ?? []).map(m => ({
-    id: `excluded-${m.id as string}`,
-    kind: 'excluded' as const,
-    title: `1 email could not be sent`,
-    body: `${nameById.get(m.member_id as string) ?? 'A member'} was ${
-      m.status === 'excluded' ? 'excluded from' : 'not reached by'} the send: ${
-      (m.exclusion_reason ?? m.failure_reason ?? 'no reason was recorded') as string}.`,
-    when: '',
+  const notSent = (excluded.data ?? []).map(m => excludedNotification({
+    id: m.id as string,
+    name: nameById.get(m.member_id as string) ?? null,
+    status: m.status as string,
+    exclusionReason: (m.exclusion_reason as string | null) ?? null,
+    failureReason: (m.failure_reason as string | null) ?? null,
   }));
 
-  // Awaiting first. It is the only kind that is still ACTIONABLE -- the other
-  // two report something already finished.
-  return [...awaiting, ...notSent, ...sent];
+  return orderNotifications([...awaiting, ...notSent, ...sent]);
 }
 
 export type Preferences = { theme_mode: 'light' | 'dark' | 'system'; accent_key: string; accent_hue: number };

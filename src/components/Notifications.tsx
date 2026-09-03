@@ -6,7 +6,7 @@ import { Muted, Skeleton, EmptyState, ErrorState } from './ui';
 import { useTheme } from '../theme/ThemeProvider';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../theme/tokens';
 import type { Async } from '../data/hooks';
-import type { Notification } from '../data/repository';
+import { actionableCount, type Notification } from '../data/notifications';
 
 /**
  * The canvas' NOTIFICATIONS sheet, and the bell that opens it.
@@ -133,7 +133,8 @@ export function NotificationsSheet({ open, onClose, feed }:
 export function NotificationBell({ onPress, feed }:
   { onPress: () => void; feed: Async<Notification[]> }) {
   const { theme } = useTheme();
-  const actionable = (feed.data ?? []).filter(n => n.kind === 'awaiting').length;
+  // The same rule the tray's own module states, not a second copy of it.
+  const actionable = actionableCount(feed.data ?? []);
 
   return (
     <Pressable testID="shell-notifications" onPress={onPress}
