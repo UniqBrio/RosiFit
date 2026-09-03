@@ -975,6 +975,108 @@ export async function fetchPendingSessions(): Promise<PendingSession[]> {
 }
 
 // --------------------------------------------------- per-user appearance
+/* ---------------------------------------------------------- notifications
+ *
+ * The canvas' NOTIFICATIONS sheet. It builds its list from the pending
+ * sessions plus TWO hardcoded entries -- "1 check-in email sent" and "1 email
+ * could not be sent" -- naming members and a template. Shipping those as
+ * literals would be a notification tray that says the same thing on every
+ * device forever, which is worse than none: a person would act on it.
+ *
+ * All three kinds are readable facts, so all three are read:
+ *
+ *   awaiting  a session that ran with no attendance file. Already fetched by
+ *             fetchPendingSessions -- reused rather than re-queried.
+ *   sent      the last email batches, from email_batches (batches_read is
+ *             is_active_app_user(), and 0015 grants the select).
+ *   excluded  email_messages rows the send DECLINED -- status 'excluded' or
+ *             'failed'. This is the real version of "could not be sent", and
+ *             unlike a derived guess it carries the reason the send itself
+ *             recorded.
+ *
+ * No new table, no new policy, no new grant.
+ */
+export type Notification = {
+  id: string;
+  kind: 'awaiting' | 'sent' | 'excluded';
+  title: string;
+  body: string;
+  /** already formatted -- the sheet only ever displays it */
+  when: string;
+};
+
+/** How many of each kind. A tray is a summary, not an archive: past a
+ *  handful nobody reads it, and the screens themselves hold the full list. */
+const NOTIFICATION_LIMIT = 5;
+
+export async function fetchNotifications(): Promise<Notification[]> {
+  const pending = await fetchPendingSessions();
+  const awaiting: Notification[] = pending.slice(0, NOTIFICATION_LIMIT).map((p, i) => ({
+    id: `awaiting-${p.session_id ?? (p.offering_id || i)}`,
+    kind: 'awaiting' as const,
+    title: `${p.title} awaits upload`,
+    body: `${p.meta}. Until the Meet file is in, this session counts for nobody.`,
+    when: p.label,
+  }));
+
+  if (!isConfigured) {
+    // Offline there is no send history to read, and inventing one is the
+    // defect this function exists to remove. The awaiting entries are real
+    // even on fixtures, so the sheet is not empty -- it is just honest about
+    // having nothing else to say.
+    return awaiting;
+  }
+
+  const [batches, excluded] = await Promise.all([
+    supabase.from('email_batches')
+      .select('id, sent_count, failed_count, subject_snapshot, created_at, completed_at')
+      .order('created_at', { ascending: false }).limit(NOTIFICATION_LIMIT),
+    supabase.from('email_messages')
+      .select('id, member_id, to_email, status, exclusion_reason, failure_reason, batch_id')
+      .in('status', ['excluded', 'failed']).limit(NOTIFICATION_LIMIT),
+  ]);
+
+  // A tray that fails is not worth failing a screen over: the awaiting half
+  // is already in hand, so a broken read costs its own entries and nothing
+  // else. The console keeps the reason.
+  if (batches.error) console.error('fetchNotifications batches:', batches.error.message);
+  if (excluded.error) console.error('fetchNotifications excluded:', excluded.error.message);
+
+  const sent: Notification[] = (batches.data ?? [])
+    .filter(b => Number(b.sent_count) > 0)
+    .map(b => {
+      const n = Number(b.sent_count);
+      return {
+        id: `sent-${b.id as string}`,
+        kind: 'sent' as const,
+        title: `${n} check-in email${n === 1 ? '' : 's'} sent`,
+        body: `${b.subject_snapshot as string}${Number(b.failed_count) > 0
+          ? ` · ${b.failed_count} failed` : ''}. Every send stores the rule it used.`,
+        when: new Date((b.completed_at ?? b.created_at) as string).toLocaleString(),
+      };
+    });
+
+  const memberIds = [...new Set((excluded.data ?? []).map(m => m.member_id as string))];
+  const names = memberIds.length
+    ? await supabase.from('members').select('id, full_name').in('id', memberIds)
+    : { data: [] as { id: string; full_name: string }[] };
+  const nameById = new Map((names.data ?? []).map(m => [m.id, m.full_name]));
+
+  const notSent: Notification[] = (excluded.data ?? []).map(m => ({
+    id: `excluded-${m.id as string}`,
+    kind: 'excluded' as const,
+    title: `1 email could not be sent`,
+    body: `${nameById.get(m.member_id as string) ?? 'A member'} was ${
+      m.status === 'excluded' ? 'excluded from' : 'not reached by'} the send: ${
+      (m.exclusion_reason ?? m.failure_reason ?? 'no reason was recorded') as string}.`,
+    when: '',
+  }));
+
+  // Awaiting first. It is the only kind that is still ACTIONABLE -- the other
+  // two report something already finished.
+  return [...awaiting, ...notSent, ...sent];
+}
+
 export type Preferences = { theme_mode: 'light' | 'dark' | 'system'; accent_key: string; accent_hue: number };
 
 /** Own row only — user_preferences has no policy that lets anyone, super

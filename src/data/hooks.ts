@@ -19,6 +19,7 @@ import {
   fetchFilterOptions, fetchMonthSessions, fetchPendingSessions, fetchWeekRows,
   fetchAcademy, fetchBranches, fetchOfferings,
   fetchBranchUsage, onBranchesChanged,
+  fetchNotifications, type Notification,
   type Branch, type BranchUsage, type OfferingDetail,
   fetchAttendance, onCoursesChanged, onMembersChanged,
   fetchHolidays, onHolidaysChanged,
@@ -201,6 +202,11 @@ export function useHolidays(forced?: string): Async<Holiday[]> {
 
 export function usePendingSessions(forced?: string): Async<PendingSession[]> {
   return useAsync(() => fetchPendingSessions(), [], forced);
+}
+
+/** The notification tray. One load, three kinds -- see fetchNotifications. */
+export function useNotifications(forced?: string): Async<Notification[]> {
+  return useAsync(() => fetchNotifications(), [], forced);
 }
 
 /**
