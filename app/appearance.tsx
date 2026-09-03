@@ -141,11 +141,15 @@ export default function Appearance() {
                 quadrants rather than a field, so they are real gradients --
                 expo-linear-gradient is already a dependency. */}
             <LinearGradient
-              colors={['#FFFFFF', 'rgba(255,255,255,0)']}
+              // White-to-clear is the DEFINITION of the saturation axis, not
+              // a theme colour. A token here would be one the theme could
+              // change, and changing it would stop the picker being a picker.
+              colors={['#FFFFFF', 'rgba(255,255,255,0)']} // allow-literal-color
               start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }}
               style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} />
             <LinearGradient
-              colors={['rgba(0,0,0,0)', '#000000']}
+              // Clear-to-black is the value axis, for the same reason.
+              colors={['rgba(0,0,0,0)', '#000000']} // allow-literal-color
               start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }}
               style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} />
           </Pressable>

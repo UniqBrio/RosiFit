@@ -219,20 +219,36 @@ identical database rights (see RBAC_MATRIX).
 ---
 
 ### Identity — `index` · `register` · `set-pin` · `forgot-pin` · `change-mobile` · `profile`
-**Last confirmed:** 02-Sep-2026
+**Last confirmed:** 03-Sep-2026
 
 Sign-in by mobile and PIN, first registration, PIN changes, recovery, and the profile screen.
 
 | Capability | Status | Notes |
 |---|---|---|
-| Sign in with mobile + PIN | ◻ | `auth-login`; **currently returns 500 — `PIN_PEPPER` unset** |
+| Sign in with mobile + PIN | ◻ | `auth-login`; **currently returns 500 — `PIN_PEPPER` unset**. One button: Continue always goes to the PIN step |
+| An unknown number reaches registration | ◻ | Decided by the server's answer, not by a public lookup — see the note below |
+| A PIN can be typed, not only tapped | ✅ | Both keypads carry a real field over the boxes, with a caret on the box being filled |
 | Register the academy admin | ◻ | `auth-bootstrap`; **not yet done — `bootstrap_completed` is `false`** |
 | Set or change a PIN | ◻ | One screen, two lives: first PIN after a temporary one, or a self-change from Profile |
 | Recover a forgotten PIN | ◻ | Two security questions, **three attempts, then a 30-minute lockout** |
 | Change your own mobile number | ◻ | Authenticated, verified and audited |
 | PINs never stored readable | ✅ | Column-name guard in `supabase/tests/01_auth.sql` |
 
-**Rules and validations** — recovery answers are collected **up front at registration**, because
+**Rules and validations** — the sign-in screen has **one** button. The canvas looks a number up on
+Continue and jumps straight to registration when it is unknown; against the real project that
+needs a public *"does this number have an account"* endpoint, which is a **staff-enumeration
+oracle** — anyone could dial numbers until one came back registered. `auth-login` is built the
+other way round: an unknown number and a wrong PIN answer **identically** once the academy exists,
+and the one case it will name is the global fact that nobody has registered at all. So Continue
+always moves to the PIN step and the **server** picks the destination on the answer — the
+bootstrap refusal routes to `register` with the number carried across, every other failure stays
+put with its message. The predicate that reads that answer is `src/data/signin.ts`
+(`needsRegistration`), tested rather than inlined: too eager and a member who mistyped her PIN
+registers a second academy; too strict and the first admin is stranded on a PIN screen no PIN can
+pass. A pasted number keeps its country code, so `groupPhone` drops a leading `91` or `0` — but
+only when the input is longer than ten digits, since `91234 56789` is a real number.
+
+Recovery answers are collected **up front at registration**, because
 they are the only way a reset works later without a phone call. Every terminal state says plainly
 what has and has **not** happened: a lockout that leaves someone wondering whether their PIN
 changed is worse than the lockout itself. Changing the mobile number is cheap and safe because the

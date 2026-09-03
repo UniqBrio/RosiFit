@@ -1,3 +1,27 @@
+FAIL-FIRST: src/data/signin.test.ts - the spec failed on its FIRST run, against my own first
+cut of groupPhone. That version stripped non-digits and took the first ten, so a number pasted
+whole from a contact card -- "+91 80563 29742", beside a field already labelled +91 -- shifted
+two places and became "91805 63297". A plausible ten-digit number belonging to nobody, with
+nothing on screen to say it was wrong.
+
+    not ok 4 - punctuation and spaces are dropped, never counted
+      error: |-
+        Expected values to be strictly equal:
+        + actual - expected
+        + '91805 63297'
+        - '80563 29742'
+
+Captured verbatim in .evidence/signin-fail-first.txt. The fix strips a leading 91 or 0 only when
+the input is LONGER than ten digits, so '91234 56789' -- a real number that begins 91 -- keeps
+all ten. Both halves of that are asserted, because stripping unconditionally would have eaten
+two of somebody's real digits and passed the original case.
+
+NOT OBSERVED FAILING: needsRegistration - the routing predicate was written after the defect
+above and every case passed on its first run. Its negative cases are the substance: auth-login's
+generic refusal, a lockout, a disabled account and a network error must all NOT route to
+registration, since treating the generic refusal as "unknown number" would rebuild the
+enumeration oracle the function is built to deny.
+
 FAIL-FIRST: src/data/message.test.ts - run against a SINGLE-brace filler, which is the defect
 the course form's preview caught the first time it rendered. The stored templates use
 {{double_brace}} tokens because that is what send-followups/index.ts renders; a single-brace
@@ -39,6 +63,46 @@ not a defect being caught, and it is recorded as the weaker thing it is.
 new table's grants are asserted in 15_course_communication.sql instead, because test files are
 append-only and repairing the whitelist means editing an existing spec. Worth the repo owner's
 decision rather than mine.
+
+---
+
+## Gate run - 2026-09-03 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
