@@ -26,21 +26,18 @@ function Nav() {
         {/* The canvas presents Add/Edit Course as a DIALOG over the
             Attendance workspace, not as a page you travel to. */}
         <Stack.Screen name="course/edit"   options={{ presentation: 'modal', headerShown: false }} />
-        <Stack.Screen name="course/rules"  options={{ title: 'Follow-up rules' }} />
         <Stack.Screen name="offering/edit" options={{ title: 'Where and when' }} />
         <Stack.Screen name="member/[id]"   options={{ title: 'Member' }} />
         <Stack.Screen name="member/edit"   options={{ title: 'Member' }} />
         <Stack.Screen name="holiday"       options={{ title: 'Add holiday' }} />
         <Stack.Screen name="branches"      options={{ title: 'Branches' }} />
-        <Stack.Screen name="templates"     options={{ title: 'Templates' }} />
         <Stack.Screen name="staff/index"   options={{ title: 'Staff & access' }} />
         <Stack.Screen name="staff/add"     options={{ title: 'Add staff' }} />
         {/* the PIN is shown once and only here; there is no way back to it */}
         <Stack.Screen name="staff/pin"     options={{ title: 'PIN issued', headerBackVisible: false }} />
         <Stack.Screen name="audit"         options={{ title: 'Audit log' }} />
         <Stack.Screen name="change-mobile" options={{ title: 'Mobile number' }} />
-        <Stack.Screen name="send/index"    options={{ title: 'Send' }} />
-        <Stack.Screen name="send/review"   options={{ title: 'Review & send' }} />
+        <Stack.Screen name="send/index"    options={{ headerShown: false }} />
         <Stack.Screen name="send/result"   options={{ title: 'Result' }} />
         <Stack.Screen name="match"         options={{ title: 'Match review' }} />
         <Stack.Screen name="appearance"    options={{ title: 'Appearance' }} />

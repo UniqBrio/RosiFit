@@ -343,16 +343,6 @@ export default function Courses() {
                 </View>
               </View>
 
-              <Muted style={{ marginTop: SPACE.sm }}>
-                {rule ? ruleSentence(rule, c.name)
-                  : rules ? ruleSentence(rules.global, c.name) : ''}
-                {rule ? '' : ' (academy default)'}
-              </Muted>
-              <Pressable onPress={() => router.push({ pathname: '/course/rules', params: { id: c.id } })}
-                accessibilityRole="button" accessibilityLabel={`Follow-up rules for ${c.name}`}
-                style={{ marginTop: 6, minHeight: TAP_MIN / 2 }}>
-                <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.accentInk }}>Follow-up rules</Text>
-              </Pressable>
             </View>
           );
         })}

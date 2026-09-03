@@ -57,6 +57,30 @@ export const attendancePct = (m: Member): number | null =>
  * expected, not 2 missed. Drop the segment and she is indistinguishable from
  * a 6-day member who skipped twice.
  */
+/**
+ * Who a follow-up actually reaches, and who it cannot.
+ *
+ * The send draft has no per-member selection: the recipients ARE the flagged
+ * set. So this split is the whole decision the screen presents, and C-76 is
+ * the rule it enforces -- a member with no address is EXCLUDED and NAMED,
+ * never quietly dropped from a list that then reads as complete.
+ *
+ * Both halves come from ONE input, so the two counts cannot be a query apart
+ * and the draft cannot claim to reach somebody it will skip.
+ */
+export function recipientSplit(flagged: Member[]):
+  { recipients: Member[]; excluded: Member[] } {
+  // Written out rather than imported from mock's hasEmail: mock imports
+  // isEligible and attendancePct FROM this file, so a value import back would
+  // close a require cycle and mock's module body -- which calls both at load
+  // -- would run before they exist. Type imports are erased and are fine.
+  const reachable = (m: Member) => m.emails.some(e => e.address.trim() !== '');
+  return {
+    recipients: flagged.filter(reachable),
+    excluded: flagged.filter(m => !reachable(m)),
+  };
+}
+
 export const FULL_WEEK_SESSIONS = 6;
 
 export function distribution(members: Member[], perWeek = FULL_WEEK_SESSIONS):

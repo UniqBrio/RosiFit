@@ -1,3 +1,47 @@
+FAIL-FIRST: src/data/message.test.ts - run against a SINGLE-brace filler, which is the defect
+the course form's preview caught the first time it rendered. The stored templates use
+{{double_brace}} tokens because that is what send-followups/index.ts renders; a single-brace
+filler matched the INNER braces and turned "{{first_name}}" into "{Divya}", then flagged five of
+the seeded template's own tokens as unknown.
+
+    not ok 2  - the name splits to a first name
+    not ok 3  - the figures are the member's own
+    not ok 4  - attendance is a percentage of what was EXPECTED
+    not ok 5  - nothing expected is an em dash, never 0%
+    not ok 8  - a value containing a token is not substituted again
+    not ok 9  - the same token repeated is filled every time
+    not ok 13 - SINGLE braces are not tokens - the sender only reads double
+    # pass 7  # fail 7
+
+FAIL-FIRST: src/data/recipients.test.ts - run with the exclusion half dropped, which is the
+C-76 defect in its purest form: a draft that lists only who it WILL reach reads as complete
+while it silently skips somebody the rule named.
+
+    not ok 2 - a member with NO address is excluded and kept, not dropped
+    not ok 3 - the two halves account for EVERY flagged member
+    # pass 5  # fail 2
+
+Writing that spec also surfaced a require cycle the typechecker could not see: importing mock's
+hasEmail as a VALUE into followup.ts closed a loop -- mock imports isEligible and attendancePct
+from followup and calls both in its module body, so it ran before they existed and threw at
+load. Type imports are erased, which is why the cycle had never bitten. Both revert clean:
+156/156.
+
+NOT OBSERVED FAILING: supabase/tests/15_course_communication.sql (17 assertions) and
+16_save_course.sql (18) are new against migrations that did not exist before them, so there is
+no prior implementation to observe failing. They were written against the running harness and
+each was seen to fail while being written -- the type mismatch on sessions_per_week and the
+`set local` outside a transaction both showed up that way -- but that is a spec being corrected,
+not a defect being caught, and it is recorded as the weaker thing it is.
+
+09_grants.sql now fails in a THIRD way, and this one is caused here: it is a whitelist scoped to
+"0002-0010" and course_communication (0021) is outside it, so the table reads as want[none]. The
+new table's grants are asserted in 15_course_communication.sql instead, because test files are
+append-only and repairing the whitelist means editing an existing spec. Worth the repo owner's
+decision rather than mine.
+
+---
+
 FAIL-FIRST: src/data/course.test.ts - the two defects this spec exists to hold were injected
 and observed. Counting a member with no address as needing follow-up, and letting the follow-up
 sentence outrank "no weekdays":
@@ -30,6 +74,46 @@ specs of their own -- they are layout, and this repository has no renderer in it
 Both were verified by SCREENSHOT in a browser instead, in both themes, against the design
 prototype driven side by side. That is weaker than a spec and is recorded as such rather than
 counted as green.
+
+---
+
+## Gate run - 2026-09-03 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

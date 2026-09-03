@@ -286,7 +286,7 @@ export default function CourseDetail() {
           </Text>
 
           <Pressable testID="course-send"
-            onPress={() => router.push('/send')}
+            onPress={() => router.push({ pathname: '/send', params: { id } })}
             accessibilityRole="button"
             accessibilityLabel={`Send communication for ${course.name}`}
             style={({ pressed }) => ({
@@ -563,7 +563,7 @@ export default function CourseDetail() {
                 go: () => router.push('/(tabs)/weekly'), testID: 'course-action-weekly' },
               { icon: 'send', label: 'Send Communication', ink: okInk,
                 note: rule ? ruleSentence(rule, course.name) : 'Uses the stored template',
-                go: () => router.push('/send'), testID: 'course-action-send' },
+                go: () => router.push({ pathname: '/send', params: { id } }), testID: 'course-action-send' },
             ].map(a => (
               <Pressable key={a.label} testID={a.testID} onPress={a.go}
                 accessibilityRole="button" accessibilityLabel={`${a.label}. ${a.note}`}

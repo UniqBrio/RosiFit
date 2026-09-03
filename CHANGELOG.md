@@ -1,5 +1,57 @@
 # Changelog
 
+## Unreleased — a course decides its own message
+
+The canvas moves a course's sender, template, wording and follow-up trigger
+INTO the course form, and says so in its own caption: *"A course's message
+wording, sender and follow-up rule are edited in the course form itself —
+there is no separate Message Templates or Follow-up Rules screen in
+settings."* Nothing in the schema could hold most of it.
+
+**0021** adds `course_communication` — a course's sender, the template it is
+based on, and wording that is NULL while the course still uses the
+template's — plus `effective_course_message()`, the one resolver the form's
+preview, the read-only send draft and the batch all read.
+
+**This is not a free-form send path.** Guardrail 5 and C-68 both hold: the
+wording is authored against the COURSE, in advance, as a row. `send-followups`
+still takes a `template_id` and `email_batches` still snapshots what it sent.
+A person can change what a course will say *next* time; nobody can change
+what this batch says while sending it.
+
+**0022** `save_course` does the whole dialog as one transaction. Seven fields
+land in five tables and `offering_schedules` has no direct write policy at
+all, so a client-side sequence that failed half way would leave a course with
+no offering, or an offering with no schedule — expected at no session, in no
+follow-up list, counted by nobody. That is RC-008's shape one level up.
+
+**The send flow is one read-only draft per course.** No template picker, no
+per-member checkboxes. The recipients ARE the follow-up list; ticking a subset
+made the rule advisory, and nothing recorded who was skipped or why. Now the
+rule decides and the exclusions are listed by name (C-76).
+
+**Deleted:** `app/templates.tsx`, `app/course/rules.tsx`, `app/send/review.tsx`.
+The course form also loses start/end time, fee, short code, offerings-as-
+schedule and the tap-to-insert token row.
+
+**Two defects caught while building it.** The stored templates use
+`{{double_brace}}` tokens — that is what the Edge Function renders — and the
+first preview filler assumed single braces, turning `{{first_name}}` into
+`{Divya}`. And extracting the recipient split closed a require cycle the
+typechecker could not see, because the imports that had hidden it were
+type-only.
+
+**Known consequence:** `09_grants.sql` now fails a third way. It is a
+whitelist scoped to "0002–0010" and cannot know about a table added by 0021.
+The new grants are asserted in the new spec instead, since test files are
+append-only.
+
+**Still outstanding:** the Appearance rebuild (saturation/value field, the
+numbered third section, the live app-preview card), the sign-in
+single-button lookup, and the course-detail cleanups.
+
+---
+
 ## Unreleased — the shell the canvas actually draws
 
 The previous pass built the canvas' new SCREENS and missed its NAVIGATION.
