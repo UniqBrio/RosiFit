@@ -263,7 +263,7 @@ secret that has not been set; until it is, every auth function returns 500 and t
 ---
 
 ### Settings and support — `(tabs)/more` · `appearance` · `templates` · `audit` · `help`
-**Last confirmed:** 02-Sep-2026
+**Last confirmed:** 03-Sep-2026
 
 | Capability | Status | Notes |
 |---|---|---|
@@ -271,12 +271,29 @@ secret that has not been set; until it is, every auth function returns 500 and t
 | Custom accent colour, any hue | ✅ | **All 360 hues measured at ≥4.5:1 in both themes** — `scripts/check-contrast.ts`, 2,800 pairs |
 | Edit email templates | ◻ | The only place message wording changes; editing or toggling one is audited |
 | Audit log | ◻ | Admin-only (`audit_logs_read`); redacted by `audit_redact()` |
+| Every entry names who did it | ◻ | `audit_log_as` (0023) — see the note below and RC-011 |
 | Help | ◻ | |
 
 **Rules and validations** — templates are the only way anything reaches a member. The audit log is
 readable by the academy admin only, because it records staff actions.
 
-**Limits** — the audit log is read-only and cannot be exported.
+Every entry **names its actor**. Writes the app makes directly are attributed by the row triggers,
+which run as `authenticated` and can read `auth.uid()`. Writes made through an Edge Function run
+on the service-role client where `auth.uid()` is null, so those call `audit_log_as(p_actor, …)`
+with the caller they already authenticated — `communication.batch_sent`, both `csv_import` paths
+and every match decision inside `commit_csv_import`, and the staff PIN entries. `audit_log_as` is
+granted to `service_role` **only**: naming your own actor is forging a signature, and a client
+that could pass `p_actor` could write an entry blaming somebody else into a table that cannot be
+corrected. It raises on a null actor rather than falling back to an unattributed entry.
+
+The exception is deliberate: sign-in, first registration and PIN recovery run **before** a session
+exists, so they keep `audit_log()` and record no actor. Nobody has proved who they are yet, and
+naming the account an attempt was aimed at would record her as having done something she may know
+nothing about.
+
+**Limits** — the audit log is read-only and cannot be exported. The attribution above is applied
+to the local harness and present in the repository; **the live project still records "System" for
+Edge Function actions until 0023 and the functions are deployed** (RC-011).
 
 **Benefit** — the academy picks its own colour and it is *guaranteed* readable, rather than
 guaranteed only on the designer's monitor.

@@ -172,7 +172,12 @@ async function preview(admin: SupabaseClient, actorId: string, body: Record<stri
   }).select('id').single();
   if (insErr || !inserted) throw new HttpError(500, 'Could not stage this import.');
 
-  await admin.rpc('audit_log', {
+  // audit_log_as, not audit_log: this runs on the SERVICE-ROLE client, where
+  // auth.uid() is null, so audit_log() would write a null actor and the audit
+  // screen would say "System" for an upload a named person made. actorId is
+  // already verified above -- the log was the only place throwing it away.
+  await admin.rpc('audit_log_as', {
+    p_actor: actorId,
     p_action: 'csv_import.previewed', p_entity_type: 'csv_import', p_entity_id: inserted.id,
     p_metadata: { row_count: rawRows.length, dropped: dropped.length, ...counts },
   });

@@ -59,6 +59,65 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-011 — every action taken through an Edge Function was logged as "System"
+**Date:** 03-Sep-2026 · **Severity:** S2 · **Modules:** `supabase/migrations/0004_audit_logs.sql`, `supabase/functions/*`
+
+**Symptom** — the audit log's *Modified by* column said **System** for every communication sent,
+every attendance file uploaded, every match decision taken on an ambiguous row, and every staff
+PIN issued or reset. Only writes the app made directly — a branch added, a member edited, a
+course saved — carried a name.
+
+**Root cause** — `audit_log()` derives its actor from `current_app_user_id()`, which reads
+`auth.uid()`. Every Edge Function calls it on the **service-role** client, where `auth.uid()` is
+null. So the actor column was written NULL and `actor_kind` fell through to `'anon'` — the label
+an *unauthenticated* request carries. In an append-only table that by design cannot be corrected,
+a batch of emails sent by the super admin was indistinguishable from a batch sent by nobody.
+
+The identity was never missing. `send-followups` had `caller.id`, `csv-import` had `actorId`,
+`commit_csv_import` had `p_actor` as a parameter and already wrote it into
+`member_emails.added_by`, `member_aliases.confirmed_by` and `attendance_records`. Four functions
+carried the actor into the data and dropped it on the way to the log.
+
+Reproduced on the harness in one statement: `set local role service_role; select
+public.audit_log('communication.batch_sent','email_batch','b1');` → null actor, kind `anon`.
+
+**Fix** — `0023_audit_actor.sql` adds `audit_log_as(p_actor, ...)`, granted to `service_role`
+**only**, and re-issues `commit_csv_import` so its five decision entries carry `p_actor`. Eleven
+call sites across five functions now name the caller they had already authenticated. 16
+assertions in `supabase/tests/17_audit_actor.sql`.
+
+**Guard** — `audit_log_as` **raises** on a null actor rather than falling back to an unattributed
+entry: a caller that reaches it having lost the identity fails loudly instead of writing "System"
+into a table nobody can correct. It is not granted to `authenticated`, because a client that could
+name its own actor could blame somebody else. Both are asserted, as is the fact that `audit_log()`
+itself is **unchanged** — the old behaviour is pinned so a later edit cannot alter it silently.
+
+**Deliberately not attributed** — the six calls in `auth-login`, `auth-bootstrap` and
+`recovery-check` run *before* a session exists. Nobody has proved who they are, and naming the
+account an attempt was aimed at would record her as having done something she may know nothing
+about. Those keep `audit_log()`, with a comment at each saying why.
+
+**Not fixed here** — the migration and the function changes are in the repository and applied to
+the local harness. **Neither reaches the live project until someone deploys them**, so the live
+audit log still says System.
+
+**Recurrence risk** — high, and quiet. Nothing FAILS when the actor is dropped: the write
+succeeds, the screen renders, and only a column is empty. Every future Edge Function starts from
+a copy of an existing one, so the defect propagates by imitation.
+
+**Prevention** — `rung: scripts/audits/check-audit-attribution.mjs`, wired into `npm run
+audit:all`. A clean gate, not a ratchet: the backlog is zero and there is no honest reason for a
+new unattributed call, which is exactly what a baseline would admit. The three pre-session
+functions are exempt **by name, with their reason written beside them** in the check itself, so
+adding a fourth is a deliberate edit somebody has to justify.
+
+The gate has its own cases — `scripts/audits/check-audit-attribution.test.sh`, which EXECUTES it
+against scratch trees and asserts its **output**, not only its exit code. A gate guarding a silent
+defect is silent when it breaks: one stray character in its regex and it passes everything
+forever, reporting "0 unattributed" about a tree it never read.
+
+---
+
 ## RC-010 — Reports showed figures it had never counted
 **Date:** 03-Sep-2026 · **Severity:** S2 · **Modules:** `app/(tabs)/reports.tsx`, `src/data/report.ts`
 

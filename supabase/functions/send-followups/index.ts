@@ -181,7 +181,12 @@ Deno.serve(async (req) => {
       status: finalStatus, completed_at: new Date().toISOString(),
     }).eq('id', batch.id);
 
-    await admin.rpc('audit_log', {
+    // Attributed (0023). On the service-role client audit_log() records no
+    // actor at all, so every batch this academy has ever sent reads as
+    // "System" -- indistinguishable, in an append-only table, from a batch
+    // sent by nobody. caller was verified at the top of the request.
+    await admin.rpc('audit_log_as', {
+      p_actor: caller.id,
       p_action: 'communication.batch_sent', p_entity_type: 'email_batch', p_entity_id: batch.id,
       p_metadata: { requested: memberIds.length, sent, failed, excluded, provider: provider.name },
     });

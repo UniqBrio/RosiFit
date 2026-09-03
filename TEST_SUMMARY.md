@@ -1,3 +1,167 @@
+FAIL-FIRST: scripts/audits/check-audit-attribution.test.sh - the gate it tests was observed
+failing and passing by hand before the cases were written: reverting send-followups' one call
+site from audit_log_as back to audit_log made `npm run audit:auditactor` exit 1 naming that file,
+and restoring it returned "OK ... 0 unattributed". The cases reproduce exactly that, plus the
+three the hand check could not cover:
+
+  - an auth.* action inside a NON-exempt function is still blocked, so a post-session function
+    cannot borrow the pre-session exemption by naming its action 'auth.something'
+  - the three exempt functions are counted AS exempt rather than folded into the clean count
+  - an EMPTY tree reports "0 attributed" rather than silence
+
+That last one is the reason the file asserts on output and not only on exit codes. A gate that
+guards a silent defect is silent when it breaks: one stray character in its regex and it passes
+everything forever, cheerfully reporting "0 unattributed" about a tree it never read. Exit code 0
+is indistinguishable between "clean" and "scanned nothing".
+
+FAIL-FIRST: supabase/tests/17_audit_actor.sql - observed failing against the tree BEFORE 0023,
+which is the defect itself rather than an injected one. Every assertion naming audit_log_as failed
+with
+
+    ERROR:  function public.audit_log_as(unknown, unknown, unknown, unknown) does not exist
+
+and the two assertions that PIN the old behaviour passed then and pass now, which is the point of
+their being there:
+
+    PASS  audit_log() through service_role still records NO actor -- the defect, unchanged
+    PASS  and still labels it anon, which is what an unauthenticated request would carry (= anon)
+
+The defect was reproduced first, in one statement on the harness, before any code was written:
+
+    begin; set local role service_role;
+    select public.audit_log('communication.batch_sent','email_batch','b1'); commit;
+    -->  actor_app_user_id | actor_kind |          action
+         ------------------+------------+--------------------------
+
+## Gate run - 2026-09-03 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-03 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-03 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+                           | anon       | communication.batch_sent
+
+A null actor with kind 'anon' -- the label an UNAUTHENTICATED request carries -- for a batch of
+emails a named super admin sent. That query is what turned "the spec says attribute actions" into
+a defect with a reproduction.
+
+ALSO OBSERVED, and the reason the fix stops where it does: the same probe run as `authenticated`
+with a JWT claim set records the actor correctly (branch.insert, super_admin, "Client Admin"), so
+the row triggers were never broken and only the service-role path needed the actor passing in.
+
 FAIL-FIRST: src/data/signin.test.ts - the spec failed on its FIRST run, against my own first
 cut of groupPhone. That version stripped non-digits and took the first ten, so a number pasted
 whole from a contact card -- "+91 80563 29742", beside a field already labelled +91 -- shifted
