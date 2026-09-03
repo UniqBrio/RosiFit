@@ -1,3 +1,67 @@
+FAIL-FIRST: src/data/meetCsv.test.ts - observed failing against the parser it replaces. The
+pre-fix parser read `lines[0]` as the header and captured no meta; restoring exactly that
+produced 6 failures from 23, headed by the one that matters:
+
+    not ok 1 - a REAL export with a preamble is read, not refused
+    not ok 2 - the preamble lines are counted, not silently swallowed
+    not ok 4 - a preamble row is never mistaken for a member
+    not ok 5 - the meeting code is captured, because it is the only evidence of WHICH meeting
+    not ok 6 - created and ended times are captured verbatim
+    not ok 8 - an unquoted timestamp split across commas is rejoined, not truncated
+    # pass 17  # fail 6
+
+not ok 1 is the shipped defect, not a hypothetical: a genuine Google Meet export was refused
+with "that file has no Full Name column", so the reader was wrong and the message blamed the
+file. not ok 4 is the one that would have corrupted an import rather than blocking it --
+"Meeting code" read in as a member's name.
+
+FAIL-FIRST: src/theme/hue.test.ts - this spec caught its defect DURING development, and the
+failure was reproduced afterwards by restoring it (taking the modulo before the round instead
+of after):
+
+    not ok 10 - every hue it returns is inside 0..359, which is what the generator takes
+    # pass 9  # fail 1
+
+A red one point off pure has a true hue of 359.765, which rounded UP to 360 -- a position
+check-contrast.ts never measures, because the sweep it verifies is 0..359.
+
+FAIL-FIRST: src/data/report.test.ts - the arithmetic it covers replaced hardcoded arrays, so
+the two defects a re-implementation would most plausibly carry were injected instead: averaging
+each group's member percentages rather than summing expected and attended, and returning 0 for
+a group where nothing was expected. 6 failures from 14:
+
+    not ok 2 - the Courses scope groups and SUMS, it does not average percentages
+    not ok 4 - groups come back in a stable, name-sorted order
+    not ok 5 - nothing expected is null, NEVER zero per cent
+    not ok 6 - a group where nobody was expected is null too
+    not ok 7 - one expected member rescues a group from null
+    not ok 9 - the total of an empty set is null, not a division by zero
+    # pass 8  # fail 6
+
+not ok 5 is the one that misleads a reader of the report: a course with no sessions this month
+and a course everybody skipped are different facts, and 0% states the second about the first.
+
+FAIL-FIRST: src/data/distribution.test.ts - the arithmetic was extracted verbatim from the
+dashboard's render body, so it could not fail as-found; the two defects the spec exists to hold
+were injected instead - dropping the Math.max clamp on `missed`, and dropping the not-expected
+segment. 5 failures from 10:
+
+    not ok 3 - a REDUCED schedule counts as not-expected, never as missed
+    not ok 5 - a reduced schedule AND an absence are counted separately
+    not ok 6 - attending more than expected is an extra, never a negative miss
+    not ok 7 - one extra does not cancel another member's real absence
+    not ok 8 - a member expected at nothing is entirely not-expected
+    # pass 5  # fail 5
+
+not ok 3 is the consequential one: a member on a 4-day override reads as a 6-day member who
+skipped twice, and gets chased for two sessions she was never due at. not ok 7 is the quieter
+one - one member's extra attendance cancelling another's real absence, so the academy's total
+misses are under-reported.
+
+All four specs pass with the injected defects reverted: 113/113 across the suite.
+
+---
+
 GATE VERDICT UNCHANGED BY THIS BRANCH. The run below is FAIL, and was FAIL on main before any
 of this work: "6 pass, 4 fail, 1 blocked" on 2026-09-02 and the same on 2026-09-03. Every one of
 those five is a structural gap in the repo, not a regression from these commits, and each was
