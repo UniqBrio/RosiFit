@@ -23,7 +23,9 @@ function Nav() {
         <Stack.Screen name="set-pin"       options={{ title: 'Your PIN' }} />
         <Stack.Screen name="forgot-pin"    options={{ title: 'Forgot your PIN' }} />
         <Stack.Screen name="course/[id]"   options={{ headerShown: false }} />
-        <Stack.Screen name="course/edit"   options={{ title: 'Course' }} />
+        {/* The canvas presents Add/Edit Course as a DIALOG over the
+            Attendance workspace, not as a page you travel to. */}
+        <Stack.Screen name="course/edit"   options={{ presentation: 'modal', headerShown: false }} />
         <Stack.Screen name="course/rules"  options={{ title: 'Follow-up rules' }} />
         <Stack.Screen name="offering/edit" options={{ title: 'Where and when' }} />
         <Stack.Screen name="member/[id]"   options={{ title: 'Member' }} />

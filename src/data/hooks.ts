@@ -18,7 +18,8 @@ import {
   fetchMembers, fetchRules, fetchCourses, fetchTemplates, fetchStaff, fetchAudit,
   fetchFilterOptions, fetchMonthSessions, fetchPendingSessions, fetchWeekRows,
   fetchAcademy, fetchBranches, fetchOfferings,
-  fetchBranchUsage, onBranchesChanged,
+  fetchBranchUsage, onBranchesChanged, fetchCourseMessage, fetchSenders,
+  type CourseMessage,
   fetchNotifications, type Notification,
   type Branch, type BranchUsage, type OfferingDetail,
   fetchAttendance, onCoursesChanged, onMembersChanged,
@@ -215,6 +216,18 @@ export function useNotifications(forced?: string): Async<Notification[]> {
  * then missing from the list it was added to reads exactly like a save that
  * did nothing.
  */
+/** A course's resolved message: its own wording, or the template's. */
+export function useCourseMessage(courseId: string | null, forced?: string): Async<CourseMessage | null> {
+  return useAsync(
+    () => (courseId ? fetchCourseMessage(courseId) : Promise.resolve(null)),
+    [courseId], forced);
+}
+
+/** The addresses this deployment may send as. */
+export function useSenders(forced?: string): Async<string[]> {
+  return useAsync(() => fetchSenders(), [], forced);
+}
+
 export function useBranchUsage(forced?: string): Async<BranchUsage[]> {
   const [version, setVersion] = useState(0);
   useEffect(() => onBranchesChanged(() => setVersion(v => v + 1)), []);

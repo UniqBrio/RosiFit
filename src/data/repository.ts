@@ -22,7 +22,7 @@ import {
 import {
   MEMBERS, COURSE_LIST, GLOBAL_RULE, COURSE_RULES, TEMPLATES, STAFF, AUDIT,
   BRANCHES, COURSES, MONTH_DAYS, PENDING_SESSIONS, WEEK_ROWS, attendanceFixture,
-  HOLIDAYS, HOLIDAY_PREVIEW,
+  HOLIDAYS, HOLIDAY_PREVIEW, SENDERS, COURSE_MESSAGES,
   type Member, type Course, type FollowUpRule, type Template, type Staff,
   type StaffAccess, type AuditEntry, type SessionDay, type WeekRow,
   type AttendanceRow, type AttendanceStatus, type Holiday,
@@ -753,6 +753,160 @@ export async function fetchTemplates(): Promise<Template[]> {
     icon: 'favorite',
     preview: (t.body_text as string).split('\n').find(Boolean) ?? '',
   }));
+}
+
+/* ------------------------------------------------- a course's own message
+ *
+ * The canvas edits a course's sender, template and exact wording INSIDE the
+ * course form. 0021 stores it; effective_course_message() resolves it -- the
+ * course's words where it has any, the template's where it has not.
+ *
+ * ONE resolver, read by the form's preview, the read-only send draft and the
+ * batch alike, for the same reason effective_follow_up_config() exists for
+ * the counting rule: three places deciding what a course says is three places
+ * for them to disagree.
+ */
+
+/** The addresses this deployment may send AS. */
+export async function fetchSenders(): Promise<string[]> {
+  if (!isConfigured) return SENDERS;
+  // The academy's own address is the only one it certainly owns. A from-
+  // address nobody owns bounces every message the course will ever send, so
+  // this is a list to CHOOSE from, never free text.
+  const { data } = await supabase.from('app_settings')
+    .select('reply_to_email').eq('id', 1).maybeSingle();
+  const configured = (data?.reply_to_email as string | null) ?? null;
+  return configured ? [configured, ...SENDERS.filter(x => x !== configured)] : SENDERS;
+}
+
+export type CourseMessage = {
+  /** 'course' = its own wording, 'template' = the one it names, 'default' = neither chosen yet */
+  source: 'course' | 'template' | 'default';
+  from_email: string | null;
+  template_id: string;
+  template_name: string;
+  subject: string;
+  body: string;
+};
+
+export async function fetchCourseMessage(courseId: string): Promise<CourseMessage> {
+  if (!isConfigured) {
+    const local = COURSE_MESSAGES[courseId];
+    const template = TEMPLATES.find(t => t.id === local?.template_id) ?? TEMPLATES[0];
+    return {
+      source: local?.subject || local?.body ? 'course' : local ? 'template' : 'default',
+      from_email: local?.from_email ?? null,
+      template_id: template.id,
+      template_name: template.name,
+      subject: local?.subject || template.subject,
+      body: local?.body || template.body,
+    };
+  }
+
+  const { data, error } = await supabase.rpc('effective_course_message', { p_course_id: courseId });
+  if (error) fail("Could not load this course's message", error);
+  const row = (data ?? [])[0] as {
+    source: string; from_email: string | null; template_id: string;
+    template_name: string; subject: string; body_text: string;
+  } | undefined;
+  if (!row) {
+    // No default template configured at all. Saying so beats an empty form
+    // that looks like a course with nothing to say.
+    throw new Error('No message template is configured, so a course has no wording to start from.');
+  }
+  return {
+    source: row.source as CourseMessage['source'],
+    from_email: row.from_email,
+    template_id: row.template_id,
+    template_name: row.template_name,
+    subject: row.subject,
+    body: row.body_text,
+  };
+}
+
+export type SaveCourseInput = {
+  /** null creates; an id edits that course in place */
+  id: string | null;
+  name: string;
+  branch_id: string;
+  /** 1 = Monday .. 7 = Sunday. At least one, or nothing is expected of anyone. */
+  weekdays: number[];
+  rule: 'week' | 'consec';
+  from_email: string;
+  template_id: string;
+  /** empty means "use the template's" -- stored as NULL, which is what lets
+   *  Reset work and stops an untouched course holding a stale copy */
+  subject: string;
+  body: string;
+};
+
+function courseSaveError(error: { code?: string; message?: string } | null): string {
+  const code = error?.code ?? '';
+  const message = error?.message ?? '';
+  if (code === '42501' || /only the super admin|row-level security/i.test(message)) {
+    return 'Only the super admin can add or change a course, and only while the subscription is active. Nothing has been saved.';
+  }
+  if (/at least one frequency day/.test(message)) {
+    return 'A course needs at least one frequency day, or nothing is expected of anyone. Nothing has been saved.';
+  }
+  if (code === '23505' || /courses_name_live/.test(message)) {
+    return 'A course with this name already exists. Nothing has been saved.';
+  }
+  if (/completed session/.test(message)) {
+    // set_offering_schedule's own refusal, which names the date -- more use
+    // than a sentence written here that has to guess at it.
+    return `${message}. Nothing has been saved.`;
+  }
+  return `${message || 'The course could not be saved'}. Nothing has been saved.`;
+}
+
+/**
+ * The whole Add/Edit Course dialog, as ONE call.
+ *
+ * Seven fields land in five tables and offering_schedules has no direct write
+ * policy at all, so this goes through save_course (0022) rather than being
+ * sequenced here. A failure half way through a client-side sequence leaves a
+ * course with no offering, or an offering with no schedule -- expected at no
+ * session, in no follow-up list, counted by nobody.
+ */
+export async function saveCourse(input: SaveCourseInput): Promise<{ id: string; created: boolean }> {
+  if (!isConfigured) {
+    const existing = input.id ? COURSE_LIST.find(c => c.id === input.id) : undefined;
+    const id = existing?.id ?? `local-${Date.now()}`;
+    const branch = BRANCHES.find(b => `local-branch-${b.toLowerCase()}` === input.branch_id)
+      ?? input.branch_id;
+    const course: Course = {
+      id, name: input.name,
+      start_time: null, end_time: null, frequency: input.weekdays.length,
+      offerings: [{ id: `local-offering-${id}`, branch, weekdays: [...input.weekdays].sort() }],
+    };
+    if (existing) Object.assign(existing, course); else COURSE_LIST.push(course);
+    COURSE_MESSAGES[id] = {
+      from_email: input.from_email, template_id: input.template_id,
+      subject: input.subject.trim(), body: input.body.trim(),
+    };
+    coursesChanged();
+    return { id, created: !existing };
+  }
+
+  const { data, error } = await supabase.rpc('save_course', {
+    p_name: input.name.trim(),
+    p_branch_id: input.branch_id,
+    p_weekdays: [...new Set(input.weekdays)].sort((a, b) => a - b),
+    p_rule: input.rule,
+    p_from_email: input.from_email,
+    p_template_id: input.template_id,
+    p_subject: input.subject.trim() || null,
+    p_body_text: input.body.trim() || null,
+    p_course_id: input.id,
+  });
+  if (error) {
+    console.error('saveCourse:', error.message);
+    throw new Error(courseSaveError(error));
+  }
+  coursesChanged();
+  const result = data as { course_id: string; created: boolean };
+  return { id: result.course_id, created: result.created };
 }
 
 /**

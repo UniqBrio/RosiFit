@@ -149,6 +149,26 @@ export const BRANCHES = ['All branches', 'Coimbatore', 'Madurai', 'Chennai'];
 export const COURSES  = ['All courses', 'Prenatal Flow', 'Postnatal Core', 'Trimester 3 Gentle', 'Pelvic Floor Foundations'];
 export const SUPPORT_PHONE = '9994871158';
 
+/**
+ * The addresses the academy may send AS.
+ *
+ * A list to choose from, never free text: a from-address nobody owns bounces
+ * every message the course will ever send. Live, the academy's own configured
+ * address leads this list (fetchSenders).
+ */
+export const SENDERS = ['support@rosifit.com', 'support@ravisfit.com'];
+
+/**
+ * A course's own sender, template and wording, offline.
+ *
+ * Keyed by course id. An ABSENT entry means the course has never been
+ * configured and falls back to the default template -- which is not the same
+ * as an entry with empty wording, and the two must stay distinguishable or
+ * "Reset to template" has nothing to mean.
+ */
+export const COURSE_MESSAGES: Record<string,
+  { from_email: string; template_id: string; subject: string; body: string }> = {};
+
 // ---------------------------------------------------------------- courses
 export type Course = {
   id: string; name: string;
