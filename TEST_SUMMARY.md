@@ -1,3 +1,38 @@
+FAIL-FIRST: src/data/course.test.ts - the two defects this spec exists to hold were injected
+and observed. Counting a member with no address as needing follow-up, and letting the follow-up
+sentence outrank "no weekdays":
+
+    not ok 5 - a member with NO ADDRESS is never counted as needing follow-up
+    not ok 9 - NO WEEKDAYS outranks the follow-up sentence entirely
+    # pass 12  # fail 2
+
+not ok 5 is C-76: she is over the threshold and cannot be emailed, so counting her promises a
+send with nowhere to go. not ok 9 is the worse one -- a course with no weekdays expects nothing
+of anyone, so no absence can be counted and it sits outside the engine entirely; reporting
+"nobody needs follow-up" there is true and deeply misleading. Both revert to 14/14.
+
+FAIL-FIRST: src/data/report.test.ts (bar geometry) - run against the naive implementation the
+cases exist to rule out: every bar filling the track, and a count written into every segment
+however narrow.
+
+    not ok 16 - the bar LENGTH is the scheduled count, which is what its legend claims
+    not ok 17 - the split inside a bar is that row's attendance
+    not ok 20 - a count is written inside a segment only when it fits
+    not ok 22 - the widest row fills the track exactly, never overflows it
+    # pass 18  # fail 4
+
+not ok 16 is the one the legend promises out loud: "Bar length = sessions scheduled". A full-
+width bar per row makes a 4-session course look like a 40-session one, which is the whole
+comparison the screen exists for. Reverted, 22/22.
+
+NOT OBSERVED FAILING: the shell's two-tab row and the Attendance workspace card carry no unit
+specs of their own -- they are layout, and this repository has no renderer in its test program.
+Both were verified by SCREENSHOT in a browser instead, in both themes, against the design
+prototype driven side by side. That is weaker than a spec and is recorded as such rather than
+counted as green.
+
+---
+
 FAIL-FIRST: src/data/meetCsv.test.ts - observed failing against the parser it replaces. The
 pre-fix parser read `lines[0]` as the header and captured no meta; restoring exactly that
 produced 6 failures from 23, headed by the one that matters:
@@ -59,6 +94,46 @@ one - one member's extra attendance cancelling another's real absence, so the ac
 misses are under-reported.
 
 All four specs pass with the injected defects reverted: 113/113 across the suite.
+
+---
+
+## Gate run - 2026-09-03 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
