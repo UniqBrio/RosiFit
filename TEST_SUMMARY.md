@@ -1,3 +1,47 @@
+GATE VERDICT UNCHANGED BY THIS BRANCH. The run below is FAIL, and was FAIL on main before any
+of this work: "6 pass, 4 fail, 1 blocked" on 2026-09-02 and the same on 2026-09-03. Every one of
+those five is a structural gap in the repo, not a regression from these commits, and each was
+checked rather than assumed:
+
+  * G1/G2/G3 (theme artifacts, tokens in sync, theme assets per theme) - all three open
+    design/tokens.json, which has NEVER been committed: `git log --all -- design/tokens.json`
+    returns nothing. The 2026-09-02 run failed the same way, with a Windows path in the error.
+  * G6 (Lint) - BLOCKED. eslint is not a dependency; `grep -c eslint package.json` is 0. The
+    gate refuses to fetch it from the registry on purpose, so this class stays unverified.
+  * G8 (Functional / integration) - runs `npm run test:functional`, which is not a script in
+    package.json ("Missing script"). Nothing to execute, so nothing can pass.
+
+What this branch DID verify, on this machine:
+  * npm run check green - 113 unit assertions (57 added here), 2836/2836 contrast pairs,
+    75/75 canvas icons.
+  * npm run audit:all clean, with three ratchets PAID DOWN rather than baselined:
+    hardcoded colours 13 -> 11 in app/, test ids 26 -> 24 in app/.
+  * bash db/harness/test.sh - Postgres 16 IS available in this session, so the DB harness ran
+    for the first time (TD-010's remaining half is closed on this machine). 215 assertions pass.
+    0019 and 0020 both apply cleanly, and the two specs added here pass in full:
+    13_branch_add_remove.sql 11/11 and 14_delete_course.sql 16/16.
+
+    TWO specs fail, and BOTH are pre-existing. Proved rather than assumed: with 0019, 0020,
+    13_* and 14_* moved out of the tree, the harness fails identically, at the same line
+    numbers, on main's schema alone.
+      - 09_grants.sql - "authenticated holds exactly the table privileges 0002-0010 intended"
+        wants holidays [INSERT,SELECT,UPDATE] and gets [DELETE,INSERT,SELECT,UPDATE]. 0017
+        added that DELETE grant deliberately, so the SPEC is stale against a later migration.
+        Neither is touched here: test files are append-only, and 0017 is applied.
+      - 11_holiday_delete.sql - errors at its own setup, before any assertion runs
+        ("duplicate key value violates unique constraint sessions_unique_live").
+  * Every screen changed was driven in a real browser in BOTH themes: the simplified dashboard,
+    the courses branch filter, the reports export (downloaded and its CSV content read), the
+    upload session map against three real Meet-shaped files, and all four hex-input paths.
+
+One earlier claim in this session was WRONG and is corrected here: a low-contrast reading of
+1.12:1 on stack screen titles in dark mode was an artefact of a verification script walking up
+to an ancestor container instead of the painted header. Pixel sampling of the header shows
+#0C0409 in dark and #FBF8FA in light, identical with and without a change I had begun making,
+so app/_layout.tsx was left exactly as it was. There was no contrast defect.
+
+---
+
 FAIL-FIRST: src/data/schedule.test.ts - observed failing against the implementation it replaces
 before it was trusted. The two call sites in repository.ts each carried their own inline copy of
 the schedule-window arithmetic; both were re-injected into src/data/schedule.ts - `effective_to
@@ -26,6 +70,46 @@ and 11_holiday_delete.sql from the parallel sessions.
 is absent from it, confirmed by a read-only PostgREST probe from a parallel session. Applying it
 is the repo owner's decision, and CLAUDE.md's rule stands: the live Supabase project is never an
 automated target without explicit instruction.
+
+---
+
+## Gate run - 2026-09-03 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
