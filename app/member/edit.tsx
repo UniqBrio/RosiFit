@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, TextInput, ScrollView } from 'react-native';
+import { View, Text, Pressable, TextInput } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Muted, Label, Button } from '../../src/components/ui';
 import { Field } from '../../src/components/Field';
@@ -7,6 +7,7 @@ import { DateField } from '../../src/components/DateTimePicker';
 import { iso } from '../../src/data/period';
 import { Icon } from '../../src/components/Icon';
 import { SearchPicker } from '../../src/components/Sheet';
+import { FormDialog } from '../../src/components/FormDialog';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../../src/theme/tokens';
@@ -177,31 +178,40 @@ export default function MemberEdit() {
       : `${course} · ${branch}${emails.length ? '' : ' · no email, she will be excluded from sends'}`;
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <View style={{
-        flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
-        paddingHorizontal: SPACE.lg, paddingTop: SPACE.lg, paddingBottom: SPACE.md,
-        borderBottomWidth: 1, borderBottomColor: theme.line,
-      }}>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 19, fontWeight: '800', color: theme.fgStrong }}>{title}</Text>
-          <Text numberOfLines={1} style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>
-            {subtitle}
-          </Text>
-        </View>
-        <Pressable testID="member-close" onPress={() => router.back()}
-          accessibilityRole="button" accessibilityLabel="Close without saving"
-          style={({ pressed }) => ({
-            width: 38, height: 38, borderRadius: RADIUS.md,
-            alignItems: 'center', justifyContent: 'center',
-            backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
-            opacity: pressed ? 0.7 : 1,
-          })}>
-          <Icon name="close" size={20} color={theme.fgStrong} />
-        </Pressable>
-      </View>
-
-      <ScrollView contentContainerStyle={{ padding: SPACE.lg, paddingBottom: 40 }}>
+    <FormDialog
+      title={title} subtitle={subtitle}
+      closeTestID="member-close" cancelTestID="member-cancel"
+      confirmTestID={existing ? 'member-save' : 'member-add'}
+      confirmLabel={existing ? 'Save Changes' : saving ? 'Adding…' : 'Add Member'}
+      onConfirm={() => { if (!existing) void save(); }}
+      confirmDisabled={!!existing || !valid || saving}
+      hint={hint}
+      overlays={<>
+        <SearchPicker open={picker === 'course'} onClose={() => setPicker(null)}
+        title="Choose a course" placeholder="Search courses"
+        options={courseList.map(c => ({
+          label: c.name,
+          meta: c.offerings.length ? `${c.offerings.length} branch${c.offerings.length > 1 ? 'es' : ''}` : 'no branch yet',
+        }))}
+        value={course}
+        emptyNote="No course has been added yet. A member joins a course at a branch, so add the course first."
+        onSelect={l => {
+          setCourse(l);
+          // her branch and her days both belong to the OLD course; keeping
+          // either would enrol her into an offering she was never shown
+          setBranch('');
+          setDays([]);
+          setPicker(null);
+        }} />
+      <SearchPicker open={picker === 'branch'} onClose={() => setPicker(null)}
+        title="Choose a branch" placeholder="Search branches"
+        options={branchOptions.map(label => ({ label }))} value={branch}
+        emptyNote={course
+          ? `${course} does not run at any branch yet. Add an offering for it and she can join there.`
+          : 'Choose her course first — the branches are the ones that course runs at.'}
+        onSelect={l => { setBranch(l); setDays([]); setPicker(null); }} />
+      </>}
+    >
       <Field label="Her name" value={name} onChange={setName} placeholder="e.g. Anitha Rajesh" />
 
       <Label>Course</Label>
@@ -393,49 +403,7 @@ export default function MemberEdit() {
           </Muted>
         </View>
       ) : null}
-      </ScrollView>
-
-      {/* Pinned, so the way out and the way on are both reachable without
-          scrolling past a form that grows with every alias and address. */}
-      <View style={{
-        padding: SPACE.lg, borderTopWidth: 1, borderTopColor: theme.line,
-        backgroundColor: theme.shell,
-      }}>
-        <View style={{ flexDirection: 'row', gap: SPACE.md }}>
-          <Button testID="member-cancel" label="Cancel" variant="secondary"
-            onPress={() => router.back()} style={{ flex: 1 }} />
-          <Button testID={existing ? 'member-save' : 'member-add'}
-            label={existing ? 'Save Changes' : saving ? 'Adding…' : 'Add Member'}
-            onPress={() => { if (!existing) void save(); }}
-            disabled={!!existing || !valid || saving} style={{ flex: 1 }} />
-        </View>
-        <Muted style={{ marginTop: 9, textAlign: 'center' }}>{hint}</Muted>
-      </View>
-
-      <SearchPicker open={picker === 'course'} onClose={() => setPicker(null)}
-        title="Choose a course" placeholder="Search courses"
-        options={courseList.map(c => ({
-          label: c.name,
-          meta: c.offerings.length ? `${c.offerings.length} branch${c.offerings.length > 1 ? 'es' : ''}` : 'no branch yet',
-        }))}
-        value={course}
-        emptyNote="No course has been added yet. A member joins a course at a branch, so add the course first."
-        onSelect={l => {
-          setCourse(l);
-          // her branch and her days both belong to the OLD course; keeping
-          // either would enrol her into an offering she was never shown
-          setBranch('');
-          setDays([]);
-          setPicker(null);
-        }} />
-      <SearchPicker open={picker === 'branch'} onClose={() => setPicker(null)}
-        title="Choose a branch" placeholder="Search branches"
-        options={branchOptions.map(label => ({ label }))} value={branch}
-        emptyNote={course
-          ? `${course} does not run at any branch yet. Add an offering for it and she can join there.`
-          : 'Choose her course first — the branches are the ones that course runs at.'}
-        onSelect={l => { setBranch(l); setDays([]); setPicker(null); }} />
-    </View>
+    </FormDialog>
   );
 }
 

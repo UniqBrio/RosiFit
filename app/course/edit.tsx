@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { View, Text, Pressable, TextInput, ScrollView } from 'react-native';
+import { View, Text, Pressable, TextInput } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Muted, Label, Button, Skeleton, ErrorState } from '../../src/components/ui';
+import { Muted, Label, Skeleton, ErrorState } from '../../src/components/ui';
 import { Field } from '../../src/components/Field';
+import { FormDialog } from '../../src/components/FormDialog';
 import { Icon } from '../../src/components/Icon';
 import { DropdownRow, DropdownField, DropdownPanel, DropdownList } from '../../src/components/Dropdown';
 import { useTheme } from '../../src/theme/ThemeProvider';
@@ -168,46 +169,24 @@ export default function CourseEdit() {
     : `${branch?.name ?? '—'} · ${days.length}/week · ${rule === 'week' ? '4 weekly' : '4 consecutive'}`;
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      {/* The canvas presents this as a DIALOG over the workspace, so it keeps
-          a title, a subtitle naming what it decides, and a ✕ that leaves
-          without saving. `presentation: 'modal'` in the layout does the rest. */}
-      <View style={{
-        flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
-        paddingHorizontal: SPACE.lg, paddingTop: SPACE.lg, paddingBottom: SPACE.md,
-        borderBottomWidth: 1, borderBottomColor: theme.line,
-      }}>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 19, fontWeight: '800', color: theme.fgStrong }}>
-            {editing ? 'Edit course' : 'Add a course'}
-          </Text>
-          <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>
-            {editing ? (course?.name ?? '') : 'Name, days, sender and template'}
-          </Text>
-        </View>
-        <Pressable testID="course-close" onPress={() => router.back()}
-          accessibilityRole="button" accessibilityLabel="Close without saving"
-          style={({ pressed }) => ({
-            width: 38, height: 38, borderRadius: RADIUS.md,
-            alignItems: 'center', justifyContent: 'center',
-            backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
-            opacity: pressed ? 0.7 : 1,
-          })}>
-          <Icon name="close" size={20} color={theme.fgStrong} />
-        </Pressable>
-      </View>
-
+    <FormDialog
+      title={editing ? 'Edit course' : 'Add a course'}
+      subtitle={editing ? (course?.name ?? '') : 'Name, days, sender and template'}
+      closeTestID="course-close" cancelTestID="course-cancel" confirmTestID="course-save"
+      confirmLabel={saving ? 'Saving…' : editing ? 'Save Changes' : 'Add Course'}
+      /* No footer while it is loading or broken: a Save under a skeleton
+         offers to write a form nobody has seen yet. */
+      onConfirm={loading || failed ? undefined : () => void save()}
+      confirmDisabled={!valid || saving}
+      hint={loading || failed ? undefined : hint}>
       {loading ? (
-        <View style={{ padding: SPACE.lg }}><Skeleton lines={7} /></View>
+        <Skeleton lines={7} />
       ) : failed ? (
-        <View style={{ padding: SPACE.lg }}>
-          <ErrorState onRetry={() => { branches.retry(); templates.retry(); message.retry(); }}
-            message={branches.error ?? templates.error ?? message.error
-              ?? 'The course could not be loaded. Nothing has been changed.'} />
-        </View>
+        <ErrorState onRetry={() => { branches.retry(); templates.retry(); message.retry(); }}
+          message={branches.error ?? templates.error ?? message.error
+            ?? 'The course could not be loaded. Nothing has been changed.'} />
       ) : (
         <>
-          <ScrollView contentContainerStyle={{ padding: SPACE.lg, paddingBottom: 40 }}>
             <Field label="Course name" value={name} onChange={setName}
               placeholder="e.g. Gentle Recovery Yoga" />
 
@@ -452,23 +431,8 @@ export default function CourseEdit() {
                 <ErrorState message={failure} onRetry={() => setFailure(null)} />
               </View>
             ) : null}
-          </ScrollView>
-
-          <View style={{
-            padding: SPACE.lg, borderTopWidth: 1, borderTopColor: theme.line,
-            backgroundColor: theme.shell,
-          }}>
-            <View style={{ flexDirection: 'row', gap: SPACE.md }}>
-              <Button testID="course-cancel" label="Cancel" variant="secondary"
-                onPress={() => router.back()} style={{ flex: 1 }} />
-              <Button testID="course-save"
-                label={saving ? 'Saving…' : editing ? 'Save Changes' : 'Add Course'}
-                onPress={() => void save()} disabled={!valid || saving} style={{ flex: 1 }} />
-            </View>
-            <Muted style={{ textAlign: 'center', marginTop: 9 }}>{hint}</Muted>
-          </View>
         </>
       )}
-    </View>
+    </FormDialog>
   );
 }

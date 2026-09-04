@@ -37,33 +37,74 @@ exit 1
 
 _Merge blocked. Every FAIL above must resolve. No partial merges._
 
-FRONT-TO-BACK SYNC SWEEP. Same verdict, same four accepted-unverifiable steps as every run
-below it (DECISION_LOG 003-005, 007, 009). Nothing here moved them.
+EVERY FORM IS A DIALOG -- FOR REAL THIS TIME. Same verdict, same four accepted-unverifiable
+steps (DECISION_LOG 003-005, 007, 009). Nothing here moved them.
 
-WHAT WAS COMPARED, and how:
-  158 table/column pairs, extracted from every .select()/.insert()/.update() in src/, app/ and
-  supabase/functions/, joined against information_schema.columns on the LIVE project.
-    -> 25/25 tables exist, RLS on, policies present
-    -> ONE real mismatch: app_settings.reply_to_email does not exist and never did (TD-016)
-    -> four apparent misses were keys inside jsonb (csv_imports.summary, email_batches.context),
-       not columns
-  11 RPCs, name and argument list, against pg_get_function_identity_arguments.
-    -> all 11 present; every p_ argument name matches; save_course's 6 required args all passed
-  4 tables written directly (branches, email_templates, holidays, user_preferences)
-    -> every operation has a matching policy for `authenticated`
-  7 Edge Functions -> all ACTIVE and invoked by name from src/data/api.ts
+The claim was already written down in three places -- FormDialog's own doc comment, the note in
+app/_layout.tsx, and FEATURE_TRUTH -- and it was false in a browser. FormDialog was `flex: 1` on
+theme.bg and leaned on `presentation: 'modal'` for the dialog part; a native stack turns that
+into a sheet, a browser turns it into a WHOLE PAGE. Screenshot from the owner: Edit member,
+edge to edge, nothing behind it.
 
-NAVIGATION: every route target in the tree, against every file under app/.
-    -> 3 screens are unreachable: (tabs)/weekly, (tabs)/attendance (TD-014), offering/edit (new,
-       TD-015 -- nothing references it but its own Stack.Screen line)
-    -> 3 screens rendered their title TWICE (native stack header over their own heading):
-       member/[id], audit, branches. Fixed here; they now match course/[id] and send/index.
+  FormDialog          draws its own scrim, a centred card bounded at 560px and 90% of the
+                      viewport height, and a body that scrolls INSIDE the card. Tapping beside
+                      it closes, same as the X -- never a quiet save.
+  _layout.tsx         all six form routes move modal -> transparentModal + fade, so the screen
+                      underneath stays MOUNTED and VISIBLE. The two halves only work together.
+  course/edit         hand-built chrome deleted, now uses FormDialog
+  member/edit         hand-built chrome deleted, now uses FormDialog (its two SearchPickers go
+                      through the new `overlays` slot, outside the scrolling body -- a bottom
+                      sheet belongs to the viewport, not to a form)
 
-FIXED IN THIS PASS: the double headings; upload.tsx's "under 15 minutes were dropped", which
-described a floor removed on purpose (it is now the real reason, with the names); the same claim
-in docs/DEMO_CSV.md; and the dead reply_to_email query.
+FormDialog adoption is now 6/6: change-mobile, course/edit, holiday, member/edit, offering/edit,
+staff/add. 2d2877a said "the chrome is one component now"; two hand-built copies had in fact
+survived it, which is exactly the drift that comment was written to prevent.
 
-Still NOT verified: bash db/harness/test.sh -- no psql, no Docker (ADR 005).
+npm run check green (229 unit, 2840/2840 contrast, 75/75 icons); audit:all clean -- the new
+scrim needed a testID to keep the coverage ratchet at 14.
+
+NOT FIXED HERE, and reported to the owner: Edit Member still cannot save. That is a missing
+write path (0016 shipped the CREATE path only), not a dialog problem.
+
+---
+
+## Gate run - 2026-09-04 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

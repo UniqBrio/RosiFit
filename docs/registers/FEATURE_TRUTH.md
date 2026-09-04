@@ -114,12 +114,23 @@ for the academy.
 **Every form is a dialog.** A form is a decision taken *over* a screen, not a place you travel to.
 Pushed as a page it wears the stack's header — so the only way out is in the chrome, and the save
 sits below however much has been typed. `member/edit`, `course/edit`, `offering/edit`, `holiday`,
-`staff/add` and `change-mobile` all present as modals over one shell
+`staff/add` and `change-mobile` all render through one shell
 (`src/components/FormDialog.tsx`): a title saying what is being decided, a subtitle naming what it
 applies to, a close that leaves without saving, and a **pinned** footer. Deliberately *not*
 converted: `register` / `set-pin` / `forgot-pin` are the pre-session auth flow and own the screen;
 `upload` and `match` are multi-step reviews; `branches`, `staff/index`, `audit`, `appearance`,
 `profile` and `help` are places, not decisions.
+
+> **CORRECTED 04-Sep-2026.** This paragraph was true on a phone and false in a browser, and it
+> said so in three places at once — here, in `FormDialog`'s doc comment and in `app/_layout.tsx`.
+> The shell was `flex: 1` on `theme.bg` and left the dialog part to `presentation: 'modal'`,
+> which a native stack renders as a sheet and a browser renders as a **whole page**: edge to
+> edge, nothing behind it. Two of the six (`course/edit`, `member/edit`) had also kept their own
+> hand-built copies of the chrome, so "one shell" was not true either.
+> **What makes it true now, and it needs both halves:** `FormDialog` draws its own scrim and a
+> centred card (max 560px wide, 90% of viewport height, body scrolling inside it), and the six
+> routes use `presentation: 'transparentModal'` so the screen underneath stays mounted and
+> visible. Adoption is 6/6, verified by `grep -l FormDialog app/`.
 
 **The member code is not shown anywhere.** It is an internal identifier: it tells nobody which
 member this is, and it was the entire second line for anyone with no email address. Her detail

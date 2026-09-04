@@ -24,9 +24,16 @@ function Nav() {
         <Stack.Screen name="forgot-pin"    options={{ title: 'Forgot your PIN' }} />
         <Stack.Screen name="course/[id]"   options={{ headerShown: false }} />
         {/* The canvas presents Add/Edit Course as a DIALOG over the
-            Attendance workspace, not as a page you travel to. */}
-        <Stack.Screen name="course/edit"   options={{ presentation: 'modal', headerShown: false }} />
-        <Stack.Screen name="offering/edit" options={{ presentation: 'modal', headerShown: false }} />
+            Attendance workspace, not as a page you travel to.
+
+            transparentModal, not modal. `modal` gives a native stack a sheet
+            and a BROWSER A WHOLE PAGE -- edge to edge, nothing behind it,
+            which is exactly "opening as another page". transparentModal keeps
+            the screen underneath mounted and visible, and FormDialog draws
+            the scrim and the card over it. The two halves only work together:
+            change one and the dialog stops being a dialog. */}
+        <Stack.Screen name="course/edit"   options={{ presentation: 'transparentModal', animation: 'fade', headerShown: false }} />
+        <Stack.Screen name="offering/edit" options={{ presentation: 'transparentModal', animation: 'fade', headerShown: false }} />
         {/* ONE HEADING PER SCREEN. These three draw their own -- member/[id] a
             gradient header carrying her name, audit and branches a
             ScreenHeader -- and each has its own back button. Leaving the
@@ -47,15 +54,15 @@ function Nav() {
             the pre-session auth flow and own the whole screen; upload and
             match are multi-step reviews, not forms; branches, staff/index,
             audit, appearance, profile and help are places, not decisions. */}
-        <Stack.Screen name="member/edit"   options={{ presentation: 'modal', headerShown: false }} />
-        <Stack.Screen name="holiday"       options={{ presentation: 'modal', headerShown: false }} />
+        <Stack.Screen name="member/edit"   options={{ presentation: 'transparentModal', animation: 'fade', headerShown: false }} />
+        <Stack.Screen name="holiday"       options={{ presentation: 'transparentModal', animation: 'fade', headerShown: false }} />
         <Stack.Screen name="branches"      options={{ headerShown: false }} />
         <Stack.Screen name="staff/index"   options={{ title: 'Staff & access' }} />
-        <Stack.Screen name="staff/add"     options={{ presentation: 'modal', headerShown: false }} />
+        <Stack.Screen name="staff/add"     options={{ presentation: 'transparentModal', animation: 'fade', headerShown: false }} />
         {/* the PIN is shown once and only here; there is no way back to it */}
         <Stack.Screen name="staff/pin"     options={{ title: 'PIN issued', headerBackVisible: false }} />
         <Stack.Screen name="audit"         options={{ headerShown: false }} />
-        <Stack.Screen name="change-mobile" options={{ presentation: 'modal', headerShown: false }} />
+        <Stack.Screen name="change-mobile" options={{ presentation: 'transparentModal', animation: 'fade', headerShown: false }} />
         <Stack.Screen name="send/index"    options={{ headerShown: false }} />
         <Stack.Screen name="send/result"   options={{ title: 'Result' }} />
         <Stack.Screen name="match"         options={{ title: 'Match review' }} />

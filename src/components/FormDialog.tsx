@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { View, Text, Pressable, ScrollView } from 'react-native';
+import { View, Text, Pressable, ScrollView, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Muted, Button } from './ui';
 import { Icon } from './Icon';
@@ -28,12 +28,29 @@ import { SPACE, RADIUS } from '../theme/tokens';
  *      out and the way on are one tap from anywhere in a form that grows with
  *      every field added to it.
  *
- * `presentation: 'modal'` in app/_layout.tsx does the rest.
+ * WHY IT DRAWS ITS OWN SCRIM AND CARD
+ * It used to be `flex: 1` on `theme.bg` and lean on `presentation: 'modal'`
+ * for the dialog part. A native stack gives that a sheet; a browser gives it
+ * a WHOLE PAGE -- edge to edge, nothing behind it, indistinguishable from
+ * having navigated away. Every claim in this file was true only on a phone.
+ *
+ * So the card is drawn here: a scrim over whatever is behind, a centred panel
+ * bounded at DIALOG_MAX_W, and a body that scrolls inside it. The route pairs
+ * this with `presentation: 'transparentModal'` (app/_layout.tsx) so the
+ * screen underneath stays MOUNTED and VISIBLE -- which is what makes "over
+ * the member screen" true rather than a description of an intention.
+ *
+ * On a narrow screen the panel takes the width it is given and the scrim
+ * collapses to almost nothing, so the phone behaviour is unchanged.
  */
+const DIALOG_MAX_W = 560;
+/** Never taller than this share of the viewport: the footer must stay on screen. */
+const DIALOG_MAX_H = 0.9;
+
 export function FormDialog({
   title, subtitle, onClose, children, hint, cancelLabel = 'Cancel',
   confirmLabel, onConfirm, confirmDisabled, confirmTestID, closeTestID,
-  footer,
+  cancelTestID, footer, overlays,
 }: {
   title: string;
   /** what this dialog applies to -- the course, the member, the branch */
@@ -49,15 +66,36 @@ export function FormDialog({
   confirmDisabled?: boolean;
   confirmTestID?: string;
   closeTestID?: string;
+  cancelTestID?: string;
   /** replaces the Cancel/Save pair entirely, for a dialog that ends differently */
   footer?: ReactNode;
+  /** Sheets and pickers this dialog opens. They render OUTSIDE the card --
+   *  a bottom sheet belongs to the viewport, not to a scrolling form body. */
+  overlays?: ReactNode;
 }) {
   const { theme } = useTheme();
   const router = useRouter();
+  const { height } = useWindowDimensions();
   const close = onClose ?? (() => router.back());
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+    <View style={{
+      flex: 1, backgroundColor: theme.scrim,
+      alignItems: 'center', justifyContent: 'center', padding: SPACE.lg,
+    }}>
+      {/* Tapping beside the dialog leaves it, the way tapping beside any
+          dialog does. It is the SAME action as the close button, never a
+          quiet save -- nothing typed is kept by walking away from it. */}
+      <Pressable testID="dialog-scrim"
+        accessibilityRole="button" accessibilityLabel="Close without saving"
+        onPress={close}
+        style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} />
+
+      <View style={{
+        width: '100%', maxWidth: DIALOG_MAX_W, maxHeight: height * DIALOG_MAX_H,
+        backgroundColor: theme.bg, borderRadius: RADIUS.lg,
+        borderWidth: 1, borderColor: theme.lineStrong, overflow: 'hidden',
+      }}>
       <View style={{
         flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
         paddingHorizontal: SPACE.lg, paddingTop: SPACE.lg, paddingBottom: SPACE.md,
@@ -83,7 +121,8 @@ export function FormDialog({
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: SPACE.lg, paddingBottom: 40 }}>
+      <ScrollView style={{ flexGrow: 0 }}
+        contentContainerStyle={{ padding: SPACE.lg, paddingBottom: SPACE.lg }}>
         {children}
       </ScrollView>
 
@@ -93,7 +132,7 @@ export function FormDialog({
           backgroundColor: theme.shell,
         }}>
           <View style={{ flexDirection: 'row', gap: SPACE.md }}>
-            <Button testID="dialog-cancel" label={cancelLabel} variant="secondary"
+            <Button testID={cancelTestID ?? 'dialog-cancel'} label={cancelLabel} variant="secondary"
               onPress={close} style={{ flex: 1 }} />
             <Button testID={confirmTestID ?? 'dialog-confirm'} label={confirmLabel ?? 'Save'}
               onPress={onConfirm} disabled={confirmDisabled} style={{ flex: 1 }} />
@@ -101,6 +140,8 @@ export function FormDialog({
           {hint ? <Muted style={{ marginTop: 9, textAlign: 'center' }}>{hint}</Muted> : null}
         </View>
       ) : null)}
+      </View>
+      {overlays}
     </View>
   );
 }
