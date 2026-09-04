@@ -13,6 +13,59 @@ current; adopt a **MAJOR** within one quarter.
 
 ---
 
+## v1.6.0 — adopted 04-Sep-2026 (from: v1.3.0)
+
+### What kind of adoption this is
+
+**Half A (PROCESS) only, by hand.** Same reason as the first adoption: RosiFit has no
+`.framework/lineage.json`, so `upgrade.mjs` was not run. The three-way rule was applied
+manually instead — every process file was first compared against framework **v1.3.0** (the
+version this copy was taken from), and only files that were **byte-identical** to it were
+replaced with their **v1.6.0** version. Files RosiFit had changed since were left untouched.
+
+**Scope held: nothing under `app/`, `src/`, `supabase/`, `assets/`, `db/`, `design/` or
+`.harness/` was touched.** Asserted mechanically from `git status`, not by inspection.
+
+### Auto-applied — pristine in RosiFit, changed upstream (10)
+
+`FRAMEWORK_MANIFEST.md` · `README.md` · `UPGRADES.md` · `VERSION` · `docs/00-OVERVIEW.md` ·
+`docs/01-SDLC.md` · `docs/21-AGENT-WIRING.md` · `workflows/bug.md` · `workflows/enhance.md` ·
+`workflows/feature.md`
+
+### Added — new in v1.4.0 to v1.6.0 (7)
+
+`workflows/request.md` · `.claude/commands/request.md` · `requests/README.md` ·
+`templates/requests/REQUEST_NEW.md` · `templates/requests/REQUEST_CHANGE.md` ·
+`templates/requests/REQUEST_BUG.md` · `tests/cases/FRAMEWORK_PROCESS_CASES.md`
+
+### Skipped — app-owned, and RosiFit's copy already differs from v1.3.0 (3)
+
+| File | Why |
+|---|---|
+| `CHANGELOG.md` | RosiFit's own changelog; the framework's entries do not belong in it |
+| `TEST_SUMMARY.md` | Append-only gate log of this repository; the upstream change is a framework gate run |
+| `CLAUDE.md` | Expected-divergent. Only the framework version reference and the runbook row (adding `/request` and the `requests/` ledger) were edited |
+
+Not changed upstream, so not considered: `.claude/commands/gate.md` (RosiFit addendum),
+`.claude/settings.json` (RosiFit git guard), `ci/github-actions-ci.yml`, `docs/registers/`.
+
+### App action required
+
+**None** — every entry from 1.4.0 to 1.6.0 is MINOR and `UPGRADES.md` records "App action
+required: None" for each. No gate, baseline or guard changed. `/request` is a new optional
+entry point; every track still accepts a plain one-line request.
+
+### Verification
+
+- `node scripts/audits/check-rule-coverage.mjs` — OK, 1 known violation, none new (unchanged).
+- `node scripts/audits/check-dead-weight.mjs` — OK, clean gate (unchanged).
+- `npm run check` — **not run**: `node_modules/` is absent in the adopting session and nothing
+  under `src/` or `app/` changed; the gate's inputs are byte-identical to before this pass.
+- Deferred list unchanged from v1.3.0: `conformance` · `audit:compat` · `theme:build` /
+  `theme:check` · `theme:assets`.
+
+---
+
 ## v1.3.0 — adopted 02-Sep-2026 (from: nothing — this is the first adoption)
 
 ### What kind of adoption this is

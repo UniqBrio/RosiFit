@@ -12,6 +12,92 @@
 
 ---
 
+## 1.6.0 — 04-Sep-2026 — MINOR
+
+**One command, end to end.** In 1.5.0 only the routed-out classifications flowed onward; a
+NEW / CHANGE / BUG classification still stopped after writing the request file and asked the
+requester to run the track themselves. Owner decision (04-Sep-2026, reaffirmed): the requester
+types exactly one command.
+
+### Changed
+- `workflows/request.md` + `.claude/commands/request.md` — after writing the request file, the
+  run **continues directly into the classified track**. The field review is not removed, it is
+  **moved**: the track's first gate (Track A's Gate 1, Track B's B3/B4, Track C's root-cause
+  statement) opens by restating the request FIELDS verbatim — "from your request — correct
+  anything wrong" — and a correction there updates the request file before work proceeds, so
+  the file and the work never tell different stories. Mixed input runs the framework-update
+  half FIRST, so a process gap that caused the app issue is repaired before the app track runs.
+- `workflows/feature.md`, `workflows/enhance.md`, `workflows/bug.md` — each carries the
+  same-run arrival rule: first stop restates FIELDS.
+- `requests/README.md` — the legitimate-edit window is now the first gate.
+- `docs/01-SDLC.md` §2, `docs/00-OVERVIEW.md`, `FRAMEWORK_MANIFEST.md` aligned.
+- `tests/cases/FRAMEWORK_PROCESS_CASES.md` — FW-INTAKE-001, FW-INTAKE-005, FW-ENH-001 updated.
+
+### App action required
+**None.** Every track still accepts a plain one-line request or a hand-run `requests/` file;
+the human approval count is unchanged — the first approval simply carries the FIELDS with it.
+
+---
+
+## 1.5.0 — 04-Sep-2026 — MINOR
+
+**Intake is the single entry point.** In 1.4.0, a `/request` run that classified the ask as a
+list, an open situation, a pure restructure, or a process failure produced no file and told
+the requester to run `/triage`, `/brainstorm`, `/refactor`, or `/framework-update` themselves.
+That stop bought nothing — with no request file there is nothing to review — so it only made
+the requester retype the same words into a second command, and a retype the requester forgets
+is a process failure that never gets routed.
+
+### Changed
+- `workflows/request.md` + `.claude/commands/request.md` — routed-out classifications now
+  **continue directly into the destination runbook in the same run**; that runbook's own gates
+  (triage's queue approval, framework-update's diff approval) still stop the work before
+  anything changes. The field-review STOP is unchanged for the file-producing classifications
+  (NEW / CHANGE / BUG). Mixed input now continues into `workflows/framework-update.md` with the
+  process half in the same run, instead of leaving it as advice.
+- `docs/01-SDLC.md` §2 intake paragraph updated to match.
+- `tests/cases/FRAMEWORK_PROCESS_CASES.md` — FW-INTAKE-004 and FW-INTAKE-005 updated in place.
+
+### App action required
+**None.** Behaviour within a single command's run; no gate, baseline, or guard changed.
+
+---
+
+## 1.4.0 — 04-Sep-2026 — MINOR
+
+**Intake: `/request` writes the binding request file.** Motivated by a real adoption failure:
+rough one-line requests fed straight into `/enhance` and `/feature` had the tracks filling the
+gaps silently — each silent fill a design decision the requester never made — producing design
+gaps found only after the build, and correction-on-correction loops. The gap was at intake,
+not in the tracks.
+
+### Added
+- `workflows/request.md` + `/request` (`.claude/commands/request.md`) — classify rough words
+  into the right track, fill the matching template using **only what the requester said**
+  (uncovered = `unknown`, never invented), write `requests/<date>-<slug>.md`, and STOP.
+  Stated fields **bind** the consuming track; `unknown` fields become its questions.
+- `templates/requests/` — `REQUEST_NEW.md` (Track A) · `REQUEST_CHANGE.md` (Track B, with
+  always-populated MUST NOT CHANGE and a DESIGN SURFACE declaration) · `REQUEST_BUG.md`
+  (Track C, error wording verbatim, selectivity as root-cause evidence). CHANGE and BUG carry
+  a CORRECTION ROUND field: round ≥ 2 obliges the track to explain what the previous fix
+  missed before proposing anything.
+- `requests/README.md` — the intake ledger's contract (committed, superseded files kept).
+- `tests/cases/FRAMEWORK_PROCESS_CASES.md` — ten manual process cases (FW-INTAKE-001..006,
+  FW-ENH-001..004) on classification, binding-field discipline, and the design pass.
+
+### Changed
+- `workflows/enhance.md` — the optional, undefined "mini design pass" is now the **correction
+  design pass**: mandatory when the change is visual, still scoped to the touched area, and
+  defined (states · both themes in semantic tokens · string table · permission answer). A
+  "not visual" claim is verified against the diff at B6. B1 gains the correction-round check;
+  B4's "deliberately NOT changing" list is seeded by the request's MUST NOT CHANGE line.
+
+### App action required
+**None.** Intake is a new optional entry point; every track still accepts a plain one-line
+request. Adopt by using `/request` when the ask is rough. No gate, baseline, or guard changed.
+
+---
+
 ## 1.3.0 — 30-Aug-2026 — MINOR
 
 **CP-21: a wide table is the user's to arrange.** Promoted from `academies-dashboard` (see

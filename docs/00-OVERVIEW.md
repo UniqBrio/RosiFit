@@ -82,7 +82,8 @@ session. See [21-AGENT-WIRING.md](./21-AGENT-WIRING.md). Without this the rest i
 `CLAUDE.md` at the repository root carries the binding rules, read before every task.
 
 ### The runbooks
-`workflows/` — [feature](../workflows/feature.md) · [enhance](../workflows/enhance.md) ·
+`workflows/` — [request (intake)](../workflows/request.md) ·
+[feature](../workflows/feature.md) · [enhance](../workflows/enhance.md) ·
 [bug](../workflows/bug.md) · [refactor](../workflows/refactor.md) ·
 [triage](../workflows/triage.md) · [brainstorm](../workflows/brainstorm.md) ·
 [test gate](../workflows/test-gate.md) · [promote](../workflows/promote.md) ·
@@ -104,6 +105,10 @@ environments · test accounts · technical debt · decisions
 **Starting a new application** → [02-PROJECT-INITIALIZATION.md](./02-PROJECT-INITIALIZATION.md).
 
 **Doing a piece of work** → classify it ([01](./01-SDLC.md) §2), open that runbook, follow it.
+Or simply start every piece of work at [workflows/request.md](../workflows/request.md)
+(`/request`) — it writes the binding request file and continues into the right track by
+itself; stated fields bind, `unknown` fields become the track's questions, and the track's
+first gate restates the FIELDS for correction.
 
 **Adopting this on an existing codebase** → [17](./17-ENFORCEMENT-RATCHETS.md) §8. Baseline
 first; nothing is blocked on day one that was not already broken.
