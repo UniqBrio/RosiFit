@@ -1,3 +1,25 @@
+FAIL-FIRST: src/data/meetCsv.test.ts (REAL_FILE) - observed failing against the tree, on the
+genuine export rather than on a fixture. This is the SECOND time this parser was wrong about the
+same file, and the first fix is why:
+
+That fix was written against `*,Meeting code: gzj-yhru-ehp` -- copied from a SPREADSHEET VIEW of
+the export, where Excel shows the bullet in column A and the text in column B because it splits on
+whitespace for display. The bytes are one quoted cell:
+
+    "*     Meeting code: gzj-yhru-ehp"
+
+so a pattern anchored at the label matched nothing. Running the actual file:
+
+    meta.code : null      created : null      ended : null      date : null
+
+The rows parsed, so nothing looked broken -- and the upload's Process button is disabled without a
+date, so the import could not be started at all. A fixture that passed and a parser that failed.
+
+The fixture is now reconstructed from the file itself, BOM and CRLF included, so it cannot be
+"fixed" against a picture of a file again. Also fixed: the UTF-8 BOM was left in the first cell,
+which is harmless while the table starts on line 5 and fatal for an export whose header is line 1
+-- "Full Name" would fail to match on an invisible character and the message would blame the file.
+
 FAIL-FIRST: src/data/meetCsv.test.ts (the real export shape) and supabase/tests/18_import_session.sql
 - both were observed failing against the tree BEFORE the fix, and the first failure was found by
 running the parser against a REAL Google Meet export rather than against a fixture I wrote.
@@ -151,6 +173,46 @@ The defect was reproduced first, in one statement on the harness, before any cod
     select public.audit_log('communication.batch_sent','email_batch','b1'); commit;
     -->  actor_app_user_id | actor_kind |          action
          ------------------+------------+--------------------------
+
+## Gate run - 2026-09-04 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
 
 ## Gate run - 2026-09-04 - VERDICT: FAIL
 

@@ -107,31 +107,50 @@ function findHeader(lines: string[]): { index: number; cells: string[] } | null 
 /**
  * The label that opens a preamble line, and what is left after it.
  *
- * WHAT WAS WRONG HERE
- * This read `cells[0]` as the label and `cells[1..]` as the value, which only
- * works for the two-column shape `Meeting code,abc-defg-hij`. A real export
- * writes ONE cell -- "Meeting code: gzj-yhru-ehp" -- often behind a `*` marker
- * in the first column:
+ * WHAT WAS WRONG HERE, TWICE
+ * First: this read `cells[0]` as the label and `cells[1..]` as the value,
+ * which only works for the two-column shape `Meeting code,abc-defg-hij`.
  *
- *     *,Meet
- *     *,Meeting code: gzj-yhru-ehp
- *     *,Created on 2026-08-31 20:12:56
- *     *,Ended on 2026-08-31 20:15:25
- *     Full Name,First Seen,Time in Call
+ * Then it was fixed against a fixture copied from a SPREADSHEET VIEW of a real
+ * export -- `*,Meeting code: gzj-yhru-ehp` -- which is not what the file says.
+ * The bytes are one quoted cell with a bullet inside it:
  *
- * Against that file every field came back null. The rows still parsed, so
+ *     "*     Meet"
+ *     "*     Meeting code: gzj-yhru-ehp"
+ *     "*     Created on 2026-08-31 20:12:56"
+ *     "*     Ended on 2026-08-31 20:15:25"
+ *     "Full Name","First Seen","Time in Call"
+ *
+ * Excel shows `*` in column A and the text in column B because it splits on
+ * whitespace for display. Reading the screenshot instead of the file produced
+ * a fixture that passed and a parser that failed.
+ *
+ * Against the real file every field came back null. The rows still parsed, so
  * nothing looked broken -- the file's ONLY evidence of which meeting it came
- * from and when was silently discarded, and the session it belongs to could
- * not be derived at all.
+ * from and when was silently discarded, the session date could not be derived,
+ * and the upload's Process button stayed disabled with no way forward.
  *
  * Matched by PREFIX rather than by splitting on ':', because the value itself
  * contains colons: splitting "Created on 2026-08-31 20:12:56" at the first
  * one yields the time 12:56 and a date ending in 20.
  */
+/**
+ * What may sit in FRONT of a label.
+ *
+ * The real export writes each preamble line as ONE quoted cell with a bullet
+ * inside it -- `"*     Meeting code: gzj-yhru-ehp"` -- so a pattern anchored
+ * straight at the label matches nothing. It is a bullet, not a column: a
+ * spreadsheet showing `*` in column A and the text in column B has split the
+ * cell on whitespace for display, which is what made the earlier fixture
+ * (`*,Meeting code: ...`) look right and be wrong.
+ */
+const MARKER = String.raw`^[\s*#>\u2022\-\u2013\u2014]*`;
+const label = (body: string) => new RegExp(MARKER + body, 'i');
+
 const LABELS = {
-  code: /^\s*(?:meeting|conference)\s*code\b\s*[:\-]?\s*/i,
-  created: /^\s*(?:created|started)\s*(?:on|at)?\b\s*[:\-]?\s*/i,
-  ended: /^\s*(?:ended|finished)\s*(?:on|at)?\b\s*[:\-]?\s*/i,
+  code: label(String.raw`(?:meeting|conference)\s*code\b\s*[:\-]?\s*`),
+  created: label(String.raw`(?:created|started)\s*(?:on|at)?\b\s*[:\-]?\s*`),
+  ended: label(String.raw`(?:ended|finished)\s*(?:on|at)?\b\s*[:\-]?\s*`),
 } as const;
 
 /** The preamble as key -> value, in whichever column and shape Meet wrote it. */
@@ -164,7 +183,11 @@ function readMeta(lines: string[]): MeetMeta {
 }
 
 export function parseMeetCsv(text: string): ParsedFile {
-  const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+  // A real Meet export is UTF-8 WITH a byte-order mark. Left in place it
+  // becomes the first character of the first cell, so a file whose table
+  // starts on line 1 would fail the "Full Name" check on an invisible
+  // character -- and the message would blame the file.
+  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(l => l.trim().length > 0);
   if (lines.length === 0) throw new Error('That file is empty.');
 
   const header = findHeader(lines);

@@ -293,3 +293,76 @@ test('a blank name is dropped and is not counted as a duplicate', () => {
 test('nothing in, nothing out', () => {
   assert.deepEqual(dedupeRows([]), { rows: [], duplicates: [] });
 });
+
+
+// ===================================================================
+// THE REAL FILE, byte for byte.
+//
+// The previous fixture was copied from a SPREADSHEET VIEW of this export and
+// was wrong in a way that passed: Excel shows the bullet in column A and the
+// text in column B, so `*,Meeting code: …` looked right. The bytes are one
+// quoted cell -- `"*     Meeting code: gzj-yhru-ehp"` -- and against those the
+// parser returned null for every meta field, which disabled the upload with no
+// way forward. Reconstructed here from the file itself, CRLF and BOM included,
+// so this can never again be "fixed" against a picture of a file.
+// ===================================================================
+const REAL_FILE = '\uFEFF' + [
+  '"*     Meet"',
+  '"*     Meeting code: gzj-yhru-ehp"',
+  '"*     Created on 2026-08-31 20:12:56"',
+  '"*     Ended on 2026-08-31 20:15:25"',
+  '"Full Name","First Seen","Time in Call"',
+  '"RosiFit","2026-08-31 20:14:52","00:00:32"',
+  '"UniqBotz Infotech","2026-08-31 20:12:57","00:02:28"',
+].join('\r\n') + '\r\n';
+
+test('the BOM does not become part of the first cell', () => {
+  // Left in place it is the first character of the first field. Harmless while
+  // the table starts on line 5; fatal for an export whose header is line 1,
+  // where "Full Name" would fail to match on an invisible character.
+  assert.doesNotThrow(() => parseMeetCsv(REAL_FILE));
+});
+
+test('CRLF line endings parse', () => {
+  assert.equal(parseMeetCsv(REAL_FILE).rows.length, 2);
+});
+
+test('the bullet in front of the label does not hide it', () => {
+  const { meta } = parseMeetCsv(REAL_FILE);
+  assert.equal(meta.code, 'gzj-yhru-ehp');
+  assert.equal(meta.created, '2026-08-31 20:12:56');
+  assert.equal(meta.ended, '2026-08-31 20:15:25');
+});
+
+test('the session this file belongs to is derivable', () => {
+  // This is the whole mechanism: no date, no import. The Process button is
+  // disabled without it.
+  const { meta } = parseMeetCsv(REAL_FILE);
+  assert.equal(meetCreatedDate(meta.created), '2026-08-31');
+  assert.equal(meetCreatedTime(meta.created), '20:12:56');
+});
+
+test('both attendees are read, whatever their time in call', () => {
+  const { rows } = parseMeetCsv(REAL_FILE);
+  assert.deepEqual(rows.map(r => r.full_name), ['RosiFit', 'UniqBotz Infotech']);
+  // 32 seconds rounds to 0 minutes and 2m28s to 2. Both are recorded; neither
+  // decides anything. Under the old 15-minute floor this file imported NOBODY.
+  assert.deepEqual(rows.map(r => r.minutes_in_call), [0, 2]);
+});
+
+test('a bulleted "Meet" line is not mistaken for a meeting code', () => {
+  // Line 1 is "*     Meet". `meeting|conference` must not match it, or the
+  // code would be read as an empty value from the wrong line.
+  assert.equal(parseMeetCsv(REAL_FILE).meta.code, 'gzj-yhru-ehp');
+});
+
+test('other bullet characters work too', () => {
+  const p = parseMeetCsv([
+    '"#  Meeting code: aaa-bbbb-ccc"',
+    '"\u2022 Created on 2026-08-31 20:12:56"',
+    '"Full Name","Time in Call"',
+    '"Divya Ramesh","00:45:00"',
+  ].join('\n'));
+  assert.equal(p.meta.code, 'aaa-bbbb-ccc');
+  assert.equal(meetCreatedDate(p.meta.created), '2026-08-31');
+});
