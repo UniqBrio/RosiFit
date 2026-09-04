@@ -774,16 +774,28 @@ export async function fetchTemplates(): Promise<Template[]> {
  * for them to disagree.
  */
 
-/** The addresses this deployment may send AS. */
+/**
+ * The addresses this deployment may send AS.
+ *
+ * OPEN GAP -- the schema has nowhere to put one.
+ * This used to read `app_settings.reply_to_email` and lead the list with it.
+ * No migration has ever created that column: PostgREST answered 400 every
+ * time the Add/Edit Course dialog opened, the error went into a discarded
+ * destructure, and `configured` was therefore always null. So the live app
+ * has only ever offered SENDERS -- two FIXTURE addresses -- as the from-
+ * address for a real course.
+ *
+ * That is worse than cosmetic. save_course stores what is picked, and a
+ * from-address the academy does not own bounces every message that course
+ * will ever send, which is the exact failure the original comment named.
+ *
+ * Deliberately NOT repointed at another column: `app_settings` carries
+ * `sender_name` and no address at all, so there is nothing truthful to read.
+ * Closing this is a migration plus a settings field, not a one-line fix, and
+ * inventing a column name here would put the silent 400 back.
+ */
 export async function fetchSenders(): Promise<string[]> {
-  if (!isConfigured) return SENDERS;
-  // The academy's own address is the only one it certainly owns. A from-
-  // address nobody owns bounces every message the course will ever send, so
-  // this is a list to CHOOSE from, never free text.
-  const { data } = await supabase.from('app_settings')
-    .select('reply_to_email').eq('id', 1).maybeSingle();
-  const configured = (data?.reply_to_email as string | null) ?? null;
-  return configured ? [configured, ...SENDERS.filter(x => x !== configured)] : SENDERS;
+  return SENDERS;
 }
 
 export type CourseMessage = {

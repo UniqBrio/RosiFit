@@ -14,8 +14,15 @@ The parser (`src/data/csv.ts`) wants the Google Meet export shape and nothing el
 | `Time in Call` | no | `52 min`, `1 hr 3 min`, `0:52:14` and `45` all parse |
 
 There is no email, member id, course or branch column, and the parser refuses a
-file with no `Full Name` rather than guessing (C-74). **Rows under 15 minutes are
-dropped before matching** — the review screen tells you how many.
+file with no `Full Name` rather than guessing (C-74).
+
+**Time in call decides nothing.** There was a 15-minute floor and it was removed:
+a member who reconnected, joined from a phone, or was marked by Meet at 32 seconds
+was dropped before matching and then recorded *absent from a class she attended*.
+Being named in the file is the evidence; the duration is stored beside it and read
+by nobody. A row is dropped for exactly two reasons now — the name cell is blank, or
+it repeats a name already in the file, which Meet writes once per JOIN — and the
+review screen gives the count **and the names**.
 
 ## Uploading
 
@@ -69,7 +76,7 @@ Upload it against the **Zumba Basics · Anna Nagar** batch on a past session dat
 | `Anjali Krishna` | **C** | 0.903 similarity to "Anjali Krishnan" — just over the 0.90 line |
 | `Kavitha Ramesh` | **D** | two members share that canonical name, in different batches |
 | `Sangeetha Iyer` | **E** | nobody by that name or alias |
-| `Divya B` | *dropped* | 9 minutes, under the 15-minute floor |
+| `Divya B` | **A** | a confirmed alias for Divya Balakrishnan. Her 9 minutes in the call change nothing — she was there |
 
 **Shanthi Devi is not in the file at all**, and that is the last piece: everyone
 expected at the session who does not appear is written as `absent`. Attendance is

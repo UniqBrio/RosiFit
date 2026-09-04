@@ -27,7 +27,15 @@ function Nav() {
             Attendance workspace, not as a page you travel to. */}
         <Stack.Screen name="course/edit"   options={{ presentation: 'modal', headerShown: false }} />
         <Stack.Screen name="offering/edit" options={{ presentation: 'modal', headerShown: false }} />
-        <Stack.Screen name="member/[id]"   options={{ title: 'Member' }} />
+        {/* ONE HEADING PER SCREEN. These three draw their own -- member/[id] a
+            gradient header carrying her name, audit and branches a
+            ScreenHeader -- and each has its own back button. Leaving the
+            stack header on top of that rendered the title TWICE, one bar
+            above the other ("Audit log" over "Audit log"), with two back
+            controls that did the same thing. course/[id] and send/index are
+            the same shape and already turn it off; this makes the rule
+            uniform rather than a thing three screens happened to get right. */}
+        <Stack.Screen name="member/[id]"   options={{ headerShown: false }} />
         {/* EVERY FORM IS A DIALOG. A form is a decision taken OVER a screen,
             not a place you travel to: pushed as a page it wears the stack's
             header, so the only way out is in the chrome and the save sits
@@ -41,12 +49,12 @@ function Nav() {
             audit, appearance, profile and help are places, not decisions. */}
         <Stack.Screen name="member/edit"   options={{ presentation: 'modal', headerShown: false }} />
         <Stack.Screen name="holiday"       options={{ presentation: 'modal', headerShown: false }} />
-        <Stack.Screen name="branches"      options={{ title: 'Branches' }} />
+        <Stack.Screen name="branches"      options={{ headerShown: false }} />
         <Stack.Screen name="staff/index"   options={{ title: 'Staff & access' }} />
         <Stack.Screen name="staff/add"     options={{ presentation: 'modal', headerShown: false }} />
         {/* the PIN is shown once and only here; there is no way back to it */}
         <Stack.Screen name="staff/pin"     options={{ title: 'PIN issued', headerBackVisible: false }} />
-        <Stack.Screen name="audit"         options={{ title: 'Audit log' }} />
+        <Stack.Screen name="audit"         options={{ headerShown: false }} />
         <Stack.Screen name="change-mobile" options={{ presentation: 'modal', headerShown: false }} />
         <Stack.Screen name="send/index"    options={{ headerShown: false }} />
         <Stack.Screen name="send/result"   options={{ title: 'Result' }} />

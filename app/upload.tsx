@@ -628,9 +628,22 @@ export default function Upload() {
               <Count n={matchedCount} label="matched" color={okInk} />
               <Count n={ambiguousCount} label="ambiguous" color={warnInk} />
             </View>
+            {/* WHY a row was dropped, and WHICH one.
+                This said "under 15 minutes". There is no minutes floor -- it
+                was removed on purpose, because it dropped a member who
+                reconnected or joined from a phone and then recorded her
+                absent from a class she attended. Rows are dropped now for
+                exactly two reasons, both in csv-import: the name cell is
+                blank, or it repeats a name already in the file (Meet writes
+                a line per JOIN). The names come back from the preview for
+                this reason -- a count alone has to be taken on trust. */}
             {preview && preview.dropped_count > 0 && (
               <Muted style={{ marginTop: SPACE.md }}>
-                {`${preview.dropped_count} row${preview.dropped_count === 1 ? '' : 's'} under 15 minutes were dropped before matching.`}
+                {`${preview.dropped_count} row${preview.dropped_count === 1 ? '' : 's'} `
+                 + `dropped before matching — a blank name, or a repeat of another row`
+                 + (preview.dropped_names?.length
+                     ? `: ${preview.dropped_names.join(', ')}.`
+                     : '.')}
               </Muted>
             )}
           </View>
