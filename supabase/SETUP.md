@@ -6,10 +6,10 @@
 > reading this file. The previous version of this block was stale in three
 > ways and is corrected below — see the note at the end.
 >
-> - **Schema applied**: migrations `0001`–`0024` and **`0026`** (applied 04-Sep-2026).
->   **`0025` is not** — see below. The ledger
->   (`supabase_migrations.schema_migrations`) carries 22 rows: `0001`–`0015`,
->   `0019`–`0024` and `0026` (`20260904053625`). **`0016`, `0017` and `0018` are applied but have no
+> - **Schema applied**: migrations `0001`–`0024`, **`0026`** and **`0027`** (both applied
+>   04-Sep-2026). **`0025` is not** — see below. The ledger
+>   (`supabase_migrations.schema_migrations`) carries 23 rows: `0001`–`0015`,
+>   `0019`–`0024`, `0026` and `0027`. **`0016`, `0017` and `0018` are applied but have no
 >   ledger row** — they were run through the SQL editor rather than as
 >   migrations. Their objects are all present and were verified individually
 >   (`create_member`, `holidays_apply_effects` + its three triggers + the
@@ -68,6 +68,20 @@
 >   selects `id, full_name` and its variable map has no `member_code` key.
 >   `verify_jwt=true` survived both deploys, and the other five functions were
 >   untouched.
+> - **`0027` IS APPLIED** (04-Sep-2026). It adds `update_member`, closing the
+>   debt `0016` recorded when it shipped the CREATE path only — Edit Member
+>   could not save at all until now.
+>   **REHEARSED, and not on the harness.** No machine to hand has PostgreSQL
+>   16 (ADR 005), and this is ~250 lines of plpgsql moving enrolment history
+>   under a GiST exclusion — too much to apply on a reading. So it was
+>   rehearsed against PRODUCTION inside a `DO` block that raises at the end,
+>   which rolls back every row it touched. 20 assertions, 19 passing; the
+>   twentieth expected 4 audit rows from 4 calls when one of the four was a
+>   deliberate refusal that correctly wrote none. Verified afterwards that
+>   nothing persisted: 0 probe rows, and enrolments, schedules, aliases,
+>   emails, attendance and audit all back at their prior counts.
+>   See ADR 007 for why this counts as a rehearsal and where it is weaker
+>   than the harness.
 > - **Advisors**: run and acted on. See `0011`–`0013`, `0015`, and the open
 >   items below.
 >

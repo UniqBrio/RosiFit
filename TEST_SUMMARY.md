@@ -37,34 +37,88 @@ exit 1
 
 _Merge blocked. Every FAIL above must resolve. No partial merges._
 
-EVERY FORM IS A DIALOG -- FOR REAL THIS TIME. Same verdict, same four accepted-unverifiable
-steps (DECISION_LOG 003-005, 007, 009). Nothing here moved them.
+0027 IS APPLIED, AND IT WAS REHEARSED. Same verdict, same four accepted-unverifiable steps
+(DECISION_LOG 003-005, 007, 009). Nothing here moved them.
 
-The claim was already written down in three places -- FormDialog's own doc comment, the note in
-app/_layout.tsx, and FEATURE_TRUTH -- and it was false in a browser. FormDialog was `flex: 1` on
-theme.bg and leaned on `presentation: 'modal'` for the dialog part; a native stack turns that
-into a sheet, a browser turns it into a WHOLE PAGE. Screenshot from the owner: Edit member,
-edge to edge, nothing behind it.
+The harness could not run -- no psql, no Docker (ADR 005) -- and 0027 is ~250 lines of plpgsql
+moving enrolment history under a GiST exclusion with INCLUSIVE bounds, which is not something to
+apply on a reading the way 0026's catalogue-only change was. So it was rehearsed against
+PRODUCTION inside a DO block ending in RAISE, which the database rolls back itself (ADR 007).
 
-  FormDialog          draws its own scrim, a centred card bounded at 560px and 90% of the
-                      viewport height, and a body that scrolls INSIDE the card. Tapping beside
-                      it closes, same as the X -- never a quiet save.
-  _layout.tsx         all six form routes move modal -> transparentModal + fade, so the screen
-                      underneath stays MOUNTED and VISIBLE. The two halves only work together.
-  course/edit         hand-built chrome deleted, now uses FormDialog
-  member/edit         hand-built chrome deleted, now uses FormDialog (its two SearchPickers go
-                      through the new `overlays` slot, outside the scrolling body -- a bottom
-                      sheet belongs to the viewport, not to a form)
+  00 actor resolves                        offering A {1,3,5} | offering B {2,4}
+  01 name changed                          PASS
+  02 aliases reconciled to 2               PASS
+  03 removed alias DELETED                 PASS
+  04 "ZZ Probe One  " did not churn        PASS   (normalised reconciliation)
+  05 one live address                      PASS
+  06 removed address SOFT-deleted          PASS
+  07 exactly one primary                   PASS
+  08 moved_offering false when unchanged   PASS
+  09 illegal weekday REFUSED               PASS   ("days the course actually runs")
+  10 old enrolment KEPT, 2 rows            PASS
+  11 old ends YESTERDAY (2026-09-03)       PASS   -- the inclusive-bound case
+  12 old marked ended                      PASS
+  13 new starts TODAY                      PASS
+  14 exactly one active enrolment          PASS
+  15 her own days stored ({2})             PASS   -- legal at the NEW offering
+  16 moved_offering true                   PASS
+  17 blank days clears the override        PASS
+  18 audit rows attributed                 expected >=4, got 3 -- THE ASSERTION WAS WRONG, not
+                                           the function: one of the four calls was the deliberate
+                                           refusal at 09, which correctly writes no audit row
+  19 other enrolments untouched            PASS   (11 of 11)
+  20 attendance untouched                  PASS   (82 of 82)
 
-FormDialog adoption is now 6/6: change-mobile, course/edit, holiday, member/edit, offering/edit,
-staff/add. 2d2877a said "the chrome is one component now"; two hand-built copies had in fact
-survived it, which is exactly the drift that comment was written to prevent.
+Rollback verified afterwards by re-reading the counts: 0 probe rows left behind, and enrolments,
+schedules, aliases, live emails, attendance and audit all back at their prior values.
 
-npm run check green (229 unit, 2840/2840 contrast, 75/75 icons); audit:all clean -- the new
-scrim needed a testID to keep the coverage ratchet at 14.
+STILL OWED: supabase/tests/21_update_member.sql has never executed. The rehearsal covers the same
+ground but it is not the same file, and it is the FILE that gets run next time. CI's db-harness
+job remains the rehearsal of record for both 0026 and 0027.
 
-NOT FIXED HERE, and reported to the owner: Edit Member still cannot save. That is a missing
-write path (0016 shipped the CREATE path only), not a dialog problem.
+LIVE EVIDENCE FOR 0026, found while checking: two members created through the app at 06:13 today
+carry member_code NULL. The retirement works end to end in production, through the real import
+path, not just in the catalogue.
+
+---
+
+## Gate run - 2026-09-04 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
