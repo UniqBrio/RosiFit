@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
     const academyName = settingsRow?.academy_name ?? 'RosiFit Academy';
 
     const { data: members, error: mErr } = await admin.from('members')
-      .select('id, full_name, member_code').in('id', memberIds).is('deleted_at', null);
+      .select('id, full_name').in('id', memberIds).is('deleted_at', null);
     if (mErr) throw new HttpError(500, 'Could not load members.');
     const memberById = new Map((members ?? []).map(m => [m.id as string, m]));
 
@@ -130,7 +130,7 @@ Deno.serve(async (req) => {
 
       const vars: Record<string, string> = {
         first_name: member.full_name.split(' ')[0], member_name: member.full_name,
-        member_code: member.member_code, course_name: courseName, branch_name: branchName,
+        course_name: courseName, branch_name: branchName,
         period_from: periodFrom, period_to: periodTo,
         expected_sessions: String(metric.expected ?? 0), attended_sessions: String(metric.attended ?? 0),
         missed_sessions: String(metric.missed ?? 0),

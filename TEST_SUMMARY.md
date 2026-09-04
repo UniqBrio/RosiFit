@@ -1,3 +1,61 @@
+
+## Gate run - 2026-09-04 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+RETIRING THE MEMBER CODE: this verdict is the SAME verdict the run above it recorded, on the
+same four steps, and none of them is this change. G1/G2/G3 fail on a missing `design/tokens.json`
+that this repository deliberately does not have (DECISION_LOG 003-005); G8 fails because no
+`test:functional` script exists (DECISION_LOG 009); G6 is blocked for want of a local eslint
+(DECISION_LOG 007). Compare the two reports line for line -- every step that reports on code
+this change touched is PASS, and G5 Types, G7 Unit and G10 Backward compatibility (fixtures) are
+the three that would have caught it if the Member type, the eight fixtures or the token map had
+gone out of step.
+
+What was verified directly, and is not in the gate:
+  npm run check  -- 229 unit assertions, 2840/2840 contrast pairs, 75/75 icons
+  npm run audit:all -- six audits, no new violations; COLUMN CONTROL and DEAD WEIGHT still clean
+
+What was NOT verified, and must be before 0026 is applied anywhere:
+  bash db/harness/test.sh -- this machine has neither psql nor Docker, which is exactly the
+  situation ADR 005 was written for: CI runs the harness against services: postgres:16, and that
+  run is the rehearsal. 0026 and supabase/tests/20_no_member_code.sql have never been executed.
+
+---
 FAIL-FIRST: src/data/meetCsv.test.ts (REAL_FILE) - observed failing against the tree, on the
 genuine export rather than on a fixture. This is the SECOND time this parser was wrong about the
 same file, and the first fix is why:

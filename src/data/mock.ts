@@ -31,7 +31,7 @@ export const OUTCOME_META: Record<MatchKind, { tag: string; blocks: boolean; not
 };
 
 export type Candidate = {
-  member_id: string; name: string; code: string; course: string; branch: string;
+  member_id: string; name: string; email: string; course: string; branch: string;
   last_attended?: string; attendance?: string; aliases?: string;
   /** why this candidate is being offered, in one line */
   hint?: string;
@@ -48,25 +48,25 @@ export const CSV_COLUMNS = ['Full Name', 'First Seen', 'Time in Call'] as const;
 
 export const MATCH_ROWS: MatchRow[] = [
   { row: 12, kind: 'matched', raw: 'Divya Ramesh', first_seen: '5:58 pm', minutes: 61,
-    candidates: [{ member_id: '1', name: 'Divya Ramesh', code: 'RF-000102',
+    candidates: [{ member_id: '1', name: 'Divya Ramesh', email: 'divya.r@gmail.com',
       course: 'Prenatal Flow', branch: 'Coimbatore', last_attended: '21 Aug', attendance: '78%',
       aliases: '\u201cDivya\u201d, \u201cDivya R\u201d',
       hint: 'Matched on her canonical name', hintTone: 'sure' }] },
   { row: 47, kind: 'possible', raw: 'Shazia', first_seen: '6:02 pm', minutes: 58,
-    candidates: [{ member_id: '2', name: 'Shazia Begum', code: 'RF-000118',
+    candidates: [{ member_id: '2', name: 'Shazia Begum', email: 'shazia.b@gmail.com',
       course: 'Postnatal Core', branch: 'Madurai', last_attended: '28 Aug', attendance: '71%',
       aliases: '\u201cShazia F\u201d, \u201cShazia Begum\u201d',
       hint: 'Fuzzy match \u2014 one candidate, so nothing is assumed', hintTone: 'unsure' }] },
   { row: 52, kind: 'ambiguous', raw: 'priya l', first_seen: '6:00 pm', minutes: 52,
     candidates: [
-      { member_id: '7', name: 'Lakshmi Priya', code: 'RF-000131', course: 'Prenatal Flow',
+      { member_id: '7', name: 'Lakshmi Priya', email: 'lakshmi.p@gmail.com', course: 'Prenatal Flow',
         branch: 'Chennai', last_attended: '19 Aug', attendance: '64%',
         aliases: '\u201cLakshmi P\u201d', hint: 'Name order reversed in Meet', hintTone: 'sure' },
-      { member_id: '9', name: 'Priya Latha', code: 'RF-000148', course: 'Postnatal Core',
+      { member_id: '9', name: 'Priya Latha', email: 'priya.l@gmail.com', course: 'Postnatal Core',
         branch: 'Chennai', last_attended: '15 Aug', attendance: '81%',
         aliases: 'none yet', hint: 'Also a plausible reading', hintTone: 'unsure' }] },
   { row: 88, kind: 'noEmail', raw: 'Meena Raj', first_seen: '6:04 pm', minutes: 52,
-    candidates: [{ member_id: '8', name: 'Kavya Balaji', code: 'RF-000146',
+    candidates: [{ member_id: '8', name: 'Kavya Balaji', email: '',
       course: 'Postnatal Core', branch: 'Madurai', last_attended: '27 Aug', attendance: '66%',
       aliases: '\u201cMeena Raj\u201d', hint: 'Matched on her canonical name', hintTone: 'sure' }] },
   { row: 91, kind: 'unmatched', raw: 'kavi.s', first_seen: '6:11 pm', minutes: 9, candidates: [] },
@@ -114,7 +114,7 @@ export const MATCH_QUESTION: Record<MatchKind, string> = {
 };
 
 export type Member = {
-  id: string; code: string; name: string; course: string; branch: string;
+  id: string; name: string; course: string; branch: string;
   aliases: string[];
   /** A member can hold several addresses; exactly one is primary. An EMPTY
    *  list means no usable address -- she is still listed and still counted,
@@ -134,14 +134,14 @@ export type Member = {
  * follow-up, which is exactly how those numbers drift apart.
  */
 export const MEMBERS: Member[] = [
-  { id: '1', code: 'RF-000102', name: 'Divya Ramesh',       course: 'Prenatal Flow',            branch: 'Coimbatore', aliases: ['Divya', 'Divya R'], emails: [{ address: 'divya.r@gmail.com', primary: true }],   expected: 3, attended: 0, missed: 3, streak: 3, last: '14 Aug' },
-  { id: '2', code: 'RF-000118', name: 'Shazia Begum',       course: 'Postnatal Core',           branch: 'Madurai',    aliases: ['Shazia', 'Shazia F'], emails: [{ address: 'shazia.b@gmail.com', primary: true }], expected: 3, attended: 1, missed: 2, streak: 2, last: '20 Aug' },
-  { id: '3', code: 'RF-000151', name: 'Meenakshi Sundaram', course: 'Trimester 3 Gentle',       branch: 'Chennai',    aliases: ['Meena S'],          emails: [{ address: 'meena.s@yahoo.in', primary: true }],    expected: 4, attended: 0, missed: 4, streak: 6, last: '2 Aug' },
-  { id: '4', code: 'RF-000127', name: 'Aarthi Venkat',      course: 'Prenatal Flow',            branch: 'Coimbatore', aliases: [],                   emails: [{ address: 'aarthi.v@gmail.com', primary: true }],  expected: 3, attended: 3, missed: 0, streak: 0, last: '\u2014' },
-  { id: '5', code: 'RF-000133', name: 'Nithya Krishnan',    course: 'Pelvic Floor Foundations', branch: 'Madurai',    aliases: [],                   emails: [],                    expected: 0, attended: 0, missed: 0, streak: 0, last: '11 Aug' },
-  { id: '6', code: 'RF-000140', name: 'Fathima Rizwan',     course: 'Postnatal Core',           branch: 'Coimbatore', aliases: ['Fathima'],          emails: [],                    expected: 3, attended: 0, missed: 3, streak: 4, last: '9 Aug' },
-  { id: '7', code: 'RF-000131', name: 'Lakshmi Priya',      course: 'Prenatal Flow',            branch: 'Chennai',    aliases: ['Lakshmi P'],        emails: [{ address: 'lakshmi.p@gmail.com', primary: true }], expected: 4, attended: 2, missed: 2, streak: 1, last: '\u2014' },
-  { id: '8', code: 'RF-000146', name: 'Kavya Balaji',       course: 'Postnatal Core',           branch: 'Madurai',    aliases: [],                   emails: [],                    expected: 3, attended: 0, missed: 3, streak: 3, last: '6 Aug' },
+  { id: '1', name: 'Divya Ramesh',       course: 'Prenatal Flow',            branch: 'Coimbatore', aliases: ['Divya', 'Divya R'], emails: [{ address: 'divya.r@gmail.com', primary: true }],   expected: 3, attended: 0, missed: 3, streak: 3, last: '14 Aug' },
+  { id: '2', name: 'Shazia Begum',       course: 'Postnatal Core',           branch: 'Madurai',    aliases: ['Shazia', 'Shazia F'], emails: [{ address: 'shazia.b@gmail.com', primary: true }], expected: 3, attended: 1, missed: 2, streak: 2, last: '20 Aug' },
+  { id: '3', name: 'Meenakshi Sundaram', course: 'Trimester 3 Gentle',       branch: 'Chennai',    aliases: ['Meena S'],          emails: [{ address: 'meena.s@yahoo.in', primary: true }],    expected: 4, attended: 0, missed: 4, streak: 6, last: '2 Aug' },
+  { id: '4', name: 'Aarthi Venkat',      course: 'Prenatal Flow',            branch: 'Coimbatore', aliases: [],                   emails: [{ address: 'aarthi.v@gmail.com', primary: true }],  expected: 3, attended: 3, missed: 0, streak: 0, last: '\u2014' },
+  { id: '5', name: 'Nithya Krishnan',    course: 'Pelvic Floor Foundations', branch: 'Madurai',    aliases: [],                   emails: [],                    expected: 0, attended: 0, missed: 0, streak: 0, last: '11 Aug' },
+  { id: '6', name: 'Fathima Rizwan',     course: 'Postnatal Core',           branch: 'Coimbatore', aliases: ['Fathima'],          emails: [],                    expected: 3, attended: 0, missed: 3, streak: 4, last: '9 Aug' },
+  { id: '7', name: 'Lakshmi Priya',      course: 'Prenatal Flow',            branch: 'Chennai',    aliases: ['Lakshmi P'],        emails: [{ address: 'lakshmi.p@gmail.com', primary: true }], expected: 4, attended: 2, missed: 2, streak: 1, last: '\u2014' },
+  { id: '8', name: 'Kavya Balaji',       course: 'Postnatal Core',           branch: 'Madurai',    aliases: [],                   emails: [],                    expected: 3, attended: 0, missed: 3, streak: 3, last: '6 Aug' },
 ];
 
 export const WEEK = { from: '18 Aug', to: '24 Aug 2026', label: '18\u201324 Aug 2026' };
@@ -249,7 +249,7 @@ export const TEMPLATES: Template[] = [
     body: 'Hello {{first_name}},\n\nInactive — not offered in the send flow while it is switched off.\n\n{{academy_name}}' },
 ];
 
-export const TOKENS = ['{{first_name}}','{{member_name}}','{{member_code}}','{{course_name}}',
+export const TOKENS = ['{{first_name}}','{{member_name}}','{{course_name}}',
   '{{branch_name}}','{{period_from}}','{{period_to}}','{{expected_sessions}}','{{attended_sessions}}',
   '{{missed_sessions}}','{{attendance_pct}}','{{consecutive_missed}}','{{last_attendance_date}}','{{academy_name}}'];
 
@@ -258,7 +258,7 @@ export const TOKENS = ['{{first_name}}','{{member_name}}','{{member_code}}','{{c
 export function renderTemplate(tpl: string, c: FollowUpCandidate): string {
   const map: Record<string, string> = {
     first_name: c.full_name.split(' ')[0], member_name: c.full_name,
-    member_code: c.member_id, course_name: c.course_name, branch_name: c.branch_name,
+    course_name: c.course_name, branch_name: c.branch_name,
     period_from: WEEK.from, period_to: WEEK.to,
     expected_sessions: String(c.expected), attended_sessions: String(c.attended),
     missed_sessions: String(c.missed), attendance_pct: c.attendance_pct === null ? '—' : `${c.attendance_pct}%`,
@@ -333,10 +333,10 @@ export type AuditEntry = {
 };
 export const AUDIT: AuditEntry[] = [
   { id: 'a1', who: 'Priya Menon', when: '31 Aug 2026, 10:32 am', action: 'CSV match decision',
-    entity: 'Member', subject: 'Shazia Farheen (RF-000118)',
+    entity: 'Member', subject: 'Shazia Farheen',
     changes: [{ field: 'Display names', old: '“Shazia F”, “Shazia Farheen”', new: '“Shazia F”, “Shazia Farheen”, “Shazia”' }] },
   { id: 'a2', who: 'Priya Menon', when: '31 Aug 2026, 10:18 am', action: 'Member email changed',
-    entity: 'Member', subject: 'Divya Ramesh (RF-000102)',
+    entity: 'Member', subject: 'Divya Ramesh',
     changes: [{ field: 'Primary email', old: 'old@example.com', new: 'divya@example.com' }] },
   { id: 'a3', who: 'Rosi Owner', when: '30 Aug 2026, 6:40 pm', action: 'Follow-up rule changed',
     entity: 'Course', subject: 'Prenatal Yoga',
@@ -515,7 +515,7 @@ export const PENDING_SESSIONS = [
 export type AttendanceStatus = 'present' | 'absent' | 'extra';
 
 export type AttendanceRow = {
-  id: string; member_id: string; member: string; code: string;
+  id: string; member_id: string; member: string;
   course: string; branch: string;
   /** ISO yyyy-mm-dd — the query filters on this, the screen formats it */
   date: string;
@@ -548,7 +548,7 @@ export function attendanceFixture(from: string, to: string): AttendanceRow[] {
       const seed = (d.getDate() + i * 3) % 5;
       const status: AttendanceStatus = seed === 0 ? 'absent' : seed === 4 && i === 2 ? 'extra' : 'present';
       rows.push({
-        id: `${date}-${m.id}`, member_id: m.id, member: m.name, code: m.code,
+        id: `${date}-${m.id}`, member_id: m.id, member: m.name,
         course: m.course, branch: m.branch, date,
         time: m.course === 'Postnatal Core' ? '08:00' : '18:00',
         status,

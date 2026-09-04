@@ -22,7 +22,7 @@ const RULE: FollowUpRule = {
 };
 
 const member = (over: Partial<Member> = {}): Member => ({
-  id: 'm', code: 'RF-000001', name: 'Test Member',
+  id: 'm', name: 'Test Member',
   course: 'Prenatal Flow', branch: 'Coimbatore',
   aliases: [], emails: [{ address: 'a@b.com', primary: true }],
   expected: 6, attended: 6, missed: 0, streak: 0, last: '—', ...over,

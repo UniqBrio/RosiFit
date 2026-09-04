@@ -237,7 +237,7 @@ The plain-language sentence is **generated from the values**, never hardcoded, s
 
 ### 5.1 Fields **[C-70]**
 
-`member_code` · `full_name` · `name_normalized` (generated) · `status` · `status_changed_at` · `joined_on` · `notes` · audit columns.
+`full_name` · `name_normalized` (generated) · `status` · `status_changed_at` · `joined_on` · `notes` · audit columns. (`member_code` is nullable, historical and unread — retired in `0026`, ADR 006.)
 
 **`phone_e164` is removed.** A member's phone was never used for matching and is not required by the attendance system.
 
@@ -419,7 +419,7 @@ Confirm  →  Send  →  Result
 
 ### 7.2 Supported values
 
-`member_name` · `first_name` · `member_code` · `course_name` · `branch_name` · `period_from` · `period_to` · `expected_sessions` · `attended_sessions` · `missed_sessions` · `attendance_pct` · `consecutive_missed` · `last_attendance_date` · `academy_name`
+`member_name` · `first_name` · `course_name` · `branch_name` · `period_from` · `period_to` · `expected_sessions` · `attended_sessions` · `missed_sessions` · `attendance_pct` · `consecutive_missed` · `last_attendance_date` · `academy_name`
 
 Unchanged from v2.1 §24.2: values render **server-side from the engine**, are stored per message, and an unknown token is a save-time error. `{{ }}` is visible **only** in the template editor.
 

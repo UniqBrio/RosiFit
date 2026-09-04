@@ -92,15 +92,16 @@ name from an uploaded register to an existing member.
 
 | Capability | Status | Notes |
 |---|---|---|
-| List, search and filter members | ◻ | |
+| List, search and filter members | ◻ | Search covers her name, her primary address and her Meet aliases |
 | One member's attendance history | ◻ | |
 | Edit a member | ◻ | **Her name is the only required field** |
 | Several email addresses, exactly one primary | ◻ | `member_emails.is_primary` |
+| A member carries NO member code | ✅ | Retired in `0026` (ADR 006). Her primary address is what tells two same-named members apart; pre-0026 codes are kept in the column and read by nothing |
 | Aliases | ◻ | What the uploaded register matches on |
-| Link an unmatched name to an existing member | ◻ | `app/match.tsx`; branch, known display names and last-attended come from the import preview |
+| Link an unmatched name to an existing member | ◻ | `app/match.tsx`; branch, known display names, last-attended and her address come from the import preview |
 
-**Rules and validations** — **no phone number is held for a member**: it was never used to
-identify anyone, so it is not collected. An alias is a correction and can be deleted; it is the
+**Rules and validations** — **no phone number is held for a member**, and since `0026` **no
+member code either**: neither was ever used to identify anyone, so neither is collected. An alias is a correction and can be deleted; it is the
 only `for delete` policy in the schema.
 
 **Limits** — members do not sign in. RosiFit has no member-facing surface at all; every screen is

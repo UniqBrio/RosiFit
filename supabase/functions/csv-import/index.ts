@@ -110,12 +110,15 @@ async function preview(admin: SupabaseClient, actorId: string, body: Record<stri
   const { data: aliases } = await admin.from('member_aliases')
     .select('member_id, alias_display, alias_normalized').eq('alias_type', 'name');
   const { data: members } = await admin.from('members')
-    .select('id, member_code, full_name, name_normalized').is('deleted_at', null);
+    .select('id, full_name, name_normalized').is('deleted_at', null);
+  // The ADDRESS, not just whether there is one: with the member code retired
+  // it is what tells two same-named candidates apart on the review screen.
   const { data: primaryEmails } = await admin.from('member_emails')
-    .select('member_id').eq('is_primary', true).is('deleted_at', null).neq('status', 'bounced');
+    .select('member_id, email').eq('is_primary', true).is('deleted_at', null).neq('status', 'bounced');
   const { data: stats } = await admin.from('member_stats').select('member_id, last_present_date');
 
   const hasEmail = new Set((primaryEmails ?? []).map(e => e.member_id as string));
+  const emailBy = new Map((primaryEmails ?? []).map(e => [e.member_id as string, e.email as string]));
   const memberById = new Map((members ?? []).map(m => [m.id as string, m]));
   const lastPresentBy = new Map((stats ?? []).map(s => [s.member_id as string, s.last_present_date as string | null]));
 
@@ -185,8 +188,8 @@ async function preview(admin: SupabaseClient, actorId: string, body: Record<stri
       return {
         member_id: id,
         full_name: m.full_name as string,
-        member_code: m.member_code as string,
         has_email: hasEmail.has(id),
+        primary_email: emailBy.get(id) ?? '',
         course_name: offering ? (courseNameById.get(offering.course_id as string) ?? '—') : '—',
         branch_name: offering ? (branchNameById.get(offering.branch_id as string) ?? '—') : '—',
         aliases: aliasNamesByMember.get(id) ?? [],

@@ -14,7 +14,7 @@ import { recipientSplit } from './followup';
 import type { Member } from './mock';
 
 const member = (over: Partial<Member> = {}): Member => ({
-  id: 'm', code: 'RF-000001', name: 'Test Member',
+  id: 'm', name: 'Test Member',
   course: 'Prenatal Flow', branch: 'Coimbatore',
   aliases: [], emails: [{ address: 'a@b.com', primary: true }],
   expected: 6, attended: 0, missed: 6, streak: 6, last: '—', ...over,

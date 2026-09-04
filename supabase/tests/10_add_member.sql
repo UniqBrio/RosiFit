@@ -36,8 +36,10 @@ begin;
 
   select t.eq((select count(*)::int from public.members where full_name='Anitha Rajesh'), 1,
     'she is IN the database — the form used to say "added" and write nothing');
-  select t.eq((select member_code ~ '^RF-[0-9]{6}$' from public.members where full_name='Anitha Rajesh'),
-    true, 'her member code is generated, not asked for');
+  -- Was: "her member code is generated, not asked for". 0026 retired the
+  -- code entirely, so the assertion is now that none is invented for her.
+  select t.ok((select member_code from public.members where full_name='Anitha Rajesh') is null,
+    'no member code is assigned — the scheme was retired in 0026');
   select t.eq((select joined_on from public.members where full_name='Anitha Rajesh'),
     current_date - 30, 'the joining date is the one that was given');
   select t.eq((select status from public.members where full_name='Anitha Rajesh'), 'active',

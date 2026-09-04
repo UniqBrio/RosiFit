@@ -122,7 +122,10 @@ export function recoveryApply(recoveryToken: string, newPin: string): Promise<Si
 // -------------------------------------------------------------- csv import
 export type MatchKindLive = 'matched' | 'noEmail' | 'possible' | 'ambiguous' | 'unmatched';
 export type PreviewCandidate = {
-  member_id: string; full_name: string; member_code: string; has_email: boolean;
+  member_id: string; full_name: string; has_email: boolean;
+  /** her primary address, or '' when she has none — what tells two
+   *  same-named candidates apart now that the member code is gone */
+  primary_email: string;
   course_name: string; branch_name: string; aliases: string[];
   last_present_date: string | null;
   /** why this candidate is offered, in one line, and how sure it is */

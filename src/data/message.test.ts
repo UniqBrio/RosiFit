@@ -13,7 +13,7 @@ import { fillTokens, unknownTokens, MESSAGE_TOKENS } from './message';
 import type { Member } from './mock';
 
 const member = (over: Partial<Member> = {}): Member => ({
-  id: 'm', code: 'RF-000001', name: 'Divya Ramesh',
+  id: 'm', name: 'Divya Ramesh',
   course: 'Prenatal Flow', branch: 'Coimbatore',
   aliases: [], emails: [{ address: 'a@b.com', primary: true }],
   expected: 6, attended: 3, missed: 3, streak: 2, last: '—', ...over,
@@ -93,7 +93,7 @@ test('the token list IS the sender’s variable map, name for name', () => {
   // offered here that the sender does not build would preview correctly and
   // arrive as literal text.
   const sender = [
-    'first_name', 'member_name', 'member_code', 'course_name', 'branch_name',
+    'first_name', 'member_name', 'course_name', 'branch_name',
     'period_from', 'period_to', 'expected_sessions', 'attended_sessions',
     'missed_sessions', 'attendance_pct', 'consecutive_missed',
     'last_attendance_date', 'academy_name',

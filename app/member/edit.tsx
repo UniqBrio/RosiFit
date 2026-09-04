@@ -108,7 +108,7 @@ export default function MemberEdit() {
     setSaving(true);
     setRefusal(null);
     try {
-      const { code } = await createMember({
+      await createMember({
         full_name: name.trim(),
         offering_id: offering.id,
         joined_on: joined || null,
@@ -121,7 +121,7 @@ export default function MemberEdit() {
         // as an empty list
         weekdays: days.length ? days.map(d => DAY_NAMES.indexOf(d)) : null,
       });
-      flash(`${name.trim().split(' ')[0]} added · ${code} · ${course} · ${branch}`);
+      flash(`${name.trim().split(' ')[0]} added · ${course} · ${branch}`);
       router.back();
     } catch (e) {
       setRefusal(e instanceof Error ? e.message : 'The member could not be saved. Nothing has been saved.');

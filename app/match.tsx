@@ -9,8 +9,8 @@ import { useTheme } from '../src/theme/ThemeProvider';
 import { useToast } from '../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../src/theme/tokens';
 import {
-  DECISION_ROWS, OUTCOME_META, MATCH_ACTIONS, MATCH_QUESTION,
-  type MatchKind, type MatchRow,
+  DECISION_ROWS, OUTCOME_META, MATCH_ACTIONS, MATCH_QUESTION, primaryEmail,
+  type MatchKind, type MatchRow, type Member,
 } from '../src/data/mock';
 import { peekStagedImport, clearStagedImport } from '../src/data/pending';
 import { csvCommit, type ImportDecision, type PreviewRow } from '../src/data/api';
@@ -35,7 +35,7 @@ function toMatchRows(rows: PreviewRow[]): MatchRow[] {
     row: r.row, kind: r.kind as MatchKind, raw: r.raw_name,
     first_seen: r.first_seen ?? '—', minutes: r.minutes,
     candidates: r.candidates.map(c => ({
-      member_id: c.member_id, name: c.full_name, code: c.member_code,
+      member_id: c.member_id, name: c.full_name, email: c.primary_email,
       course: c.course_name, branch: c.branch_name,
       last_attended: c.last_present_date ?? undefined,
       aliases: c.aliases.length ? c.aliases.map(a => `“${a}”`).join(', ') : undefined,
@@ -66,6 +66,24 @@ export default function MatchReview() {
   const [linking, setLinking] = useState<MatchRow | null>(null);
   const [importing, setImporting] = useState(false);
   const members = useMembers();
+
+  /* The label IS the identity here -- SearchPicker hands back the text that
+     was tapped, so two identical labels would silently link the row to
+     whichever member sorted first. The member code used to make that
+     impossible. Her address does it now, and where two same-named members
+     both have no address on file the course and branch are appended; a
+     numbered suffix is the last resort, because linking the wrong member is
+     worse than an ugly line. */
+  const linkOptions = useMemo(() => {
+    const used = new Map<string, number>();
+    return (members.data ?? []).map((m: Member) => {
+      const email = primaryEmail(m);
+      const base = email ? `${m.name} · ${email}` : `${m.name} · ${m.course} · ${m.branch}`;
+      const n = (used.get(base) ?? 0) + 1;
+      used.set(base, n);
+      return { label: n === 1 ? base : `${base} (${n})`, member: m };
+    });
+  }, [members.data]);
 
   const done = index >= decisionRows.length;
   const decided = Math.min(index, decisionRows.length);
@@ -242,7 +260,7 @@ export default function MatchReview() {
                   remember_alias: cur.kind === 'possible' ? remember : true,
                 })}
             accessibilityRole="button"
-            accessibilityLabel={`${c.name}, ${c.code}, ${c.course}, ${c.branch}. ${c.hint ?? ''}`}
+            accessibilityLabel={`${c.name}, ${c.course}, ${c.branch}${c.email ? `, ${c.email}` : ''}. ${c.hint ?? ''}`}
             style={({ pressed }) => ({
               padding: SPACE.lg, borderRadius: RADIUS.lg, backgroundColor: theme.surface,
               borderWidth: 1, borderColor: cur.kind === 'noEmail' ? statusSurface(ink('present')).border : theme.lineStrong,
@@ -250,7 +268,7 @@ export default function MatchReview() {
             })}>
             <Text style={{ fontSize: 15.5, fontWeight: '800', color: theme.fgStrong }}>{c.name}</Text>
             <Text style={{ fontSize: 12, color: theme.muted, marginTop: 3 }}>
-              {`${c.code} · ${c.course} · ${c.branch}`}
+              {c.email ? `${c.email} · ${c.course} · ${c.branch}` : `${c.course} · ${c.branch}`}
             </Text>
             {c.last_attended ? (
               <Text style={{ fontSize: 11.5, color: theme.muted, marginTop: 3, fontVariant: ['tabular-nums'] }}>
@@ -351,13 +369,13 @@ export default function MatchReview() {
           the operator -- nothing is guessed from the name. */}
       <SearchPicker
         open={linking !== null} onClose={() => setLinking(null)}
-        title="Link to an existing member" placeholder="Search by name or member ID"
-        options={(members.data ?? []).map(m => ({ label: `${m.name} · ${m.code}` }))}
+        title="Link to an existing member" placeholder="Search by name or email"
+        options={linkOptions.map(o => ({ label: o.label }))}
         onSelect={labelText => {
           const row = linking;
           setLinking(null);
           if (!row) return;
-          const chosen = (members.data ?? []).find(m => `${m.name} · ${m.code}` === labelText);
+          const chosen = linkOptions.find(o => o.label === labelText)?.member;
           if (!chosen) return;
           advance(`Row ${row.row} linked to ${chosen.name}`, {
             row: row.row, action: 'link_existing', member_id: chosen.id, remember_alias: true,

@@ -20,6 +20,7 @@
 | 011 | [`gate-runner.mjs` is not edited locally; its `src`-only default is carried as debt](../decisions/004-gate-runner-dir-gap.md) | Accepted | 02-Sep-2026 | |
 | 012 | [The DB harness is unverifiable on the adopting machine (no `psql`, no Docker)](../decisions/003-accepted-unverifiable-gate-classes.md) | **Superseded by 013** | 02-Sep-2026 | |
 | 013 | [The DB harness is runnable, and CI is what keeps it runnable](../decisions/005-db-harness-runnable.md) | Accepted | 02-Sep-2026 | 012 |
+| 014 | [The member code is retired; the column is kept](../decisions/006-member-code-retired.md) | Accepted | 04-Sep-2026 | |
 
 Status: `Proposed` · `Accepted` · `Superseded by NNN` · `Deprecated`
 

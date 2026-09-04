@@ -61,7 +61,9 @@ select t.eq((select count(*)::int from public.attendance_records a
              where a.status='present'), 1,
   'row 1 (matched, no email) still recorded attendance -- C-76: imports regardless of email');
 select t.eq((select count(*)::int from public.attendance_records a
-             join public.members m on m.id=a.member_id and m.member_code like 'RF-0%'
+             -- the `m.member_code like 'RF-0%'` this join used to carry went
+             -- with the code scheme in 0026; the name is what identifies her
+             join public.members m on m.id=a.member_id
              where m.full_name='Kavi S' and a.status='present'), 1,
   'the new member from row 2 has a present record, not absent');
 select t.ok(exists (select 1 from public.member_aliases ma join public.members m on m.id=ma.member_id

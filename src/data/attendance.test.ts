@@ -90,11 +90,13 @@ test('rows are newest first, and each day is grouped together', () => {
 });
 
 test('every row names a member the register knows', () => {
-  // The screen filters on branch, course and code. A row carrying a name
+  // The screen filters on branch, course and name. A row carrying a name
   // that is on no member record would be unfilterable and unexplainable.
-  const codes = new Set(MEMBERS.map(m => m.code));
+  // Was checked by member code until 0026 retired it; her id is the identity
+  // the row actually carries, and the one the screen navigates by.
+  const ids = new Set(MEMBERS.map(m => m.id));
   const rows = attendanceFixture(daysFromNow(-14), daysFromNow(-1));
-  for (const r of rows) assert.ok(codes.has(r.code), `${r.code} is not a member`);
+  for (const r of rows) assert.ok(ids.has(r.member_id), `${r.member} is not a member`);
 });
 
 test('a one-day custom range still returns that day', () => {

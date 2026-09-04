@@ -53,8 +53,8 @@ where c.name = 'Yoga Flow';
 -- Outcome D can therefore only arise from two members sharing a canonical
 -- name, or from a fuzzy tie. Two people with the same name in different
 -- batches is the real case, so that is what this seeds.
-insert into public.members (member_code, full_name, joined_on, status, notes)
-select 'RF-' || lpad(nextval('public.member_code_seq')::text, 6, '0'), v.full_name,
+insert into public.members (full_name, joined_on, status, notes)
+select v.full_name,
        current_date - 45, 'active', 'demo-seed'
 from (values
   ('Lakshmi Narayanan'),   -- A: exact match, via her confirmed alias
@@ -69,10 +69,10 @@ from (values
 
 -- Meena Sundaram deliberately has NO email: outcome B, and the weekly review
 -- must still count and NAME her rather than dropping her silently (C-76).
--- The address carries the member code so the two Kavithas stay distinct.
+-- The address carries a slice of her id so the two Kavithas stay distinct.
 insert into public.member_emails (member_id, email, is_primary, status, source)
 select m.id,
-       lower(split_part(m.full_name, ' ', 1)) || '+' || lower(m.member_code) || '@example.com',
+       lower(split_part(m.full_name, ' ', 1)) || '+' || left(m.id::text, 8) || '@example.com',
        true, 'valid', 'manual'
 from public.members m
 where m.notes = 'demo-seed' and m.full_name <> 'Meena Sundaram';
@@ -83,7 +83,7 @@ where m.notes = 'demo-seed' and m.full_name <> 'Meena Sundaram';
 insert into public.member_aliases (member_id, alias_type, alias_display, source)
 select m.id, 'name', v.alias, 'manual'
 from (
-  select m.*, row_number() over (partition by full_name order by member_code) as rn
+  select m.*, row_number() over (partition by full_name order by m.id) as rn
   from public.members m where m.notes = 'demo-seed'
 ) m
 join (values
@@ -98,7 +98,7 @@ join (values
 insert into public.member_enrollments (member_id, offering_id, effective_from, status, note)
 select m.id, o.id, current_date - 45, 'active', 'demo-seed'
 from (
-  select m.*, row_number() over (partition by full_name order by member_code) as rn
+  select m.*, row_number() over (partition by full_name order by m.id) as rn
   from public.members m where m.notes = 'demo-seed'
 ) m
 join public.course_offerings o on true

@@ -72,7 +72,7 @@ export default function MemberDetail() {
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 24, fontWeight: '800', color: onDeepStrong, letterSpacing: -0.5 }}>{m.name}</Text>
             <Text style={{ fontSize: 13, color: theme.accentInk, marginTop: 3 }}>{m.course}</Text>
-            <Text style={{ fontSize: 12, color: theme.onDeep, marginTop: 2 }}>{`${m.branch} · ${m.code}`}</Text>
+            <Text style={{ fontSize: 12, color: theme.onDeep, marginTop: 2 }}>{m.branch}</Text>
           </View>
         </View>
       </LinearGradient>

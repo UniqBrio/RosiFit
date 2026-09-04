@@ -31,7 +31,6 @@ import type { Member } from './mock';
 export const MESSAGE_TOKENS: { token: string; means: string }[] = [
   { token: '{{first_name}}', means: 'her first name' },
   { token: '{{member_name}}', means: 'her full name' },
-  { token: '{{member_code}}', means: 'her RF- code' },
   { token: '{{course_name}}', means: 'the course' },
   { token: '{{branch_name}}', means: 'the branch' },
   { token: '{{period_from}}', means: 'start of the period' },
@@ -60,7 +59,6 @@ function variables(ctx: MessageContext): Record<string, string> {
   return {
     first_name: m.name.split(' ')[0],
     member_name: m.name,
-    member_code: m.code,
     course_name: ctx.courseName,
     branch_name: ctx.branchName,
     period_from: ctx.periodFrom,
@@ -96,7 +94,7 @@ export function fillTokens(text: string, ctx: MessageContext): string {
  */
 export function unknownTokens(text: string): string[] {
   const known = variables({
-    member: { name: '', code: '', expected: 0, attended: 0, missed: 0, streak: 0, last: '' } as Member,
+    member: { name: '', expected: 0, attended: 0, missed: 0, streak: 0, last: '' } as Member,
     courseName: '', branchName: '', academyName: '', periodFrom: '', periodTo: '',
   });
   const found = String(text ?? '').match(/\{\{\w+\}\}/g) ?? [];

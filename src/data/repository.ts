@@ -54,7 +54,7 @@ export async function fetchMembers(period: Period): Promise<Member[]> {
   if (!isConfigured) return MEMBERS;
 
   const [membersRes, emailsRes, aliasesRes, statsRes, enrolRes, metricsRes] = await Promise.all([
-    supabase.from('members').select('id, member_code, full_name, status').is('deleted_at', null).order('full_name'),
+    supabase.from('members').select('id, full_name, status').is('deleted_at', null).order('full_name'),
     supabase.from('member_emails').select('member_id, email, is_primary, status').is('deleted_at', null),
     supabase.from('member_aliases').select('member_id, alias_display').eq('alias_type', 'name'),
     supabase.from('member_stats').select('member_id, current_streak, last_emailed_at'),
@@ -101,7 +101,6 @@ export async function fetchMembers(period: Period): Promise<Member[]> {
     const stat = statByMember.get(m.id as string);
     return {
       id: m.id as string,
-      code: m.member_code as string,
       name: m.full_name as string,
       course: offering ? (courseName.get(offering.course_id as string) ?? '—') : '—',
       branch: offering ? (branchName.get(offering.branch_id as string) ?? '—') : '—',
@@ -1274,7 +1273,7 @@ export async function fetchAttendance(period: Period): Promise<AttendanceRow[]> 
   const memberIds = [...new Set(records.map(r => r.member_id as string))];
   const offeringIds = [...new Set((sessions ?? []).map(s => s.offering_id as string))];
   const [membersRes, offeringsRes] = await Promise.all([
-    supabase.from('members').select('id, member_code, full_name').in('id', memberIds),
+    supabase.from('members').select('id, full_name').in('id', memberIds),
     supabase.from('course_offerings').select('id, course_id, branch_id').in('id', offeringIds),
   ]);
   const courseIds = [...new Set((offeringsRes.data ?? []).map(o => o.course_id as string))];
@@ -1302,7 +1301,6 @@ export async function fetchAttendance(period: Period): Promise<AttendanceRow[]> 
       // '—' rather than '' so a row RLS hid the member of still reads as a
       // row, instead of an unexplained blank
       member: (member?.full_name as string) ?? '—',
-      code: (member?.member_code as string) ?? '—',
       course: offering ? (courseName.get(offering.course_id as string) ?? '—') : '—',
       branch: offering ? (branchName.get(offering.branch_id as string) ?? '—') : '—',
       date: (session?.session_date as string) ?? '',
@@ -1542,7 +1540,7 @@ function memberWriteError(error: { message?: string } | null): string {
   return `${message || 'The member could not be saved'}. Nothing has been saved.`;
 }
 
-export async function createMember(input: MemberInput): Promise<{ id: string; code: string }> {
+export async function createMember(input: MemberInput): Promise<{ id: string }> {
   if (!isConfigured) {
     // Offline the fixture list IS the store, so she has to land in it — a
     // screen that says "added" over a list that never changed is the same
@@ -1551,7 +1549,6 @@ export async function createMember(input: MemberInput): Promise<{ id: string; co
     const offering = course?.offerings.find(o => o.id === input.offering_id);
     const member: Member = {
       id: `local-${Date.now()}`,
-      code: `RF-${String(MEMBERS.length + 1).padStart(6, '0')}`,
       name: input.full_name,
       course: course?.name ?? '—',
       branch: offering?.branch ?? '—',
@@ -1561,7 +1558,7 @@ export async function createMember(input: MemberInput): Promise<{ id: string; co
     };
     MEMBERS.push(member);
     membersChanged();
-    return { id: member.id, code: member.code };
+    return { id: member.id };
   }
 
   const { data, error } = await supabase.rpc('create_member', {
@@ -1578,8 +1575,5 @@ export async function createMember(input: MemberInput): Promise<{ id: string; co
   }
 
   membersChanged();
-  return {
-    id: (data as { member_id: string }).member_id,
-    code: (data as { member_code: string }).member_code,
-  };
+  return { id: (data as { member_id: string }).member_id };
 }
