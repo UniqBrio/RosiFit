@@ -6,7 +6,8 @@
 > reading this file. The previous version of this block was stale in three
 > ways and is corrected below — see the note at the end.
 >
-> - **Schema applied**: migrations `0001`–`0024`. **`0025` is not** — see below. The ledger
+> - **Schema applied**: migrations `0001`–`0024`. **`0025` and `0026` are not** — see below.
+>   The ledger
 >   (`supabase_migrations.schema_migrations`) carries 21 rows: `0001`–`0015`
 >   and `0019`–`0024`. **`0016`, `0017` and `0018` are applied but have no
 >   ledger row** — they were run through the SQL editor rather than as
@@ -35,6 +36,25 @@
 >   triggers`, not with a leak — after `0025` it answers `permission denied`,
 >   which is the correct answer to the wrong question. Worth closing; not an
 >   emergency.
+> - **`0026` IS WRITTEN AND NOT APPLIED**, and unlike `0025` it has not been
+>   rehearsed either. It retires the member code: `members.member_code`
+>   becomes nullable, `members_code_live` is dropped, `create_member` and
+>   `commit_csv_import` are re-issued without the `'RF-' || nextval(...)`
+>   minting, and every grant on `member_code_seq` is revoked. Nothing in it
+>   rewrites a row — dropping `NOT NULL` and dropping an index are
+>   catalogue-only — so it is safe over the data production already holds.
+>   **Two things must happen first**, in this order:
+>     1. `bash db/harness/test.sh` on a machine with PostgreSQL 16, or the CI
+>        `db-harness` job. Neither `0026` nor its spec
+>        (`supabase/tests/20_no_member_code.sql`) has ever been executed.
+>     2. **Check production for a stored template containing
+>        `{{member_code}}`.** The redeployed `send-followups` no longer builds
+>        that variable, so such a template would mail the literal text
+>        `{{member_code}}` to members. This is the one thing the harness
+>        cannot answer, because it holds no templates.
+>   `csv-import` and `send-followups` both need redeploying with it — the
+>   first to send her address to the review screen, the second to stop
+>   building the token.
 > - **Advisors**: run and acted on. See `0011`–`0013`, `0015`, and the open
 >   items below.
 >
