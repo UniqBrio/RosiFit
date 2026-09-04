@@ -136,3 +136,38 @@ select t.ok(exists (select 1 from public.audit_logs
   'the import is one audited ACT, attributed to the admin who did it');
 select t.eq((select count(*)::int from public.audit_logs where action='member.created'), 2,
   'and each member she created is audited on her own, as create_member always does');
+
+-- ============================================ the date shape (0029)
+-- '01/09/2026'::date does NOT raise -- Postgres reads it under DateStyle and
+-- returns a real date, just not the one she wrote. 0028 guarded the date with
+-- a cast inside an exception block, so a mistyped date imported silently with
+-- the WRONG DAY, and the day she joined decides every session she was ever
+-- expected at. Found by the ADR 007 rehearsal against production; row 7 above
+-- already asserted it, and this pins the two neighbouring cases so the shape
+-- check cannot be relaxed back into a bare cast.
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'a0000000-0000-0000-0000-000000000001';
+  create temp table run2 as
+  select public.bulk_import_members(jsonb_build_array(
+    jsonb_build_object('row', 2, 'full_name', 'ZZ Shape Slash',  'joined_on', '01/09/2026'),
+    jsonb_build_object('row', 3, 'full_name', 'ZZ Shape NoDay',  'joined_on', '2026-02-31'),
+    jsonb_build_object('row', 4, 'full_name', 'ZZ Shape Future', 'joined_on', '2099-01-01'),
+    jsonb_build_object('row', 5, 'full_name', 'ZZ Shape Good',   'joined_on', '2026-08-01')
+  ), (select o.id from public.course_offerings o join public.courses c on c.id=o.course_id where c.name='Yoga Flow'),
+     'shapes.xlsx') as r;
+commit;
+
+select t.eq((select (r->>'inserted')::int from run2), 1, 'only the well-formed date imported');
+select t.eq((select (r->>'failed')::int from run2), 3, 'a slashed date, an impossible day and a future date all fail');
+select t.ok((select v->>'reason' from run2, jsonb_array_elements(r->'rows') v where (v->>'row')::int = 2) like '%YYYY-MM-DD%',
+  '01/09/2026 is REFUSED and names the shape it wants -- it must never be read as 9 January');
+select t.ok((select v->>'reason' from run2, jsonb_array_elements(r->'rows') v where (v->>'row')::int = 3) like '%not a real date%',
+  '2026-02-31 has the right shape and no such day');
+select t.ok((select v->>'reason' from run2, jsonb_array_elements(r->'rows') v where (v->>'row')::int = 4) like '%future%',
+  'a future joining date is create_member''s own refusal, carried through');
+select t.eq((select joined_on from public.members where full_name = 'ZZ Shape Good'), '2026-08-01'::date,
+  'and the one good date is stored exactly as written');
+select t.eq((select count(*)::int from public.members where full_name in
+              ('ZZ Shape Slash','ZZ Shape NoDay','ZZ Shape Future')), 0,
+  'not one of the three refused rows wrote a member');

@@ -59,6 +59,53 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-014 — a mistyped joining date was imported as a real one, because the cast did not raise
+**Date:** 05-Sep-2026 · **Severity:** S2 · **Modules:** `supabase/migrations/0028_bulk_import_members.sql`
+
+**Symptom** — a bulk-import probe row carrying `01/09/2026` came back **`inserted`** where the
+spec says `failed`, and landed on the register with a joining date nobody had written.
+
+**Root cause** — `0028` guarded the date the way a cast is usually guarded:
+
+```sql
+begin
+  v_joined := nullif(btrim(coalesce(v_row->>'joined_on', '')), '')::date;
+exception when others then   -- "not a date"
+```
+
+That assumes `'01/09/2026'::date` raises. **It does not.** Postgres parses it under the
+session's `DateStyle` and returns a perfectly real date — just not the one the academy meant.
+The exception block only ever caught outright gibberish; the dangerous input is the one that
+*is* a date, in the wrong order. A member's `joined_on` becomes
+`member_enrollments.effective_from`, which decides every session she was ever expected at, so a
+silent slip there rewrites her whole attendance history.
+
+The client already refused it (`src/data/memberImport.ts` matches `^\d{4}-\d{2}-\d{2}$`).
+The server did not, and the server is the boundary that writes.
+
+**Fix** — `0029` checks the SHAPE before the cast: `YYYY-MM-DD` or a named refusal. The cast
+stays, guarded, for a well-shaped date that is not a real day (`2026-02-31`). A future date is
+still `create_member`'s own refusal, inside the per-row sub-transaction.
+
+**How it was found** — the ADR 007 rolled-back rehearsal against production, run immediately
+after `0028` was applied. Nothing persisted. **The committed spec already asserted the correct
+outcome** — `22_bulk_import_members.sql`, *"three failed -- and each is named below"* — and had
+never been executed, because no machine here has PostgreSQL 16 (ADR 005). The spec was right
+and unread; that is the cost of the unrun harness, in one line.
+
+**Guard** — seven assertions appended to `22_bulk_import_members.sql` pinning the slashed date,
+the impossible day, the future date and the good one. Still unrun for the same reason, so the
+live guard today is the shape check itself plus the rehearsal transcript in `TEST_SUMMARY.md`.
+
+**Recurrence risk** — moderate, and general. Any `text::date`, `::int` or `::uuid` behind
+`exception when others` in this schema makes the same assumption: that bad input raises. For
+dates it usually does not.
+
+**Prevention** — prose. The real rung is the harness running in CI, which would have failed
+this on the commit that introduced it.
+
+---
+
 ## RC-013 — a dependency's Node build bundled into the app, and the build stayed green
 **Date:** 04-Sep-2026 · **Severity:** S2 · **Modules:** `src/data/memberXlsx.ts`, `metro.config.js`
 

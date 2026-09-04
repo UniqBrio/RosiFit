@@ -6,10 +6,10 @@
 > reading this file. The previous version of this block was stale in three
 > ways and is corrected below — see the note at the end.
 >
-> - **Schema applied**: migrations `0001`–`0024`, **`0026`** and **`0027`** (both applied
->   04-Sep-2026). **`0025` is not** — see below. The ledger
->   (`supabase_migrations.schema_migrations`) carries 23 rows: `0001`–`0015`,
->   `0019`–`0024`, `0026` and `0027`. **`0016`, `0017` and `0018` are applied but have no
+> - **Schema applied**: migrations `0001`–`0024`, **`0026`**, **`0027`**, **`0028`** and
+>   **`0029`**. **`0025` is not** — see below. The ledger
+>   (`supabase_migrations.schema_migrations`) carries 25 rows: `0001`–`0015`,
+>   `0019`–`0024` and `0026`–`0029`. **`0016`, `0017` and `0018` are applied but have no
 >   ledger row** — they were run through the SQL editor rather than as
 >   migrations. Their objects are all present and were verified individually
 >   (`create_member`, `holidays_apply_effects` + its three triggers + the
@@ -82,6 +82,24 @@
 >   emails, attendance and audit all back at their prior counts.
 >   See ADR 007 for why this counts as a rehearsal and where it is weaker
 >   than the harness.
+> - **`0028` and `0029` ARE APPLIED** (05-Sep-2026). `0028` adds
+>   `bulk_import_members()` and `member_import_runs`; `0029` fixes a defect in
+>   `0028` that the rehearsal caught **in production, before any data moved**.
+>   **The defect, because it is worth knowing:** `0028` guarded the joining
+>   date with a cast inside an exception block. `'01/09/2026'::date` does not
+>   raise — Postgres reads it under `DateStyle` and returns a real date, just
+>   not the one the academy wrote. A mistyped date imported silently with the
+>   **wrong day**, and the day she joined decides every session she was ever
+>   expected at. `0029` checks the SHAPE (`YYYY-MM-DD`) before the cast.
+>   **Rehearsed by the ADR 007 rolled-back method, twice.** Run 1, straight
+>   after `0028`: the date row came back `inserted` where the spec says
+>   `failed`. Run 2, after `0029`: 16 of 16, including the slashed date, an
+>   impossible day (`2026-02-31`), a future date, staff refused, and the
+>   duplicate skipped rather than doubled. Nothing persisted from either:
+>   0 probe rows, and members 13, enrolments 13, attendance 82,
+>   `member_import_runs` 0 and `member.bulk_imported` 0 afterwards.
+>   `supabase/tests/22_bulk_import_members.sql` (37 assertions) has still
+>   never been executed — it already asserted the defect and could not say so.
 > - **Advisors**: run and acted on. See `0011`–`0013`, `0015`, and the open
 >   items below.
 >
