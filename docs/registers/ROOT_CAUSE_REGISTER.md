@@ -59,6 +59,50 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-012 — two member screens read the fixture, so one showed the wrong person
+**Date:** 04-Sep-2026 · **Severity:** S1 · **Modules:** `app/member/edit.tsx`, `app/member/[id].tsx`
+
+**Symptom** — reported as *"Edit member is not working, it's opening the add member form instead."*
+Tapping Edit on a real member opened a blank form titled **"Welcome a new member"**.
+
+**Root cause** — both screens resolved the member against `MEMBERS`, the **fixture array**, rather
+than against the live list:
+
+```ts
+const existing = MEMBERS.find(m => m.id === id);              // member/edit
+const index = Math.max(0, MEMBERS.findIndex(x => x.id === id));
+const m = MEMBERS[index] ?? MEMBERS[0];                        // member/[id]
+```
+
+On live data no real id is in the fixture. In the edit form `existing` was always `undefined`, so
+Edit rendered Add — and its Save would have **created a second record for somebody already on the
+register**.
+
+The detail screen was worse and nobody had reported it. `findIndex` returns `-1`, `Math.max`
+clamps that to `0`, and the screen rendered **the first fixture member** — a different person's
+name, course, attendance and missed streak — under the heading of whoever was tapped. A defensive
+clamp turned "not found" into "here is someone else", confidently.
+
+**Fix** — both read `useMembers`, the same source the list and the follow-up derivation use
+(guardrail 1). The edit form seeds its fields from an effect once her record arrives, guarded by a
+`seeded` flag so a refetch cannot overwrite a keystroke. The detail screen answers **loading** and
+**missing** as separate states and never substitutes a neighbour.
+
+**Guard** — the `?? MEMBERS[0]` fallback is gone and cannot come back without reintroducing the
+fixture import, which no longer exists in either file.
+
+**Recurrence risk** — high. `MEMBERS` is exported for the fixtures mode and imports cleanly
+anywhere; nothing fails when a screen reaches for it. RC-010 recorded this exact class on the
+Reports screen and explicitly noted `app/member/[id].tsx` as *"the same class of defect, out of
+scope"*. It was left, and this is it arriving.
+
+**Prevention** — prose only, and honestly so: `rung: scripts/audits/check-dead-weight.mjs` does
+not cover this, and a lint rule banning the fixture import would also ban the fixtures mode that
+needs it. The register entry is the guard. Named here so the next reader can weigh whether a
+dedicated audit is worth it.
+
+---
+
 ## RC-011 — every action taken through an Edge Function was logged as "System"
 **Date:** 03-Sep-2026 · **Severity:** S2 · **Modules:** `supabase/migrations/0004_audit_logs.sql`, `supabase/functions/*`
 

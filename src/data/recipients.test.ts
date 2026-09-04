@@ -17,7 +17,7 @@ const member = (over: Partial<Member> = {}): Member => ({
   id: 'm', code: 'RF-000001', name: 'Test Member',
   course: 'Prenatal Flow', branch: 'Coimbatore',
   aliases: [], emails: [{ address: 'a@b.com', primary: true }],
-  expected: 6, attended: 0, missed: 6, streak: 6, last: '—', ...over,
+  expected: 6, attended: 0, missed: 6, streak: 6, last: '—', joined: 'Mar 2026', ...over,
 });
 
 test('a member with an address is a recipient', () => {

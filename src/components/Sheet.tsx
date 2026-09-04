@@ -60,7 +60,16 @@ export function Sheet({ open, onClose, title, children }:
   );
 }
 
-export type PickerOption = { label: string; meta?: string };
+/**
+ * `value` is the option's IDENTITY, when its label is not one.
+ *
+ * onSelect used to hand back the label, and callers matched on it to find the
+ * row again. That is only safe while every label is unique -- and the member
+ * picker's labels stopped being unique the moment the member code came out of
+ * them, so two members sharing a name would both have matched the first.
+ * Linking an attendance row to the wrong person, silently.
+ */
+export type PickerOption = { label: string; meta?: string; value?: string };
 
 /**
  * Search-and-pick sheet used for the role, course and branch pickers. When
@@ -72,7 +81,8 @@ export function SearchPicker({ open, onClose, title, placeholder, options, value
   {
     open: boolean; onClose: () => void; title: string; placeholder: string;
     options: PickerOption[]; value?: string;
-    onSelect: (label: string) => void;
+    /** the option's `value` when it has one, otherwise its label */
+    onSelect: (chosen: string) => void;
     onAdd?: (label: string) => void;
     addMeta?: string;
     emptyNote?: string;
@@ -109,7 +119,7 @@ export function SearchPicker({ open, onClose, title, placeholder, options, value
           const on = o.label === value;
           return (
             <Pressable key={o.label}
-              onPress={() => { setQuery(''); onSelect(o.label); }}
+              onPress={() => { setQuery(''); onSelect(o.value ?? o.label); }}
               accessibilityRole="radio" accessibilityState={{ selected: on }}
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: SPACE.md,

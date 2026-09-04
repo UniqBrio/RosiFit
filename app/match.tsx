@@ -242,7 +242,7 @@ export default function MatchReview() {
                   remember_alias: cur.kind === 'possible' ? remember : true,
                 })}
             accessibilityRole="button"
-            accessibilityLabel={`${c.name}, ${c.code}, ${c.course}, ${c.branch}. ${c.hint ?? ''}`}
+            accessibilityLabel={`${c.name}, ${c.course}, ${c.branch}. ${c.hint ?? ''}`}
             style={({ pressed }) => ({
               padding: SPACE.lg, borderRadius: RADIUS.lg, backgroundColor: theme.surface,
               borderWidth: 1, borderColor: cur.kind === 'noEmail' ? statusSurface(ink('present')).border : theme.lineStrong,
@@ -250,7 +250,7 @@ export default function MatchReview() {
             })}>
             <Text style={{ fontSize: 15.5, fontWeight: '800', color: theme.fgStrong }}>{c.name}</Text>
             <Text style={{ fontSize: 12, color: theme.muted, marginTop: 3 }}>
-              {`${c.code} · ${c.course} · ${c.branch}`}
+              {`${c.course} · ${c.branch}`}
             </Text>
             {c.last_attended ? (
               <Text style={{ fontSize: 11.5, color: theme.muted, marginTop: 3, fontVariant: ['tabular-nums'] }}>
@@ -351,13 +351,18 @@ export default function MatchReview() {
           the operator -- nothing is guessed from the name. */}
       <SearchPicker
         open={linking !== null} onClose={() => setLinking(null)}
-        title="Link to an existing member" placeholder="Search by name or member ID"
-        options={(members.data ?? []).map(m => ({ label: `${m.name} · ${m.code}` }))}
-        onSelect={labelText => {
+        title="Link to an existing member" placeholder="Search by name"
+        options={(members.data ?? []).map(m => ({
+          label: m.name, meta: `${m.course} · ${m.branch}`, value: m.id,
+        }))}
+        onSelect={memberId => {
           const row = linking;
           setLinking(null);
           if (!row) return;
-          const chosen = (members.data ?? []).find(m => `${m.name} · ${m.code}` === labelText);
+          // Matched on her ID, not on a display string. Two members can share
+          // a name, and linking an attendance row to the wrong one is the
+          // mistake this screen exists to prevent.
+          const chosen = (members.data ?? []).find(m => m.id === memberId);
           if (!chosen) return;
           advance(`Row ${row.row} linked to ${chosen.name}`, {
             row: row.row, action: 'link_existing', member_id: chosen.id, remember_alias: true,

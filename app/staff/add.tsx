@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Screen, Muted, Label, Button } from '../../src/components/ui';
+import { FormDialog } from '../../src/components/FormDialog';
 import { Field } from '../../src/components/Field';
 import { Icon } from '../../src/components/Icon';
 import { SearchPicker } from '../../src/components/Sheet';
@@ -54,9 +55,15 @@ export default function StaffAdd() {
   const warnBox = statusSurface(warnInk);
 
   return (
-    <Screen>
-      <Muted style={{ marginBottom: SPACE.lg }}>She signs in with her number and a PIN</Muted>
-
+    <FormDialog
+      title="Add staff"
+      subtitle="She signs in with her number and a PIN"
+      confirmLabel={busy ? 'Saving…' : 'Save Staff Member'}
+      confirmTestID="staff-save"
+      confirmDisabled={!valid || busy}
+      onConfirm={() => void save()}
+      hint={valid ? `Saved as ${role} · no app access yet`
+        : 'Name and a 10-digit mobile number are needed'}>
       <Field label="Full name" value={name} onChange={setName} placeholder="e.g. Revathi Anand" />
 
       <Field
@@ -94,12 +101,6 @@ export default function StaffAdd() {
         </Text>
       </View>
 
-      <Button label={busy ? 'Saving…' : 'Save Staff Member'} onPress={() => void save()}
-        disabled={!valid || busy} style={{ marginTop: SPACE.xl }} />
-      <Muted style={{ marginTop: 9, textAlign: 'center' }}>
-        {valid ? `Saved as ${role} · no app access yet` : 'Name and a 10-digit mobile number are needed'}
-      </Muted>
-
       <SearchPicker
         open={picking}
         onClose={() => setPicking(false)}
@@ -114,6 +115,6 @@ export default function StaffAdd() {
           flash(`“${l}” added as a role label`);
         }}
         emptyNote="No label matches that. Type it in full and add it — labels are free text and grant no access." />
-    </Screen>
+    </FormDialog>
   );
 }

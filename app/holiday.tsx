@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Screen, Muted, Label, Button, Skeleton, EmptyState, ErrorState } from '../src/components/ui';
+import { FormDialog } from '../src/components/FormDialog';
 import { Field } from '../src/components/Field';
 import { DateField, formatDate } from '../src/components/DateTimePicker';
 import { normaliseRange, rangeLabel } from '../src/data/holiday';
@@ -118,8 +119,15 @@ export default function HolidayScreen() {
   };
 
   return (
-    <Screen>
-      <Muted style={{ marginBottom: SPACE.lg }}>A closure, not a cancellation</Muted>
+    <FormDialog
+      title="Add holiday"
+      subtitle="A closure, not a cancellation"
+      confirmLabel={saving ? 'Applying…' : 'Apply holiday'}
+      confirmTestID="holiday-apply"
+      confirmDisabled={!valid || saving}
+      onConfirm={apply}
+      hint={!valid ? 'A name and a start date are needed'
+        : 'Removing it later puts every one of these sessions back to scheduled'}>
 
       <Field label="Name or reason" value={name} onChange={setName} placeholder="e.g. Diwali" />
 
@@ -248,17 +256,6 @@ export default function HolidayScreen() {
         </View>
       ) : null}
 
-      <View style={{ flexDirection: 'row', gap: SPACE.md, marginTop: SPACE.xl }}>
-        <Button testID="holiday-cancel" label="Cancel" variant="secondary"
-          onPress={() => router.back()} style={{ flex: 1 }} />
-        <Button testID="holiday-apply" label={saving ? 'Applying…' : 'Apply holiday'}
-          onPress={apply} disabled={!valid || saving} style={{ flex: 1 }} />
-      </View>
-      <Muted style={{ marginTop: 9, textAlign: 'center' }}>
-        {!valid ? 'A name and a start date are needed'
-          : 'Removing it later puts every one of these sessions back to scheduled'}
-      </Muted>
-
       {/* ------------------------------------------------- the existing ones */}
       <View style={{
         marginTop: SPACE.xxl, paddingTop: SPACE.lg,
@@ -343,6 +340,6 @@ export default function HolidayScreen() {
         cancelLabel="Keep it"
         confirmLabel="Remove holiday"
         onConfirm={() => { if (confirmDelete) void remove(confirmDelete); }} />
-    </Screen>
+    </FormDialog>
   );
 }

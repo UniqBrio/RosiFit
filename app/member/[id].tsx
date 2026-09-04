@@ -1,7 +1,9 @@
 import { View, Text, Pressable } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useMembers } from '../../src/data/hooks';
+import { ScreenHeader } from '../../src/components/AppShell';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Screen, H2, Muted, Label, Button } from '../../src/components/ui';
+import { Screen, H2, Muted, Label, Button, Skeleton, ErrorState } from '../../src/components/ui';
 import { Icon } from '../../src/components/Icon';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
@@ -15,11 +17,23 @@ export default function MemberDetail() {
   const { theme } = useTheme();
   const { flash } = useToast();
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, state: forced } = useLocalSearchParams<{ id: string; state?: string }>();
 
-  const index = Math.max(0, MEMBERS.findIndex(x => x.id === id));
-  const m = MEMBERS[index] ?? MEMBERS[0];
-  const pct = attendancePct(m);
+  /**
+   * THE LIVE member, not the fixture.
+   *
+   * This read `MEMBERS.findIndex(x => x.id === id)` and then
+   * `MEMBERS[index] ?? MEMBERS[0]`. Against live data no real id is in the
+   * fixture, so findIndex returned -1, Math.max clamped it to 0, and the
+   * screen showed A DIFFERENT PERSON -- the first fixture member -- under the
+   * heading of whoever was tapped. Confidently, with her figures.
+   *
+   * useMembers is the same source the list and the follow-up derivation read,
+   * so this cannot show a member the list does not have (guardrail 1).
+   */
+  const members = useMembers(forced);
+  const m = (members.data ?? []).find(x => x.id === id) ?? null;
+  const pct = m ? attendancePct(m) : null;
   const ink = (k: keyof typeof STATUS) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
 
   const pctColor = pct === null ? theme.muted
@@ -29,6 +43,22 @@ export default function MemberDetail() {
    * ink is white in both -- theme.onDeep is the softer body ink beside it.
    * Named once here rather than repeated as a literal at each use. */
   const onDeepStrong = '#FFFFFF';
+
+  /* A member who is not in the list is NOT the first member in the list.
+     Loading and missing are separate answers and both are given plainly --
+     showing somebody else's attendance under the requested name is the
+     failure this screen was built around. */
+  if (members.state === 'loading') return <Screen><Skeleton lines={7} /></Screen>;
+  if (members.state === 'error' || !m) {
+    return (
+      <Screen>
+        <ScreenHeader title="Member" onBack={() => router.back()} />
+        <ErrorState onRetry={members.retry}
+          message={members.error
+            ?? 'That member is not on the register. She may have been removed since this link was opened.'} />
+      </Screen>
+    );
+  }
 
   const mail = hasEmail(m);
   const mailInk = mail ? ink('present') : ink('absent');
@@ -63,7 +93,7 @@ export default function MemberDetail() {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
           <View style={{
             width: 64, height: 64, borderRadius: 32,
-            backgroundColor: AVATAR_TINTS[index % AVATAR_TINTS.length],
+            backgroundColor: AVATAR_TINTS[(members.data ?? []).indexOf(m) % AVATAR_TINTS.length],
             borderWidth: 2, borderColor: theme.lineStrong,
             alignItems: 'center', justifyContent: 'center',
           }}>
@@ -72,7 +102,14 @@ export default function MemberDetail() {
           <View style={{ flex: 1 }}>
             <Text style={{ fontSize: 24, fontWeight: '800', color: onDeepStrong, letterSpacing: -0.5 }}>{m.name}</Text>
             <Text style={{ fontSize: 13, color: theme.accentInk, marginTop: 3 }}>{m.course}</Text>
-            <Text style={{ fontSize: 12, color: theme.onDeep, marginTop: 2 }}>{`${m.branch} · ${m.code}`}</Text>
+            {/* branch and JOINING MONTH, as the canvas writes it. This said
+                `branch · RF-000102` -- an internal identifier, in the one
+                place a person looks to confirm she has the right member. A
+                code tells her nothing she can check against; a joining month
+                she can. */}
+            <Text style={{ fontSize: 12, color: theme.onDeep, marginTop: 2 }}>
+              {m.joined === '—' ? m.branch : `${m.branch} · joined ${m.joined}`}
+            </Text>
           </View>
         </View>
       </LinearGradient>

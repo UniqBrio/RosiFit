@@ -311,7 +311,7 @@ export default function Attendance() {
                     <View key={r.id}
                       accessible
                       accessibilityLabel={
-                        `${r.member}, ${r.code}. ${STATUS[tone].word}. ${r.course}, ${r.branch}. `
+                        `${r.member}. ${STATUS[tone].word}. ${r.course}, ${r.branch}. `
                         + (r.minutes === null ? 'No time in call' : `${r.minutes} minutes in call`)}
                       style={{
                         flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
@@ -331,7 +331,7 @@ export default function Attendance() {
                           {r.member}
                         </Text>
                         <Text numberOfLines={1} style={{ fontSize: 11.5, color: theme.muted, marginTop: 2 }}>
-                          {`${r.code} · ${r.course} · ${r.branch}`}
+                          {`${r.course} · ${r.branch}`}
                         </Text>
                       </View>
 

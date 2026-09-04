@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Screen, Muted, Label, Button, Skeleton, ErrorState } from '../../src/components/ui';
+import { FormDialog } from '../../src/components/FormDialog';
 import { TimeField, DateField } from '../../src/components/DateTimePicker';
 import { DropdownRow, DropdownField, DropdownPanel, DropdownList } from '../../src/components/Dropdown';
 import { Icon } from '../../src/components/Icon';
@@ -116,10 +117,16 @@ export default function OfferingEdit() {
   const mismatch = stated > 0 && chosen > 0 && chosen !== stated;
 
   return (
-    <Screen>
-      <Muted style={{ marginBottom: SPACE.lg }}>
-        {existing ? `${course.name} at ${existing.branch}` : `${course.name} — where it runs`}
-      </Muted>
+    <FormDialog
+      title={existing ? 'Where and when' : 'Add an offering'}
+      subtitle={existing ? `${course.name} at ${existing.branch}` : `${course.name} — where it runs`}
+      confirmLabel={saving ? 'Saving…' : existing ? 'Save Days' : 'Add Offering'}
+      confirmTestID="offering-save"
+      confirmDisabled={!valid || saving}
+      onConfirm={save}
+      hint={!valid
+        ? 'A branch, at least one day and a start date are needed'
+        : 'Sessions are not created here — they appear as attendance is recorded'}>
 
       {/* An offering cannot change branch: the course, the branch and the batch
           are what make it unique, so moving it is really a different offering. */}
@@ -237,14 +244,6 @@ export default function OfferingEdit() {
         </View>
       ) : null}
 
-      <Button testID="offering-save"
-        label={saving ? 'Saving…' : existing ? 'Save Days' : 'Add Offering'}
-        onPress={save} disabled={!valid || saving} style={{ marginTop: SPACE.xl }} />
-      <Muted style={{ marginTop: 9, textAlign: 'center' }}>
-        {!valid
-          ? 'A branch, at least one day and a start date are needed'
-          : 'Sessions are not created here — they appear as attendance is recorded'}
-      </Muted>
-    </Screen>
+    </FormDialog>
   );
 }

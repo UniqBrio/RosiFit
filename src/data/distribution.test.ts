@@ -18,7 +18,7 @@ const member = (over: Partial<Member> = {}): Member => ({
   id: 'm', code: 'RF-000001', name: 'Test Member',
   course: 'Prenatal Flow', branch: 'Coimbatore',
   aliases: [], emails: [{ address: 'a@b.com', primary: true }],
-  expected: 6, attended: 6, missed: 0, streak: 0, last: '—', ...over,
+  expected: 6, attended: 6, missed: 0, streak: 0, last: '—', joined: 'Mar 2026', ...over,
 });
 
 test('an empty list is three zeros, not a divide by nothing', () => {

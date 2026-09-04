@@ -26,19 +26,28 @@ function Nav() {
         {/* The canvas presents Add/Edit Course as a DIALOG over the
             Attendance workspace, not as a page you travel to. */}
         <Stack.Screen name="course/edit"   options={{ presentation: 'modal', headerShown: false }} />
-        <Stack.Screen name="offering/edit" options={{ title: 'Where and when' }} />
+        <Stack.Screen name="offering/edit" options={{ presentation: 'modal', headerShown: false }} />
         <Stack.Screen name="member/[id]"   options={{ title: 'Member' }} />
-        {/* A dialog over the workspace, like course/edit -- see the note at
-            the top of app/member/edit.tsx. */}
+        {/* EVERY FORM IS A DIALOG. A form is a decision taken OVER a screen,
+            not a place you travel to: pushed as a page it wears the stack's
+            header, so the only way out is in the chrome and the save sits
+            below however much has been typed. They share one shell --
+            src/components/FormDialog.tsx -- so two of them cannot end up
+            disagreeing about where Cancel goes.
+
+            Not converted, deliberately: register / set-pin / forgot-pin are
+            the pre-session auth flow and own the whole screen; upload and
+            match are multi-step reviews, not forms; branches, staff/index,
+            audit, appearance, profile and help are places, not decisions. */}
         <Stack.Screen name="member/edit"   options={{ presentation: 'modal', headerShown: false }} />
-        <Stack.Screen name="holiday"       options={{ title: 'Add holiday' }} />
+        <Stack.Screen name="holiday"       options={{ presentation: 'modal', headerShown: false }} />
         <Stack.Screen name="branches"      options={{ title: 'Branches' }} />
         <Stack.Screen name="staff/index"   options={{ title: 'Staff & access' }} />
-        <Stack.Screen name="staff/add"     options={{ title: 'Add staff' }} />
+        <Stack.Screen name="staff/add"     options={{ presentation: 'modal', headerShown: false }} />
         {/* the PIN is shown once and only here; there is no way back to it */}
         <Stack.Screen name="staff/pin"     options={{ title: 'PIN issued', headerBackVisible: false }} />
         <Stack.Screen name="audit"         options={{ title: 'Audit log' }} />
-        <Stack.Screen name="change-mobile" options={{ title: 'Mobile number' }} />
+        <Stack.Screen name="change-mobile" options={{ presentation: 'modal', headerShown: false }} />
         <Stack.Screen name="send/index"    options={{ headerShown: false }} />
         <Stack.Screen name="send/result"   options={{ title: 'Result' }} />
         <Stack.Screen name="match"         options={{ title: 'Match review' }} />

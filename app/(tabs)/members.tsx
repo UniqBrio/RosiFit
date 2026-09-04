@@ -67,6 +67,9 @@ export default function Members() {
       // the search covers everything the placeholder promises, including the
       // Meet aliases -- that is how a name from a CSV gets found at all
       const matches = !q || [
+        // The code stays SEARCHABLE but is no longer advertised: anybody
+        // holding one from an export can still find her, and nobody is
+        // promised a field the app does not show.
         m.name, m.code, primaryEmail(m), ...m.aliases,
       ].some(v => v.toLowerCase().includes(q));
       // The scope is an AND, applied before the chips: inside one course,
@@ -134,7 +137,7 @@ export default function Members() {
         <Icon name="search" size={19} color={theme.muted} />
         <TextInput
           value={query} onChangeText={setQuery}
-          placeholder="Name, member ID, email or Meet alias"
+          placeholder="Name, email or Meet alias"
           placeholderTextColor={theme.muted}
           accessibilityLabel="Search members"
           style={{ flex: 1, color: theme.fgStrong, fontSize: 13.5, fontWeight: '600' }} />
@@ -259,7 +262,12 @@ function MemberCard({ member, index, onOpen, onEdit, onRemove }:
           </Text>
         </View>
         <Text numberOfLines={1} style={{ flex: 1, fontSize: 11.5, color: theme.muted, fontVariant: ['tabular-nums'] }}>
-          {noMail ? member.code : `${member.code} · ${primaryEmail(member)}`}
+          {/* The member CODE is not shown. It is an internal identifier: it
+              tells nobody which member this is, and it was the entire line
+              for anyone with no address. Her course and branch already sit
+              above; what belongs here is how she can be reached, or that she
+              cannot be. */}
+          {noMail ? 'No address on file' : primaryEmail(member)}
         </Text>
         <Pressable onPress={onOpen} accessibilityRole="button"
           accessibilityLabel={`Attendance for ${member.name}`}>
