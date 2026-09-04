@@ -37,33 +37,176 @@ exit 1
 
 _Merge blocked. Every FAIL above must resolve. No partial merges._
 
-THE SHELL WAS ON THE TAB GROUP ONLY. Same verdict, same four accepted-unverifiable steps
+BULK IMPORT MEMBERS -- Track A build. Same verdict, same four accepted-unverifiable steps
 (DECISION_LOG 003-005, 007, 009). Nothing here moved them.
 
-AcademyHeader and the Home · Reports · More pill are drawn by the Tabs navigator, so only its
-seven screens wore them. All 13 routes pushed on the ROOT stack -- course/[id], member/[id],
-upload, match, branches, audit, staff/index, staff/pin, appearance, profile, help, send/index,
-send/result -- replaced the whole chrome with a bare page and a native title bar. The owner's
-screenshot of a course detail is the case: no academy name, no Overview/Attendance row, no pill.
+FAIL-FIRST: src/data/memberImport.test.ts + src/data/memberXlsx.test.ts -- observed failing
+against a tree with the defect each asserts against, then green after revert. Two defects
+injected, one per file:
 
-  ShellScreen        draws the same header and the same pill for a screen the navigator does
-                     not own, and the per-screen title block for the eight that had no back
-                     control of their own because they leaned on the native header
-  AcademyHeader      its tab row falls back to router.replace when there is no navigator --
-                     REPLACE, so tapping Attendance from a course goes to the workspace rather
-                     than stacking it on top
-  _layout.tsx        headerShown: false on all 13; the native bar would have been a third header
+  removed the `seenNames.has(norm)` check   -> not ok 4  "the same person twice in one file is
+  (the register check left in place)            caught, and only the FIRST imports"
+                                                AssertionError: ['ready','ready'] != ['ready','blocked']
 
-Still bare on purpose: index, register, set-pin, forgot-pin -- the pre-session flow runs before
-there is an academy to name. Dialogs unaffected: transparentModal on the root stack renders OVER
-the shell, which is what a dialog over a screen means.
+  added SAMPLE_ROWS to the DATA sheet       -> not ok 20 "the sample rows live on the
+  (as a careless template would)                INSTRUCTIONS sheet, not the data sheet"
+                                                Missing expected rejection (MemberImportError)
 
-VERIFIED BY BUILDING IT. `npm run export` (expo export --platform web) exits 0 and emits all 23
-route bundles including every wrapped screen. That is the strongest check available here -- it
-compiles the real route tree and both layouts -- and it is the one that would have caught a bad
-import depth or a broken navigator, which G5 Types alone would not.
+  with defects: 31 tests, 29 pass, 2 fail  ·  reverted: 31 tests, 31 pass, 0 fail
 
-npm run check green (229 unit, 2840/2840 contrast, 75/75 icons); audit:all clean, ratchet at 14.
+That second one is the assertion worth having. A template whose data sheet already holds two
+people imports two strangers the first time somebody uploads it unedited.
+
+WHAT WAS BUILT, and against what
+The owner supplied the UniqBrio Bulk Student Import v1 feature detail, which answered Gate 1
+Q1. Its rules are kept: .xlsx only, three-sheet template (instructions protected, data sheet
+with dropdowns, hidden lookup), academy-branded file name, 500 rows / 5 MB, blank rows skipped,
+blank joining date = today, a duplicate SKIPPED never overwritten, one sub-transaction per
+person, results as Imported / Skipped / Failed, an error report to fix and re-import, and
+OWNER-ONLY. RosiFit's own differences are deliberate and recorded in 0028's header: no phone
+column (C-70), ONE course per row (one active enrolment, 0006), and Google Meet display names,
+which UniqBrio has no equivalent of and RosiFit's matching depends on.
+
+  src/data/memberImport.ts    the rules, pure -- 17 specs
+  src/data/memberXlsx.ts      template + parse + error report, exceljs -- 14 specs
+  app/member/import.tsx       file -> validate -> preview -> confirm, under the shell
+  0028                        bulk_import_members(), member_import_runs, owner-only
+  22_bulk_import_members.sql  30 assertions: the gate, six rows with six fates, the run
+
+VERIFIED BY BUILDING IT: `npm run export` exits 0 and emits /member/import (33KB) among all 33
+route bundles -- which is also the proof that exceljs bundles for web at all.
+
+Unit 253 -> 260 (the CSV parser's specs were replaced by the workbook's, so the file count rose
+by more than the test count). Contrast 2840/2840, icons 75/75, audit:all clean, ratchet at 14.
+
+NOT DONE: 0028 and 22_bulk_import_members.sql have never been executed -- no psql, no Docker
+(ADR 005), and this one is NOT a candidate for the ADR 007 rolled-back rehearsal until the
+owner asks: it writes members. Nothing has been applied. The feature is dead in production
+until it is, and the button will report the RPC's "function not found".
+
+---
+
+## Gate run - 2026-09-04 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-04 - VERDICT: FAIL
+
+Steps: 4 pass, 4 fail, 3 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - FAIL
+
+```
+app/(tabs)/attendance.tsx(215,41): error TS2345: Argument of type 'string' is not assignable to parameter of type '"/upload" | "/audit" | "/(tabs)/weekly" | RelativePathString | ExternalPathString | "/appearance" | `/appearance?${string}` | `/appearance#${string}` | `/audit?${string}` | ... 137 more ... | { ...; }'.
+app/(tabs)/attendance.tsx(226,41): error TS2345: Argument of type 'string' is not assignable to parameter of type '"/upload" | "/audit" | "/(tabs)/weekly" | RelativePathString | ExternalPathString | "/appearance" | `/appearance?${string}` | `/appearance#${string}` | `/audit?${string}` | ... 137 more ... | { ...; }'.
+app/(tabs)/attendance.tsx(240,39): error TS2345: Argument of type 'string' is not assignable to parameter of type '"/upload" | "/audit" | "/(tabs)/weekly" | RelativePathString | ExternalPathString | "/appearance" | `/appearance?${string}` | `/appearance#${string}` | `/audit?${string}` | ... 137 more ... | { ...; }'.
+app/(tabs)/members.tsx(107,39): error TS2345: Argument of type 'string' is not assignable to parameter of type '"/upload" | "/audit" | "/(tabs)/weekly" | RelativePathString | ExternalPathString | "/appearance" | `/appearance?${string}` | `/appear
+... (truncated)
+```
+
+- **G6 Lint** - BLOCKED - prerequisite G5 did not pass
+- **G7 Unit + pure specs** - BLOCKED - prerequisite G5 did not pass
+- **G8 Functional / integration** - BLOCKED - prerequisite G5 did not pass
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-04 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

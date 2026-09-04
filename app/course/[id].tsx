@@ -481,9 +481,15 @@ function CourseDetailBody() {
               <Icon name="person_add" size={18} color={theme.accentInk} />
               <Text style={{ fontSize: 12.5, fontWeight: '800', color: theme.accentInk }}>Add Member</Text>
             </Pressable>
+            {/* MEMBERS, not attendance. This opened `/upload` -- the Google
+                Meet register importer -- so Bulk Import under a Members
+                heading asked which session the file belonged to and then
+                wrote attendance. The plan names exactly this confusion
+                (§6.6): the member file "is NOT the attendance CSV", and
+                conflating the two is "the likeliest misreading". */}
             <Pressable testID="course-bulk-import"
-              onPress={() => router.push(`/upload?courseId=${id}`)}
-              accessibilityRole="button" accessibilityLabel="Bulk import from a file"
+              onPress={() => router.push(`/member/import?courseId=${id}`)}
+              accessibilityRole="button" accessibilityLabel="Bulk import members from a file"
               style={({ pressed }) => ({
                 flex: 1, minHeight: 46, borderRadius: RADIUS.md,
                 flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,

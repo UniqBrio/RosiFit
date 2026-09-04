@@ -1101,6 +1101,7 @@ export async function fetchWeekRows(weeks: Period[]): Promise<WeekRow[]> {
 // modules and their specs can name it without pulling in the Supabase client.
 // Re-exported here because this is where callers expect to find it.
 import type { PendingSession } from './mock';
+import type { MemberImportRow, ImportResult } from './memberImport';
 export type { PendingSession };
 
 const MONTHS_SHORT = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
@@ -1602,6 +1603,80 @@ export async function createMember(input: MemberInput): Promise<{ id: string }> 
 
   membersChanged();
   return { id: (data as { member_id: string }).member_id };
+}
+
+/**
+ * BULK IMPORT — one call, one file, every row judged on its own (0028).
+ *
+ * The parsed and client-validated rows go up as one jsonb array and come
+ * back as one verdict per row. The server judges again -- the duplicate
+ * rule, the offering, and every rule create_member enforces -- so the client
+ * preview is what lets a person see the outcome before the tap and the
+ * server is what makes it true. Owner-only: the RPC refuses staff itself.
+ */
+export async function bulkImportMembers(input: {
+  rows: MemberImportRow[];
+  default_offering_id: string | null;
+  file_name: string;
+}): Promise<ImportResult> {
+  if (!isConfigured) {
+    // Offline the fixture list IS the store, so the rows land in it; a
+    // results screen over a roster that never changed is the lie RC-008 was.
+    const result: ImportResult = {
+      run_id: `local-${Date.now()}`, total: input.rows.length,
+      inserted: 0, skipped: 0, failed: 0, rows: [],
+    };
+    for (const r of input.rows) {
+      if (MEMBERS.some(m => m.name.toLowerCase() === r.full_name.toLowerCase())) {
+        result.skipped++;
+        result.rows.push({ row: r.row, full_name: r.full_name, status: 'skipped',
+          reason: 'already on the register — edit her instead' });
+        continue;
+      }
+      const course = COURSE_LIST.find(c => c.name.toLowerCase() === r.course.toLowerCase())
+        ?? COURSE_LIST.find(c => c.offerings.some(o => o.id === input.default_offering_id));
+      const offering = course?.offerings.find(o => !r.branch || o.branch.toLowerCase() === r.branch.toLowerCase())
+        ?? course?.offerings[0];
+      if (!course || !offering) {
+        result.failed++;
+        result.rows.push({ row: r.row, full_name: r.full_name, status: 'failed', reason: 'no course' });
+        continue;
+      }
+      const id = `local-${Date.now()}-${r.row}`;
+      MEMBERS.push({
+        id, code: '', name: r.full_name, course: course.name, branch: offering.branch,
+        aliases: r.aliases, emails: r.email ? [{ address: r.email, primary: true }] : [],
+        expected: 0, attended: 0, missed: 0, streak: 0, last: '\u2014', joined: r.joined_on || 'today',
+      });
+      result.inserted++;
+      result.rows.push({ row: r.row, full_name: r.full_name, status: 'inserted', member_id: id });
+    }
+    membersChanged();
+    return result;
+  }
+
+  const { data, error } = await supabase.rpc('bulk_import_members', {
+    p_members: input.rows.map(r => ({
+      row: r.row, full_name: r.full_name, email: r.email || null,
+      course: r.course || null, branch: r.branch || null,
+      aliases: r.aliases, joined_on: r.joined_on || null,
+    })),
+    p_default_offering_id: input.default_offering_id,
+    p_file_name: input.file_name,
+  });
+  if (error || !data) {
+    console.error('bulkImportMembers:', error?.message ?? 'no row returned');
+    throw new Error(memberWriteError(error));
+  }
+  membersChanged();
+  return data as ImportResult;
+}
+
+/** The academy's own name, for the branded template file. */
+export async function fetchAcademyName(): Promise<string> {
+  if (!isConfigured) return 'RosiFit Academy';
+  const { data } = await supabase.from('app_settings').select('academy_name').eq('id', 1).maybeSingle();
+  return (data?.academy_name as string | null) ?? 'RosiFit Academy';
 }
 
 /**

@@ -148,7 +148,9 @@ export function AcademyHeader({ navigation }: { navigation?: TabNavigation }) {
                 // a screen the TAB group does not own. REPLACE, not push --
                 // tapping Attendance from a course detail means "go to the
                 // workspace", not "put the workspace on top of the course".
-                : router.replace(t.route === 'index' ? '/(tabs)' : `/(tabs)/${t.route}`))}
+                // Literal hrefs, because typed routes are on and a template
+                // string is not a route the router can vouch for.
+                : router.replace(t.route === 'index' ? '/(tabs)' : '/(tabs)/courses'))}
               testID={`nav-tab-${t.label.toLowerCase()}`}
               accessibilityRole="tab" accessibilityState={{ selected: on }}
               accessibilityLabel={t.label}

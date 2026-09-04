@@ -156,6 +156,47 @@ export default function Courses() {
           style={{ flex: 1, color: theme.fgStrong, fontSize: 13.5, fontWeight: '600' }} />
       </View>
 
+      {/* ADDING PEOPLE, from the workspace rather than only from inside one
+          course. Both screens offer the same pair -- the course detail has
+          them under its Members heading, where the course is already decided;
+          here neither is, so both open asking which course she joins.
+          They sit under the search box and above the list because that is
+          where a person who came here to add somebody is already looking,
+          and neither is a filter of what follows. */}
+      {/* OWNER-ONLY, as the reference has it: a file of forty members is the
+          shape of the register. Hidden for staff rather than disabled -- a
+          disabled button asks a question the person cannot answer -- and the
+          RPC refuses them anyway, so the deep route is gated too. */}
+      {identity?.isSuperAdmin ? (
+      <View style={{ flexDirection: 'row', gap: SPACE.md, marginTop: SPACE.md }}>
+        <Pressable testID="courses-add-member"
+          onPress={() => router.push('/member/edit')}
+          accessibilityRole="button" accessibilityLabel="Add a member"
+          style={({ pressed }) => ({
+            flex: 1, minHeight: 46, borderRadius: RADIUS.md,
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+            backgroundColor: statusSurface(theme.accentInk).bg,
+            borderWidth: 1, borderColor: statusSurface(theme.accentInk).border,
+            opacity: pressed ? 0.7 : 1,
+          })}>
+          <Icon name="person_add" size={18} color={theme.accentInk} />
+          <Text style={{ fontSize: 12.5, fontWeight: '800', color: theme.accentInk }}>Add Member</Text>
+        </Pressable>
+        <Pressable testID="courses-bulk-import"
+          onPress={() => router.push('/member/import')}
+          accessibilityRole="button" accessibilityLabel="Bulk import members from a file"
+          style={({ pressed }) => ({
+            flex: 1, minHeight: 46, borderRadius: RADIUS.md,
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+            backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
+            opacity: pressed ? 0.7 : 1,
+          })}>
+          <Icon name="upload_file" size={18} color={theme.fg} />
+          <Text style={{ fontSize: 12.5, fontWeight: '800', color: theme.fg }}>Bulk Import</Text>
+        </Pressable>
+      </View>
+      ) : null}
+
       {all.length === 0 && (
         <EmptyState
           title="No courses yet"

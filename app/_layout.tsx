@@ -43,6 +43,10 @@ function Nav() {
             the same shape and already turn it off; this makes the rule
             uniform rather than a thing three screens happened to get right. */}
         <Stack.Screen name="member/[id]"   options={{ headerShown: false }} />
+        {/* The MEMBER import — file, validate, preview, confirm. A review,
+            not a form, so it is a screen under the shell like `upload` and
+            `match` rather than a dialog. */}
+        <Stack.Screen name="member/import" options={{ headerShown: false }} />
         {/* EVERY FORM IS A DIALOG. A form is a decision taken OVER a screen,
             not a place you travel to: pushed as a page it wears the stack's
             header, so the only way out is in the chrome and the save sits

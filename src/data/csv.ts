@@ -51,6 +51,54 @@ export function pickCsvFile(): Promise<{ name: string; text: string } | null> {
  * appearing to succeed. A button labelled Export that only flashed a toast is
  * the same defect as a form that reports a save it never attempted.
  */
+/**
+ * Opens the platform file chooser for a BINARY file and reads its bytes.
+ * The .xlsx member import uses this; the size ceiling is checked here, at
+ * the door, because a 40 MB workbook should be refused before it is parsed,
+ * not after the tab has frozen.
+ */
+export function pickFile(accept: string, maxBytes: number):
+  Promise<{ name: string; bytes: ArrayBuffer; size: number } | null> {
+  const doc = (globalThis as { document?: Document }).document;
+  if (!doc) {
+    return Promise.reject(new Error('Choosing a file is available in the RosiFit web app.'));
+  }
+  return new Promise((resolve, reject) => {
+    const input = doc.createElement('input');
+    input.type = 'file';
+    input.accept = accept;
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) return resolve(null);
+      if (file.size > maxBytes) {
+        return reject(new Error(
+          `That file is ${(file.size / 1024 / 1024).toFixed(1)} MB; the limit is ${Math.round(maxBytes / 1024 / 1024)} MB.`));
+      }
+      const reader = new FileReader();
+      reader.onload = () => resolve({ name: file.name, bytes: reader.result as ArrayBuffer, size: file.size });
+      reader.onerror = () => reject(new Error('That file could not be read.'));
+      reader.readAsArrayBuffer(file);
+    };
+    input.click();
+  });
+}
+
+/** Hands the browser any bytes to save, under a name. Same contract as
+ *  downloadCsv, which is now the text special case of this. */
+export function downloadBlob(filename: string, blob: Blob): void {
+  const doc = (globalThis as { document?: Document }).document;
+  const url = (globalThis as { URL?: typeof URL }).URL;
+  if (!doc || !url?.createObjectURL) {
+    throw new Error('Exporting is available in the RosiFit web app.');
+  }
+  const href = url.createObjectURL(blob);
+  const link = doc.createElement('a');
+  link.href = href;
+  link.download = filename;
+  link.click();
+  setTimeout(() => url.revokeObjectURL(href), 10_000);
+}
+
 export function downloadCsv(filename: string, content: string): void {
   const doc = (globalThis as { document?: Document }).document;
   const url = (globalThis as { URL?: typeof URL }).URL;

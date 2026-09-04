@@ -1,3 +1,4 @@
+import type { Href } from 'expo-router';
 /**
  * Where "back" goes, when router.back() cannot answer.
  *
@@ -24,12 +25,16 @@
 /** Path characters expo-router routes actually use: segments, [params], (groups). */
 const IN_APP = /^\/[A-Za-z0-9\-_/[\]().~%]*(\?[A-Za-z0-9\-_/[\]().~%=&]*)?$/;
 
-export function safeBackTarget(from: unknown, fallback: string): string {
+export function safeBackTarget(from: unknown, fallback: Href): Href {
   const v = typeof from === 'string' ? from.trim() : '';
   if (!v) return fallback;
   // `//host` is protocol-relative and leaves the app; `\` is treated as `/` by
   // some parsers, so a `/\evil.com` would too. Both are rejected before the
   // shape test, because both START with a slash and would otherwise pass it.
   if (v.startsWith('//') || v.startsWith('/\\')) return fallback;
-  return IN_APP.test(v) ? v : fallback;
+  // The one cast in the app that turns a runtime string into a route, and it
+  // sits directly under the guard that earns it: typed routes cannot know
+  // what a `?from=` query carried, and this function's whole job is to
+  // decide whether that string is a route the app may follow.
+  return IN_APP.test(v) ? (v as Href) : fallback;
 }

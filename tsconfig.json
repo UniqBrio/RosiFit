@@ -5,13 +5,16 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  // supabase/functions is Deno, not React Native: it uses Deno.serve, npm:
-  // specifiers and the Edge Runtime's globals, none of which this config's
-  // lib knows about. It is typechecked by the Edge Runtime at deploy time,
-  // where those types exist.
-  // *.test.ts runs in node under tsx, not in the app bundle, and needs
-  // @types/node -- which does not resolve under this config's
-  // customConditions:["react-native"]. It is checked by scripts/tsconfig.json
-  // instead, the same split the guards already use.
-  "exclude": ["node_modules", "scripts", "supabase", "**/*.test.ts"]
+  "exclude": [
+    "node_modules",
+    "scripts",
+    "supabase",
+    "**/*.test.ts"
+  ],
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts"
+  ]
 }
