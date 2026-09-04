@@ -6,7 +6,7 @@
 > reading this file. The previous version of this block was stale in three
 > ways and is corrected below — see the note at the end.
 >
-> - **Schema applied**: migrations `0001`–`0024`. The ledger
+> - **Schema applied**: migrations `0001`–`0024`. **`0025` is not** — see below. The ledger
 >   (`supabase_migrations.schema_migrations`) carries 21 rows: `0001`–`0015`
 >   and `0019`–`0024`. **`0016`, `0017` and `0018` are applied but have no
 >   ledger row** — they were run through the SQL editor rather than as
@@ -25,6 +25,16 @@
 > - **`PIN_PEPPER` is set.** It cannot be read back — Supabase has no
 >   read-back path for a secret — but registration and PIN issue both
 >   completed, and neither is possible without it. That is the evidence.
+> - **`0025` IS WRITTEN AND NOT APPLIED.** It is the one migration in the tree
+>   that production does not have. It closes the EXECUTE grant `CREATE
+>   FUNCTION` hands to `PUBLIC` on eight trigger functions, which the security
+>   advisor reports as callable by `anon` over `/rest/v1/rpc/`. Held for an
+>   explicit go-ahead, per the rule in `CLAUDE.md`. Measured exposure, so the
+>   decision is taken on facts rather than on the advisor's wording: calling
+>   one directly today answers `trigger functions can only be called as
+>   triggers`, not with a leak — after `0025` it answers `permission denied`,
+>   which is the correct answer to the wrong question. Worth closing; not an
+>   emergency.
 > - **Advisors**: run and acted on. See `0011`–`0013`, `0015`, and the open
 >   items below.
 >
