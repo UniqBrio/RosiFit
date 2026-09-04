@@ -59,6 +59,57 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-013 — a dependency's Node build bundled into the app, and the build stayed green
+**Date:** 04-Sep-2026 · **Severity:** S2 · **Modules:** `src/data/memberXlsx.ts`, `metro.config.js`
+
+**Symptom** — reported from the running dev server, with a screenshot:
+
+```
+While trying to resolve module `async` from node_modules/archiver/lib/core.js,
+the package node_modules/async/package.json was successfully found. However, this
+package itself specifies a `main` module field that could not be resolved
+(node_modules/async/dist/async.js). Indeed, none of these files exist:
+```
+
+**Root cause** — two things behind one message, and only the second is a defect.
+
+The literal claim was false: `async/dist/async.js` does exist. The dev server was running while
+`npm install exceljs` was mid-flight, so Metro read a half-written `node_modules`. That is a
+race, and a restart clears it.
+
+What it exposed is the real one. **exceljs ships two builds.** `main` is the Node build and
+depends on `archiver`, `unzipper`, `tmp` and `readable-stream` — Node's filesystem and stream
+stack. `browser` is the self-contained `dist/exceljs.min.js`. Metro was resolving the first, so
+a React Native / web bundle was pulling in Node's zip and fs layers. On web it survived by
+accident; on a native build it could never have worked.
+
+**Why the gates did not catch it** — and this is the part worth keeping. `npm run typecheck`
+passes: the *types* resolve from `index.d.ts` regardless of which build runs.
+`npm run export` **passed too**, emitting `/member/import` at 33 KB, because Metro's web
+resolution happened to find something for every specifier. Nothing in the pipeline asks *which
+file* a dependency resolved to. So a wrong-half dependency reaches a user as a runtime error in
+their browser, with a green build behind it.
+
+**Fix** — `metro.config.js`, new, doing one thing: resolve `exceljs` to its browser build.
+Scoped to that package deliberately — setting `resolverMainFields` to prefer `browser` globally
+would change resolution for *every* dependency in the tree, `@supabase/supabase-js` included, to
+fix one. And `memberXlsx.ts` makes exceljs a **type-only** import plus a lazy loader, so the
+~950 KB browser build is fetched only when a workbook is actually built or read.
+
+**Guard** — measurement of the emitted bundle, recorded in `TEST_SUMMARY.md`: `archiver` 0
+files, `unzipper` 0, `tmp` 0, and `exceljs` split into its own 924 KB chunk. That is evidence,
+not a rung — nothing re-checks it on the next change.
+
+**Recurrence risk** — moderate, and it applies to *any* dual-build dependency this app adds.
+The trap is that both halves typecheck and both may bundle; only one runs.
+
+**Prevention** — prose only, honestly. A real rung would assert that no Node-only module name
+appears in `dist/_expo/static/js/web/` after an export, which is cheap and would have caught
+this the moment exceljs landed. Named here so the next reader can weigh whether to build it,
+rather than discovering the class a third time.
+
+---
+
 ## RC-012 — two member screens read the fixture, so one showed the wrong person
 **Date:** 04-Sep-2026 · **Severity:** S1 · **Modules:** `app/member/edit.tsx`, `app/member/[id].tsx`
 
