@@ -6,10 +6,10 @@
 > reading this file. The previous version of this block was stale in three
 > ways and is corrected below — see the note at the end.
 >
-> - **Schema applied**: migrations `0001`–`0024`. **`0025` and `0026` are not** — see below.
->   The ledger
->   (`supabase_migrations.schema_migrations`) carries 21 rows: `0001`–`0015`
->   and `0019`–`0024`. **`0016`, `0017` and `0018` are applied but have no
+> - **Schema applied**: migrations `0001`–`0024` and **`0026`** (applied 04-Sep-2026).
+>   **`0025` is not** — see below. The ledger
+>   (`supabase_migrations.schema_migrations`) carries 22 rows: `0001`–`0015`,
+>   `0019`–`0024` and `0026` (`20260904053625`). **`0016`, `0017` and `0018` are applied but have no
 >   ledger row** — they were run through the SQL editor rather than as
 >   migrations. Their objects are all present and were verified individually
 >   (`create_member`, `holidays_apply_effects` + its three triggers + the
@@ -36,25 +36,41 @@
 >   triggers`, not with a leak — after `0025` it answers `permission denied`,
 >   which is the correct answer to the wrong question. Worth closing; not an
 >   emergency.
-> - **`0026` IS WRITTEN AND NOT APPLIED**, and unlike `0025` it has not been
->   rehearsed either. It retires the member code: `members.member_code`
+> - **`0026` IS APPLIED** (04-Sep-2026), and it is the one migration in this
+>   project that reached production **without a harness rehearsal** — no
+>   machine to hand had PostgreSQL 16, and it was applied on an explicit
+>   go-ahead after the SQL was reviewed and the two data questions below were
+>   measured against production rather than assumed. Recorded that way so
+>   nobody later reads it as a rehearsed migration. It retires the member code: `members.member_code`
 >   becomes nullable, `members_code_live` is dropped, `create_member` and
 >   `commit_csv_import` are re-issued without the `'RF-' || nextval(...)`
 >   minting, and every grant on `member_code_seq` is revoked. Nothing in it
 >   rewrites a row — dropping `NOT NULL` and dropping an index are
 >   catalogue-only — so it is safe over the data production already holds.
->   **Two things must happen first**, in this order:
->     1. `bash db/harness/test.sh` on a machine with PostgreSQL 16, or the CI
->        `db-harness` job. Neither `0026` nor its spec
->        (`supabase/tests/20_no_member_code.sql`) has ever been executed.
->     2. **Check production for a stored template containing
->        `{{member_code}}`.** The redeployed `send-followups` no longer builds
->        that variable, so such a template would mail the literal text
->        `{{member_code}}` to members. This is the one thing the harness
->        cannot answer, because it holds no templates.
->   `csv-import` and `send-followups` both need redeploying with it — the
->   first to send her address to the review screen, the second to stop
->   building the token.
+>   **Measured before applying, on the live project:** 9 members, all 9
+>   carrying a code, all 9 still carrying it afterwards; 1 stored template,
+>   **0 using `{{member_code}}`** (so removing the variable from the sender
+>   cannot make anything mail literal token text); 0 emails ever sent.
+>   **Verified after applying:** the column is nullable, `members_code_live`
+>   is gone, no app role holds USAGE on `member_code_seq`, and neither
+>   `create_member` nor `commit_csv_import` calls `nextval` or names the
+>   sequence. Advisors re-run: no new finding.
+>   **Still owed:** `bash db/harness/test.sh`, on CI or a machine with
+>   PostgreSQL 16. `supabase/tests/20_no_member_code.sql` has never run, so
+>   the spec that pins this behaviour is unexecuted even though the behaviour
+>   itself is verified in production.
+> - **THE TWO EDGE FUNCTIONS FOR `0026` ARE NOT DEPLOYED.** `csv-import` is
+>   still at **v5** and `send-followups` at **v4**, both the pre-`0026` code.
+>   Neither is broken by the migration — `member_code` is still a column, so
+>   both still read it — but until they are redeployed:
+>     * the match review screen shows a candidate's course and branch without
+>       her address, because `csv-import` still returns `member_code` where
+>       the app now expects `primary_email`. The app falls back cleanly; it
+>       does not error.
+>     * `send-followups` still builds a `member_code` variable. Harmless
+>       today: no template uses it, and for a member added after `0026` it
+>       would be null, which the renderer leaves as literal `{{member_code}}`.
+>   Deploy both from this tree (`csv-import`, `send-followups`) to close it.
 > - **Advisors**: run and acted on. See `0011`–`0013`, `0015`, and the open
 >   items below.
 >
