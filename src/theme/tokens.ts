@@ -49,6 +49,12 @@ export const DARK = {
   fgStrong: '#FFFFFF', fg: '#EDE3EA', muted: '#A78E9E', dim: '#8A7C86',
   line: 'rgba(255,255,255,0.12)', lineStrong: 'rgba(255,255,255,0.28)',
   onAccent: '#FFFFFF', onDeep: '#E4C4D8',
+  // The controls that sit ON the deep header gradient -- the back button, the
+  // course delete. The header is the SAME dark plum in both themes, so these
+  // are too: a theme-varying fill there would be a light control on a dark
+  // ground in one of them. Measured in check-contrast.ts against every
+  // accent's deep stops.
+  deepControl: 'rgba(12,4,9,0.4)', deepControlLine: 'rgba(255,255,255,0.16)', // allow-literal-color: this file IS the token source, and the pair is measured in check-contrast.ts
   success: '#2FBE8C', warning: '#E8B93B', danger: '#F2683C', possible: '#B487EA',
   scrim: 'rgba(6,2,7,0.7)',
 };
@@ -58,6 +64,12 @@ export const LIGHT = {
   fgStrong: '#1C0A17', fg: '#2E1727', muted: '#6B5563', dim: '#6E5A68',
   line: 'rgba(28,10,23,0.14)', lineStrong: 'rgba(28,10,23,0.42)',
   onAccent: '#FFFFFF', onDeep: '#FFFFFF',
+  // The controls that sit ON the deep header gradient -- the back button, the
+  // course delete. The header is the SAME dark plum in both themes, so these
+  // are too: a theme-varying fill there would be a light control on a dark
+  // ground in one of them. Measured in check-contrast.ts against every
+  // accent's deep stops.
+  deepControl: 'rgba(12,4,9,0.4)', deepControlLine: 'rgba(255,255,255,0.16)', // allow-literal-color: this file IS the token source, and the pair is measured in check-contrast.ts
   success: '#0F7551', warning: '#7A5300', danger: '#B3261E', possible: '#6B3FA0',
   scrim: 'rgba(28,10,23,0.42)',
 };
@@ -103,6 +115,27 @@ export const STATUS: Record<StatusKey, StatusTone> = {
   none:      { fgDark: '#A78E9E', fgLight: '#6B5563', word: 'Not expected',    icon: 'remove' },
 };
 
+/**
+ * The ink for text written ON a status fill -- a count inside a bar segment.
+ *
+ * Theme-dependent, and it has to be: the canvas is a dark-only prototype and
+ * letters its bar counts in a near-black. That ink measures 7.01:1 on the
+ * DARK green and 2.91:1 on the LIGHT one, because the light theme darkens the
+ * fill itself -- so copying the prototype's literal ships an unreadable
+ * number in light mode. White is the correct ink there (5.70:1 on the light
+ * green, 6.54:1 on the light red).
+ *
+ * Both directions are swept in scripts/check-contrast.ts, so neither can
+ * regress silently. Guardrail 2: colour ships measured, never trusted.
+ */
+const ON_STATUS_FILL_DARK = '#06231B';
+
+export function onStatusFill(isDark: boolean): string {
+  // DARK.onAccent rather than a second white literal -- it is the same ink
+  // the accent buttons already use, and it is already measured.
+  return isDark ? ON_STATUS_FILL_DARK : DARK.onAccent;
+}
+
 /** A status fill/border, derived from its ink at the alphas the canvas uses. */
 export function statusSurface(ink: string): { bg: string; border: string } {
   const [r, g, b] = hexToRgb(ink);
@@ -120,6 +153,37 @@ export function statusSurface(ink: string): { bg: string; border: string } {
 export function hexToRgb(c: string): [number, number, number] {
   const m = c.replace('#', '');
   return [0, 2, 4].map(i => parseInt(m.slice(i, i + 2), 16)) as [number, number, number];
+}
+
+/**
+ * A typed hex, as a HUE.
+ *
+ * The custom accent is stored as a hue and nothing else, on purpose: the
+ * generator below darkens that hue until white text clears 4.5:1, and
+ * check-contrast.ts verifies all 360 of them. Storing an arbitrary hex would
+ * walk straight round that guard -- a pure yellow taken verbatim ships white
+ * labels at about 1.07:1 -- so a typed value contributes its HUE and the
+ * measured generator decides the rest.
+ *
+ * Returns null for anything that is not a 6-digit hex, so a half-typed value
+ * leaves the current colour alone rather than jumping to red.
+ */
+export function hueFromHex(value: string): number | null {
+  const m = /^#?([0-9a-f]{6})$/i.exec(value.trim());
+  if (!m) return null;
+  const [r, g, b] = hexToRgb(m[1]).map(n => n / 255) as [number, number, number];
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  // A grey has no hue to read. Keeping 0 would silently mean "red", so the
+  // caller is told there is nothing here rather than given a wrong answer.
+  if (d === 0) return null;
+  const h = max === r ? ((g - b) / d) % 6
+    : max === g ? (b - r) / d + 2
+    : (r - g) / d + 4;
+  // Rounded BEFORE the final modulo. Taking the modulo first lets a value a
+  // hair under 360 -- a red one point off pure, which is 359.765 -- round UP
+  // to 360, a hue the generator was never measured at: check-contrast.ts
+  // verifies 0..359. 360 and 0 are the same colour; only one is checked.
+  return Math.round(h * 60 + 360) % 360;
 }
 
 const clamp255 = (n: number) => Math.max(0, Math.min(255, Math.round(n)));

@@ -149,6 +149,26 @@ export const BRANCHES = ['All branches', 'Coimbatore', 'Madurai', 'Chennai'];
 export const COURSES  = ['All courses', 'Prenatal Flow', 'Postnatal Core', 'Trimester 3 Gentle', 'Pelvic Floor Foundations'];
 export const SUPPORT_PHONE = '9994871158';
 
+/**
+ * The addresses the academy may send AS.
+ *
+ * A list to choose from, never free text: a from-address nobody owns bounces
+ * every message the course will ever send. Live, the academy's own configured
+ * address leads this list (fetchSenders).
+ */
+export const SENDERS = ['support@rosifit.com', 'support@ravisfit.com'];
+
+/**
+ * A course's own sender, template and wording, offline.
+ *
+ * Keyed by course id. An ABSENT entry means the course has never been
+ * configured and falls back to the default template -- which is not the same
+ * as an entry with empty wording, and the two must stay distinguishable or
+ * "Reset to template" has nothing to mean.
+ */
+export const COURSE_MESSAGES: Record<string,
+  { from_email: string; template_id: string; subject: string; body: string }> = {};
+
 // ---------------------------------------------------------------- courses
 export type Course = {
   id: string; name: string;
@@ -384,16 +404,6 @@ export const PERIODS: Record<string, string> = {
   'This month':   '1\u201324 Aug 2026',
 };
 
-/** Mon..Sun for the current week, as attendance statuses. */
-export const WEEK_STRIP: { day: string; status: StatusKeyName }[] = [
-  { day: 'Mon', status: 'present' },
-  { day: 'Tue', status: 'holiday' },
-  { day: 'Wed', status: 'present' },
-  { day: 'Thu', status: 'cancelled' },
-  { day: 'Fri', status: 'awaiting' },
-  { day: 'Sat', status: 'awaiting' },
-  { day: 'Sun', status: 'none' },
-];
 type StatusKeyName = 'present' | 'absent' | 'awaiting' | 'scheduled' | 'cancelled' | 'holiday' | 'extra' | 'none';
 
 /* ------------------------------------------------------- follow-up, derived
@@ -453,12 +463,40 @@ export const NO_SESSIONS: MemberSession[] = [
 export const sessionsFor = (m: Member): MemberSession[] =>
   m.expected === 0 ? NO_SESSIONS : MEMBER_WEEK;
 
-/** Sessions whose attendance file has not arrived yet. */
+/**
+ * Sessions whose attendance file has not arrived yet.
+ *
+ * `date` is the ISO day the label already names in words. It is here because
+ * the upload screen checks the date INSIDE the chosen Meet file against the
+ * session being imported into -- and with no date on the fixture that check
+ * could only ever answer "cannot tell", so the one thing the panel exists to
+ * catch was undemonstrable offline.
+ */
+/**
+ * A session that has run and has no attendance file yet.
+ *
+ * Declared HERE rather than in repository.ts because repository.ts imports
+ * the Supabase client, which needs React Native and DOM globals -- so a pure
+ * module that named the type from there could not be type-checked by
+ * scripts/tsconfig.json, where the specs run under plain node. The fixture
+ * below is the same shape, which is the other reason it belongs beside it.
+ */
+export type PendingSession = {
+  session_id: string | null; offering_id: string; session_date: string;
+  /** the course this session belongs to, so the upload screen can be scoped */
+  course_id: string | null; course: string;
+  dayNum: string; mon: string; title: string; meta: string; label: string;
+};
+
 export const PENDING_SESSIONS = [
-  { dayNum: '22', mon: 'AUG', title: 'Prenatal Flow · 6:00 pm',
+  // course_id matches COURSES' ids, so the fixtures exercise the scoped
+  // upload entry points rather than only the academy-wide one.
+  { dayNum: '22', mon: 'AUG', date: '2026-08-22', course_id: 'c1', course: 'Prenatal Flow',
+    title: 'Prenatal Flow · 6:00 pm',
     meta: 'Coimbatore · 18 expected · awaiting upload',
     label: 'Fri 22 Aug · Prenatal Flow 6:00 pm' },
-  { dayNum: '23', mon: 'AUG', title: 'Postnatal Core · 8:00 am',
+  { dayNum: '23', mon: 'AUG', date: '2026-08-23', course_id: 'c2', course: 'Postnatal Core',
+    title: 'Postnatal Core · 8:00 am',
     meta: 'Madurai · 12 expected · awaiting upload',
     label: 'Sat 23 Aug · Postnatal Core 8:00 am' },
 ];

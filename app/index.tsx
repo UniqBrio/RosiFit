@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { View, Text, TextInput, Pressable, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,6 +8,7 @@ import { Icon } from '../src/components/Icon';
 import { RADIUS, SPACE, TAP_MIN, STATUS } from '../src/theme/tokens';
 import { isConfigured } from '../src/lib/supabase';
 import { authLogin, adoptSession } from '../src/data/api';
+import { groupPhone, phoneDigits, isCompletePhone, needsRegistration } from '../src/data/signin';
 
 /** '1'..'9', clear-entry, '0', backspace -- the canvas' 3-column layout */
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'ce', '0', 'del'] as const;
@@ -20,9 +21,26 @@ export default function SignIn() {
   const [pin, setPin] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [typing, setTyping] = useState(false);
+  const [onNumber, setOnNumber] = useState(false);
+  const pinRef = useRef<TextInput>(null);
 
-  const digits = phone.replace(/\D/g, '');
-  const phoneOk = digits.length === 10;
+  const digits = phoneDigits(phone);
+  const phoneOk = isCompletePhone(phone);
+
+  /** Grouped as it is typed, so the number on the PIN screen reads back the
+   *  way she would say it. Non-digits never enter state at all. */
+  const onPhone = (raw: string) => setPhone(groupPhone(raw));
+
+  const toPin = () => {
+    if (!phoneOk || busy) return;
+    setError(null);
+    setPin('');
+    setStep('pin');
+    // The keyboard follows the step, so four digits can be typed straight
+    // through without reaching for the screen.
+    setTimeout(() => pinRef.current?.focus(), 60);
+  };
 
   /** The PIN goes to auth-login and is never kept: not stored, not logged,
    *  not echoed back. The entry is cleared whichever way the call ends. */
@@ -43,11 +61,28 @@ export default function SignIn() {
       // anywhere else -- must_change_pin is the server's word, not a guess.
       router.replace(result.user?.must_change_pin ? '/set-pin?for=self' : '/(tabs)');
     } catch (err) {
+      const message = err instanceof Error ? err.message : 'That did not work. Try again.';
       setPin('');
-      setError(err instanceof Error ? err.message : 'That did not work. Try again.');
+      if (needsRegistration(message)) {
+        // Carried over rather than retyped -- the number she just entered is
+        // the one that becomes the super admin's sign-in ID.
+        router.replace({ pathname: '/register', params: { phone: digits } });
+        return;
+      }
+      setError(message);
     } finally {
       setBusy(false);
     }
+  };
+
+  /** Typed on a hardware keyboard. Same state as the keypad, so the two can
+   *  never show different things. */
+  const type = (raw: string) => {
+    if (busy) return;
+    const d = raw.replace(/\D/g, '').slice(0, 4);
+    setError(null);
+    setPin(d);
+    if (d.length === 4) void submit(d);
   };
 
   const press = (k: string) => {
@@ -63,7 +98,6 @@ export default function SignIn() {
     if (next.length === 4) void submit(next);
   };
 
-  const okInk = theme.isDark ? STATUS.present.fgDark : STATUS.present.fgLight;
   const badInk = theme.isDark ? STATUS.absent.fgDark : STATUS.absent.fgLight;
 
   return (
@@ -100,26 +134,40 @@ export default function SignIn() {
                 <Muted style={{ marginTop: 6, marginBottom: 22, fontSize: 14 }}>
                   Your number, then your 4-digit PIN.
                 </Muted>
+                {/* Focus is shown on the BOX, not by the browser's own ring
+                    around the inner field -- that drew a second rectangle
+                    inside this one. Moved, never removed: a field with no
+                    visible focus is unusable on a keyboard. */}
                 <View style={{
                   flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
-                  borderWidth: 1, borderColor: theme.lineStrong, borderRadius: RADIUS.md,
+                  borderWidth: 1, borderColor: onNumber ? theme.accent : theme.lineStrong,
+                  borderRadius: RADIUS.md,
                   backgroundColor: theme.surface, paddingHorizontal: SPACE.lg, height: 56,
                 }}>
                   <Text style={{ color: theme.muted, fontWeight: '600', fontSize: 15 }}>+91</Text>
                   <View style={{ width: 1, height: 22, backgroundColor: theme.line }} />
                   <TextInput
-                    value={phone} onChangeText={setPhone} keyboardType="number-pad"
+                    testID="signin-phone"
+                    value={phone} onChangeText={onPhone} keyboardType="number-pad"
                     accessibilityLabel="Mobile number"
-                    placeholder="00000 00000" placeholderTextColor={theme.muted}
-                    style={{ flex: 1, color: theme.fgStrong, fontSize: 17, fontWeight: '600', letterSpacing: 1 }} />
+                    autoFocus
+                    // Enter advances rather than doing nothing, so the whole
+                    // sign-in can be typed without leaving the keyboard.
+                    returnKeyType="next" onSubmitEditing={toPin} submitBehavior="submit"
+                    selectionColor={theme.accent}
+                    onFocus={() => setOnNumber(true)} onBlur={() => setOnNumber(false)}
+                    placeholder="98765 43210" placeholderTextColor={theme.muted}
+                    style={{
+                      flex: 1, color: theme.fgStrong, fontSize: 17, fontWeight: '600', letterSpacing: 1,
+                      outlineWidth: 0,
+                    }} />
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, marginTop: SPACE.lg, marginBottom: SPACE.xl }}>
-                  <Icon name="lock" size={16} color={okInk} />
-                  <Muted style={{ flex: 1 }}>Only RosiFit staff numbers can sign in.</Muted>
-                </View>
-                <Button label="Continue" disabled={!phoneOk} onPress={() => setStep('pin')} />
-                <Button label="Super admin registration" variant="secondary"
-                  onPress={() => router.push('/register')} style={{ marginTop: SPACE.sm }} />
+                {/* ONE button. The account list and the "only RosiFit staff
+                    numbers" line are gone: the first told anybody looking at
+                    the screen three real staff numbers, and the second
+                    described a rule the server enforces anyway. */}
+                <Button testID="signin-continue" label="Continue" disabled={!phoneOk} onPress={toPin}
+                  style={{ marginTop: SPACE.xl }} />
               </>
             ) : (
               <>
@@ -132,7 +180,8 @@ export default function SignIn() {
                       +91 {phone}
                     </Text>
                   </View>
-                  <Pressable onPress={() => { setPin(''); setStep('phone'); }}
+                  <Pressable testID="signin-change-number"
+                    onPress={() => { setPin(''); setError(null); setStep('phone'); }}
                     accessibilityRole="button" accessibilityLabel="Change mobile number"
                     style={({ pressed }) => ({
                       minHeight: TAP_MIN, justifyContent: 'center', paddingHorizontal: 11,
@@ -146,27 +195,48 @@ export default function SignIn() {
                 </View>
 
                 {/* one control, not four: a screen reader hears how many
-                    digits are entered rather than four unlabelled boxes */}
-                <View
-                  accessible
-                  accessibilityLabel={`PIN, ${pin.length} of 4 digits entered`}
-                  style={{ flexDirection: 'row', gap: 14, justifyContent: 'center', marginTop: 22, marginBottom: 18 }}>
-                  {[0, 1, 2, 3].map(i => (
-                    <View key={i} style={{
-                      width: 52, height: 60, borderRadius: RADIUS.lg,
-                      borderWidth: 1.5, borderColor: i < pin.length ? theme.accent : theme.lineStrong,
-                      backgroundColor: theme.surface, alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      <Text style={{ fontSize: 24, fontWeight: '800', color: theme.fgStrong }}>
-                        {i < pin.length ? '•' : ''}
-                      </Text>
-                    </View>
-                  ))}
+                    digits are entered rather than four unlabelled boxes.
+                    The field itself sits invisibly over the dots so the PIN
+                    can be TYPED as well as tapped -- the dots are a display,
+                    and a display cannot take a caret. */}
+                <View style={{ marginTop: 22, marginBottom: 18 }}>
+                  <TextInput
+                    ref={pinRef} testID="signin-pin"
+                    value={pin} onChangeText={type}
+                    keyboardType="number-pad" maxLength={4}
+                    accessibilityLabel={`PIN, ${pin.length} of 4 digits entered`}
+                    onFocus={() => setTyping(true)} onBlur={() => setTyping(false)}
+                    style={{
+                      position: 'absolute', top: 0, left: 0, right: 0, height: 60,
+                      // Not `opacity: 0` and not `display: none`: a field with
+                      // no box cannot be focused by a tap or reached by a
+                      // screen reader on the web.
+                      opacity: 0.001, color: 'transparent', fontSize: 16,
+                    }} />
+                  <View pointerEvents="none" style={{ flexDirection: 'row', gap: 14, justifyContent: 'center' }}>
+                    {[0, 1, 2, 3].map(i => (
+                      <View key={i} style={{
+                        width: 52, height: 60, borderRadius: RADIUS.lg,
+                        borderWidth: 1.5, borderColor: i < pin.length ? theme.accent : theme.lineStrong,
+                        backgroundColor: theme.surface, alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <Text style={{ fontSize: 24, fontWeight: '800', color: theme.fgStrong }}>
+                          {i < pin.length ? '•' : ''}
+                        </Text>
+                        {/* the caret sits under the box she is filling, so a
+                            typed PIN shows where the next digit lands */}
+                        <View style={{
+                          position: 'absolute', bottom: 12, width: 14, height: 2, borderRadius: 2,
+                          backgroundColor: typing && i === pin.length ? theme.accent : 'transparent',
+                        }} />
+                      </View>
+                    ))}
+                  </View>
                 </View>
 
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
                   {KEYS.map(k => (
-                    <Pressable key={k} onPress={() => press(k)}
+                    <Pressable key={k} testID={`signin-key-${k}`} onPress={() => press(k)}
                       accessibilityRole="button"
                       accessibilityLabel={k === 'del' ? 'Delete last digit' : k === 'ce' ? 'Clear entry' : k}
                       style={({ pressed }) => ({
@@ -206,7 +276,7 @@ export default function SignIn() {
                   </View>
                 )}
 
-                <Pressable
+                <Pressable testID="signin-forgot-pin"
                   onPress={() => router.push({ pathname: '/forgot-pin', params: { phone: digits } })}
                   accessibilityRole="button" accessibilityLabel="Forgot PIN"
                   style={({ pressed }) => ({

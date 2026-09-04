@@ -15,9 +15,14 @@ import { supabase, isConfigured } from '../lib/supabase';
 import type { Period } from './period';
 import { currentSchedules, today } from './schedule';
 import {
+  NOTIFICATION_LIMIT, orderNotifications,
+  awaitingNotification, sentNotification, excludedNotification,
+  type Notification,
+} from './notifications';
+import {
   MEMBERS, COURSE_LIST, GLOBAL_RULE, COURSE_RULES, TEMPLATES, STAFF, AUDIT,
   BRANCHES, COURSES, MONTH_DAYS, PENDING_SESSIONS, WEEK_ROWS, attendanceFixture,
-  HOLIDAYS, HOLIDAY_PREVIEW,
+  HOLIDAYS, HOLIDAY_PREVIEW, SENDERS, COURSE_MESSAGES,
   type Member, type Course, type FollowUpRule, type Template, type Staff,
   type StaffAccess, type AuditEntry, type SessionDay, type WeekRow,
   type AttendanceRow, type AttendanceStatus, type Holiday,
@@ -342,6 +347,73 @@ export async function updateCourse(id: string, input: CourseInput): Promise<void
   coursesChanged();
 }
 
+/** What a deletion actually did, so the toast can say it rather than guess. */
+export type CourseDeletion = {
+  name: string | null;
+  offerings: number;
+  sessionsRemoved: number;
+  sessionsKept: number;
+  enrolmentsEnded: number;
+  alreadyDeleted: boolean;
+};
+
+/**
+ * Deleting a course, as ONE call.
+ *
+ * An RPC and not a direct write, and not by preference. The confirmation
+ * promises that attendance history STAYS while the course and its sessions
+ * go, and a client cannot keep that promise:
+ *
+ *   * hiding the courses row leaves its offerings live, and every read of
+ *     expected attendance goes through course_offerings ->
+ *     offering_schedules -> sessions, never through courses. The course would
+ *     leave the list and go on expecting attendance and emailing members.
+ *   * sessions cannot be hidden from a client at all: 0007 grants
+ *     authenticated `update (status, cancellation_reason)` and nothing else,
+ *     deliberately.
+ *
+ * public.delete_course (0020) does the whole thing in one transaction, and
+ * draws the line where the promise draws it: COMPLETED sessions, their frozen
+ * expectations and every attendance record are untouched.
+ */
+export async function deleteCourse(id: string): Promise<CourseDeletion> {
+  if (!isConfigured) {
+    const at = COURSE_LIST.findIndex(c => c.id === id);
+    if (at < 0) {
+      return { name: null, offerings: 0, sessionsRemoved: 0, sessionsKept: 0,
+               enrolmentsEnded: 0, alreadyDeleted: true };
+    }
+    const [course] = COURSE_LIST.splice(at, 1);
+    coursesChanged();
+    return {
+      name: course.name, offerings: course.offerings.length,
+      sessionsRemoved: 0, sessionsKept: 0,
+      enrolmentsEnded: MEMBERS.filter(m => m.course === course.name).length,
+      alreadyDeleted: false,
+    };
+  }
+
+  const { data, error } = await supabase.rpc('delete_course', { p_course_id: id });
+  if (error) {
+    console.error('deleteCourse:', error.message);
+    if (/only the super admin|not writable/i.test(error.message)) {
+      throw new Error('Only the super admin can delete a course, and only while the subscription is active. Nothing has been changed.');
+    }
+    throw new Error(`${error.message}. Nothing has been changed.`);
+  }
+  coursesChanged();
+
+  const r = (data ?? {}) as Record<string, unknown>;
+  return {
+    name: (r.name as string | null) ?? null,
+    offerings: Number(r.offerings ?? 0),
+    sessionsRemoved: Number(r.sessions_removed ?? 0),
+    sessionsKept: Number(r.sessions_kept ?? 0),
+    enrolmentsEnded: Number(r.enrolments_ended ?? 0),
+    alreadyDeleted: Boolean(r.already_deleted),
+  };
+}
+
 // ----------------------------------------------------------------- offerings
 /**
  * An OFFERING is the course at one branch -- the thing that actually runs --
@@ -366,6 +438,162 @@ export async function fetchBranches(): Promise<Branch[]> {
     .select('id, name').is('deleted_at', null).order('name');
   if (error) fail('The branch list could not be loaded', error);
   return (data ?? []).map(b => ({ id: b.id as string, name: b.name as string }));
+}
+
+/* ------------------------------------------------------- branches, written
+ *
+ * More offered a "Branches" row that flashed the names in a toast and went
+ * nowhere: the canvas gives it a screen that adds one, counts what runs at
+ * each, and removes one. Adding and removing are ordinary writes through the
+ * policies 0005 already states (`is_super_admin() and
+ * is_subscription_writable()`); 0019 supplies the two things a client must
+ * not decide for itself -- the unique `code`, derived from the name, and the
+ * refusal to remove a branch anything still points at.
+ */
+
+const branchListeners = new Set<() => void>();
+
+export function onBranchesChanged(listener: () => void): () => void {
+  branchListeners.add(listener);
+  return () => { branchListeners.delete(listener); };
+}
+
+function branchesChanged(): void {
+  for (const listener of branchListeners) listener();
+}
+
+/** A branch with the two counts the screen states before offering a delete. */
+export type BranchUsage = Branch & { courses: number; members: number };
+
+/**
+ * The branches AND what runs at each, from ONE load -- the same reason
+ * useFollowUp reads members and the flagged subset together. A count fetched
+ * separately from the row it labels can be a query apart from it, and the
+ * delete guard is stated FROM that count.
+ */
+export async function fetchBranchUsage(): Promise<BranchUsage[]> {
+  if (!isConfigured) {
+    // the same literal fetchBranches filters on -- ALL_BRANCHES lives in
+    // src/state, which reads FROM this file
+    return BRANCHES.filter(b => b !== 'All branches').map(name => ({
+      id: `local-branch-${name.toLowerCase()}`,
+      name,
+      courses: COURSE_LIST.filter(c => c.offerings.some(o => o.branch === name)).length,
+      members: MEMBERS.filter(m => m.branch === name).length,
+    }));
+  }
+
+  const [branchesRes, offeringsRes, enrolRes] = await Promise.all([
+    supabase.from('branches').select('id, name').is('deleted_at', null).order('name'),
+    supabase.from('course_offerings').select('id, course_id, branch_id').is('deleted_at', null),
+    supabase.from('member_enrollments').select('member_id, offering_id').eq('status', 'active'),
+  ]);
+  if (branchesRes.error) fail('The branch list could not be loaded', branchesRes.error);
+
+  // A course running at a branch twice is ONE course there, so the count is of
+  // distinct courses rather than of offerings -- the row reads "2 courses",
+  // and two offerings of the same course would otherwise make that say 2 when
+  // the person can name only one.
+  const coursesAt = new Map<string, Set<string>>();
+  const offeringBranch = new Map<string, string>();
+  for (const o of offeringsRes.data ?? []) {
+    const branchId = o.branch_id as string;
+    offeringBranch.set(o.id as string, branchId);
+    const set = coursesAt.get(branchId) ?? new Set<string>();
+    set.add(o.course_id as string);
+    coursesAt.set(branchId, set);
+  }
+
+  const membersAt = new Map<string, Set<string>>();
+  for (const e of enrolRes.data ?? []) {
+    const branchId = offeringBranch.get(e.offering_id as string);
+    if (!branchId) continue;
+    const set = membersAt.get(branchId) ?? new Set<string>();
+    set.add(e.member_id as string);
+    membersAt.set(branchId, set);
+  }
+
+  return (branchesRes.data ?? []).map(b => ({
+    id: b.id as string,
+    name: b.name as string,
+    courses: coursesAt.get(b.id as string)?.size ?? 0,
+    members: membersAt.get(b.id as string)?.size ?? 0,
+  }));
+}
+
+/** RLS and the two constraints 0019 adds answer in Postgres' own words.
+ *  These are the ones a person can act on; anything else keeps the
+ *  database's message rather than a guess at what it meant. */
+function branchWriteError(error: { code?: string; message?: string } | null, verb: string): string {
+  const code = error?.code ?? '';
+  const message = error?.message ?? '';
+  if (code === '42501' || /row-level security|permission denied/i.test(message)) {
+    return `Only the super admin can ${verb} a branch, and only while the subscription is active. Nothing has been changed.`;
+  }
+  if (code === '23505' || /branches_name_live/.test(message)) {
+    return 'A branch with this name already exists. Nothing has been changed.';
+  }
+  if (/still runs|is the scope of/.test(message)) {
+    // 0019 names the count in its own message, which is more use than a
+    // sentence written here that has to guess at it.
+    return `${message}. Nothing has been changed.`;
+  }
+  if (/length\(btrim/.test(message)) {
+    return 'A branch needs a name of at least two characters. Nothing has been changed.';
+  }
+  return `${message || 'The branch could not be saved'}. Nothing has been changed.`;
+}
+
+export async function createBranch(name: string): Promise<void> {
+  if (!isConfigured) {
+    // Offline the array IS the store, so the branch has to land in it or the
+    // screen would report an addition over a list that never changed.
+    if (BRANCHES.some(b => b.toLowerCase() === name.toLowerCase())) {
+      throw new Error('A branch with this name already exists. Nothing has been changed.');
+    }
+    BRANCHES.push(name);
+    branchesChanged();
+    return;
+  }
+
+  // `code` is deliberately absent: 0019 derives it from the name, so two
+  // clients adding at once cannot pick the same one.
+  const { error } = await supabase.from('branches').insert({ name });
+  if (error) {
+    console.error('createBranch:', error.message);
+    throw new Error(branchWriteError(error, 'add'));
+  }
+  branchesChanged();
+}
+
+/**
+ * Removal is a soft delete -- deleted_at, the column every read already
+ * filters on -- not a DELETE. course_offerings.branch_id and
+ * holidays.branch_id reference the row with no ON DELETE clause, so a hard
+ * delete is refused by the foreign key anyway; and keeping the row is what
+ * lets a past session still name the branch it happened at.
+ */
+export async function removeBranch(id: string, name: string): Promise<void> {
+  if (!isConfigured) {
+    const at = BRANCHES.indexOf(name);
+    if (at >= 0) BRANCHES.splice(at, 1);
+    branchesChanged();
+    return;
+  }
+
+  const { data, error } = await supabase.from('branches')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id).is('deleted_at', null).select('id');
+  if (error) {
+    console.error('removeBranch:', error.message);
+    throw new Error(branchWriteError(error, 'remove'));
+  }
+  // RLS refuses an UPDATE by matching NO ROWS rather than by erroring -- the
+  // same shape that let updateCourse report a save the policy had declined.
+  if (!data || data.length === 0) {
+    throw new Error(`${name} could not be removed — only the super admin may, and only while the subscription is active. Nothing has been changed.`);
+  }
+  branchesChanged();
 }
 
 export type OfferingDetail = {
@@ -525,6 +753,160 @@ export async function fetchTemplates(): Promise<Template[]> {
     icon: 'favorite',
     preview: (t.body_text as string).split('\n').find(Boolean) ?? '',
   }));
+}
+
+/* ------------------------------------------------- a course's own message
+ *
+ * The canvas edits a course's sender, template and exact wording INSIDE the
+ * course form. 0021 stores it; effective_course_message() resolves it -- the
+ * course's words where it has any, the template's where it has not.
+ *
+ * ONE resolver, read by the form's preview, the read-only send draft and the
+ * batch alike, for the same reason effective_follow_up_config() exists for
+ * the counting rule: three places deciding what a course says is three places
+ * for them to disagree.
+ */
+
+/** The addresses this deployment may send AS. */
+export async function fetchSenders(): Promise<string[]> {
+  if (!isConfigured) return SENDERS;
+  // The academy's own address is the only one it certainly owns. A from-
+  // address nobody owns bounces every message the course will ever send, so
+  // this is a list to CHOOSE from, never free text.
+  const { data } = await supabase.from('app_settings')
+    .select('reply_to_email').eq('id', 1).maybeSingle();
+  const configured = (data?.reply_to_email as string | null) ?? null;
+  return configured ? [configured, ...SENDERS.filter(x => x !== configured)] : SENDERS;
+}
+
+export type CourseMessage = {
+  /** 'course' = its own wording, 'template' = the one it names, 'default' = neither chosen yet */
+  source: 'course' | 'template' | 'default';
+  from_email: string | null;
+  template_id: string;
+  template_name: string;
+  subject: string;
+  body: string;
+};
+
+export async function fetchCourseMessage(courseId: string): Promise<CourseMessage> {
+  if (!isConfigured) {
+    const local = COURSE_MESSAGES[courseId];
+    const template = TEMPLATES.find(t => t.id === local?.template_id) ?? TEMPLATES[0];
+    return {
+      source: local?.subject || local?.body ? 'course' : local ? 'template' : 'default',
+      from_email: local?.from_email ?? null,
+      template_id: template.id,
+      template_name: template.name,
+      subject: local?.subject || template.subject,
+      body: local?.body || template.body,
+    };
+  }
+
+  const { data, error } = await supabase.rpc('effective_course_message', { p_course_id: courseId });
+  if (error) fail("Could not load this course's message", error);
+  const row = (data ?? [])[0] as {
+    source: string; from_email: string | null; template_id: string;
+    template_name: string; subject: string; body_text: string;
+  } | undefined;
+  if (!row) {
+    // No default template configured at all. Saying so beats an empty form
+    // that looks like a course with nothing to say.
+    throw new Error('No message template is configured, so a course has no wording to start from.');
+  }
+  return {
+    source: row.source as CourseMessage['source'],
+    from_email: row.from_email,
+    template_id: row.template_id,
+    template_name: row.template_name,
+    subject: row.subject,
+    body: row.body_text,
+  };
+}
+
+export type SaveCourseInput = {
+  /** null creates; an id edits that course in place */
+  id: string | null;
+  name: string;
+  branch_id: string;
+  /** 1 = Monday .. 7 = Sunday. At least one, or nothing is expected of anyone. */
+  weekdays: number[];
+  rule: 'week' | 'consec';
+  from_email: string;
+  template_id: string;
+  /** empty means "use the template's" -- stored as NULL, which is what lets
+   *  Reset work and stops an untouched course holding a stale copy */
+  subject: string;
+  body: string;
+};
+
+function courseSaveError(error: { code?: string; message?: string } | null): string {
+  const code = error?.code ?? '';
+  const message = error?.message ?? '';
+  if (code === '42501' || /only the super admin|row-level security/i.test(message)) {
+    return 'Only the super admin can add or change a course, and only while the subscription is active. Nothing has been saved.';
+  }
+  if (/at least one frequency day/.test(message)) {
+    return 'A course needs at least one frequency day, or nothing is expected of anyone. Nothing has been saved.';
+  }
+  if (code === '23505' || /courses_name_live/.test(message)) {
+    return 'A course with this name already exists. Nothing has been saved.';
+  }
+  if (/completed session/.test(message)) {
+    // set_offering_schedule's own refusal, which names the date -- more use
+    // than a sentence written here that has to guess at it.
+    return `${message}. Nothing has been saved.`;
+  }
+  return `${message || 'The course could not be saved'}. Nothing has been saved.`;
+}
+
+/**
+ * The whole Add/Edit Course dialog, as ONE call.
+ *
+ * Seven fields land in five tables and offering_schedules has no direct write
+ * policy at all, so this goes through save_course (0022) rather than being
+ * sequenced here. A failure half way through a client-side sequence leaves a
+ * course with no offering, or an offering with no schedule -- expected at no
+ * session, in no follow-up list, counted by nobody.
+ */
+export async function saveCourse(input: SaveCourseInput): Promise<{ id: string; created: boolean }> {
+  if (!isConfigured) {
+    const existing = input.id ? COURSE_LIST.find(c => c.id === input.id) : undefined;
+    const id = existing?.id ?? `local-${Date.now()}`;
+    const branch = BRANCHES.find(b => `local-branch-${b.toLowerCase()}` === input.branch_id)
+      ?? input.branch_id;
+    const course: Course = {
+      id, name: input.name,
+      start_time: null, end_time: null, frequency: input.weekdays.length,
+      offerings: [{ id: `local-offering-${id}`, branch, weekdays: [...input.weekdays].sort() }],
+    };
+    if (existing) Object.assign(existing, course); else COURSE_LIST.push(course);
+    COURSE_MESSAGES[id] = {
+      from_email: input.from_email, template_id: input.template_id,
+      subject: input.subject.trim(), body: input.body.trim(),
+    };
+    coursesChanged();
+    return { id, created: !existing };
+  }
+
+  const { data, error } = await supabase.rpc('save_course', {
+    p_name: input.name.trim(),
+    p_branch_id: input.branch_id,
+    p_weekdays: [...new Set(input.weekdays)].sort((a, b) => a - b),
+    p_rule: input.rule,
+    p_from_email: input.from_email,
+    p_template_id: input.template_id,
+    p_subject: input.subject.trim() || null,
+    p_body_text: input.body.trim() || null,
+    p_course_id: input.id,
+  });
+  if (error) {
+    console.error('saveCourse:', error.message);
+    throw new Error(courseSaveError(error));
+  }
+  coursesChanged();
+  const result = data as { course_id: string; created: boolean };
+  return { id: result.course_id, created: result.created };
 }
 
 /**
@@ -696,18 +1078,19 @@ export async function fetchWeekRows(weeks: Period[]): Promise<WeekRow[]> {
 /** A session with no attendance file yet counts for NOBODY — it is neither
  *  attended nor missed — so these are surfaced as work to do rather than
  *  quietly treated as absences. */
-export type PendingSession = {
-  session_id: string | null; offering_id: string; session_date: string;
-  dayNum: string; mon: string; title: string; meta: string; label: string;
-};
+// Declared in mock.ts, beside the fixture of the same shape, so the pure
+// modules and their specs can name it without pulling in the Supabase client.
+// Re-exported here because this is where callers expect to find it.
+import type { PendingSession } from './mock';
+export type { PendingSession };
 
 const MONTHS_SHORT = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 const DAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export async function fetchPendingSessions(): Promise<PendingSession[]> {
   if (!isConfigured) {
-    return PENDING_SESSIONS.map(p => ({
-      ...p, session_id: null, offering_id: '', session_date: '',
+    return PENDING_SESSIONS.map(({ date, course_id, course, ...p }) => ({
+      ...p, session_id: null, offering_id: '', session_date: date, course_id, course,
     }));
   }
 
@@ -742,6 +1125,8 @@ export async function fetchPendingSessions(): Promise<PendingSession[]> {
       session_id: s.id as string,
       offering_id: s.offering_id as string,
       session_date: s.session_date as string,
+      course_id: (offering?.course_id as string | undefined) ?? null,
+      course,
       dayNum: String(date.getDate()),
       mon: MONTHS_SHORT[date.getMonth()],
       title: `${course}${time ? ` · ${time}` : ''}`,
@@ -752,6 +1137,89 @@ export async function fetchPendingSessions(): Promise<PendingSession[]> {
 }
 
 // --------------------------------------------------- per-user appearance
+/* ---------------------------------------------------------- notifications
+ *
+ * The canvas' NOTIFICATIONS sheet. It builds its list from the pending
+ * sessions plus TWO hardcoded entries -- "1 check-in email sent" and "1 email
+ * could not be sent" -- naming members and a template. Shipping those as
+ * literals would be a notification tray that says the same thing on every
+ * device forever, which is worse than none: a person would act on it.
+ *
+ * All three kinds are readable facts, so all three are read:
+ *
+ *   awaiting  a session that ran with no attendance file. Already fetched by
+ *             fetchPendingSessions -- reused rather than re-queried.
+ *   sent      the last email batches, from email_batches (batches_read is
+ *             is_active_app_user(), and 0015 grants the select).
+ *   excluded  email_messages rows the send DECLINED -- status 'excluded' or
+ *             'failed'. This is the real version of "could not be sent", and
+ *             unlike a derived guess it carries the reason the send itself
+ *             recorded.
+ *
+ * No new table, no new policy, no new grant. The SHAPING -- what counts, what
+ * comes first, how each line reads -- lives in ./notifications, which is pure
+ * and therefore tested; this function only fetches and hands over.
+ */
+export type { Notification } from './notifications';
+
+export async function fetchNotifications(): Promise<Notification[]> {
+  const pending = await fetchPendingSessions();
+  const awaiting = pending.slice(0, NOTIFICATION_LIMIT).map((p, i) =>
+    awaitingNotification({
+      id: p.session_id ?? (p.offering_id || String(i)),
+      title: p.title, meta: p.meta, label: p.label,
+    }));
+
+  if (!isConfigured) {
+    // Offline there is no send history to read, and inventing one is the
+    // defect this function exists to remove. The awaiting entries are real
+    // even on fixtures, so the sheet is not empty -- it is just honest about
+    // having nothing else to say.
+    return orderNotifications(awaiting);
+  }
+
+  const [batches, excluded] = await Promise.all([
+    supabase.from('email_batches')
+      .select('id, sent_count, failed_count, subject_snapshot, created_at, completed_at')
+      .order('created_at', { ascending: false }).limit(NOTIFICATION_LIMIT),
+    supabase.from('email_messages')
+      .select('id, member_id, status, exclusion_reason, failure_reason')
+      .in('status', ['excluded', 'failed']).limit(NOTIFICATION_LIMIT),
+  ]);
+
+  // A tray that fails is not worth failing a screen over: the awaiting half is
+  // already in hand, so a broken read costs its own entries and nothing else.
+  // The console keeps the reason.
+  if (batches.error) console.error('fetchNotifications batches:', batches.error.message);
+  if (excluded.error) console.error('fetchNotifications excluded:', excluded.error.message);
+
+  const sent = (batches.data ?? [])
+    .filter(b => Number(b.sent_count) > 0)
+    .map(b => sentNotification({
+      id: b.id as string,
+      sent: Number(b.sent_count),
+      failed: Number(b.failed_count),
+      subject: b.subject_snapshot as string,
+      when: new Date((b.completed_at ?? b.created_at) as string).toLocaleString(),
+    }));
+
+  const memberIds = [...new Set((excluded.data ?? []).map(m => m.member_id as string))];
+  const names = memberIds.length
+    ? await supabase.from('members').select('id, full_name').in('id', memberIds)
+    : { data: [] as { id: string; full_name: string }[] };
+  const nameById = new Map((names.data ?? []).map(m => [m.id, m.full_name]));
+
+  const notSent = (excluded.data ?? []).map(m => excludedNotification({
+    id: m.id as string,
+    name: nameById.get(m.member_id as string) ?? null,
+    status: m.status as string,
+    exclusionReason: (m.exclusion_reason as string | null) ?? null,
+    failureReason: (m.failure_reason as string | null) ?? null,
+  }));
+
+  return orderNotifications([...awaiting, ...notSent, ...sent]);
+}
+
 export type Preferences = { theme_mode: 'light' | 'dark' | 'system'; accent_key: string; accent_hue: number };
 
 /** Own row only — user_preferences has no policy that lets anyone, super

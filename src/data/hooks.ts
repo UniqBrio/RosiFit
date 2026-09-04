@@ -18,7 +18,10 @@ import {
   fetchMembers, fetchRules, fetchCourses, fetchTemplates, fetchStaff, fetchAudit,
   fetchFilterOptions, fetchMonthSessions, fetchPendingSessions, fetchWeekRows,
   fetchAcademy, fetchBranches, fetchOfferings,
-  type Branch, type OfferingDetail,
+  fetchBranchUsage, onBranchesChanged, fetchCourseMessage, fetchSenders,
+  type CourseMessage,
+  fetchNotifications, type Notification,
+  type Branch, type BranchUsage, type OfferingDetail,
   fetchAttendance, onCoursesChanged, onMembersChanged,
   fetchHolidays, onHolidaysChanged,
   type Rules, type PendingSession, type Holiday,
@@ -200,6 +203,35 @@ export function useHolidays(forced?: string): Async<Holiday[]> {
 
 export function usePendingSessions(forced?: string): Async<PendingSession[]> {
   return useAsync(() => fetchPendingSessions(), [], forced);
+}
+
+/** The notification tray. One load, three kinds -- see fetchNotifications. */
+export function useNotifications(forced?: string): Async<Notification[]> {
+  return useAsync(() => fetchNotifications(), [], forced);
+}
+
+/**
+ * The branches, each with what runs at it. Refetched whenever a branch is
+ * written, for the reason useHolidays carries a version: a branch added and
+ * then missing from the list it was added to reads exactly like a save that
+ * did nothing.
+ */
+/** A course's resolved message: its own wording, or the template's. */
+export function useCourseMessage(courseId: string | null, forced?: string): Async<CourseMessage | null> {
+  return useAsync(
+    () => (courseId ? fetchCourseMessage(courseId) : Promise.resolve(null)),
+    [courseId], forced);
+}
+
+/** The addresses this deployment may send as. */
+export function useSenders(forced?: string): Async<string[]> {
+  return useAsync(() => fetchSenders(), [], forced);
+}
+
+export function useBranchUsage(forced?: string): Async<BranchUsage[]> {
+  const [version, setVersion] = useState(0);
+  useEffect(() => onBranchesChanged(() => setVersion(v => v + 1)), []);
+  return useAsync(() => fetchBranchUsage(), [version], forced);
 }
 
 /** The last four weeks, most recent first. Mon–Sun, per week_start_day. */

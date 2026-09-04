@@ -41,7 +41,12 @@ Deno.serve(async (req) => {
           .update({ is_active: true, failed_attempts: 0, locked_until: null })
           .eq('id', existingId);
         if (onErr) throw new HttpError(500, 'Could not re-enable that staff member.');
-        await admin.rpc('audit_log', {
+        // Attributed (0023). The actor was already in the metadata as `by`,
+        // which is not the same thing: the audit table's own actor column is
+        // what the log renders and what an entity query filters on, so an
+        // entry findable only by reading its metadata blob is not attributed.
+        await admin.rpc('audit_log_as', {
+          p_actor: caller.id,
           p_action: 'auth.staff_reenabled', p_entity_type: 'app_user', p_entity_id: existingId,
           p_metadata: { by: caller.id },
         });
@@ -70,7 +75,8 @@ Deno.serve(async (req) => {
       if (updErr) throw new HttpError(500, 'Could not update that staff member.');
 
       await rotatePin(admin, existingId, existing.auth_user_id, pin);
-      await admin.rpc('audit_log', {
+      await admin.rpc('audit_log_as', {
+        p_actor: caller.id,
         p_action: 'auth.pin_issued', p_entity_type: 'app_user', p_entity_id: existingId,
         p_metadata: { mode: 'regenerate', issued_by: caller.id },
       });
@@ -103,7 +109,8 @@ Deno.serve(async (req) => {
     if (insertErr || !inserted) throw new HttpError(500, 'Could not create the staff account.');
 
     if (createOnly) {
-      await admin.rpc('audit_log', {
+      await admin.rpc('audit_log_as', {
+        p_actor: caller.id,
         p_action: 'auth.staff_created', p_entity_type: 'app_user', p_entity_id: inserted.id,
         p_metadata: { by: caller.id, access: 'not_enabled' },
       });
@@ -117,7 +124,8 @@ Deno.serve(async (req) => {
       throw err;
     }
 
-    await admin.rpc('audit_log', {
+    await admin.rpc('audit_log_as', {
+      p_actor: caller.id,
       p_action: 'auth.pin_issued', p_entity_type: 'app_user', p_entity_id: inserted.id,
       p_metadata: { mode: 'create', issued_by: caller.id },
     });

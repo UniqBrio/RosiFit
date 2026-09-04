@@ -1,5 +1,212 @@
 # Changelog
 
+## Unreleased — Appearance, rebuilt
+
+Three numbered steps, because two routes to one setting read as two unrelated
+controls without ordinals: **1. Choose a preset colour** (six swatches, tick
+on the active one) → *or* → **2. Choose a custom colour** → **3. Light or
+dark**.
+
+The custom step gains a saturation/value field beside the hue rail and the
+hex box, the four derived shades named (Accent, Tint, Header, Avatar), and the
+**measured** ratio printed rather than promised — "Now #148514 · white text
+4.8:1".
+
+**Every route contributes a HUE and nothing else**, and that is guardrail 2
+rather than a limitation. `customAccent()` darkens the hue until white text
+clears 4.5:1 and `check-contrast.ts` sweeps all 360 positions in both themes;
+a picker that stored its own saturation and lightness would walk straight
+round that sweep. The note under it promises "no custom pick can fail
+contrast", and this is what makes the promise true rather than hopeful — type
+a pure green and it ships as `#148514`.
+
+The Preview is now a card that reads like a real screen: an accent app bar
+with the academy name and a bell, "Welcome back", three stat tiles, a "Needs
+you" card with a filled button, and a mini tab bar — all recolouring with the
+chosen accent and theme.
+
+The theme picker offers Dark and Light, as the canvas does. `system` is still
+honoured by ThemeProvider and by any preference already stored against an
+account, so nobody who has it saved is stranded; it is simply not offered as
+a new choice.
+
+`app/appearance.tsx` drops from 11 hardcoded colours to 3 — the white and
+black ramps a colour field is literally made of.
+
+---
+
+## Unreleased — a course decides its own message
+
+The canvas moves a course's sender, template, wording and follow-up trigger
+INTO the course form, and says so in its own caption: *"A course's message
+wording, sender and follow-up rule are edited in the course form itself —
+there is no separate Message Templates or Follow-up Rules screen in
+settings."* Nothing in the schema could hold most of it.
+
+**0021** adds `course_communication` — a course's sender, the template it is
+based on, and wording that is NULL while the course still uses the
+template's — plus `effective_course_message()`, the one resolver the form's
+preview, the read-only send draft and the batch all read.
+
+**This is not a free-form send path.** Guardrail 5 and C-68 both hold: the
+wording is authored against the COURSE, in advance, as a row. `send-followups`
+still takes a `template_id` and `email_batches` still snapshots what it sent.
+A person can change what a course will say *next* time; nobody can change
+what this batch says while sending it.
+
+**0022** `save_course` does the whole dialog as one transaction. Seven fields
+land in five tables and `offering_schedules` has no direct write policy at
+all, so a client-side sequence that failed half way would leave a course with
+no offering, or an offering with no schedule — expected at no session, in no
+follow-up list, counted by nobody. That is RC-008's shape one level up.
+
+**The send flow is one read-only draft per course.** No template picker, no
+per-member checkboxes. The recipients ARE the follow-up list; ticking a subset
+made the rule advisory, and nothing recorded who was skipped or why. Now the
+rule decides and the exclusions are listed by name (C-76).
+
+**Deleted:** `app/templates.tsx`, `app/course/rules.tsx`, `app/send/review.tsx`.
+The course form also loses start/end time, fee, short code, offerings-as-
+schedule and the tap-to-insert token row.
+
+**Two defects caught while building it.** The stored templates use
+`{{double_brace}}` tokens — that is what the Edge Function renders — and the
+first preview filler assumed single braces, turning `{{first_name}}` into
+`{Divya}`. And extracting the recipient split closed a require cycle the
+typechecker could not see, because the imports that had hidden it were
+type-only.
+
+**Known consequence:** `09_grants.sql` now fails a third way. It is a
+whitelist scoped to "0002–0010" and cannot know about a table added by 0021.
+The new grants are asserted in the new spec instead, since test files are
+append-only.
+
+**Still outstanding:** the Appearance rebuild (saturation/value field, the
+numbered third section, the live app-preview card), the sign-in
+single-button lookup, and the course-detail cleanups.
+
+---
+
+## Unreleased — the shell the canvas actually draws
+
+The previous pass built the canvas' new SCREENS and missed its NAVIGATION.
+The header carried five scrolling chips and a branch dropdown; the canvas has
+two underline tabs and no branch control, and says so in its own words:
+
+> "Overview and Attendance are the two tabs under the academy name;
+> Home · Reports · More sit in the footer. **Branch is a filter, not a header
+> control.**"
+
+That caption — the prototype's own "Where to tap" — turned out to be the
+missing specification. It was found by RUNNING the prototype rather than
+reading its markup: `design/support.js` loads React from unpkg, which this
+environment blocks, so React 18 was vendored from the npm registry and the
+whole design driven in a browser, screen by screen, against the app.
+
+**The shell.** Two tabs (Overview · Attendance) as an underline row, the
+tagline back in the subtitle line the branch label had taken, and a settings
+gear where the + add sheet was. Attendance is a SECTION — the tab is active
+for the course list, a course's detail, the members list, the weekly review
+and the register alike. Fixed on the way: `href: null` on the courses route
+made it un-switchable, so every attempt to reach it STACKED a second copy of
+the whole shell instead of switching.
+
+**Reports draws bars, not rings.** The bar's length is itself a figure — "Bar
+length = sessions scheduled" — so courses are comparable down the column. The
+hero gradient and the week-by-week table go, because the canvas draws
+neither. Two defects were caught before shipping: the canvas is a dark-only
+prototype and its bar-count ink measures 2.91:1 on the LIGHT green, and a
+zero-width segment still drew a 5px stub, so a course with nothing scheduled
+showed a sliver of data that did not exist.
+
+**More lists seven rows, not thirteen.** Follow-up rules, Message templates,
+Language, First-time PIN setup, PIN recovery questions and Super admin
+registration all come out; every one keeps an entry point elsewhere, checked
+in the tree before the row was removed. Holidays stays: with the add sheet
+gone it is now the feature's only route.
+
+**Attendance is the workspace.** The card summarises rather than lists —
+branch, frequency, members, who can be emailed, and one sentence on who needs
+following up. It uses the app's real rule engine rather than the prototype's
+hardcoded `missed >= 4`, never counts a member with no address as needing
+follow-up, and says "No frequency days — nothing is expected" ahead of
+anything else, because a course with no weekdays is outside the engine
+entirely.
+
+**Still outstanding.** The canvas edits a course's branch, days, sender,
+template and follow-up rule inside the course FORM — "there is no separate
+Message Templates or Follow-up Rules screen in settings" — and that form does
+not exist yet. It needs a migration for course-scoped wording and a decision
+on guardrail 5. Until then the offerings list and the "Follow-up rules" link
+stay on each card as the only routes to them. Add Course is also still a
+route rather than the dialog the canvas opens.
+
+**A note on the canvas' own inconsistency:** its caption says Reports has "a
+week-by-week trend", and its view-model defines `trendBars` and `trendNote` —
+but no markup ever renders them. The drawing wins; the trend is unbuilt and
+`useWeekRows` is left in place rather than deleted.
+
+---
+
+## Unreleased — the 3-Sep canvas, and two screens that were not counting
+
+The design canvas was revised on 3 Sep. Six sections are new — **Course detail**, **Delete
+course confirm**, **Branches**, **Notifications**, **Confirm send**, and an **Audit log** rebuilt
+as a scrollable table — and **Add holiday** is gone from it, its job folded into the calendar's
+day sheet. Eighteen existing sections changed too. `design/RosiFit App.dc.html` is updated to
+that revision and is the spec the rest of this entry is measured against.
+
+**Branches has a screen.** More offered a "Branches" row that flashed the names in a toast and
+went nowhere. It now adds a branch, counts the courses and members at each, and removes one.
+**0019** supplies the two things a client must not decide: the unique `code`, derived from the
+name by a trigger so two clients adding at once cannot collide, and the refusal to remove a
+branch that still has live offerings or scopes a holiday — both would go on affecting sessions
+at a branch no read can see. Removal is a soft delete through the policies **0005** already
+wrote, so no new grant or policy is involved. 11 assertions in
+`supabase/tests/13_branch_add_remove.sql`.
+
+**A real Google Meet export was being refused** — see **RC-009**. `parseMeetCsv` read `lines[0]`
+as the header, and a Meet export writes the meeting code and the created and ended times first.
+The file was right, the reader was wrong, and the error message blamed the file. Fixed, and the
+preamble it now reads past is captured and shown on the upload screen's "Mapped to this
+session" panel: the last point in the flow where a wrong file can be caught, since everything
+after it matches names without ever looking at which meeting the rows came from. A definite
+date mismatch warns; an unreadable or absent date says it cannot check, because warning when
+nothing can be checked trains people past the warning that matters.
+
+**Reports was not counting anything** — see **RC-010**. It was asked for an export; every figure
+on it was a literal, including the Members scope reading the `MEMBERS` fixture. A CSV of those
+numbers would have become a document somebody keeps, so the data source was fixed first. It now
+reads the same member rows the dashboard reads, aggregates them in `src/data/report.ts`, and
+exports what is on screen — including the words: a row the screen calls "no sessions scheduled"
+is not exported as `0%`.
+
+**The dashboard is the chart the canvas draws, and nothing else.** The hero "N members need
+you", the "What needs you" list, the quick links, the week table and the week strip are gone.
+Each was a second place a figure lived; the week table counted from a different query than the
+chart beside it while admitting its own filters did not reach it; and the week strip rendered
+`WEEK_STRIP`, a hardcoded fixture, on the live dashboard. Everything removed is still reachable
+elsewhere.
+
+**Smaller, from the same revision.** A branch filter on Courses, asking the offerings so a
+course running at two branches appears under both. A hex field on Appearance that contributes
+its **hue** and nothing else — the generator darkens it until white text clears 4.5:1, so a hex
+taken verbatim would walk round guardrail 2; typed as pure green it ships as `#148514`.
+Numbered preset/custom headings. A way back from Member detail, which had none, and
+`router.back()` on Match review, which had been replacing its history entry.
+
+**Ratchets paid down, not baselined:** hardcoded colours 13 → 11 and test ids 26 → 24 in `app/`.
+57 unit assertions added (56 → 113). The DB harness ran for the first time — Postgres 16 is
+available in this session — with 215 assertions passing; two pre-existing failures are recorded
+in `TEST_SUMMARY.md` and proved pre-existing rather than assumed to be.
+
+**The gate verdict is unchanged: FAIL, as it was on main.** G1/G2/G3 need
+`design/tokens.json`, which has never been committed; G6 is blocked because eslint is not a
+dependency; G8 runs a `test:functional` script that does not exist. `TEST_SUMMARY.md` says
+which classes are therefore unverified.
+
+---
+
 ## Unreleased — the three migrations the live project never got
 
 **Add Member fails in the live app.** It says so, at least: *"Could not find the function

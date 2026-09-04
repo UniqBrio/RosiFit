@@ -1,0 +1,11 @@
+not ok 4 - punctuation and spaces are dropped, never counted
+  ---
+  duration_ms: 1.295308
+  type: 'test'
+  location: '/home/user/RosiFit/src/data/signin.test.ts:30:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + '91805 63297'

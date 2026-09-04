@@ -1,203 +1,474 @@
-import { useState } from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { useEffect, useState } from 'react';
+import { View, Text, Pressable, TextInput, ScrollView } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Screen, Muted, Label, Button, Skeleton, ErrorState } from '../../src/components/ui';
+import { Muted, Label, Button, Skeleton, ErrorState } from '../../src/components/ui';
 import { Field } from '../../src/components/Field';
-import { TimeField } from '../../src/components/DateTimePicker';
 import { Icon } from '../../src/components/Icon';
+import { DropdownRow, DropdownField, DropdownPanel, DropdownList } from '../../src/components/Dropdown';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
-import { SPACE, RADIUS, TAP_MIN, STATUS } from '../../src/theme/tokens';
-import { useCourses } from '../../src/data/hooks';
-import { createCourse, updateCourse, dataSource } from '../../src/data/repository';
+import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../../src/theme/tokens';
+import { DAY_NAMES } from '../../src/data/mock';
+import { fillTokens, unknownTokens } from '../../src/data/message';
+import {
+  useCourses, useBranchUsage, useTemplates, useSenders, useCourseMessage, useFollowUp,
+  useAcademyDetails,
+} from '../../src/data/hooks';
+import { saveCourse, dataSource } from '../../src/data/repository';
 
 /**
- * C-56/C-57: a course is WHAT you teach, not when. The default time here is
- * only a default for new offerings; weekdays and fees live on the offering,
- * and this screen says so instead of collecting them.
+ * Add / Edit a course — everything the course decides, in one dialog.
  *
- * WHAT WAS WRONG HERE
- * Save flashed "<name> saved" and called router.back(). It never wrote
- * anything: no Supabase call, no Edge Function, not even a change to the
- * fixture list. The course was reported saved and was gone the moment the
- * list refetched, which is the single worst shape a form can have -- it is
- * indistinguishable from a working one until somebody looks for the record.
+ * WHAT THIS FORM USED TO BE
+ * Name, a start and end time, a stated frequency number, and a note telling
+ * people to set the actual days somewhere else. The sender, the template, the
+ * wording and the follow-up rule lived on two separate settings screens.
  *
- * It now writes through repository.createCourse / updateCourse, waits for
- * the answer, and says what actually happened. A refusal (RLS: super admin
- * only, subscription writable) is SHOWN, because the person needs to know
- * the course is not there.
+ * The canvas puts all of it here, and says why in its own caption: "A
+ * course's message wording, sender and follow-up rule are edited in the
+ * course form itself — there is no separate Message Templates or Follow-up
+ * Rules screen in settings." Those two screens are gone.
+ *
+ * GONE WITH THEM: start and end time, fee, short code, offerings-as-schedule
+ * and the tap-to-insert token row. The time fields were a DEFAULT for new
+ * offerings that nothing read afterwards; there are no commercial fields
+ * anywhere in this product; and the token row put nine buttons under a text
+ * box to insert nine strings a person can type, while the preview below
+ * already shows whether they resolved.
+ *
+ * ONE SAVE. The seven fields land in five tables, and offering_schedules has
+ * no direct write policy at all, so this calls save_course (0022) rather than
+ * sequencing writes here. A sequence that fails half way leaves a course with
+ * no offering, or an offering with no schedule: expected at no session, in no
+ * follow-up list, counted by nobody.
  */
 export default function CourseEdit() {
   const { theme } = useTheme();
   const { flash } = useToast();
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id?: string }>();
+  const { id, state: forced } = useLocalSearchParams<{ id?: string; state?: string }>();
+  const editing = typeof id === 'string' && id.length > 0 ? id : null;
 
-  // Editing reads the same list every other screen reads, rather than a
-  // second, fixtures-only copy -- the old COURSE_LIST lookup meant the edit
-  // form could never open a course that came from the database.
-  const courses = useCourses();
-  const existing = courses.data?.find(c => c.id === id);
-  const loadingExisting = !!id && courses.state === 'loading';
+  const courses = useCourses(forced);
+  const branches = useBranchUsage(forced);
+  const templates = useTemplates(forced);
+  const senders = useSenders(forced);
+  const message = useCourseMessage(editing, forced);
+  const followUp = useFollowUp(forced);
+  const academy = useAcademyDetails(forced);
 
-  const [name, setName] = useState<string | null>(null);
-  const [start, setStart] = useState<string | null>(null);
-  const [end, setEnd] = useState<string | null>(null);
-  const [freq, setFreq] = useState<number | null>(null);
+  const [name, setName] = useState('');
+  const [branchId, setBranchId] = useState<string | null>(null);
+  const [days, setDays] = useState<number[]>([]);
+  const [rule, setRule] = useState<'week' | 'consec'>('week');
+  const [sender, setSender] = useState<string | null>(null);
+  const [templateId, setTemplateId] = useState<string | null>(null);
+  const [subject, setSubject] = useState<string | null>(null);
+  const [body, setBody] = useState<string | null>(null);
+  const [open, setOpen] = useState<null | 'branch' | 'sender' | 'template'>(null);
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
-  // null means "not edited yet", so the loaded course shows through without
-  // an effect that would clobber a half-typed name on every refetch.
-  const nameValue = name ?? existing?.name ?? '';
-  const startValue = start ?? existing?.start_time ?? '';
-  const endValue = end ?? existing?.end_time ?? '';
-  const freqValue = freq ?? existing?.frequency ?? 3;
+  const course = editing ? (courses.data ?? []).find(c => c.id === editing) ?? null : null;
+  const branchList = branches.data ?? [];
+  const templateList = templates.data ?? [];
+  const senderList = senders.data ?? [];
+  const rules = followUp.data?.rules;
 
-  const reversedTimes = !!(startValue && endValue && endValue <= startValue);
-  const valid = nameValue.trim().length >= 2 && !reversedTimes;
-  const ink = (k: keyof typeof STATUS) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
+  /* The form is SEEDED once from what the course already says, then left
+   * alone. Re-seeding on every render would overwrite what is being typed the
+   * moment any of these queries refetched. */
+  const [seeded, setSeeded] = useState(false);
+  useEffect(() => {
+    if (seeded) return;
+    const ready = message.state !== 'loading' && branches.state === 'ready'
+      && templates.state === 'ready' && senders.state === 'ready';
+    if (!ready) return;
+
+    if (course) {
+      setName(course.name);
+      const first = course.offerings[0];
+      setBranchId(branchList.find(b => b.name === first?.branch)?.id ?? branchList[0]?.id ?? null);
+      setDays(first?.weekdays ?? []);
+      const r = rules?.byCourseName[course.name];
+      // The canvas offers one trigger or the other. A course whose stored rule
+      // has consecutive enabled reads as 'consec' whatever else is set.
+      setRule(r?.consecutive_enabled && !r?.weekly_enabled ? 'consec' : 'week');
+    } else {
+      setBranchId(branchList[0]?.id ?? null);
+    }
+    setSender(message.data?.from_email ?? senderList[0] ?? null);
+    setTemplateId(message.data?.template_id ?? templateList[0]?.id ?? null);
+    // null means "still the template's" -- typing is what makes it the
+    // course's own, and Reset puts it back to null.
+    setSubject(message.data?.source === 'course' ? message.data.subject : null);
+    setBody(message.data?.source === 'course' ? message.data.body : null);
+    setSeeded(true);
+  }, [seeded, message.state, branches.state, templates.state, senders.state, course]);
+
+  const template = templateList.find(t => t.id === templateId) ?? null;
+  // What the box shows: the course's own words where it has any, otherwise
+  // the template's. Editing seeds from what is displayed, so nothing is lost.
+  const shownSubject = subject ?? template?.subject ?? message.data?.subject ?? '';
+  const shownBody = body ?? template?.body ?? message.data?.body ?? '';
+  const overridden = subject !== null || body !== null;
+
+  const branch = branchList.find(b => b.id === branchId) ?? null;
+  const valid = name.trim().length >= 2 && days.length > 0 && !!branchId && !!sender && !!templateId;
+
+  const dangerInk = theme.isDark ? STATUS.absent.fgDark : STATUS.absent.fgLight;
+  const okInk = theme.isDark ? STATUS.present.fgDark : STATUS.present.fgLight;
+
+  /* The preview renders against a REAL member of this course where there is
+   * one, because a token that resolves for a fixture and not for her is
+   * exactly what the preview exists to catch. */
+  const sample = (followUp.data?.members ?? []).find(m => m.course === course?.name)
+    ?? (followUp.data?.members ?? [])[0] ?? null;
+  const previewCtx = sample
+    ? {
+        member: sample,
+        courseName: name || 'this course',
+        branchName: branch?.name ?? '—',
+        academyName: academy.data?.name ?? 'RosiFit',
+        // The period is stated at SEND time, not here; the preview says so in
+        // words rather than showing a date this form never chose.
+        periodFrom: 'the period start', periodTo: 'the period end',
+      }
+    : null;
+  const stray = [...new Set([...unknownTokens(shownSubject), ...unknownTokens(shownBody)])];
 
   const save = async () => {
-    if (!valid || saving) return;
+    if (!valid || saving || !branchId || !sender || !templateId) return;
     setSaving(true);
     setFailure(null);
-    const input = {
-      name: nameValue.trim(),
-      start_time: startValue || null,
-      end_time: endValue || null,
-      frequency: freqValue,
-    };
     try {
-      if (existing) {
-        await updateCourse(existing.id, input);
-      } else {
-        await createCourse(input);
-      }
-      // The write notifies every mounted course list (repository.onCoursesChanged),
-      // so the Courses tab shows the course because it is IN the database,
-      // not because this screen said so.
-      router.back();
+      const result = await saveCourse({
+        id: editing, name: name.trim(), branch_id: branchId, weekdays: days, rule,
+        from_email: sender, template_id: templateId,
+        subject: subject ?? '', body: body ?? '',
+      });
       flash(dataSource === 'live'
-        ? `${input.name} saved · add an offering to give it a schedule`
-        : `${input.name} saved on this device only — the academy database is not configured`,
+        ? `${name.trim()} ${result.created ? 'added' : 'updated'} · ${days.length} ${days.length === 1 ? 'day' : 'days'} a week`
+        : `${name.trim()} saved on this device only — the academy database is not configured`,
         dataSource === 'live' ? 'ok' : 'warn');
+      router.back();
     } catch (err) {
-      setFailure(err instanceof Error ? err.message : 'The course could not be saved. Nothing has been changed.');
+      setFailure(err instanceof Error ? err.message : 'The course could not be saved. Nothing has been saved.');
     } finally {
       setSaving(false);
     }
   };
 
-  if (loadingExisting) return <Screen><Skeleton lines={4} /></Screen>;
+  const loading = message.state === 'loading' || branches.state === 'loading'
+    || templates.state === 'loading' || senders.state === 'loading';
+  const failed = branches.state === 'error' || templates.state === 'error' || message.state === 'error';
+
+  const hint = !name.trim() ? 'A course name is required'
+    : days.length === 0 ? 'Select at least one frequency day'
+    : `${branch?.name ?? '—'} · ${days.length}/week · ${rule === 'week' ? '4 weekly' : '4 consecutive'}`;
 
   return (
-    <Screen>
-      <Muted style={{ marginBottom: SPACE.lg }}>What you teach, not when</Muted>
-
-      <Field label="Course name" value={nameValue} onChange={setName} placeholder="e.g. Gentle Recovery Yoga" />
-
-      <View style={{ flexDirection: 'row', gap: SPACE.md }}>
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      {/* The canvas presents this as a DIALOG over the workspace, so it keeps
+          a title, a subtitle naming what it decides, and a ✕ that leaves
+          without saving. `presentation: 'modal'` in the layout does the rest. */}
+      <View style={{
+        flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
+        paddingHorizontal: SPACE.lg, paddingTop: SPACE.lg, paddingBottom: SPACE.md,
+        borderBottomWidth: 1, borderBottomColor: theme.line,
+      }}>
         <View style={{ flex: 1 }}>
-          <TimeField label="Start time" value={startValue} onChange={setStart}
-            placeholder="6:00 AM" testID="course-start-time" />
+          <Text style={{ fontSize: 19, fontWeight: '800', color: theme.fgStrong }}>
+            {editing ? 'Edit course' : 'Add a course'}
+          </Text>
+          <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>
+            {editing ? (course?.name ?? '') : 'Name, days, sender and template'}
+          </Text>
         </View>
-        <View style={{ flex: 1 }}>
-          <TimeField label="End time" value={endValue} onChange={setEnd}
-            placeholder="7:00 AM" testID="course-end-time"
-            error={reversedTimes ? 'The end time must be after the start time.' : undefined} />
+        <Pressable testID="course-close" onPress={() => router.back()}
+          accessibilityRole="button" accessibilityLabel="Close without saving"
+          style={({ pressed }) => ({
+            width: 38, height: 38, borderRadius: RADIUS.md,
+            alignItems: 'center', justifyContent: 'center',
+            backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
+            opacity: pressed ? 0.7 : 1,
+          })}>
+          <Icon name="close" size={20} color={theme.fgStrong} />
+        </Pressable>
+      </View>
+
+      {loading ? (
+        <View style={{ padding: SPACE.lg }}><Skeleton lines={7} /></View>
+      ) : failed ? (
+        <View style={{ padding: SPACE.lg }}>
+          <ErrorState onRetry={() => { branches.retry(); templates.retry(); message.retry(); }}
+            message={branches.error ?? templates.error ?? message.error
+              ?? 'The course could not be loaded. Nothing has been changed.'} />
         </View>
-      </View>
-      <View style={{ flexDirection: 'row', gap: SPACE.sm, alignItems: 'flex-start', marginTop: -4 }}>
-        <Icon name="schedule" size={15} color={theme.accentInk} />
-        <Muted style={{ flex: 1 }}>
-          Used as the default when you add this course at a branch. Existing offerings keep their own times.
-        </Muted>
-      </View>
+      ) : (
+        <>
+          <ScrollView contentContainerStyle={{ padding: SPACE.lg, paddingBottom: 40 }}>
+            <Field label="Course name" value={name} onChange={setName}
+              placeholder="e.g. Gentle Recovery Yoga" />
 
-      <Label style={{ marginTop: SPACE.xl }}>Frequency</Label>
-      <View style={{
-        flexDirection: 'row', alignItems: 'center', gap: SPACE.md, marginTop: SPACE.md,
-        padding: SPACE.md, borderRadius: RADIUS.md, backgroundColor: theme.surface,
-        borderWidth: 1, borderColor: theme.lineStrong,
-      }}>
-        <Text style={{ flex: 1, fontSize: 14, color: theme.fg }}>Intended sessions per week</Text>
-        <Stepper value={freqValue} onChange={setFreq} min={1} max={7} />
-      </View>
+            <DropdownRow open={open === 'branch'}>
+              <DropdownField label="Branch" value={branch?.name ?? 'Choose a branch'}
+                open={open === 'branch'} testID="course-branch-field"
+                onPress={() => setOpen(o => (o === 'branch' ? null : 'branch'))} />
+              {open === 'branch' ? (
+                <DropdownPanel>
+                  <DropdownList testID="course-branch"
+                    options={branchList.map(b => ({ label: b.name, meta: `${b.courses} courses` }))}
+                    value={branch?.name ?? ''}
+                    onSelect={l => {
+                      setBranchId(branchList.find(b => b.name === l)?.id ?? null);
+                      setOpen(null);
+                    }} />
+                </DropdownPanel>
+              ) : null}
+            </DropdownRow>
 
-      <View style={{
-        marginTop: SPACE.md, padding: SPACE.lg, borderRadius: RADIUS.lg,
-        flexDirection: 'row', gap: SPACE.md,
-        backgroundColor: theme.surface2, borderWidth: 1, borderColor: theme.line,
-      }}>
-        <Icon name="rule" size={18} color={theme.accentInk} />
-        {/* C-57: intent, never the denominator */}
-        <Muted style={{ flex: 1 }}>
-          Frequency states your intent. Attendance is never counted from it — it comes from the weekdays
-          on each offering. If an offering runs fewer days, the offering screen says so and keeps counting
-          the real days.
-        </Muted>
-      </View>
+            {/* ------------------------------------------------- frequency */}
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', marginTop: SPACE.lg }}>
+              <Label style={{ flex: 1 }}>Frequency</Label>
+              <Text style={{
+                fontSize: 11.5, fontWeight: '800',
+                color: days.length ? theme.accentInk : dangerInk,
+              }}>{days.length ? `${days.length} ${days.length === 1 ? 'day' : 'days'}/week` : 'Required'}</Text>
+            </View>
 
-      <View style={{
-        marginTop: SPACE.sm, padding: SPACE.lg, borderRadius: RADIUS.lg,
-        flexDirection: 'row', gap: SPACE.md,
-        backgroundColor: theme.surface2, borderWidth: 1, borderColor: theme.line,
-      }}>
-        <Icon name="event_busy" size={18} color={ink('holiday')} />
-        <Muted style={{ flex: 1 }}>
-          No weekdays and no fee here. Create an offering — the course at one branch — and set its days there.
-        </Muted>
-      </View>
+            <View style={{ flexDirection: 'row', gap: 6, marginTop: SPACE.sm }}>
+              {[1, 2, 3, 4, 5, 6, 7].map(d => {
+                const on = days.includes(d);
+                return (
+                  <Pressable key={d} testID={`course-day-${d}`}
+                    onPress={() => setDays(cur =>
+                      cur.includes(d) ? cur.filter(x => x !== d) : [...cur, d].sort())}
+                    accessibilityRole="checkbox" accessibilityState={{ checked: on }}
+                    accessibilityLabel={DAY_NAMES[d]}
+                    style={{
+                      flex: 1, height: TAP_MIN, borderRadius: RADIUS.sm,
+                      alignItems: 'center', justifyContent: 'center',
+                      backgroundColor: on ? theme.accent : theme.surface,
+                      borderWidth: 1, borderColor: on ? theme.accent : theme.lineStrong,
+                    }}>
+                    <Text style={{
+                      fontSize: 11, fontWeight: '800',
+                      color: on ? theme.onAccent : theme.fg,
+                    }}>{DAY_NAMES[d]}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
 
-      {/* A refused write is shown here rather than flashed away: the course is
-          NOT saved, and the person has to be able to read why. */}
-      {failure ? (
-        <View style={{ marginTop: SPACE.lg }}>
-          <ErrorState message={failure} onRetry={save} />
-        </View>
-      ) : null}
+            {/* The days ARE the expectation, so the note says what they mean
+                rather than that a field is empty. */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACE.sm }}>
+              <Icon name={days.length ? 'event_available' : 'error'} size={15}
+                color={days.length ? theme.muted : dangerInk} />
+              <Text style={{ flex: 1, fontSize: 11.5, lineHeight: 17,
+                color: days.length ? theme.muted : dangerInk }}>
+                {days.length
+                  ? `Attendance is expected on ${days.map(d => DAY_NAMES[d]).join(', ')}.`
+                  : 'At least one day is required — with none, nothing is expected of anyone.'}
+              </Text>
+            </View>
 
-      <Button label={saving ? 'Saving…' : existing ? 'Save Course' : 'Add Course'}
-        onPress={save} disabled={!valid || saving} style={{ marginTop: SPACE.xl }} />
-      <Muted style={{ marginTop: 9, textAlign: 'center' }}>
-        {!valid ? 'A course name of at least two characters is needed'
-          : existing ? 'Changing the default time never touches an offering that already exists'
-          : 'Saved with no offerings — it has no schedule until it runs somewhere'}
-      </Muted>
-    </Screen>
-  );
-}
+            {/* --------------------------------------------------- sender */}
+            <DropdownRow open={open === 'sender'} style={{ marginTop: SPACE.lg }}>
+              <DropdownField label="From email ID" value={sender ?? 'Choose an address'}
+                open={open === 'sender'} testID="course-sender-field"
+                onPress={() => setOpen(o => (o === 'sender' ? null : 'sender'))} />
+              {open === 'sender' ? (
+                <DropdownPanel>
+                  <DropdownList testID="course-sender"
+                    options={senderList.map(label => ({ label, meta: 'verified' }))}
+                    value={sender ?? ''}
+                    onSelect={l => { setSender(l); setOpen(null); }} />
+                </DropdownPanel>
+              ) : null}
+            </DropdownRow>
 
-function Stepper({ value, onChange, min, max }:
-  { value: number; onChange: (n: number) => void; min: number; max: number }) {
-  const { theme } = useTheme();
-  const btn = (label: string, delta: number, disabled: boolean) => (
-    <Pressable onPress={() => onChange(value + delta)} disabled={disabled}
-      testID={`course-frequency-${delta > 0 ? 'up' : 'down'}`}
-      accessibilityRole="button"
-      accessibilityLabel={delta > 0 ? 'Increase frequency' : 'Decrease frequency'}
-      accessibilityState={{ disabled }}
-      style={{
-        width: TAP_MIN, height: TAP_MIN - 6, borderRadius: RADIUS.sm,
-        alignItems: 'center', justifyContent: 'center',
-        backgroundColor: disabled ? theme.control : theme.surface2,
-        borderWidth: 1, borderColor: theme.lineStrong,
-      }}>
-      <Text style={{ fontSize: 20, fontWeight: '700', color: disabled ? theme.dim : theme.fgStrong }}>{label}</Text>
-    </Pressable>
-  );
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }}>
-      {btn('−', -1, value <= min)}
-      <Text
-        accessibilityLiveRegion="polite"
-        style={{ width: 34, textAlign: 'center', fontSize: 18, fontWeight: '800',
-          color: theme.fgStrong, fontVariant: ['tabular-nums'] }}>
-        {value}
-      </Text>
-      {btn('+', +1, value >= max)}
+            <DropdownRow open={open === 'template'} style={{ marginTop: SPACE.md }}>
+              <DropdownField label="Message template" value={template?.name ?? 'Choose a template'}
+                open={open === 'template'} testID="course-template-field"
+                onPress={() => setOpen(o => (o === 'template' ? null : 'template'))} />
+              {open === 'template' ? (
+                <DropdownPanel>
+                  <DropdownList testID="course-template"
+                    options={templateList.map(t => ({ label: t.name, meta: t.preview }))}
+                    value={template?.name ?? ''}
+                    onSelect={l => {
+                      setTemplateId(templateList.find(t => t.name === l)?.id ?? null);
+                      // Choosing a template means choosing ITS words. Keeping
+                      // an override here would name one template and send
+                      // another's wording.
+                      setSubject(null); setBody(null);
+                      setOpen(null);
+                    }} />
+                </DropdownPanel>
+              ) : null}
+            </DropdownRow>
+
+            {/* ------------------------------------------- the course's words */}
+            <View style={{
+              marginTop: SPACE.lg, padding: SPACE.lg, borderRadius: RADIUS.lg,
+              backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                <Icon name="edit_note" size={17} color={theme.accentInk} />
+                <Label style={{ flex: 1 }}>Wording for this course</Label>
+                {overridden ? (
+                  <Pressable testID="course-reset-wording"
+                    onPress={() => {
+                      setSubject(null); setBody(null);
+                      flash(`Wording reset to the ${template?.name ?? 'template'} template`);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Reset the wording to the template"
+                    style={{ minHeight: TAP_MIN / 2, justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.accentInk }}>Reset</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+
+              <Label style={{ marginTop: SPACE.md }}>Subject</Label>
+              <TextInput
+                testID="course-subject"
+                value={shownSubject}
+                onChangeText={setSubject}
+                placeholder="We missed you this week, {{first_name}}"
+                placeholderTextColor={theme.muted}
+                accessibilityLabel="Message subject"
+                style={{
+                  marginTop: 6, minHeight: TAP_MIN, borderRadius: RADIUS.md,
+                  paddingHorizontal: SPACE.md, color: theme.fgStrong, fontSize: 14,
+                  backgroundColor: theme.surface2, borderWidth: 1, borderColor: theme.lineStrong,
+                }} />
+
+              <Label style={{ marginTop: SPACE.md }}>Message</Label>
+              <TextInput
+                testID="course-body"
+                value={shownBody}
+                onChangeText={setBody}
+                multiline
+                accessibilityLabel="Message body"
+                style={{
+                  marginTop: 6, minHeight: 118, borderRadius: RADIUS.md, textAlignVertical: 'top',
+                  padding: SPACE.md, color: theme.fgStrong, fontSize: 14, lineHeight: 20,
+                  backgroundColor: theme.surface2, borderWidth: 1, borderColor: theme.lineStrong,
+                }} />
+
+              {/* The preview is the point. This wording is authored once and
+                  sent to everyone in the course, so an unresolved token is not
+                  a typo in one email -- it is a typo in every email this
+                  course will ever send. */}
+              <View style={{
+                marginTop: SPACE.md, padding: SPACE.md, borderRadius: RADIUS.md,
+                backgroundColor: theme.surface2, borderWidth: 1, borderColor: theme.line,
+              }}>
+                <Label>{previewCtx ? `Preview · ${previewCtx.member.name}` : 'Preview'}</Label>
+                {previewCtx ? (
+                  <>
+                    <Text style={{ fontSize: 13, fontWeight: '800', color: theme.fgStrong, marginTop: 6 }}>
+                      {fillTokens(shownSubject, previewCtx)}
+                    </Text>
+                    <Text style={{ fontSize: 12.5, color: theme.fg, marginTop: 5, lineHeight: 19 }}>
+                      {fillTokens(shownBody, previewCtx)}
+                    </Text>
+                  </>
+                ) : (
+                  <Muted style={{ marginTop: 6 }}>
+                    No member is enrolled yet, so there are no real figures to show this against.
+                  </Muted>
+                )}
+              </View>
+
+              {stray.length ? (
+                <View accessibilityLiveRegion="polite"
+                  style={{
+                    flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.md,
+                    padding: SPACE.md, borderRadius: RADIUS.md,
+                    backgroundColor: statusSurface(dangerInk).bg,
+                    borderWidth: 1, borderColor: statusSurface(dangerInk).border,
+                  }}>
+                  <Icon name="error" size={17} color={dangerInk} />
+                  <Text style={{ flex: 1, fontSize: 11.5, lineHeight: 17, color: theme.fg }}>
+                    {`${stray.join(', ')} ${stray.length === 1 ? 'is not a token' : 'are not tokens'} — `}
+                    {'it will be sent exactly as written. Check the spelling against the preview above.'}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.md }}>
+              <Icon name="info" size={16} color={theme.dim} />
+              <Muted style={{ flex: 1 }}>
+                This wording and sender belong to this course. Nothing is edited at send time.
+              </Muted>
+            </View>
+
+            {/* ----------------------------------------- the follow-up rule */}
+            <Label style={{ marginTop: SPACE.xl }}>Follow-up trigger</Label>
+            <View style={{ gap: SPACE.sm, marginTop: SPACE.sm }}>
+              {([
+                { key: 'week' as const, label: '4 missed sessions in a week',
+                  desc: 'Counted across the current week’s scheduled sessions.' },
+                { key: 'consec' as const, label: '4 consecutive missed sessions',
+                  desc: 'Counted as an unbroken run, however long it takes.' },
+              ]).map(r => {
+                const on = rule === r.key;
+                return (
+                  <Pressable key={r.key} testID={`course-rule-${r.key}`}
+                    onPress={() => setRule(r.key)}
+                    accessibilityRole="radio" accessibilityState={{ selected: on }}
+                    accessibilityLabel={`${r.label}. ${r.desc}`}
+                    style={{
+                      flexDirection: 'row', gap: SPACE.md, padding: SPACE.lg,
+                      borderRadius: RADIUS.lg, minHeight: TAP_MIN,
+                      backgroundColor: on ? statusSurface(theme.accent).bg : theme.surface,
+                      borderWidth: 1.5, borderColor: on ? theme.accent : theme.line,
+                    }}>
+                    <Icon name={on ? 'radio_button_checked' : 'radio_button_unchecked'}
+                      size={20} color={on ? theme.accentInk : theme.muted} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 14, fontWeight: '800', color: theme.fgStrong }}>{r.label}</Text>
+                      <Text style={{ fontSize: 12, color: theme.muted, marginTop: 3, lineHeight: 17 }}>{r.desc}</Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.md }}>
+              <Icon name="rule" size={16} color={okInk} />
+              <Muted style={{ flex: 1 }}>
+                One or the other, never both. Holidays and cancelled classes never count toward a miss.
+              </Muted>
+            </View>
+
+            {failure ? (
+              <View style={{ marginTop: SPACE.lg }}>
+                <ErrorState message={failure} onRetry={() => setFailure(null)} />
+              </View>
+            ) : null}
+          </ScrollView>
+
+          <View style={{
+            padding: SPACE.lg, borderTopWidth: 1, borderTopColor: theme.line,
+            backgroundColor: theme.shell,
+          }}>
+            <View style={{ flexDirection: 'row', gap: SPACE.md }}>
+              <Button testID="course-cancel" label="Cancel" variant="secondary"
+                onPress={() => router.back()} style={{ flex: 1 }} />
+              <Button testID="course-save"
+                label={saving ? 'Saving…' : editing ? 'Save Changes' : 'Add Course'}
+                onPress={() => void save()} disabled={!valid || saving} style={{ flex: 1 }} />
+            </View>
+            <Muted style={{ textAlign: 'center', marginTop: 9 }}>{hint}</Muted>
+          </View>
+        </>
+      )}
     </View>
   );
 }

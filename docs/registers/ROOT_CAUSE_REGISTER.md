@@ -59,6 +59,127 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-011 — every action taken through an Edge Function was logged as "System"
+**Date:** 03-Sep-2026 · **Severity:** S2 · **Modules:** `supabase/migrations/0004_audit_logs.sql`, `supabase/functions/*`
+
+**Symptom** — the audit log's *Modified by* column said **System** for every communication sent,
+every attendance file uploaded, every match decision taken on an ambiguous row, and every staff
+PIN issued or reset. Only writes the app made directly — a branch added, a member edited, a
+course saved — carried a name.
+
+**Root cause** — `audit_log()` derives its actor from `current_app_user_id()`, which reads
+`auth.uid()`. Every Edge Function calls it on the **service-role** client, where `auth.uid()` is
+null. So the actor column was written NULL and `actor_kind` fell through to `'anon'` — the label
+an *unauthenticated* request carries. In an append-only table that by design cannot be corrected,
+a batch of emails sent by the super admin was indistinguishable from a batch sent by nobody.
+
+The identity was never missing. `send-followups` had `caller.id`, `csv-import` had `actorId`,
+`commit_csv_import` had `p_actor` as a parameter and already wrote it into
+`member_emails.added_by`, `member_aliases.confirmed_by` and `attendance_records`. Four functions
+carried the actor into the data and dropped it on the way to the log.
+
+Reproduced on the harness in one statement: `set local role service_role; select
+public.audit_log('communication.batch_sent','email_batch','b1');` → null actor, kind `anon`.
+
+**Fix** — `0023_audit_actor.sql` adds `audit_log_as(p_actor, ...)`, granted to `service_role`
+**only**, and re-issues `commit_csv_import` so its five decision entries carry `p_actor`. Eleven
+call sites across five functions now name the caller they had already authenticated. 16
+assertions in `supabase/tests/17_audit_actor.sql`.
+
+**Guard** — `audit_log_as` **raises** on a null actor rather than falling back to an unattributed
+entry: a caller that reaches it having lost the identity fails loudly instead of writing "System"
+into a table nobody can correct. It is not granted to `authenticated`, because a client that could
+name its own actor could blame somebody else. Both are asserted, as is the fact that `audit_log()`
+itself is **unchanged** — the old behaviour is pinned so a later edit cannot alter it silently.
+
+**Deliberately not attributed** — the six calls in `auth-login`, `auth-bootstrap` and
+`recovery-check` run *before* a session exists. Nobody has proved who they are, and naming the
+account an attempt was aimed at would record her as having done something she may know nothing
+about. Those keep `audit_log()`, with a comment at each saying why.
+
+**Not fixed here** — the migration and the function changes are in the repository and applied to
+the local harness. **Neither reaches the live project until someone deploys them**, so the live
+audit log still says System.
+
+**Recurrence risk** — high, and quiet. Nothing FAILS when the actor is dropped: the write
+succeeds, the screen renders, and only a column is empty. Every future Edge Function starts from
+a copy of an existing one, so the defect propagates by imitation.
+
+**Prevention** — `rung: scripts/audits/check-audit-attribution.mjs`, wired into `npm run
+audit:all`. A clean gate, not a ratchet: the backlog is zero and there is no honest reason for a
+new unattributed call, which is exactly what a baseline would admit. The three pre-session
+functions are exempt **by name, with their reason written beside them** in the check itself, so
+adding a fourth is a deliberate edit somebody has to justify.
+
+The gate has its own cases — `scripts/audits/check-audit-attribution.test.sh`, which EXECUTES it
+against scratch trees and asserts its **output**, not only its exit code. A gate guarding a silent
+defect is silent when it breaks: one stray character in its regex and it passes everything
+forever, reporting "0 unattributed" about a tree it never read.
+
+---
+
+## RC-010 — Reports showed figures it had never counted
+**Date:** 03-Sep-2026 · **Severity:** S2 · **Modules:** `app/(tabs)/reports.tsx`, `src/data/report.ts`
+
+**Symptom** — the Reports screen showed per-course and per-branch attendance percentages, a
+headline count and a period, and none of them moved when the academy's data did.
+
+**Root cause** — every figure on the screen was a literal. `COURSE_BARS` and `BRANCH_BARS` were
+hardcoded arrays ("Prenatal Flow 74%, 40 scheduled · 30 attended"), the headline said
+"Attendance across 4 courses" whatever the academy ran, the total said `61%`, the period string
+said "1–24 Aug" forever, and the Members scope read the `MEMBERS` fixture rather than the live
+query. The screen was not computing a wrong answer; it was not computing.
+
+Found while implementing a request to add an **export** to this screen. The export was the
+reason it mattered: a CSV is an artefact somebody keeps and acts on months later, so exporting
+these numbers would have turned a screen defect into a filed document.
+
+**Fix** — the screen reads the same member rows the dashboard donut reads (guardrail 1, one
+member source), aggregation moved to `src/data/report.ts`, a real period control replaced the
+caption, and the week table was pointed at `useWeekRows`. 14 assertions in
+`src/data/report.test.ts`, fail-first evidence in `TEST_SUMMARY.md`.
+
+**Guard** — `reportRows` sums expected and attended per group rather than averaging its members'
+percentages, and returns `null` — never `0` — where nothing was expected. Both are asserted.
+
+**Not fixed here** — `app/member/[id].tsx` reads the `MEMBERS` fixture the same way. Noted, out
+of scope, and the same class of defect.
+
+---
+
+## RC-009 — a genuine Google Meet export was refused, and the message blamed the file
+**Date:** 03-Sep-2026 · **Severity:** S1 · **Modules:** `src/data/meetCsv.ts` (was `src/data/csv.ts`), `app/upload.tsx`
+
+**Symptom** — uploading a real Google Meet attendance export produced *"That file has no “Full
+Name” column. RosiFit reads the Google Meet export: Full Name, First Seen, Time in Call."* The
+file was correct and had that column.
+
+**Root cause** — `parseMeetCsv` read `lines[0]` as the header row. A Meet attendance export does
+not begin with the table: it writes the meeting code and the created and ended times first, and
+the `Full Name` header comes after them. So the header search never looked at the header line.
+
+S1 because attendance is the product's one irreplaceable input and this blocked it completely
+for the file the product tells people to use — while asserting the file was at fault, which
+sends the operator to check Meet rather than RosiFit.
+
+**Fix** — `findHeader` locates the header wherever Meet put it; a file that does start with the
+header still parses (index 0, no preamble). Reading past the preamble means reading it, so the
+meeting code and times are now captured as `MeetMeta` and shown on the upload screen's "Mapped
+to this session" panel — the last point in the flow where a wrong file can be noticed, since
+everything after it matches names without looking at which meeting the rows came from.
+
+**Guard** — 23 assertions in `src/data/meetCsv.test.ts`, including a preamble row never being
+imported as a member ("Meeting code" as a person's name), and the local-day rule that stops an
+11:30pm session being filed under the next day. Observed failing against the pre-fix parser: 6
+of 23, recorded in `TEST_SUMMARY.md`.
+
+**Why it was not caught** — the parsing lived in `src/data/csv.ts` alongside `document` and
+`FileReader`, so it was outside `scripts/tsconfig.json`'s DOM-free program and could not be
+unit-tested at all. The pure parsing is now `src/data/meetCsv.ts`; `csv.ts` keeps only the
+browser halves. The same split as `csvFormat.ts`, and for the same reason.
+
+---
+
 ## RC-008 — Add Course reported a save it had never attempted
 **Date:** 02-Sep-2026 · **Severity:** S2 · **Modules:** `app/course/edit.tsx`, `src/data/repository.ts`
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Screen, Muted, Label, Button } from '../src/components/ui';
 import { Field } from '../src/components/Field';
 import { Icon } from '../src/components/Icon';
@@ -24,11 +24,18 @@ export default function Register() {
   const { theme } = useTheme();
   const { flash } = useToast();
   const router = useRouter();
+  // Carried from the sign-in screen when the number turned out to have no
+  // account, so she never types it twice -- and so the number she is
+  // registering is provably the one she tried to sign in with.
+  const { phone: fromSignIn } = useLocalSearchParams<{ phone?: string }>();
 
   const [step, setStep] = useState(1);
   const [name, setName] = useState('');
   const [academy, setAcademy] = useState('');
-  const [phone, setPhone] = useState('');
+  const [phone, setPhone] = useState(() => {
+    const d = String(fromSignIn ?? '').replace(/\D/g, '').slice(0, 10);
+    return d.length > 5 ? `${d.slice(0, 5)} ${d.slice(5)}` : d;
+  });
   const [email, setEmail] = useState('');
   // Live, the question list and its ids come from auth-bootstrap; on
   // fixtures the mock texts stand in, numbered the way the seed numbers them.

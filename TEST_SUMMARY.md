@@ -1,3 +1,863 @@
+FAIL-FIRST: src/data/meetCsv.test.ts (the real export shape) and supabase/tests/18_import_session.sql
+- both were observed failing against the tree BEFORE the fix, and the first failure was found by
+running the parser against a REAL Google Meet export rather than against a fixture I wrote.
+
+The file:
+
+    *,Meet
+    *,Meeting code: gzj-yhru-ehp
+    *,Created on 2026-08-31 20:12:56
+    *,Ended on 2026-08-31 20:15:25
+    Full Name,First Seen,Time in Call
+    RosiFit,2026-08-31 20:12:56,00:00:32
+    UniqBotz Info,2026-08-31 20:12:58,00:02:28
+
+Parsed against the old reader:
+
+    rows      : [{"full_name":"RosiFit",...},{"full_name":"UniqBotz Info",...}]
+    skipped   : 4
+    meta.code : null
+    created   : null
+    ended     : null
+    date      : null
+
+THE ROWS PARSED, so nothing looked broken. readMeta took cells[0] as the label and cells[1..] as
+the value, which only fits `Meeting code,abc-defg-hij`. A real export writes ONE cell -- "Meeting
+code: gzj-yhru-ehp" -- behind a `*` marker, so the file's only evidence of WHICH meeting it came
+from and WHEN was silently discarded. The session could not be derived from the file at all, which
+is the whole mechanism this change rests on.
+
+The value is matched by PREFIX, not by splitting on ':', and there is a case pinning why:
+"Created on 2026-08-31 20:12:56" split at its first colon yields the time 12:56 and a date ending
+in 20.
+
+18_import_session.sql failed against 0023 on the assertion that matters most:
+
+    FAIL  a session the schedule does not cover expects EVERYONE ENROLLED, not nobody
+          got 'schedule' want 'all_enrolled'
+    FAIL  both enrolled members were due -- this is the number that used to be 0
+          got 0 want 2
+
+That is the defect stated exactly: attendance "recorded" for a class that counted for nobody.
+
+ALSO OBSERVED, my own bug rather than the product's: three assertions first errored with "column
+reference status is ambiguous" -- attendance_records and sessions both have one and I joined them
+without qualifying. Fixed in the spec, not in the product.
+
+NOT OBSERVED FAILING: rosterScope (src/data/course.test.ts, 8 new cases) - the helper is new and
+every case passed on its first run. It was not written for a defect already in the tree; it was
+written because the change that needed it INTRODUCED the exposure. The chevron on a course card
+opens /members?courseName=…, and the members screen renders that value as its heading and inside
+"Nobody is enrolled in X". Without resolution against the academy's own course list, any link
+could have put any string in the app's mouth, spoken as fact.
+
+Driven in a browser against the exported build, since "what does the heading say" is only
+answerable there:
+
+  ?courseId=c1&courseName=Prenatal%20Flow  -> Prenatal Flow | 3 members in this course
+  ?courseName=prenatal%20flow              -> Prenatal Flow | 3 members in this course
+  ?courseName=Advanced%20Wizardry          -> Members | 8 members · 3 branches · 4 courses
+  ?courseName=All%20courses                -> Members | 8 members · 3 branches · 4 courses
+  ?courseName=<script>alert(1)</script>    -> Members | 8 members · 3 branches · 4 courses
+  (no parameter)                           -> Members | 8 members · 3 branches · 4 courses
+
+The lowercase case matters as much as the refusals: the ACADEMY'S spelling is rendered, never the
+caller's, so a hand-edited URL cannot restyle a course name in the heading.
+
+The "All courses" case is a hole the first version had. fetchFilterOptions heads its option list
+with that literal for the picker, so ?courseName=All courses resolved to it and produced an empty
+roster under a heading naming a course nobody teaches. The screen slices the head off before
+asking; the case pins WHY, so deleting the slice fails here rather than in production.
+
+NOT OBSERVED FAILING: src/data/uploadScope.test.ts - scopeSessions is new and all 13 cases passed
+on their first run. The behaviour it replaces was not a wrong computation but an ABSENT one:
+app/upload.tsx read `const sessions = pending.data ?? []` and offered every session awaiting a
+file in the academy, whatever screen had opened it. There was no branch to fail.
+
+Verified instead by driving all six shapes against the exported build, which is where "did the
+narrowing happen" is actually answerable:
+
+  /upload                              -> 2 sessions, picker      (academy-wide, unchanged)
+  /upload?courseId=c1                  -> straight to step 2      (c1 has one pending session)
+  /upload?courseId=c1&date=2026-08-22  -> straight to step 2      (preselected)
+  /upload?courseId=c1&date=2026-08-19  -> "That session is no longer waiting for a file"
+  /upload?courseId=c9                  -> "No session for this course is waiting for a file."
+  /upload?courseId=c1&date=undefined   -> the course scope, date ignored
+  then "Change" on step 2              -> back to /upload, full picker
+
+THE TWO CASES THAT MATTER are refusals, and both are asserted rather than merely observed:
+
+  - a scope matching nothing does NOT widen back to every session. She tapped "Upload this
+    session" about ONE session; handing her twelve others as though that were the answer is how
+    the wrong file reaches the wrong class.
+  - two sessions of one course on one day (two branches) are NOT resolved to the first. Silently
+    taking one would attach Coimbatore's register to Chennai.
+
+'?date=undefined' is asserted because that is literally what `${maybeDate}` produces from a
+missing value; filtering on it would empty the list and blame the sessions.
+
+NOT OBSERVED FAILING: src/data/nav.test.ts - safeBackTarget was written after the defect it
+serves was reproduced in a BROWSER, and every case passed on its first run. The defect itself was
+observed, twice, against the exported build:
+
+  BEFORE: course detail -> "Weekly review" -> back  ==>  http://127.0.0.1:8100/
+  AFTER : course detail -> "Weekly review" -> back  ==>  http://127.0.0.1:8100/course/c1
+
+The first is Overview, not the course the person opened Weekly review from. Weekly lives inside
+the tab group (the canvas keeps the academy header and nav pill on it), and navigating to a screen
+in a Tabs navigator switches the focused tab rather than pushing -- so router.back() pops to the
+FIRST tab. Nothing in the code says so; only running it does.
+
+The refusal cases are the substance, and one of them was also driven in the browser:
+
+  /weekly?from=https%3A%2F%2Fevil.example  ->  back  ==>  http://127.0.0.1:8100/courses
+
+`from` is a URL parameter on a control whose whole promise is "you will end up where you were", so
+an unvalidated one is an open redirect wearing an arrow icon. //host and /\host are asserted
+separately from the absolute-URL case because both START WITH A SLASH and would otherwise read as
+in-app paths.
+
+FAIL-FIRST: scripts/audits/check-audit-attribution.test.sh - the gate it tests was observed
+failing and passing by hand before the cases were written: reverting send-followups' one call
+site from audit_log_as back to audit_log made `npm run audit:auditactor` exit 1 naming that file,
+and restoring it returned "OK ... 0 unattributed". The cases reproduce exactly that, plus the
+three the hand check could not cover:
+
+  - an auth.* action inside a NON-exempt function is still blocked, so a post-session function
+    cannot borrow the pre-session exemption by naming its action 'auth.something'
+  - the three exempt functions are counted AS exempt rather than folded into the clean count
+  - an EMPTY tree reports "0 attributed" rather than silence
+
+That last one is the reason the file asserts on output and not only on exit codes. A gate that
+guards a silent defect is silent when it breaks: one stray character in its regex and it passes
+everything forever, cheerfully reporting "0 unattributed" about a tree it never read. Exit code 0
+is indistinguishable between "clean" and "scanned nothing".
+
+FAIL-FIRST: supabase/tests/17_audit_actor.sql - observed failing against the tree BEFORE 0023,
+which is the defect itself rather than an injected one. Every assertion naming audit_log_as failed
+with
+
+    ERROR:  function public.audit_log_as(unknown, unknown, unknown, unknown) does not exist
+
+and the two assertions that PIN the old behaviour passed then and pass now, which is the point of
+their being there:
+
+    PASS  audit_log() through service_role still records NO actor -- the defect, unchanged
+    PASS  and still labels it anon, which is what an unauthenticated request would carry (= anon)
+
+The defect was reproduced first, in one statement on the harness, before any code was written:
+
+    begin; set local role service_role;
+    select public.audit_log('communication.batch_sent','email_batch','b1'); commit;
+    -->  actor_app_user_id | actor_kind |          action
+         ------------------+------------+--------------------------
+
+## Gate run - 2026-09-04 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-04 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-03 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-03 - VERDICT: FAIL
+
+Steps: 5 pass, 5 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - FAIL
+
+```
+BLOCKED [TEST ID COVERAGE] - 1 new violation(s):
+BLOCKED [TEST ID COVERAGE] - 1 baselined item(s) now pass but are still listed:
+```
+
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-03 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-03 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-03 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+                           | anon       | communication.batch_sent
+
+A null actor with kind 'anon' -- the label an UNAUTHENTICATED request carries -- for a batch of
+emails a named super admin sent. That query is what turned "the spec says attribute actions" into
+a defect with a reproduction.
+
+ALSO OBSERVED, and the reason the fix stops where it does: the same probe run as `authenticated`
+with a JWT claim set records the actor correctly (branch.insert, super_admin, "Client Admin"), so
+the row triggers were never broken and only the service-role path needed the actor passing in.
+
+FAIL-FIRST: src/data/signin.test.ts - the spec failed on its FIRST run, against my own first
+cut of groupPhone. That version stripped non-digits and took the first ten, so a number pasted
+whole from a contact card -- "+91 80563 29742", beside a field already labelled +91 -- shifted
+two places and became "91805 63297". A plausible ten-digit number belonging to nobody, with
+nothing on screen to say it was wrong.
+
+    not ok 4 - punctuation and spaces are dropped, never counted
+      error: |-
+        Expected values to be strictly equal:
+        + actual - expected
+        + '91805 63297'
+        - '80563 29742'
+
+Captured verbatim in .evidence/signin-fail-first.txt. The fix strips a leading 91 or 0 only when
+the input is LONGER than ten digits, so '91234 56789' -- a real number that begins 91 -- keeps
+all ten. Both halves of that are asserted, because stripping unconditionally would have eaten
+two of somebody's real digits and passed the original case.
+
+NOT OBSERVED FAILING: needsRegistration - the routing predicate was written after the defect
+above and every case passed on its first run. Its negative cases are the substance: auth-login's
+generic refusal, a lockout, a disabled account and a network error must all NOT route to
+registration, since treating the generic refusal as "unknown number" would rebuild the
+enumeration oracle the function is built to deny.
+
+FAIL-FIRST: src/data/message.test.ts - run against a SINGLE-brace filler, which is the defect
+the course form's preview caught the first time it rendered. The stored templates use
+{{double_brace}} tokens because that is what send-followups/index.ts renders; a single-brace
+filler matched the INNER braces and turned "{{first_name}}" into "{Divya}", then flagged five of
+the seeded template's own tokens as unknown.
+
+    not ok 2  - the name splits to a first name
+    not ok 3  - the figures are the member's own
+    not ok 4  - attendance is a percentage of what was EXPECTED
+    not ok 5  - nothing expected is an em dash, never 0%
+    not ok 8  - a value containing a token is not substituted again
+    not ok 9  - the same token repeated is filled every time
+    not ok 13 - SINGLE braces are not tokens - the sender only reads double
+    # pass 7  # fail 7
+
+FAIL-FIRST: src/data/recipients.test.ts - run with the exclusion half dropped, which is the
+C-76 defect in its purest form: a draft that lists only who it WILL reach reads as complete
+while it silently skips somebody the rule named.
+
+    not ok 2 - a member with NO address is excluded and kept, not dropped
+    not ok 3 - the two halves account for EVERY flagged member
+    # pass 5  # fail 2
+
+Writing that spec also surfaced a require cycle the typechecker could not see: importing mock's
+hasEmail as a VALUE into followup.ts closed a loop -- mock imports isEligible and attendancePct
+from followup and calls both in its module body, so it ran before they existed and threw at
+load. Type imports are erased, which is why the cycle had never bitten. Both revert clean:
+156/156.
+
+NOT OBSERVED FAILING: supabase/tests/15_course_communication.sql (17 assertions) and
+16_save_course.sql (18) are new against migrations that did not exist before them, so there is
+no prior implementation to observe failing. They were written against the running harness and
+each was seen to fail while being written -- the type mismatch on sessions_per_week and the
+`set local` outside a transaction both showed up that way -- but that is a spec being corrected,
+not a defect being caught, and it is recorded as the weaker thing it is.
+
+09_grants.sql now fails in a THIRD way, and this one is caused here: it is a whitelist scoped to
+"0002-0010" and course_communication (0021) is outside it, so the table reads as want[none]. The
+new table's grants are asserted in 15_course_communication.sql instead, because test files are
+append-only and repairing the whitelist means editing an existing spec. Worth the repo owner's
+decision rather than mine.
+
+---
+
+## Gate run - 2026-09-03 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-03 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-03 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+FAIL-FIRST: src/data/course.test.ts - the two defects this spec exists to hold were injected
+and observed. Counting a member with no address as needing follow-up, and letting the follow-up
+sentence outrank "no weekdays":
+
+    not ok 5 - a member with NO ADDRESS is never counted as needing follow-up
+    not ok 9 - NO WEEKDAYS outranks the follow-up sentence entirely
+    # pass 12  # fail 2
+
+not ok 5 is C-76: she is over the threshold and cannot be emailed, so counting her promises a
+send with nowhere to go. not ok 9 is the worse one -- a course with no weekdays expects nothing
+of anyone, so no absence can be counted and it sits outside the engine entirely; reporting
+"nobody needs follow-up" there is true and deeply misleading. Both revert to 14/14.
+
+FAIL-FIRST: src/data/report.test.ts (bar geometry) - run against the naive implementation the
+cases exist to rule out: every bar filling the track, and a count written into every segment
+however narrow.
+
+    not ok 16 - the bar LENGTH is the scheduled count, which is what its legend claims
+    not ok 17 - the split inside a bar is that row's attendance
+    not ok 20 - a count is written inside a segment only when it fits
+    not ok 22 - the widest row fills the track exactly, never overflows it
+    # pass 18  # fail 4
+
+not ok 16 is the one the legend promises out loud: "Bar length = sessions scheduled". A full-
+width bar per row makes a 4-session course look like a 40-session one, which is the whole
+comparison the screen exists for. Reverted, 22/22.
+
+NOT OBSERVED FAILING: the shell's two-tab row and the Attendance workspace card carry no unit
+specs of their own -- they are layout, and this repository has no renderer in its test program.
+Both were verified by SCREENSHOT in a browser instead, in both themes, against the design
+prototype driven side by side. That is weaker than a spec and is recorded as such rather than
+counted as green.
+
+---
+
+## Gate run - 2026-09-03 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+FAIL-FIRST: src/data/meetCsv.test.ts - observed failing against the parser it replaces. The
+pre-fix parser read `lines[0]` as the header and captured no meta; restoring exactly that
+produced 6 failures from 23, headed by the one that matters:
+
+    not ok 1 - a REAL export with a preamble is read, not refused
+    not ok 2 - the preamble lines are counted, not silently swallowed
+    not ok 4 - a preamble row is never mistaken for a member
+    not ok 5 - the meeting code is captured, because it is the only evidence of WHICH meeting
+    not ok 6 - created and ended times are captured verbatim
+    not ok 8 - an unquoted timestamp split across commas is rejoined, not truncated
+    # pass 17  # fail 6
+
+not ok 1 is the shipped defect, not a hypothetical: a genuine Google Meet export was refused
+with "that file has no Full Name column", so the reader was wrong and the message blamed the
+file. not ok 4 is the one that would have corrupted an import rather than blocking it --
+"Meeting code" read in as a member's name.
+
+FAIL-FIRST: src/theme/hue.test.ts - this spec caught its defect DURING development, and the
+failure was reproduced afterwards by restoring it (taking the modulo before the round instead
+of after):
+
+    not ok 10 - every hue it returns is inside 0..359, which is what the generator takes
+    # pass 9  # fail 1
+
+A red one point off pure has a true hue of 359.765, which rounded UP to 360 -- a position
+check-contrast.ts never measures, because the sweep it verifies is 0..359.
+
+FAIL-FIRST: src/data/report.test.ts - the arithmetic it covers replaced hardcoded arrays, so
+the two defects a re-implementation would most plausibly carry were injected instead: averaging
+each group's member percentages rather than summing expected and attended, and returning 0 for
+a group where nothing was expected. 6 failures from 14:
+
+    not ok 2 - the Courses scope groups and SUMS, it does not average percentages
+    not ok 4 - groups come back in a stable, name-sorted order
+    not ok 5 - nothing expected is null, NEVER zero per cent
+    not ok 6 - a group where nobody was expected is null too
+    not ok 7 - one expected member rescues a group from null
+    not ok 9 - the total of an empty set is null, not a division by zero
+    # pass 8  # fail 6
+
+not ok 5 is the one that misleads a reader of the report: a course with no sessions this month
+and a course everybody skipped are different facts, and 0% states the second about the first.
+
+FAIL-FIRST: src/data/distribution.test.ts - the arithmetic was extracted verbatim from the
+dashboard's render body, so it could not fail as-found; the two defects the spec exists to hold
+were injected instead - dropping the Math.max clamp on `missed`, and dropping the not-expected
+segment. 5 failures from 10:
+
+    not ok 3 - a REDUCED schedule counts as not-expected, never as missed
+    not ok 5 - a reduced schedule AND an absence are counted separately
+    not ok 6 - attending more than expected is an extra, never a negative miss
+    not ok 7 - one extra does not cancel another member's real absence
+    not ok 8 - a member expected at nothing is entirely not-expected
+    # pass 5  # fail 5
+
+not ok 3 is the consequential one: a member on a 4-day override reads as a 6-day member who
+skipped twice, and gets chased for two sessions she was never due at. not ok 7 is the quieter
+one - one member's extra attendance cancelling another's real absence, so the academy's total
+misses are under-reported.
+
+All four specs pass with the injected defects reverted: 113/113 across the suite.
+
+---
+
+## Gate run - 2026-09-03 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+GATE VERDICT UNCHANGED BY THIS BRANCH. The run below is FAIL, and was FAIL on main before any
+of this work: "6 pass, 4 fail, 1 blocked" on 2026-09-02 and the same on 2026-09-03. Every one of
+those five is a structural gap in the repo, not a regression from these commits, and each was
+checked rather than assumed:
+
+  * G1/G2/G3 (theme artifacts, tokens in sync, theme assets per theme) - all three open
+    design/tokens.json, which has NEVER been committed: `git log --all -- design/tokens.json`
+    returns nothing. The 2026-09-02 run failed the same way, with a Windows path in the error.
+  * G6 (Lint) - BLOCKED. eslint is not a dependency; `grep -c eslint package.json` is 0. The
+    gate refuses to fetch it from the registry on purpose, so this class stays unverified.
+  * G8 (Functional / integration) - runs `npm run test:functional`, which is not a script in
+    package.json ("Missing script"). Nothing to execute, so nothing can pass.
+
+What this branch DID verify, on this machine:
+  * npm run check green - 113 unit assertions (57 added here), 2836/2836 contrast pairs,
+    75/75 canvas icons.
+  * npm run audit:all clean, with three ratchets PAID DOWN rather than baselined:
+    hardcoded colours 13 -> 11 in app/, test ids 26 -> 24 in app/.
+  * bash db/harness/test.sh - Postgres 16 IS available in this session, so the DB harness ran
+    for the first time (TD-010's remaining half is closed on this machine). 215 assertions pass.
+    0019 and 0020 both apply cleanly, and the two specs added here pass in full:
+    13_branch_add_remove.sql 11/11 and 14_delete_course.sql 16/16.
+
+    TWO specs fail, and BOTH are pre-existing. Proved rather than assumed: with 0019, 0020,
+    13_* and 14_* moved out of the tree, the harness fails identically, at the same line
+    numbers, on main's schema alone.
+      - 09_grants.sql - "authenticated holds exactly the table privileges 0002-0010 intended"
+        wants holidays [INSERT,SELECT,UPDATE] and gets [DELETE,INSERT,SELECT,UPDATE]. 0017
+        added that DELETE grant deliberately, so the SPEC is stale against a later migration.
+        Neither is touched here: test files are append-only, and 0017 is applied.
+      - 11_holiday_delete.sql - errors at its own setup, before any assertion runs
+        ("duplicate key value violates unique constraint sessions_unique_live").
+  * Every screen changed was driven in a real browser in BOTH themes: the simplified dashboard,
+    the courses branch filter, the reports export (downloaded and its CSV content read), the
+    upload session map against three real Meet-shaped files, and all four hex-input paths.
+
+One earlier claim in this session was WRONG and is corrected here: a low-contrast reading of
+1.12:1 on stack screen titles in dark mode was an artefact of a verification script walking up
+to an ancestor container instead of the painted header. Pixel sampling of the header shows
+#0C0409 in dark and #FBF8FA in light, identical with and without a change I had begun making,
+so app/_layout.tsx was left exactly as it was. There was no contrast defect.
+
+---
+
 FAIL-FIRST: src/data/schedule.test.ts - observed failing against the implementation it replaces
 before it was trusted. The two call sites in repository.ts each carried their own inline copy of
 the schedule-window arithmetic; both were re-injected into src/data/schedule.ts - `effective_to
@@ -26,6 +886,86 @@ and 11_holiday_delete.sql from the parallel sessions.
 is absent from it, confirmed by a read-only PostgREST probe from a parallel session. Applying it
 is the repo owner's decision, and CLAUDE.md's rule stands: the live Supabase project is never an
 automated target without explicit instruction.
+
+---
+
+## Gate run - 2026-09-03 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-03 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

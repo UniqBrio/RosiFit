@@ -135,11 +135,22 @@ export type PreviewRow = {
 };
 export type PreviewResult = {
   import_id: string; rows: PreviewRow[]; dropped_count: number;
+  /** the repeated or blank names, NAMED -- a count alone has to be taken on trust */
+  dropped_names?: string[];
   counts: Record<MatchKindLive, number>;
+  /** the meeting the file names, echoed back so the screen can show it */
+  meeting_code?: string | null;
+  /** the date derived FROM THE FILE, not chosen from a list */
+  session_date?: string;
+  /** a completed import already covers this day: this file will update it */
+  supersedes?: { file_name: string; completed_at: string } | null;
 };
 
 export function csvPreview(input: {
   offering_id: string; session_date: string; file_name: string; file_sha256: string;
+  /** the meeting code and created timestamp the file carries, when it has them */
+  meeting_code?: string | null;
+  meeting_started_at?: string | null;
   rows: { full_name: string; first_seen?: string; minutes_in_call: number }[];
 }): Promise<PreviewResult> {
   return callFn<PreviewResult>('csv-import', { action: 'preview', ...input });

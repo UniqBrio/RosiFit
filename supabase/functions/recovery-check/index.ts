@@ -73,6 +73,9 @@ Deno.serve(async (req) => {
         must_change_pin: false, pin_set_at: new Date().toISOString(),
         failed_attempts: 0, locked_until: null,
       }).eq('id', appUserId);
+      // audit_log, not audit_log_as: recovery runs BEFORE a session exists.
+      // The person answering the questions has not yet proved she is the
+      // account holder, so the system is the honest actor here (0023).
       await admin.rpc('audit_log', {
         p_action: 'auth.recovery_pin_set', p_entity_type: 'app_user', p_entity_id: appUserId,
       });

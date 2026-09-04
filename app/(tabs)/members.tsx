@@ -3,6 +3,7 @@ import { View, Text, Pressable, TextInput, ScrollView } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Screen, Muted, Button, Skeleton, EmptyState, ErrorState } from '../../src/components/ui';
 import { ScreenHeader } from '../../src/components/AppShell';
+import { safeBackTarget } from '../../src/data/nav';
 import { Icon } from '../../src/components/Icon';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
@@ -11,6 +12,7 @@ import {
   isEligible, hasEmail, primaryEmail, AVATAR_TINTS, initials, type Member,
 } from '../../src/data/mock';
 import { useFollowUp, useFilterOptions } from '../../src/data/hooks';
+import { rosterScope } from '../../src/data/course';
 
 type Filter = 'all' | 'nomail' | 'follow' | 'coimbatore';
 
@@ -18,16 +20,46 @@ export default function Members() {
   const { theme } = useTheme();
   const { flash } = useToast();
   const router = useRouter();
-  const { state: forced } = useLocalSearchParams<{ state?: string }>();
+  const { state: forced, from, courseId, courseName } = useLocalSearchParams<
+    { state?: string; from?: string; courseId?: string; courseName?: string }>();
+  // Where back goes. These three sit INSIDE the tab group -- the canvas keeps
+  // the academy header and the nav pill on them -- so router.back() pops to
+  // the first tab rather than to the screen that opened this one. The caller
+  // names its origin instead; `from` is a URL parameter, so it is validated
+  // (src/data/nav.ts) rather than navigated to on trust.
+  const backTo = safeBackTarget(from, '/courses');
   // ONE fetch for the members AND the rule, so "needs follow-up" here is the
   // same derivation the dashboard and the send flow use -- not a second list.
   const { state, data, error, retry } = useFollowUp(forced);
   const filters = useFilterOptions(forced);
+  /**
+   * The roster of ONE course, when the chevron on a course card opened this.
+   *
+   * Scoped by NAME rather than by id, because that is the only key the member
+   * rows carry -- Member.course is the course's name, and the follow-up
+   * derivation joins on it (guardrail 1: one member source). courseId still
+   * travels so "Add" enrols into the right course rather than asking again.
+   *
+   * Resolved against the academy's OWN course list rather than trusted: the
+   * name arrives in a URL, and this screen speaks it as a heading. See
+   * rosterScope in src/data/course.ts for what that would otherwise let a
+   * link put in the app's mouth.
+   */
+  // slice(1): the option list is headed by the "All courses" sentinel, and a
+  // link asking for a course by that name would otherwise resolve to it --
+  // an empty roster under a heading naming a course nobody teaches.
+  const scopedTo = rosterScope((filters.data?.courses ?? []).slice(1), courseName);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
 
   const members = useMemo(() => data?.members ?? [], [data]);
   const rules = data?.rules;
+
+  /** Everyone in the course, before the search box and the chips narrow it --
+   *  so the subtitle counts the roster, not the current filter. */
+  const scoped = useMemo(
+    () => (scopedTo ? members.filter(m => m.course === scopedTo) : members),
+    [members, scopedTo]);
 
   const list = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -37,15 +69,20 @@ export default function Members() {
       const matches = !q || [
         m.name, m.code, primaryEmail(m), ...m.aliases,
       ].some(v => v.toLowerCase().includes(q));
+      // The scope is an AND, applied before the chips: inside one course,
+      // "No email" means that course's members with no email, not the
+      // academy's. A chip that quietly widened back to everyone would be a
+      // list claiming to be a roster and showing strangers.
+      const inScope = !scopedTo || m.course === scopedTo;
       const passes =
         filter === 'all' ? true
         : filter === 'nomail' ? !hasEmail(m)
         : filter === 'follow'
           ? (rules ? isEligible(m, rules.byCourseName[m.course] ?? rules.global) : false)
         : m.branch === 'Coimbatore';
-      return matches && passes;
+      return inScope && matches && passes;
     });
-  }, [query, filter, members, rules]);
+  }, [query, filter, members, rules, scopedTo]);
 
   const chips: { key: Filter; label: string; icon: string }[] = [
     { key: 'all',        label: 'All',             icon: 'group' },
@@ -60,9 +97,34 @@ export default function Members() {
 
   return (
     <Screen>
-      <ScreenHeader title="Members"
-        subtitle={`${members.length} members · ${branches} branches · ${courses} courses`}
-        right={<Button label="Add" onPress={() => router.push('/member/edit')} />} />
+      <ScreenHeader title={scopedTo ?? 'Members'}
+        subtitle={scopedTo
+          ? `${scoped.length} ${scoped.length === 1 ? 'member' : 'members'} in this course`
+          : `${members.length} members · ${branches} branches · ${courses} courses`}
+        onBack={() => router.navigate(backTo)}
+        right={<Button label="Add" onPress={() => router.push(scopedTo && courseId
+          ? { pathname: '/member/edit', params: { courseId } }
+          : { pathname: '/member/edit' })} />} />
+
+      {/* A filtered list that does not say it is filtered is a list that has
+          silently lost rows -- so the narrowing is stated AND escapable, the
+          same rule the scoped upload follows. */}
+      {scopedTo ? (
+        <Pressable testID="members-show-all" onPress={() => router.replace('/members?from=/courses')}
+          accessibilityRole="button" accessibilityLabel="Show every member in the academy"
+          style={({ pressed }) => ({
+            alignSelf: 'flex-start', marginTop: SPACE.sm,
+            minHeight: 34, paddingHorizontal: 12, borderRadius: RADIUS.sm,
+            flexDirection: 'row', alignItems: 'center', gap: 6,
+            backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
+            opacity: pressed ? 0.7 : 1,
+          })}>
+          <Icon name="group" size={15} color={theme.accentInk} />
+          <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.fg }}>
+            Show every member
+          </Text>
+        </Pressable>
+      ) : null}
 
       <View style={{
         flexDirection: 'row', alignItems: 'center', gap: SPACE.md, marginTop: SPACE.md,
@@ -115,10 +177,25 @@ export default function Members() {
           action="Add a member" onAction={() => router.push('/member/edit')} />
       )}
 
-      {state === 'ready' && members.length > 0 && list.length === 0 && (
+      {/* An empty COURSE is not an empty search. "Clear one of them to widen
+          the list" points at a search box that is not the reason, and leaves
+          the person clearing filters that were never set. */}
+      {state === 'ready' && members.length > 0 && scoped.length === 0 && scopedTo && (
+        <EmptyState
+          title={`Nobody is enrolled in ${scopedTo}`}
+          body="Add her here and she is enrolled at this course's branch. Attendance starts counting from the first session after she joins."
+          action="Add a member"
+          onAction={() => router.push(courseId
+            ? { pathname: '/member/edit', params: { courseId } }
+            : { pathname: '/member/edit' })} />
+      )}
+
+      {state === 'ready' && scoped.length > 0 && list.length === 0 && (
         <EmptyState
           title="Nothing matches"
-          body="No member matches that search and filter. Clear one of them to widen the list." />
+          body={scopedTo
+            ? `No member of ${scopedTo} matches that search and filter. Clear one of them to widen the list.`
+            : 'No member matches that search and filter. Clear one of them to widen the list.'} />
       )}
 
       {state === 'ready' && list.length > 0 && (

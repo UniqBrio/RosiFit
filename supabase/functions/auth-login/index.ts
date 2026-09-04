@@ -68,6 +68,10 @@ Deno.serve(async (req) => {
         failed_attempts: nextAttempts,
         locked_until: locked ? new Date(Date.now() + LOCKOUT_MS).toISOString() : null,
       }).eq('id', appUser.id);
+      // audit_log, NOT audit_log_as (0023). Nobody has proved who they are
+      // yet -- that is the whole point of a failed sign-in -- so there is no
+      // actor to name, and naming the account the attempt was AIMED at would
+      // record her as having done something she may know nothing about.
       await admin.rpc('audit_log', {
         p_action: 'auth.login_failed', p_entity_type: 'app_user', p_entity_id: appUser.id,
         p_changes: [], p_metadata: { attempts: nextAttempts, locked },

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { View, Text, Pressable, TextInput } from 'react-native';
+import { View, Text, Pressable, TextInput, ScrollView } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Screen, Muted, Label, Button } from '../../src/components/ui';
+import { Muted, Label, Button } from '../../src/components/ui';
 import { Field } from '../../src/components/Field';
 import { DateField } from '../../src/components/DateTimePicker';
 import { iso } from '../../src/data/period';
@@ -17,6 +17,15 @@ import { createMember } from '../../src/data/repository';
 const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 /**
+ * Add / Edit a member, as a DIALOG over the workspace.
+ *
+ * It was a pushed screen with the stack's own header. The canvas presents it
+ * the way it presents Add Course -- a sheet with its own title, a subtitle
+ * naming what it decides, a close that leaves without saving, and a pinned
+ * Cancel/Save footer. The difference is not decoration: a pushed screen puts
+ * the only way out in the chrome, so "Add Member" from a course looked like
+ * navigation away from the course rather than a decision taken over it.
+ *
  * C-70/C-73: her name is the only required field. No phone number is held for
  * members -- it was never used to identify anyone. Aliases are what the Meet
  * CSV matches on; emails are several with exactly one primary.
@@ -121,10 +130,46 @@ export default function MemberEdit() {
     }
   };
 
-  return (
-    <Screen>
-      <Muted style={{ marginBottom: SPACE.lg }}>She joins a course at one branch</Muted>
+  const title = existing ? 'Edit member' : 'Welcome a new member';
+  const subtitle = existing
+    ? `${existing.name} · ${existing.course}`
+    : 'She joins a course at one branch';
 
+  /** The one line under the footer: what is missing, or what will be saved. */
+  const hint = existing
+    ? 'Changing a member she already is has no write path yet'
+    : !name.trim()
+      ? 'Her name is all that is required'
+      : !course ? 'Choose the course she joins'
+      : !offering ? `Choose the branch — ${course} runs at ${branchOptions.length || 'no'} of them`
+      : `${course} · ${branch}${emails.length ? '' : ' · no email, she will be excluded from sends'}`;
+
+  return (
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      <View style={{
+        flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
+        paddingHorizontal: SPACE.lg, paddingTop: SPACE.lg, paddingBottom: SPACE.md,
+        borderBottomWidth: 1, borderBottomColor: theme.line,
+      }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 19, fontWeight: '800', color: theme.fgStrong }}>{title}</Text>
+          <Text numberOfLines={1} style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>
+            {subtitle}
+          </Text>
+        </View>
+        <Pressable testID="member-close" onPress={() => router.back()}
+          accessibilityRole="button" accessibilityLabel="Close without saving"
+          style={({ pressed }) => ({
+            width: 38, height: 38, borderRadius: RADIUS.md,
+            alignItems: 'center', justifyContent: 'center',
+            backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
+            opacity: pressed ? 0.7 : 1,
+          })}>
+          <Icon name="close" size={20} color={theme.fgStrong} />
+        </Pressable>
+      </View>
+
+      <ScrollView contentContainerStyle={{ padding: SPACE.lg, paddingBottom: 40 }}>
       <Field label="Her name" value={name} onChange={setName} placeholder="e.g. Anitha Rajesh" />
 
       <Label>Course</Label>
@@ -245,9 +290,14 @@ export default function MemberEdit() {
       {/* ----------------------------------------------- her own days */}
       <Label style={{ marginTop: SPACE.xl }}>Her own days — optional</Label>
       <Muted style={{ marginTop: 4 }}>
+        {/* Three states, not two. With no course chosen `course` is the empty
+            string, and the old sentence began " has no offering running yet"
+            -- a claim about nothing, with a hole where the name goes. */}
         {courseDays.size
           ? `Leave blank and she follows the days ${course} offerings run — ${[...courseDays].join(', ')}. Only those days can be picked.`
-          : `${course} has no offering running yet, so there are no days to pick.`}
+          : course
+            ? `${course} has no offering running yet, so there are no days to pick.`
+            : 'Choose her course first — her days can only be days that course runs.'}
       </Muted>
       <View style={{ flexDirection: 'row', gap: 6, marginTop: SPACE.md }}>
         {ALL_DAYS.map(d => {
@@ -257,7 +307,9 @@ export default function MemberEdit() {
             <Pressable key={d} testID={`member-day-${d}`}
               onPress={() => allowed
                 ? setDays(p => on ? p.filter(x => x !== d) : [...p, d])
-                : flash(`${course} does not run on ${d}`, 'warn')}
+                : flash(course
+                    ? `${course} does not run on ${d}`
+                    : 'Choose her course first — its days decide hers', 'warn')}
               accessibilityRole="button"
               accessibilityState={{ selected: on, disabled: !allowed }}
               accessibilityLabel={`${d}${allowed ? '' : ', not available'}`}
@@ -291,28 +343,42 @@ export default function MemberEdit() {
         </View>
       ) : null}
 
+      {/* Editing an existing member has no write path yet, and it says so HERE
+          rather than under a disabled button in the footer -- a footer note is
+          read as a hint about the next tap, not as the reason the tap is
+          impossible. A button that reported a save it never made is the defect
+          this screen was fixed for; the honest disabled state stands. */}
       {existing ? (
-        <>
-          <Button testID="member-save" label="Save Member" disabled style={{ marginTop: SPACE.xl }} />
-          <Muted style={{ marginTop: 9, textAlign: 'center' }}>
+        <View style={{
+          flexDirection: 'row', gap: SPACE.md, marginTop: SPACE.xl, padding: SPACE.lg,
+          borderRadius: RADIUS.md, backgroundColor: statusSurface(ink('awaiting')).bg,
+          borderWidth: 1, borderColor: statusSurface(ink('awaiting')).border,
+        }}>
+          <Icon name="hourglass_top" size={19} color={ink('awaiting')} />
+          <Muted style={{ flex: 1, color: theme.fg }}>
             Changing a member she already is — her course, her branch, her days — has no write path
-            yet, and a button that reported a save without making one is the defect this screen was
-            just fixed for. Adding a member works; this does not, and says so.
+            yet. Adding a member works; this does not, and says so.
           </Muted>
-        </>
-      ) : (
-        <>
-          <Button testID="member-add" label={saving ? 'Adding…' : 'Add Member'}
-            onPress={save} disabled={!valid || saving} style={{ marginTop: SPACE.xl }} />
-          <Muted style={{ marginTop: 9, textAlign: 'center' }}>
-            {!name.trim()
-              ? 'Her name is all that is required'
-              : !course ? 'Choose the course she joins'
-              : !offering ? `Choose the branch — ${course} runs at ${branchOptions.length || 'no'} of them`
-              : `${course} · ${branch}${emails.length ? '' : ' · no email, she will be excluded from sends'}`}
-          </Muted>
-        </>
-      )}
+        </View>
+      ) : null}
+      </ScrollView>
+
+      {/* Pinned, so the way out and the way on are both reachable without
+          scrolling past a form that grows with every alias and address. */}
+      <View style={{
+        padding: SPACE.lg, borderTopWidth: 1, borderTopColor: theme.line,
+        backgroundColor: theme.shell,
+      }}>
+        <View style={{ flexDirection: 'row', gap: SPACE.md }}>
+          <Button testID="member-cancel" label="Cancel" variant="secondary"
+            onPress={() => router.back()} style={{ flex: 1 }} />
+          <Button testID={existing ? 'member-save' : 'member-add'}
+            label={existing ? 'Save Changes' : saving ? 'Adding…' : 'Add Member'}
+            onPress={() => { if (!existing) void save(); }}
+            disabled={!!existing || !valid || saving} style={{ flex: 1 }} />
+        </View>
+        <Muted style={{ marginTop: 9, textAlign: 'center' }}>{hint}</Muted>
+      </View>
 
       <SearchPicker open={picker === 'course'} onClose={() => setPicker(null)}
         title="Choose a course" placeholder="Search courses"
@@ -337,7 +403,7 @@ export default function MemberEdit() {
           ? `${course} does not run at any branch yet. Add an offering for it and she can join there.`
           : 'Choose her course first — the branches are the ones that course runs at.'}
         onSelect={l => { setBranch(l); setDays([]); setPicker(null); }} />
-    </Screen>
+    </View>
   );
 }
 

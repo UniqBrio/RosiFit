@@ -47,7 +47,10 @@ Deno.serve(async (req) => {
       let selfSignedOut = false;
       if (signOutAll && me.auth_user_id) selfSignedOut = await signOutEverywhere(me.auth_user_id);
 
-      await admin.rpc('audit_log', {
+      // Attributed (0023): she changed her own PIN, so the actor and the
+      // subject are the same person and both are recorded.
+      await admin.rpc('audit_log_as', {
+        p_actor: caller.id,
         p_action: 'auth.pin_changed', p_entity_type: 'app_user', p_entity_id: caller.id,
         p_metadata: { self_service: true, sign_out_everywhere: signOutAll },
       });
@@ -78,7 +81,11 @@ Deno.serve(async (req) => {
       signedOut = await signOutEverywhere(existing.auth_user_id);
     }
 
-    await admin.rpc('audit_log', {
+    // Attributed (0023). Here the actor and the subject DIFFER -- an admin
+    // reset somebody else's PIN -- which is exactly the entry that must name
+    // its actor in its own column rather than in a metadata key.
+    await admin.rpc('audit_log_as', {
+      p_actor: caller.id,
       p_action: 'auth.pin_reset', p_entity_type: 'app_user', p_entity_id: appUserId,
       p_metadata: { reset_by: caller.id, sign_out_everywhere: signOutAll, sign_out_succeeded: signedOut },
     });

@@ -11,7 +11,19 @@ import { requireCaller } from '../_shared/authz.ts';
 import { normalizeName, similarity } from '../_shared/match.ts';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 
-const MIN_MINUTES = 15;
+/**
+ * THERE IS NO MINUTES FLOOR.
+ *
+ * This was 15: anybody in the call for less was dropped before matching, so a
+ * member who reconnected, joined from a phone, or was marked by Meet at 32
+ * seconds simply did not appear -- and the register said she was absent from
+ * a class she attended.
+ *
+ * Time in call decides NOTHING now. Being named in the file is the evidence;
+ * the duration is recorded alongside it for the record and read by nobody.
+ * The rule the academy asked for is simpler and truer to what the file says:
+ * one person, one session, one day.
+ */
 const FUZZY_THRESHOLD = 0.90;
 
 type RawRow = { full_name: string; first_seen?: string; minutes_in_call: number };
@@ -38,10 +50,20 @@ async function preview(admin: SupabaseClient, actorId: string, body: Record<stri
   const sessionDate = String(body.session_date ?? '');
   const fileName = String(body.file_name ?? 'upload.csv');
   const fileSha256 = String(body.file_sha256 ?? '');
+  // The meeting the file came from. Meet writes both above the table, and
+  // together they are what identifies the SESSION -- which is why the date
+  // below is derived from the file rather than picked from a list of
+  // sessions somebody scheduled in advance.
+  const meetingCode = String(body.meeting_code ?? '').trim() || null;
+  const meetingStartedAt = String(body.meeting_started_at ?? '').trim() || null;
   const rawRows: RawRow[] = Array.isArray(body.rows) ? body.rows as RawRow[] : [];
 
-  if (!offeringId) throw new HttpError(400, 'Choose the session this file belongs to.');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(sessionDate)) throw new HttpError(400, 'Choose a session date.');
+  if (!offeringId) throw new HttpError(400, 'Choose the course this file belongs to.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(sessionDate)) {
+    throw new HttpError(400,
+      'This file carries no date, so RosiFit cannot tell which day it covers. ' +
+      'Pick the date yourself, or use an export that has the “Created on” line.');
+  }
   if (!fileSha256) throw new HttpError(400, 'The file could not be fingerprinted.');
   if (rawRows.length === 0) throw new HttpError(400, 'The file has no rows to import.');
 
@@ -53,8 +75,37 @@ async function preview(admin: SupabaseClient, actorId: string, body: Record<stri
     .select('id', { count: 'exact', head: true }).eq('file_sha256', fileSha256).eq('status', 'completed');
   if (dupCount && dupCount > 0) throw new HttpError(409, 'This file has already been imported.');
 
-  const dropped = rawRows.filter(r => (r.minutes_in_call ?? 0) < MIN_MINUTES);
-  const kept = rawRows.filter(r => (r.minutes_in_call ?? 0) >= MIN_MINUTES);
+  // A DIFFERENT file for a day already imported. Not refused -- a corrected
+  // export is a real thing and the commit resolves it member by member -- but
+  // never silent either: one session per offering per day is a database
+  // invariant, so this file will UPDATE that register rather than add to it,
+  // and the person deciding has to be told before she decides.
+  const { data: already } = await admin.from('csv_imports')
+    .select('id, file_name, completed_at').eq('offering_id', offeringId)
+    .eq('session_date', sessionDate).eq('status', 'completed')
+    .order('completed_at', { ascending: false }).limit(1);
+  const supersedes = already?.[0]
+    ? { file_name: already[0].file_name as string, completed_at: already[0].completed_at as string }
+    : null;
+
+  // ONE PERSON, ONE ROW. Meet writes a line per JOIN, so anybody whose
+  // connection dropped appears twice -- and attendance_unique_live is one
+  // record per member per session. Collapsed here, on the NORMALISED name, so
+  // the count the review screen shows is the count that will be written.
+  // Named, never silently dropped: a file that says 14 rows and imports 12
+  // has to say which two and why.
+  const seen = new Map<string, RawRow>();
+  const dropped: RawRow[] = [];
+  for (const r of rawRows) {
+    const key = normalizeName(r.full_name ?? '');
+    if (!key) { dropped.push(r); continue; }
+    if (seen.has(key)) { dropped.push(r); continue; }
+    seen.set(key, r);
+  }
+  const kept = [...seen.values()];
+  if (kept.length === 0) {
+    throw new HttpError(400, 'Every row in that file is blank or a repeat of another. Nothing to import.');
+  }
 
   const { data: aliases } = await admin.from('member_aliases')
     .select('member_id, alias_display, alias_normalized').eq('alias_type', 'name');
@@ -168,16 +219,40 @@ async function preview(admin: SupabaseClient, actorId: string, body: Record<stri
     row_count: rawRows.length, matched_count: counts.matched, unmatched_count: counts.unmatched,
     ambiguous_count: counts.ambiguous, possible_count: counts.possible, missing_email_count: counts.noEmail,
     duplicates_in_file: duplicatesInFile, status: 'previewed',
-    summary: { rows, dropped_count: dropped.length }, uploaded_by: actorId,
+    meeting_code: meetingCode, meeting_started_at: meetingStartedAt,
+    summary: {
+      rows, dropped_count: dropped.length,
+      dropped_names: dropped.map(r => r.full_name).filter(Boolean),
+      supersedes,
+    },
+    uploaded_by: actorId,
   }).select('id').single();
   if (insErr || !inserted) throw new HttpError(500, 'Could not stage this import.');
 
-  await admin.rpc('audit_log', {
+  // audit_log_as, not audit_log: this runs on the SERVICE-ROLE client, where
+  // auth.uid() is null, so audit_log() would write a null actor and the audit
+  // screen would say "System" for an upload a named person made. actorId is
+  // already verified above -- the log was the only place throwing it away.
+  await admin.rpc('audit_log_as', {
+    p_actor: actorId,
     p_action: 'csv_import.previewed', p_entity_type: 'csv_import', p_entity_id: inserted.id,
-    p_metadata: { row_count: rawRows.length, dropped: dropped.length, ...counts },
+    p_metadata: {
+      row_count: rawRows.length, dropped: dropped.length,
+      meeting_code: meetingCode, session_date: sessionDate,
+      superseded: supersedes !== null, ...counts,
+    },
   });
 
-  return json({ import_id: inserted.id, rows, dropped_count: dropped.length, counts });
+  return json({
+    import_id: inserted.id, rows, counts,
+    dropped_count: dropped.length,
+    // NAMED, not just counted. "2 rows dropped" is a number somebody has to
+    // take on trust; the names are what lets her check.
+    dropped_names: dropped.map(r => r.full_name).filter(Boolean),
+    meeting_code: meetingCode,
+    session_date: sessionDate,
+    supersedes,
+  });
 }
 
 async function commit(admin: SupabaseClient, actorId: string, body: Record<string, unknown>) {

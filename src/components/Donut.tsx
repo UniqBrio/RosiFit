@@ -75,38 +75,3 @@ export function Donut({ attended, missed, notExpected }:
     </View>
   );
 }
-
-/**
- * The small pie the canvas' Reports screen draws once per member, course or
- * branch. The percentage sits in the hole and the meta line sits underneath,
- * so the ring is a second encoding of a number that is always written out --
- * never the only signal.
- */
-export function MiniPie({ pct, label, size = 88 }:
-  { pct: number | null; label: string; size?: number }) {
-  const { theme } = useTheme();
-  const R = size / 2 - 8, C = 2 * Math.PI * R, W = 16;
-  const ink = pct === null ? theme.muted
-    : pct >= 70 ? theme.success : pct >= 45 ? theme.warning : theme.danger;
-  const len = pct === null ? 0 : (pct / 100) * C;
-
-  return (
-    <View accessibilityRole="image" accessibilityLabel={label}>
-      <Svg width={size} height={size}>
-        <G rotation={-90} originX={size / 2} originY={size / 2}>
-          <Circle cx={size / 2} cy={size / 2} r={R} stroke={theme.control} strokeWidth={W} fill="none" />
-          {len > 0 ? (
-            <Circle cx={size / 2} cy={size / 2} r={R} stroke={ink} strokeWidth={W} fill="none"
-              strokeDasharray={`${len} ${C - len}`} strokeLinecap="butt" />
-          ) : null}
-        </G>
-      </Svg>
-      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}
-        pointerEvents="none">
-        <Text style={{ fontSize: 17, fontWeight: '800', color: ink, fontVariant: ['tabular-nums'] }}>
-          {pct === null ? '—' : `${pct}%`}
-        </Text>
-      </View>
-    </View>
-  );
-}
