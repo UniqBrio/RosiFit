@@ -1603,3 +1603,61 @@ export async function createMember(input: MemberInput): Promise<{ id: string }> 
   membersChanged();
   return { id: (data as { member_id: string }).member_id };
 }
+
+/**
+ * CHANGING a member she already is.
+ *
+ * The arrays are the WHOLE desired list, not a patch, because the form shows
+ * the whole list: a display name removed on screen is a row deleted here, and
+ * an address removed is a row soft-deleted. A patch API behind a screen that
+ * shows the complete set is how a removal turns into a silent no-op.
+ *
+ * `joined_on` is deliberately NOT a parameter. The day she joined is a fact
+ * about the past; the form does not offer it on an existing member, and a
+ * write path that could rewrite it would let a typo move every session she
+ * was ever expected at.
+ */
+export type MemberUpdate = Omit<MemberInput, 'joined_on'> & { id: string };
+
+export async function updateMember(input: MemberUpdate): Promise<{ moved: boolean }> {
+  if (!isConfigured) {
+    // Offline the fixture list IS the store. A screen that says "saved" over
+    // a list that never changed is the same lie this whole path was fixed
+    // for -- RC-008 -- so she is changed in place.
+    const i = MEMBERS.findIndex(m => m.id === input.id);
+    if (i < 0) throw new Error('That member is not on the register. Nothing has been saved.');
+    const course = COURSE_LIST.find(c => c.offerings.some(o => o.id === input.offering_id));
+    const offering = course?.offerings.find(o => o.id === input.offering_id);
+    const moved = MEMBERS[i].course !== (course?.name ?? MEMBERS[i].course);
+    MEMBERS[i] = {
+      ...MEMBERS[i],
+      name: input.full_name,
+      course: course?.name ?? MEMBERS[i].course,
+      branch: offering?.branch ?? MEMBERS[i].branch,
+      aliases: input.aliases,
+      emails: input.emails.map((address, n) => ({ address, primary: n === 0 })),
+    };
+    membersChanged();
+    return { moved };
+  }
+
+  const { data, error } = await supabase.rpc('update_member', {
+    p_member_id: input.id,
+    p_full_name: input.full_name,
+    p_offering_id: input.offering_id,
+    p_aliases: input.aliases,
+    p_emails: input.emails,
+    p_weekdays: input.weekdays,
+  });
+  if (error || !data) {
+    console.error('updateMember:', error?.message ?? 'no row returned');
+    throw new Error(memberWriteError(error));
+  }
+
+  // Her expected/attended figures move with her enrolment, so this
+  // revalidates the roster the whole app derives from -- the follow-up list
+  // and the dashboard count come off the same query (guardrail 1), so one
+  // notification is all of them.
+  membersChanged();
+  return { moved: Boolean((data as { moved_offering?: boolean }).moved_offering) };
+}

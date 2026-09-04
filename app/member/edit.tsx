@@ -13,7 +13,7 @@ import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../../src/theme/tokens';
 import { DAY_NAMES } from '../../src/data/mock';
 import { useCourses, useMembers } from '../../src/data/hooks';
-import { createMember } from '../../src/data/repository';
+import { createMember, updateMember } from '../../src/data/repository';
 
 const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -140,21 +140,39 @@ export default function MemberEdit() {
     if (!valid || !offering || saving) return;
     setSaving(true);
     setRefusal(null);
+    // the primary address goes first; both RPCs make the first one primary,
+    // so the ORDER here is the meaning
+    const addresses = [...emails].sort((a, b) => Number(b.primary) - Number(a.primary))
+      .map(e => e.address);
+    // blank means she follows the offering's days, which is not the same as
+    // an empty list
+    const weekdays = days.length ? days.map(d => DAY_NAMES.indexOf(d)) : null;
     try {
-      await createMember({
-        full_name: name.trim(),
-        offering_id: offering.id,
-        joined_on: joined || null,
-        aliases,
-        // the primary address goes first; create_member makes the first one
-        // primary, so the order here IS the meaning
-        emails: [...emails].sort((a, b) => Number(b.primary) - Number(a.primary))
-          .map(e => e.address),
-        // blank means she follows the offering's days, which is not the same
-        // as an empty list
-        weekdays: days.length ? days.map(d => DAY_NAMES.indexOf(d)) : null,
-      });
-      flash(`${name.trim().split(' ')[0]} added · ${course} · ${branch}`);
+      if (existing) {
+        // The arrays are the WHOLE list, not a patch: a display name or an
+        // address taken off this screen has to come off the record too, and
+        // that is only true if what is sent is what is shown.
+        const { moved } = await updateMember({
+          id: existing.id,
+          full_name: name.trim(),
+          offering_id: offering.id,
+          aliases, emails: addresses, weekdays,
+        });
+        // Moving her course is the one change with consequences beyond this
+        // form -- she is expected somewhere else from today -- so it is said
+        // rather than folded into a generic "saved".
+        flash(moved
+          ? `${name.trim().split(' ')[0]} moved to ${course} · ${branch}`
+          : `${name.trim().split(' ')[0]} saved`);
+      } else {
+        await createMember({
+          full_name: name.trim(),
+          offering_id: offering.id,
+          joined_on: joined || null,
+          aliases, emails: addresses, weekdays,
+        });
+        flash(`${name.trim().split(' ')[0]} added · ${course} · ${branch}`);
+      }
       router.back();
     } catch (e) {
       setRefusal(e instanceof Error ? e.message : 'The member could not be saved. Nothing has been saved.');
@@ -169,9 +187,7 @@ export default function MemberEdit() {
     : 'She joins a course at one branch';
 
   /** The one line under the footer: what is missing, or what will be saved. */
-  const hint = existing
-    ? 'Changing a member she already is has no write path yet'
-    : !name.trim()
+  const hint = !name.trim()
       ? 'Her name is all that is required'
       : !course ? 'Choose the course she joins'
       : !offering ? `Choose the branch — ${course} runs at ${branchOptions.length || 'no'} of them`
@@ -182,9 +198,9 @@ export default function MemberEdit() {
       title={title} subtitle={subtitle}
       closeTestID="member-close" cancelTestID="member-cancel"
       confirmTestID={existing ? 'member-save' : 'member-add'}
-      confirmLabel={existing ? 'Save Changes' : saving ? 'Adding…' : 'Add Member'}
-      onConfirm={() => { if (!existing) void save(); }}
-      confirmDisabled={!!existing || !valid || saving}
+      confirmLabel={saving ? (existing ? 'Saving…' : 'Adding…') : existing ? 'Save Changes' : 'Add Member'}
+      onConfirm={() => void save()}
+      confirmDisabled={!valid || saving}
       hint={hint}
       overlays={<>
         <SearchPicker open={picker === 'course'} onClose={() => setPicker(null)}
@@ -385,21 +401,21 @@ export default function MemberEdit() {
         </View>
       ) : null}
 
-      {/* Editing an existing member has no write path yet, and it says so HERE
-          rather than under a disabled button in the footer -- a footer note is
-          read as a hint about the next tap, not as the reason the tap is
-          impossible. A button that reported a save it never made is the defect
-          this screen was fixed for; the honest disabled state stands. */}
-      {existing ? (
+      {/* Moving her course is the one change on this form with a consequence
+          outside it, so it is said BEFORE the tap rather than reported after.
+          0027 ends the old enrolment yesterday and starts the new one today:
+          the sessions she was already marked at stay where they are, and
+          nothing already recorded moves with her. */}
+      {existing && course && branch && (course !== existing.course || branch !== existing.branch) ? (
         <View style={{
           flexDirection: 'row', gap: SPACE.md, marginTop: SPACE.xl, padding: SPACE.lg,
           borderRadius: RADIUS.md, backgroundColor: statusSurface(ink('awaiting')).bg,
           borderWidth: 1, borderColor: statusSurface(ink('awaiting')).border,
         }}>
-          <Icon name="hourglass_top" size={19} color={ink('awaiting')} />
+          <Icon name="swap_horiz" size={19} color={ink('awaiting')} />
           <Muted style={{ flex: 1, color: theme.fg }}>
-            Changing a member she already is — her course, her branch, her days — has no write path
-            yet. Adding a member works; this does not, and says so.
+            {`She moves from ${existing.course} · ${existing.branch} to ${course} · ${branch} from today. `
+             + 'Attendance already recorded stays against the sessions it was recorded at.'}
           </Muted>
         </View>
       ) : null}
