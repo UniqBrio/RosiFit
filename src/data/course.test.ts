@@ -11,7 +11,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { courseSummary, coursesHeadline } from './course';
+import { courseSummary, coursesHeadline, rosterScope } from './course';
 import type { Member, FollowUpRule } from './mock';
 
 const RULE: FollowUpRule = {
@@ -117,4 +117,58 @@ test('one of each is singular', () => {
 
 test('an empty academy does not read as broken', () => {
   assert.equal(coursesHeadline(0, 0, 0), '0 courses · 0 branches · nobody needs follow-up');
+});
+
+// --------------------------------------------------------- rosterScope
+// The members screen is opened scoped from a course card, and the course
+// travels in the URL -- untrusted input on a heading the app speaks in its
+// own voice.
+test('a known course scopes the roster', () => {
+  assert.equal(rosterScope(['Prenatal Flow', 'Postnatal Core'], 'Prenatal Flow'), 'Prenatal Flow');
+});
+
+test('the ACADEMY’S spelling is returned, never the caller’s', () => {
+  // A URL round-trips through encoding and hand-editing. The heading must
+  // read the way the course list reads, not the way the link was typed.
+  assert.equal(rosterScope(['Prenatal Flow'], 'prenatal flow'), 'Prenatal Flow');
+  assert.equal(rosterScope(['Prenatal Flow'], '  PRENATAL FLOW  '), 'Prenatal Flow');
+});
+
+test('an unknown course does NOT become a heading', () => {
+  // Without this the screen would render "Nobody is enrolled in <anything>"
+  // about a course that does not exist -- the app describing fiction as fact.
+  assert.equal(rosterScope(['Prenatal Flow'], 'Advanced Wizardry'), null);
+  assert.equal(rosterScope(['Prenatal Flow'], '<script>alert(1)</script>'), null);
+});
+
+test('a link kept from before a rename falls back to everybody', () => {
+  // An empty roster for a course nobody has is a worse answer than every
+  // member, because it reads as "she has no students" rather than "that
+  // course is gone".
+  assert.equal(rosterScope(['Prenatal Flow (Evening)'], 'Prenatal Flow'), null);
+});
+
+test('nothing asked for is not a scope', () => {
+  assert.equal(rosterScope(['Prenatal Flow'], undefined), null);
+  assert.equal(rosterScope(['Prenatal Flow'], ''), null);
+  assert.equal(rosterScope(['Prenatal Flow'], '   '), null);
+});
+
+test('a non-string is not a scope', () => {
+  // expo-router hands back string | string[] for a repeated parameter.
+  assert.equal(rosterScope(['Prenatal Flow'], ['Prenatal Flow']), null);
+  assert.equal(rosterScope(['Prenatal Flow'], 42), null);
+});
+
+test('an empty course list scopes to nothing rather than throwing', () => {
+  assert.equal(rosterScope([], 'Prenatal Flow'), null);
+});
+
+test('the "All courses" sentinel is not a course to scope to', () => {
+  // fetchFilterOptions heads its list with that literal for the picker. A
+  // link asking for it by name must not resolve, or the screen shows an empty
+  // roster under a heading naming a course nobody teaches. The screen slices
+  // the head off before asking; this pins WHY, so removing the slice fails
+  // here rather than in production.
+  assert.equal(rosterScope(['Prenatal Flow'], 'All courses'), null);
 });

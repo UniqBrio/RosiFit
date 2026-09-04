@@ -1,3 +1,28 @@
+NOT OBSERVED FAILING: rosterScope (src/data/course.test.ts, 8 new cases) - the helper is new and
+every case passed on its first run. It was not written for a defect already in the tree; it was
+written because the change that needed it INTRODUCED the exposure. The chevron on a course card
+opens /members?courseName=…, and the members screen renders that value as its heading and inside
+"Nobody is enrolled in X". Without resolution against the academy's own course list, any link
+could have put any string in the app's mouth, spoken as fact.
+
+Driven in a browser against the exported build, since "what does the heading say" is only
+answerable there:
+
+  ?courseId=c1&courseName=Prenatal%20Flow  -> Prenatal Flow | 3 members in this course
+  ?courseName=prenatal%20flow              -> Prenatal Flow | 3 members in this course
+  ?courseName=Advanced%20Wizardry          -> Members | 8 members · 3 branches · 4 courses
+  ?courseName=All%20courses                -> Members | 8 members · 3 branches · 4 courses
+  ?courseName=<script>alert(1)</script>    -> Members | 8 members · 3 branches · 4 courses
+  (no parameter)                           -> Members | 8 members · 3 branches · 4 courses
+
+The lowercase case matters as much as the refusals: the ACADEMY'S spelling is rendered, never the
+caller's, so a hand-edited URL cannot restyle a course name in the heading.
+
+The "All courses" case is a hole the first version had. fetchFilterOptions heads its option list
+with that literal for the picker, so ?courseName=All courses resolved to it and produced an empty
+roster under a heading naming a course nobody teaches. The screen slices the head off before
+asking; the case pins WHY, so deleting the slice fails here rather than in production.
+
 NOT OBSERVED FAILING: src/data/uploadScope.test.ts - scopeSessions is new and all 13 cases passed
 on their first run. The behaviour it replaces was not a wrong computation but an ABSENT one:
 app/upload.tsx read `const sessions = pending.data ?? []` and offered every session awaiting a
@@ -80,6 +105,46 @@ The defect was reproduced first, in one statement on the harness, before any cod
     select public.audit_log('communication.batch_sent','email_batch','b1'); commit;
     -->  actor_app_user_id | actor_kind |          action
          ------------------+------------+--------------------------
+
+## Gate run - 2026-09-04 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
 
 ## Gate run - 2026-09-03 - VERDICT: FAIL
 

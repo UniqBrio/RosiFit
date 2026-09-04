@@ -7,9 +7,9 @@ import { ConfirmDialog } from '../../src/components/Sheet';
 import { DropdownRow, DropdownField, DropdownPanel, DropdownList } from '../../src/components/Dropdown';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
-import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface, type StatusKey } from '../../src/theme/tokens';
+import { SPACE, RADIUS, STATUS, statusSurface, type StatusKey } from '../../src/theme/tokens';
 import { DAY_NAMES, ruleSentence, AVATAR_TINTS, initials, type Member } from '../../src/data/mock';
-import { useCourses, useFollowUp, useAttendance, usePendingSessions } from '../../src/data/hooks';
+import { useCourses, useFollowUp, useAttendance } from '../../src/data/hooks';
 import { weekStart, iso, label as periodLabel } from '../../src/data/period';
 import { deleteCourse, dataSource } from '../../src/data/repository';
 import { useIdentity } from '../../src/data/session';
@@ -61,7 +61,6 @@ export default function CourseDetail() {
 
   const courses = useCourses(forced);
   const followUp = useFollowUp(forced);
-  const pending = usePendingSessions(forced);
   const { identity } = useIdentity();
 
   const [weekOffset, setWeekOffset] = useState(0);
@@ -90,7 +89,6 @@ export default function CourseDetail() {
 
   const dangerInk = theme.isDark ? STATUS.absent.fgDark : STATUS.absent.fgLight;
   const warnInk = theme.isDark ? STATUS.awaiting.fgDark : STATUS.awaiting.fgLight;
-  const okInk = theme.isDark ? STATUS.present.fgDark : STATUS.present.fgLight;
 
   // Only the branches this course actually runs at. Offering one it has no
   // offering at would filter every member away and read as "nobody is
@@ -174,7 +172,6 @@ export default function CourseDetail() {
     ?? days.find(d => d.iso === iso(new Date()))
     ?? days[0];
 
-  const awaitingHere = (pending.data ?? []).filter(p => p.title.startsWith(course?.name ?? ' '));
 
   const remove = async () => {
     if (!course || deleting) return;
@@ -553,51 +550,17 @@ export default function CourseDetail() {
             </>
           )}
 
-          {/* --------------------------------------------------- attendance */}
-          <Label style={{ marginTop: SPACE.xxl, marginBottom: 11 }}>Attendance</Label>
-          <View style={{ gap: 10 }}>
-            {[
-              { icon: 'cloud_upload', label: 'Upload Attendance', ink: warnInk,
-                note: `Google Meet CSV · ${awaitingHere.length === 0 ? 'nothing awaiting upload'
-                  : `${awaitingHere.length} session${awaitingHere.length === 1 ? '' : 's'} awaiting upload`}`,
-                // Scoped to THIS course: the list she is offered is its own
-                //  sessions, not every session in the academy.
-                go: () => router.push(`/upload?courseId=${id}`),
-                testID: 'course-action-upload' },
-              { icon: 'fact_check', label: 'Weekly Review', ink: theme.accentInk,
-                note: 'Run the Saturday check for this course',
-                // The origin travels with the push, so Weekly review's back button
-                //  returns HERE rather than to Overview -- see src/data/nav.ts.
-                go: () => router.push(`/(tabs)/weekly?from=/course/${id}`),
-                testID: 'course-action-weekly' },
-              { icon: 'send', label: 'Send Communication', ink: okInk,
-                note: rule ? ruleSentence(rule, course.name) : 'Uses the stored template',
-                go: () => router.push({ pathname: '/send', params: { id } }), testID: 'course-action-send' },
-            ].map(a => (
-              <Pressable key={a.label} testID={a.testID} onPress={a.go}
-                accessibilityRole="button" accessibilityLabel={`${a.label}. ${a.note}`}
-                style={({ pressed }) => ({
-                  flexDirection: 'row', alignItems: 'center', gap: 13,
-                  padding: 15, borderRadius: RADIUS.lg, minHeight: TAP_MIN,
-                  backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
-                  opacity: pressed ? 0.7 : 1,
-                })}>
-                <View style={{
-                  width: 42, height: 42, borderRadius: RADIUS.md,
-                  alignItems: 'center', justifyContent: 'center',
-                  backgroundColor: statusSurface(a.ink).bg,
-                  borderWidth: 1, borderColor: statusSurface(a.ink).border,
-                }}>
-                  <Icon name={a.icon} size={21} color={a.ink} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 14.5, fontWeight: '700', color: theme.fgStrong }}>{a.label}</Text>
-                  <Muted style={{ marginTop: 3 }}>{a.note}</Muted>
-                </View>
-                <Icon name="chevron_right" size={21} color={theme.dim} />
-              </Pressable>
-            ))}
-          </View>
+          {/* THE "ATTENDANCE" ACTION ROWS ARE GONE, on request.
+              Send Communication was the same destination as the button in
+              this screen's own header, three scroll-lengths apart; Upload
+              Attendance is on the day strip above, where the awaiting day
+              actually is and where it arrives already scoped to that session.
+              Two rows out of three were a second copy of a control this
+              screen already had.
+
+              WEEKLY REVIEW HAD NO OTHER ROUTE and now has none: /weekly is
+              reachable only by URL. Recorded rather than quietly accepted --
+              see TECH_DEBT TD-014, which this joins. */}
 
           {/* A refused delete is shown rather than flashed away: the course is
               still there and the person has to be able to read why. */}

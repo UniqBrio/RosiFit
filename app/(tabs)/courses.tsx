@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { View, Text, Pressable, TextInput } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Screen, Muted, Label, Button, Skeleton, EmptyState, ErrorState } from '../../src/components/ui';
+import { Screen, Label, Button, Skeleton, EmptyState, ErrorState } from '../../src/components/ui';
 import { ScreenHeader } from '../../src/components/AppShell';
 import { Icon } from '../../src/components/Icon';
 import { DropdownRow, DropdownField, DropdownPanel, DropdownList } from '../../src/components/Dropdown';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
-import { SPACE, RADIUS, TAP_MIN, STATUS } from '../../src/theme/tokens';
-import { DAY_NAMES, ruleSentence, AVATAR_TINTS, initials } from '../../src/data/mock';
+import { SPACE, RADIUS, STATUS, statusSurface } from '../../src/theme/tokens';
+import { ruleSentence, AVATAR_TINTS, initials } from '../../src/data/mock';
 import { useCourses, useFollowUp } from '../../src/data/hooks';
 import { courseSummary, coursesHeadline } from '../../src/data/course';
 import { useIdentity } from '../../src/data/session';
@@ -246,16 +246,23 @@ export default function Courses() {
                     </View>
                   ) : null}
                 </Pressable>
-                <RowIcon icon="edit" label={`Edit ${c.name}`} tint={theme.accentInk}
-                  onPress={() => router.push({ pathname: '/course/edit', params: { id: c.id } })} />
-                {/* Deleting a course is the super admin's, and only while the
-                    subscription is writable -- the predicate delete_course
-                    (0020) re-checks. Hiding it from staff beats offering a tap
-                    that answers with a refusal. */}
-                {identity?.isSuperAdmin ? (
-                  <RowIcon icon="delete" label={`Delete ${c.name}`} tint={dangerInk}
-                    onPress={() => setConfirmDelete(c)} />
-                ) : null}
+                {/* The chevron is its OWN target, not decoration inside the
+                    card button: the card opens the course, the chevron opens
+                    that course's roster. Two destinations, so two controls --
+                    an arrow that did the same thing as the card it sits on is
+                    an arrow that teaches people it means nothing. */}
+                <Pressable testID={`courses-roster-${c.id}`}
+                  onPress={() => router.push(
+                    `/members?courseId=${c.id}&courseName=${encodeURIComponent(c.name)}&from=/courses`)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Members of ${c.name}`}
+                  hitSlop={8}
+                  style={({ pressed }) => ({
+                    width: 32, height: 42, alignItems: 'center', justifyContent: 'center',
+                    opacity: pressed ? 0.6 : 1,
+                  })}>
+                  <Icon name="chevron_right" size={21} color={theme.dim} />
+                </Pressable>
               </View>
 
               {/* The canvas' status line: ONE sentence per course saying
@@ -276,89 +283,44 @@ export default function Courses() {
                 </View>
               ) : null}
 
-              {/* The offerings ARE the schedule, so each one is the way in to
-                  editing its days. Listing them as dead text is what left the
-                  course form telling people to "set its days there" with no
-                  there to go to. */}
-              <View style={{
-                gap: 6, marginTop: SPACE.md,
-                paddingTop: SPACE.md, borderTopWidth: 1, borderTopColor: theme.line,
-              }}>
-                {c.offerings.length === 0 ? (
-                  <Text style={{ fontSize: 11.5, color: theme.muted, lineHeight: 16 }}>
-                    No offering yet — so no schedule, and nobody is expected anywhere.
-                  </Text>
-                ) : c.offerings.map(o => {
-                  const days = o.weekdays.length
-                    ? o.weekdays.map(d => DAY_NAMES[d]).join(' ')
-                    : 'No days set';
-                  return (
-                    <Pressable testID={`courses-offering-${o.id}`}
-                      key={o.id}
-                      onPress={() => router.push({
-                        pathname: '/offering/edit',
-                        params: { courseId: c.id, offeringId: o.id },
-                      })}
-                      accessibilityRole="button"
-                      accessibilityLabel={`${c.name} at ${o.branch}, ${days}. Edit the days it runs`}
-                      style={({ pressed }) => ({
-                        flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
-                        minHeight: TAP_MIN - 8, opacity: pressed ? 0.7 : 1,
-                      })}>
-                      <Icon name="apartment" size={14} color={theme.dim} />
-                      <Text style={{ fontSize: 11.5, fontWeight: '700', color: theme.fgStrong }}>
-                        {o.branch}
-                      </Text>
-                      {/* the word carries it, not the absence of colour */}
-                      <Text style={{
-                        flex: 1, fontSize: 11.5, lineHeight: 16,
-                        color: o.weekdays.length ? theme.muted : dangerInk,
-                        fontWeight: o.weekdays.length ? '400' : '800',
-                      }}>{days}</Text>
-                      <Icon name="chevron_right" size={16} color={theme.dim} />
-                    </Pressable>
-                  );
-                })}
+              {/* Edit and Delete, LABELLED, where the canvas puts them: on
+                  their own row at the foot of the card. They were two bare
+                  icon buttons crowded against the card's own tap target, and
+                  a pencil is not a word -- guardrail 3 applies to controls as
+                  much as to statuses.
 
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.lg, marginTop: 2 }}>
-                  <Pressable testID={`courses-add-offering-${c.id}`}
-                    onPress={() => router.push({
-                      pathname: '/offering/edit', params: { courseId: c.id },
-                    })}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Add a branch and days for ${c.name}`}
-                    style={{ minHeight: TAP_MIN / 2, justifyContent: 'center' }}>
-                    <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.accentInk }}>
-                      {c.offerings.length ? 'Add offering' : 'Set where and when'}
-                    </Text>
-                  </Pressable>
-                  <View style={{ flex: 1 }} />
-                  <Pressable testID={`courses-members-${c.id}`}
-                    onPress={() => router.push({ pathname: '/course/[id]', params: { id: c.id } })}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Members of ${c.name}`}
-                    style={{ minHeight: TAP_MIN / 2, justifyContent: 'center' }}>
-                    <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.accentInk }}>Members</Text>
-                  </Pressable>
-                </View>
+                  WHAT ELSE THIS ROW REPLACED
+                  The card used to end with the course's offerings listed as
+                  tappable rows, plus "Set where and when" and "Members". That
+                  turned one card into three destinations and made most of its
+                  surface open the SCHEDULE editor rather than the course --
+                  which is what "tapping the card opens something else" was.
+                  Days and branch are edited in the course dialog now (its
+                  branch dropdown reaches every offering), so nothing here is
+                  the only way to anything. */}
+              <View style={{
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end',
+                gap: SPACE.sm, marginTop: 10,
+              }}>
+                <CardAction icon="edit" label="Edit" tint={theme.accentInk}
+                  testID={`courses-edit-${c.id}`}
+                  hint={`Edit ${c.name}`}
+                  onPress={() => router.push({ pathname: '/course/edit', params: { id: c.id } })} />
+                {/* Deleting a course is the super admin's, and only while the
+                    subscription is writable -- the predicate delete_course
+                    (0020) re-checks. Hiding it from staff beats offering a tap
+                    that answers with a refusal. */}
+                {identity?.isSuperAdmin ? (
+                  <CardAction icon="delete" label="Delete" tint={dangerInk}
+                    testID={`courses-delete-${c.id}`}
+                    hint={`Delete ${c.name}`}
+                    onPress={() => setConfirmDelete(c)} />
+                ) : null}
               </View>
 
             </View>
           );
         })}
-      </View>
-
-      <View style={{
-        marginTop: SPACE.md, padding: SPACE.lg, borderRadius: RADIUS.lg,
-        flexDirection: 'row', gap: SPACE.md,
-        backgroundColor: theme.surface2, borderWidth: 1, borderColor: theme.line,
-      }}>
-        <Icon name="info" size={18} color={theme.accentInk} />
-        {/* C-56: the model, stated where it is used */}
-        <Muted style={{ flex: 1 }}>
-          A course carries no schedule. Days and times live on its offerings — the same course runs
-          different days at different branches.
-        </Muted>
       </View>
 
       {/* The confirmation states what SURVIVES as well as what goes, because
@@ -383,17 +345,28 @@ export default function Courses() {
   );
 }
 
-function RowIcon({ icon, label, tint, onPress }:
-  { icon: string; label: string; tint: string; onPress: () => void }) {
-  const { theme } = useTheme();
+/**
+ * A labelled action at the foot of a course card.
+ *
+ * The word is the control; the icon repeats it and the tint only reinforces
+ * both. It replaced a bare icon button, where "which one is delete" was a
+ * question about a glyph -- on a control whose answer cannot be undone.
+ */
+function CardAction({ icon, label, tint, hint, testID, onPress }:
+  { icon: string; label: string; tint: string; hint: string; testID: string;
+    onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label}
+    <Pressable testID={testID} onPress={onPress}
+      accessibilityRole="button" accessibilityLabel={hint}
       style={({ pressed }) => ({
-        width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center',
-        backgroundColor: theme.control, borderWidth: 1, borderColor: theme.line,
+        minHeight: 34, paddingHorizontal: 11, borderRadius: RADIUS.sm,
+        flexDirection: 'row', alignItems: 'center', gap: 5,
+        backgroundColor: statusSurface(tint).bg,
+        borderWidth: 1, borderColor: statusSurface(tint).border,
         opacity: pressed ? 0.7 : 1,
       })}>
-      <Icon name={icon} size={18} color={tint} />
+      <Icon name={icon} size={15} color={tint} />
+      <Text style={{ fontSize: 11.5, fontWeight: '800', color: tint }}>{label}</Text>
     </Pressable>
   );
 }

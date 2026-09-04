@@ -175,8 +175,8 @@ the member instead of vanishing.
 
 ---
 
-### Courses — `(tabs)/courses` · `course/edit` · `course/rules`
-**Last confirmed:** 02-Sep-2026
+### Courses — `(tabs)/courses` · `course/edit` · `course/[id]`
+**Last confirmed:** 04-Sep-2026
 
 The course list, the course editor, and the follow-up rule editor.
 
@@ -185,10 +185,26 @@ The course list, the course editor, and the follow-up rule editor.
 | List and edit courses | ◻ | A course is **what** you teach, not when |
 | Per-course follow-up rules | ◻ | `course_follow_up_config` |
 | Live preview of who a draft rule would list | ◻ | Nothing changes until Save |
+| A course card has exactly three destinations | ✅ | Card → the course · chevron → its roster · Edit / Delete, labelled |
 
-**Rules and validations** — weekdays and fees live on the *offering*, not the course; the edit
-screen says so rather than collecting them. Everything in the rule editor edits a **draft**. A
-configuration with both conditions off cannot exist — the toggle refuses.
+**Rules and validations** — everything in the rule editor edits a **draft**. A configuration with
+both conditions off cannot exist — the toggle refuses.
+
+**A course card has three destinations and says which is which.** The card body opens the course;
+the chevron opens that course's roster; **Edit** and **Delete** sit labelled at its foot. It used
+to end with the course's offerings listed as tappable rows plus "Set where and when" and
+"Members" — so most of the card's surface opened the *schedule editor* rather than the course, and
+Edit and Delete were two bare icons crowded against the card's own tap target. A pencil is not a
+word, and guardrail 3 applies to controls as much as to statuses. Days and branch are edited in
+the course dialog now, whose branch dropdown reaches every offering, so nothing removed here was
+the only way to anything.
+
+The roster is scoped by **name**, because that is the only key member rows carry (`Member.course`,
+which the follow-up derivation joins on — guardrail 1, one member source). The name arrives in a
+URL and the screen speaks it as a heading, so it is resolved against the academy's own course list
+by `rosterScope` (`src/data/course.ts`, 8 cases) and the academy's spelling is what gets rendered
+— never the caller's. An unknown, renamed or deleted course falls back to every member rather than
+to a confident empty roster under a heading naming a course nobody teaches.
 
 **Limits** — changing course structure is admin-only (`is_super_admin()`), because it changes
 every figure downstream.

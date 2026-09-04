@@ -82,3 +82,28 @@ export function coursesHeadline(
     : 'nobody needs follow-up';
   return `${courses} · ${branches} · ${need}`;
 }
+
+/**
+ * The course a roster claims to show, or null for "show everybody".
+ *
+ * The members screen is opened scoped by the chevron on a course card, and
+ * the course travels in the URL. That makes it UNTRUSTED INPUT on a heading:
+ * without this, /members?courseName=anything would render "anything" as the
+ * screen's title and "Nobody is enrolled in anything" underneath -- the app
+ * confidently describing a course that does not exist, in its own voice.
+ *
+ * It also handles the honest version of the same case: a link kept from
+ * before a course was renamed or deleted. Falling back to the full list is
+ * right there too -- an empty roster for a course nobody has is a worse
+ * answer than every member.
+ *
+ * Matched case-insensitively on the trimmed name because a URL round-trips
+ * through encoding and hand-editing, but the value RETURNED is the academy's
+ * own spelling, never the caller's -- so the heading reads the way the course
+ * list reads.
+ */
+export function rosterScope(known: string[], asked: unknown): string | null {
+  const want = typeof asked === 'string' ? asked.trim() : '';
+  if (!want) return null;
+  return known.find(n => n.trim().toLowerCase() === want.toLowerCase()) ?? null;
+}
