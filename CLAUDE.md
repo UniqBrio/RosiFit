@@ -68,6 +68,24 @@ There is no free-form send path anywhere.
   in `supabase/migrations/` (never edit an applied one), with tests in
   `supabase/tests/`.
 
+### Supabase and migrations (BINDING)
+- **Never create Supabase branches.** All schema work targets the main
+  Supabase project directly. There is no branch environment, and one must
+  not be introduced.
+- **Rehearsal is the local harness only.** Replay every migration from
+  scratch against a fresh local Postgres 16 and run the full spec suite
+  (`npm run test:db`). That is the pre-flight check — the whole of it.
+- **Before applying to PROD:** show the requester the raw SQL of each
+  pending migration and wait for an explicit go-ahead.
+- **Apply migrations one at a time, in order**, and report the result of
+  each before starting the next.
+
+> The harness proves a migration is well-formed by reconstruction. It cannot
+> prove the migration is compatible with data that already exists in
+> production, because the harness has none — so a migration that builds an
+> index or adds a constraint over existing rows needs that specific check run
+> against production before it is applied.
+
 ## Where things live
 | | |
 |---|---|

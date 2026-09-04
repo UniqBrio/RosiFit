@@ -2,29 +2,54 @@
 
 > ## Current state — project `lhpzhkzbnquwjljmbylo` ("Rosifit")
 >
-> Already done, verified against the live project:
+> **Verified against the live project on 04-Sep-2026** by querying it, not by
+> reading this file. The previous version of this block was stale in three
+> ways and is corrected below — see the note at the end.
 >
-> - **Schema applied**: migrations `0001`–`0014`. 30 tables in `public`, every
->   one with RLS, `app_settings` singleton seeded, `bootstrap_completed` still
->   `false` (the super admin has not registered yet — that is step 5 below).
-> - **Edge Functions deployed**: `auth-login`, `auth-bootstrap`,
->   `recovery-check` (public, `verify_jwt=false` — nobody has a session when
->   they call them), plus `pin-issue`, `pin-reset`, `csv-import`,
->   `send-followups` (JWT required).
-> - **Advisors**: run and acted on. See migrations `0011`–`0013`.
+> - **Schema applied**: migrations `0001`–`0024`. The ledger
+>   (`supabase_migrations.schema_migrations`) carries 21 rows: `0001`–`0015`
+>   and `0019`–`0024`. **`0016`, `0017` and `0018` are applied but have no
+>   ledger row** — they were run through the SQL editor rather than as
+>   migrations. Their objects are all present and were verified individually
+>   (`create_member`, `holidays_apply_effects` + its three triggers + the
+>   `holidays_delete` policy + the DELETE grant, `set_offering_schedule`), so
+>   the schema is complete; only the ledger is short. Do not re-run them.
+> - **Edge Functions deployed**: all seven, redeployed 04-Sep-2026.
+>   `auth-login`, `auth-bootstrap`, `recovery-check` at **v5**, public
+>   (`verify_jwt=false` — nobody has a session when they call them);
+>   `pin-issue`, `pin-reset`, `csv-import` at **v5** and `send-followups` at
+>   **v4**, all JWT-required.
+> - **`bootstrap_completed` is `true`.** The academy admin has registered.
+>   There are 3 `app_users` (1 super admin), 3 `auth.users` and 2 recovery
+>   answers on file.
+> - **`PIN_PEPPER` is set.** It cannot be read back — Supabase has no
+>   read-back path for a secret — but registration and PIN issue both
+>   completed, and neither is possible without it. That is the evidence.
+> - **Advisors**: run and acted on. See `0011`–`0013`, `0015`, and the open
+>   items below.
 >
-> **Two things still need a human, because neither can be done from a Claude
-> session** (there is no Supabase CLI or access token there, and no MCP tool
-> for secrets or for Vercel):
+> **What still needs a human:**
 >
-> 1. **`PIN_PEPPER` is not set.** Until it is, every auth function returns
->    500 — `auth-login`, `auth-bootstrap`, `recovery-check`, `pin-issue` and
->    `pin-reset` all derive from it and refuse to run without it. Nothing else
->    is blocked: the CSV import and the send do not touch it. See §4.
-> 2. **Vercel environment variables**: set the same two `EXPO_PUBLIC_` values
->    from `.env` on the `rosi-fit` project. See §5.
+> 1. **AWS SES secrets** — `EMAIL_PROVIDER=ses`, `AWS_REGION`,
+>    `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `SES_FROM_ADDRESS`. Only
+>    `send-followups` needs them. **`EMAIL_PROVIDER=ses` is the switch and is
+>    easy to miss**: without it, or with any one of the four AWS values
+>    missing, `getEmailProvider()` falls back to the dev provider, and every
+>    message is recorded `status='sent'` with `provider='dev'` while nothing
+>    leaves the building. A send that looks successful and sent nothing is
+>    worse than one that fails.
+> 2. **Vercel environment variables** — the two `EXPO_PUBLIC_` values on the
+>    `rosi-fit` project. These appear to be set already (the deployed app
+>    reaches Supabase and has written real rows), but that is inference from
+>    behaviour, not a reading of the Vercel config. See §5.
 >
-> Until (1) is done the app runs, signs nobody in, and says so.
+> **Why the previous block was wrong**, recorded so the next reader trusts the
+> project over the file: it claimed `0001`–`0014` when `0015` was also applied;
+> it claimed `bootstrap_completed` was `false` when the admin had registered;
+> and it said `PIN_PEPPER` was unset when it had been set. `apply_0016_0018.sql`
+> disagreed with it too, claiming `0001`–`0015`. Two hand-written claims, both
+> stale, disagreeing with each other — which is the argument for querying
+> `list_migrations` and probing for objects before believing any of it.
 
 RosiFit needs its **own** Supabase project. Do not put it in a project that
 already holds another product: the schema assumes it owns `public`, and

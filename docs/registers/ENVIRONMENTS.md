@@ -68,6 +68,25 @@ is no way to point a build at "production config" and "test data" by accident.
    TEST_ACCOUNTS.md. Today this holds trivially: fixtures and harness have no SES credentials, so
    a send cannot leave either of them.
 
+6. **Never create Supabase branches.** All schema work targets the main Supabase project
+   directly. A Supabase branch is not one of the three environments above and must not become a
+   fourth — it starts empty, so it proves nothing the harness does not already prove, and it
+   bills by the hour for as long as it exists.
+
+7. **Rehearsal is the local harness, and only the local harness.** Replay every migration from
+   scratch against a fresh Postgres 16 and run the full spec suite (`npm run test:db`). That is
+   the pre-flight check in its entirety.
+
+8. **Production applies are gated and serial.** Show the requester the raw SQL of every pending
+   migration and wait for an explicit go-ahead; then apply **one at a time, in filename order**,
+   reporting the result of each before starting the next.
+
+   Rules 7 and 8 divide the work between them, and the division matters. The harness proves a
+   migration is well-formed *by reconstruction*; it cannot prove the migration is compatible with
+   data that already exists, because it holds none. A migration that builds a unique index or adds
+   a constraint over existing rows therefore needs that one check run against production itself,
+   before it is applied — and no rehearsal environment, branch or otherwise, can stand in for it.
+
 ---
 
 ## Configuration per environment
