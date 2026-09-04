@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Screen, Card, H1, H2, Body, Muted, Label, Button, Row, Divider, Skeleton } from '../src/components/ui';
+import { Screen, Card, H2, Body, Muted, Label, Divider, Skeleton } from '../src/components/ui';
+import { FormDialog } from '../src/components/FormDialog';
 import { Field } from '../src/components/Field';
 import { useTheme } from '../src/theme/ThemeProvider';
 import { SPACE } from '../src/theme/tokens';
@@ -31,10 +32,16 @@ export default function ChangeMobile() {
   const current = identity.phone;
 
   return (
-    <Screen>
-      <H1>Change mobile number</H1>
-      <Muted style={{ marginBottom: SPACE.lg }}>Your sign-in number.</Muted>
-
+    <FormDialog
+      title="Change mobile number"
+      subtitle="Your sign-in number"
+      confirmLabel="Request the change"
+      confirmTestID="mobile-request"
+      confirmDisabled={!pinOk || !nextOk}
+      onConfirm={() => router.back()}
+      hint={!pinOk ? 'Your current PIN confirms it is you'
+        : !nextOk ? 'A 10-digit mobile number is needed'
+        : 'The super admin approves it before it takes effect'}>
       <Card>
         <Label>Current number</Label>
         <Body style={{ fontWeight: '800', marginTop: 4 }}>{current}</Body>
@@ -61,12 +68,6 @@ export default function ChangeMobile() {
         <Divider />
         <Muted>Your PIN keeps working — it is not tied to your number.</Muted>
       </Card>
-
-      <Row style={{ gap: SPACE.md }}>
-        <Button label="Cancel" variant="secondary" onPress={() => router.back()} style={{ flex: 1 }} />
-        <Button label="Request the change" disabled={!pinOk || !nextOk}
-          onPress={() => router.back()} style={{ flex: 2 }} />
-      </Row>
-    </Screen>
+    </FormDialog>
   );
 }

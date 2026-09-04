@@ -9,8 +9,8 @@ import { useTheme } from '../src/theme/ThemeProvider';
 import { useToast } from '../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../src/theme/tokens';
 import {
-  DECISION_ROWS, OUTCOME_META, MATCH_ACTIONS, MATCH_QUESTION, primaryEmail,
-  type MatchKind, type MatchRow, type Member,
+  DECISION_ROWS, OUTCOME_META, MATCH_ACTIONS, MATCH_QUESTION,
+  type MatchKind, type MatchRow,
 } from '../src/data/mock';
 import { peekStagedImport, clearStagedImport } from '../src/data/pending';
 import { csvCommit, type ImportDecision, type PreviewRow } from '../src/data/api';
@@ -66,24 +66,6 @@ export default function MatchReview() {
   const [linking, setLinking] = useState<MatchRow | null>(null);
   const [importing, setImporting] = useState(false);
   const members = useMembers();
-
-  /* The label IS the identity here -- SearchPicker hands back the text that
-     was tapped, so two identical labels would silently link the row to
-     whichever member sorted first. The member code used to make that
-     impossible. Her address does it now, and where two same-named members
-     both have no address on file the course and branch are appended; a
-     numbered suffix is the last resort, because linking the wrong member is
-     worse than an ugly line. */
-  const linkOptions = useMemo(() => {
-    const used = new Map<string, number>();
-    return (members.data ?? []).map((m: Member) => {
-      const email = primaryEmail(m);
-      const base = email ? `${m.name} · ${email}` : `${m.name} · ${m.course} · ${m.branch}`;
-      const n = (used.get(base) ?? 0) + 1;
-      used.set(base, n);
-      return { label: n === 1 ? base : `${base} (${n})`, member: m };
-    });
-  }, [members.data]);
 
   const done = index >= decisionRows.length;
   const decided = Math.min(index, decisionRows.length);
@@ -369,13 +351,18 @@ export default function MatchReview() {
           the operator -- nothing is guessed from the name. */}
       <SearchPicker
         open={linking !== null} onClose={() => setLinking(null)}
-        title="Link to an existing member" placeholder="Search by name or email"
-        options={linkOptions.map(o => ({ label: o.label }))}
-        onSelect={labelText => {
+        title="Link to an existing member" placeholder="Search by name"
+        options={(members.data ?? []).map(m => ({
+          label: m.name, meta: `${m.course} · ${m.branch}`, value: m.id,
+        }))}
+        onSelect={memberId => {
           const row = linking;
           setLinking(null);
           if (!row) return;
-          const chosen = linkOptions.find(o => o.label === labelText)?.member;
+          // Matched on her ID, not on a display string. Two members can share
+          // a name, and linking an attendance row to the wrong one is the
+          // mistake this screen exists to prevent.
+          const chosen = (members.data ?? []).find(m => m.id === memberId);
           if (!chosen) return;
           advance(`Row ${row.row} linked to ${chosen.name}`, {
             row: row.row, action: 'link_existing', member_id: chosen.id, remember_alias: true,

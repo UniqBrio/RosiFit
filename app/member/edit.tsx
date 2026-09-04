@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, TextInput, ScrollView } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Muted, Label, Button } from '../../src/components/ui';
@@ -10,8 +10,8 @@ import { SearchPicker } from '../../src/components/Sheet';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../../src/theme/tokens';
-import { MEMBERS, DAY_NAMES } from '../../src/data/mock';
-import { useCourses } from '../../src/data/hooks';
+import { DAY_NAMES } from '../../src/data/mock';
+import { useCourses, useMembers } from '../../src/data/hooks';
 import { createMember } from '../../src/data/repository';
 
 const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -34,8 +34,21 @@ export default function MemberEdit() {
   const { theme } = useTheme();
   const { flash } = useToast();
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id?: string }>();
-  const existing = MEMBERS.find(m => m.id === id);
+  const { id, state: forced } = useLocalSearchParams<{ id?: string; state?: string }>();
+
+  /**
+   * THE LIVE member, not the fixture.
+   *
+   * This was `MEMBERS.find(m => m.id === id)` against the fixture array. On
+   * live data no real id is in it, so `existing` was always undefined and
+   * "Edit" opened the ADD form -- with her name blank, titled "Welcome a new
+   * member", and a Save that would have created a second record for somebody
+   * already on the register.
+   *
+   * The list, the roster and this form now read one source (guardrail 1).
+   */
+  const roster = useMembers(forced);
+  const existing = id ? (roster.data ?? []).find(m => m.id === id) ?? null : null;
 
   // The courses she can join are the LIVE ones, not the fixture list: she is
   // enrolled into a course_offerings row, and a name picked from a hardcoded
@@ -53,8 +66,27 @@ export default function MemberEdit() {
   const [emailDraft, setEmailDraft] = useState('');
   const [days, setDays] = useState<string[]>([]);
   const [picker, setPicker] = useState<null | 'course' | 'branch'>(null);
+  const [seeded, setSeeded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
+
+  /**
+   * Her record arrives AFTER the first render, so the fields cannot be seeded
+   * by useState -- that runs once, while the roster is still loading, and
+   * would leave the Edit form permanently blank.
+   *
+   * Seeded once and only once: `seeded` is not reset, so a keystroke is never
+   * overwritten by a refetch landing behind it.
+   */
+  useEffect(() => {
+    if (seeded || !existing) return;
+    setName(existing.name);
+    setCourse(existing.course);
+    setBranch(existing.branch);
+    setAliases(existing.aliases);
+    setEmails(existing.emails);
+    setSeeded(true);
+  }, [seeded, existing]);
 
   const chosenCourse = courseList.find(c => c.name === course) ?? null;
   // Only branches where this course actually RUNS: the pair is the offering,

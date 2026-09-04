@@ -92,23 +92,46 @@ name from an uploaded register to an existing member.
 
 | Capability | Status | Notes |
 |---|---|---|
-| List, search and filter members | ◻ | Search covers her name, her primary address and her Meet aliases |
+| List, search and filter members | ◻ | Search covers her name, her primary address, her Meet aliases and — unadvertised — her pre-`0026` RF- code |
 | One member's attendance history | ◻ | |
 | Edit a member | ◻ | **Her name is the only required field** |
 | Several email addresses, exactly one primary | ◻ | `member_emails.is_primary` |
-| A member carries NO member code | ✅ | Retired in `0026` (ADR 006). Her primary address is what tells two same-named members apart; pre-0026 codes are kept in the column and read by nothing |
+| No member code is assigned, and none is shown | ✅ | Retired in `0026` (ADR 006). No screen renders one; pre-`0026` codes stay in the column and stay searchable, so somebody holding one from an export can still find her |
 | Aliases | ◻ | What the uploaded register matches on |
 | Link an unmatched name to an existing member | ◻ | `app/match.tsx`; branch, known display names, last-attended and her address come from the import preview |
 
-**Rules and validations** — **no phone number is held for a member**, and since `0026` **no
-member code either**: neither was ever used to identify anyone, so neither is collected. An alias is a correction and can be deleted; it is the
-only `for delete` policy in the schema.
+**Rules and validations** — **no phone number is held for a member**, and since `0026` **no new
+member code either**: neither identifies anyone a person could check against, so neither is
+collected. Her joining month is what the detail header carries instead. An alias is a correction
+and can be deleted; it is the only `for delete` policy in the schema.
 
 **Limits** — members do not sign in. RosiFit has no member-facing surface at all; every screen is
 for the academy.
 
 **Benefit** — a name spelled three ways in three registers is still one member.
 
+
+**Every form is a dialog.** A form is a decision taken *over* a screen, not a place you travel to.
+Pushed as a page it wears the stack's header — so the only way out is in the chrome, and the save
+sits below however much has been typed. `member/edit`, `course/edit`, `offering/edit`, `holiday`,
+`staff/add` and `change-mobile` all present as modals over one shell
+(`src/components/FormDialog.tsx`): a title saying what is being decided, a subtitle naming what it
+applies to, a close that leaves without saving, and a **pinned** footer. Deliberately *not*
+converted: `register` / `set-pin` / `forgot-pin` are the pre-session auth flow and own the screen;
+`upload` and `match` are multi-step reviews; `branches`, `staff/index`, `audit`, `appearance`,
+`profile` and `help` are places, not decisions.
+
+**The member code is not shown anywhere.** It is an internal identifier: it tells nobody which
+member this is, and it was the entire second line for anyone with no email address. Her detail
+header carries `branch · joined Mar 2026`, as the canvas writes it. The code stays *searchable* so
+anyone holding one from an export can still find her, but the search placeholder no longer
+advertises a field the app does not display. The `{{member_code}}` message token is untouched —
+stored templates may use it, and it is the academy's choice.
+
+`SearchPicker` options now carry an optional `value`, and the member picker matches on **her id**.
+It matched on the display label, which was unique only because it contained the code; without it,
+two members sharing a name would both have matched the first — linking an attendance row to the
+wrong person, silently.
 ---
 
 ### Sessions — `(tabs)/sessions` · `holiday` · `upload`

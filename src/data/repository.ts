@@ -54,7 +54,7 @@ export async function fetchMembers(period: Period): Promise<Member[]> {
   if (!isConfigured) return MEMBERS;
 
   const [membersRes, emailsRes, aliasesRes, statsRes, enrolRes, metricsRes] = await Promise.all([
-    supabase.from('members').select('id, full_name, status').is('deleted_at', null).order('full_name'),
+    supabase.from('members').select('id, member_code, full_name, status, joined_on').is('deleted_at', null).order('full_name'),
     supabase.from('member_emails').select('member_id, email, is_primary, status').is('deleted_at', null),
     supabase.from('member_aliases').select('member_id, alias_display').eq('alias_type', 'name'),
     supabase.from('member_stats').select('member_id, current_streak, last_emailed_at'),
@@ -101,6 +101,8 @@ export async function fetchMembers(period: Period): Promise<Member[]> {
     const stat = statByMember.get(m.id as string);
     return {
       id: m.id as string,
+      // '' rather than '—': there is no code to show, not an unknown one
+      code: (m.member_code as string) ?? '',
       name: m.full_name as string,
       course: offering ? (courseName.get(offering.course_id as string) ?? '—') : '—',
       branch: offering ? (branchName.get(offering.branch_id as string) ?? '—') : '—',
@@ -111,6 +113,12 @@ export async function fetchMembers(period: Period): Promise<Member[]> {
       missed: metric?.missed ?? 0,
       streak: (stat?.current_streak as number) ?? 0,
       last: stat?.last_emailed_at ? new Date(stat.last_emailed_at as string).toLocaleDateString() : '—',
+      // "Mar 2026", the way the canvas writes it. A day number would be
+      // precision nobody asked for under a name.
+      joined: m.joined_on
+        ? new Date(`${m.joined_on as string}T00:00:00`).toLocaleDateString(undefined,
+            { month: 'short', year: 'numeric' })
+        : '—',
     };
   });
 }
@@ -1549,10 +1557,16 @@ export async function createMember(input: MemberInput): Promise<{ id: string }> 
     const offering = course?.offerings.find(o => o.id === input.offering_id);
     const member: Member = {
       id: `local-${Date.now()}`,
+      // create_member stopped minting one in 0026; offline says the same
+      code: '',
       name: input.full_name,
       course: course?.name ?? '—',
       branch: offering?.branch ?? '—',
       aliases: input.aliases,
+      joined: input.joined_on
+        ? new Date(`${input.joined_on}T00:00:00`).toLocaleDateString(undefined,
+            { month: 'short', year: 'numeric' })
+        : new Date().toLocaleDateString(undefined, { month: 'short', year: 'numeric' }),
       emails: input.emails.map((address, i) => ({ address, primary: i === 0 })),
       expected: 0, attended: 0, missed: 0, streak: 0, last: '\u2014',
     };

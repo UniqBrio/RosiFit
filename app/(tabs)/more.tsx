@@ -96,7 +96,8 @@ export default function More() {
   if (loading) {
     return (
       <Screen>
-        <ScreenHeader title="More" subtitle="Your account, your academy, your rules" />
+        <ScreenHeader title="More" subtitle="Your account, your academy, your rules"
+        onBack={() => router.navigate('/')} />
         <Skeleton lines={8} />
       </Screen>
     );
@@ -105,7 +106,8 @@ export default function More() {
   if (signedOut || !identity) {
     return (
       <Screen>
-        <ScreenHeader title="More" subtitle="Your account, your academy, your rules" />
+        <ScreenHeader title="More" subtitle="Your account, your academy, your rules"
+        onBack={() => router.navigate('/')} />
         {/* Being signed out is not a failure, so it does not get the error
             card's "Something went wrong / Try again" words. */}
         <EmptyState
@@ -119,7 +121,14 @@ export default function More() {
 
   return (
     <Screen>
-      <ScreenHeader title="More" subtitle="Your account, your academy, your rules" />
+      {/* More is a TAB ROOT, so there is no stack to pop -- router.back()
+          inside the tab group answers about the stack the tabs sit in and
+          would leave the app for the sign-in screen. The canvas draws a back
+          arrow here all the same, and it means the same thing a hardware back
+          means on a non-home tab: return to Overview. A named destination,
+          not a guess. */}
+      <ScreenHeader title="More" subtitle="Your account, your academy, your rules"
+        onBack={() => router.navigate('/')} />
 
       <Pressable onPress={() => router.push('/profile')}
         accessibilityRole="button"

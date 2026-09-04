@@ -13,10 +13,10 @@ import { fillTokens, unknownTokens, MESSAGE_TOKENS } from './message';
 import type { Member } from './mock';
 
 const member = (over: Partial<Member> = {}): Member => ({
-  id: 'm', name: 'Divya Ramesh',
+  id: 'm', code: '', name: 'Divya Ramesh',
   course: 'Prenatal Flow', branch: 'Coimbatore',
   aliases: [], emails: [{ address: 'a@b.com', primary: true }],
-  expected: 6, attended: 3, missed: 3, streak: 2, last: '—', ...over,
+  expected: 6, attended: 3, missed: 3, streak: 2, last: '—', joined: 'Mar 2026', ...over,
 });
 const ctx = (over: Partial<Member> = {}) => ({
   member: member(over), courseName: 'Prenatal Flow', branchName: 'Coimbatore',

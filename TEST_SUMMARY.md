@@ -37,6 +37,72 @@ exit 1
 
 _Merge blocked. Every FAIL above must resolve. No partial merges._
 
+MERGE OF main (2d2877a) INTO chore/framework-adoption. Same verdict, same four steps, for the
+same reasons the run below it records: G1/G2/G3 want a `design/tokens.json` this repository
+deliberately does not have (DECISION_LOG 003-005), G8 wants a `test:functional` script that does
+not exist (009), G6 wants a local eslint (007). Nothing in this merge moved any of them.
+
+Both sides removed the member code from the same five screens, from opposite ends -- main stopped
+it being SHOWN, this branch stopped it being ASSIGNED. Five files conflicted and every conflict
+was resolved by keeping both capabilities:
+
+  mock.ts MEMBERS / repository.ts select   main's rows and query, which carry BOTH `code` (now a
+                                           search key, never rendered) and the new `joined` month
+  members.tsx search + subtitle            main's: the code stays searchable but unadvertised,
+                                           and "No address on file" does not repeat the card
+  member/[id].tsx header                   main's: `branch · joined Mar 2026`
+  match.tsx candidate card                 this branch's: main's line PLUS her address, which is
+                                           the one place a person picks between two same names
+  match.tsx member picker                  main's: SearchPicker matches on her ID. This branch's
+                                           label-uniqueness scheme was DELETED, not kept beside
+                                           it -- two solutions to one problem is one too many,
+                                           and an id cannot collide at all
+
+Verified after resolution: npm run check green (229 unit, 2840/2840 contrast, 75/75 icons),
+audit:all clean, test-id ratchet at main's 14. Still NOT verified: bash db/harness/test.sh --
+no psql and no Docker on this machine (ADR 005). 0026 and 20_no_member_code.sql have never run,
+and nothing has been applied to the live Supabase project.
+
+---
+
+## Gate run - 2026-09-04 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
 RETIRING THE MEMBER CODE: this verdict is the SAME verdict the run above it recorded, on the
 same four steps, and none of them is this change. G1/G2/G3 fail on a missing `design/tokens.json`
 that this repository deliberately does not have (DECISION_LOG 003-005); G8 fails because no
@@ -231,6 +297,46 @@ The defect was reproduced first, in one statement on the harness, before any cod
     select public.audit_log('communication.batch_sent','email_batch','b1'); commit;
     -->  actor_app_user_id | actor_kind |          action
          ------------------+------------+--------------------------
+
+## Gate run - 2026-09-04 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
 
 ## Gate run - 2026-09-04 - VERDICT: FAIL
 
