@@ -19,11 +19,36 @@
  * registry.npmjs.org, pinned with --save-exact. It is the library the
  * reference implementation uses.
  */
-import * as ExcelJS from 'exceljs';
+import type * as ExcelJS from 'exceljs';
 import {
   MEMBER_IMPORT_COLUMNS, MEMBER_IMPORT_HELP, MEMBER_IMPORT_REQUIRED,
   MEMBER_IMPORT_MAX_ROWS, MemberImportError, type MemberImportRow,
 } from './memberImport';
+
+/**
+ * exceljs, loaded when it is first needed and not before.
+ *
+ * The browser build is ~950 KB minified — a third of everything else this app
+ * ships — and it is used by ONE owner-only screen. A static import puts it in
+ * the bundle every member of staff downloads to look at a register. The
+ * dynamic import lets Metro keep it out until the import screen builds a
+ * template or reads a file.
+ *
+ * The `.default` dance is the UMD one: the browser build assigns
+ * `module.exports`, so an ESM namespace wraps it, while the Node build used
+ * by the specs is already the namespace. Whichever carries `Workbook` is the
+ * real one.
+ */
+let cached: typeof ExcelJS | null = null;
+async function excel(): Promise<typeof ExcelJS> {
+  if (!cached) {
+    const mod = await import('exceljs');
+    const inner = (mod as { default?: unknown }).default;
+    cached = (inner && (inner as { Workbook?: unknown }).Workbook
+      ? inner : mod) as unknown as typeof ExcelJS;
+  }
+  return cached;
+}
 
 /** The reference's sheet names, with the noun changed. */
 export const SHEET_INSTRUCTIONS = 'Instructions & Sample';
@@ -75,7 +100,7 @@ export function templateFileName(academy: string): string {
  *   3. Courses — hidden; the lookup the dropdowns point at.
  */
 export async function buildMemberTemplate(opts: TemplateOptions): Promise<ArrayBuffer> {
-  const wb = new ExcelJS.Workbook();
+  const wb = new (await excel()).Workbook();
   wb.creator = 'RosiFit';
   wb.created = new Date();
 
@@ -164,7 +189,7 @@ function cellText(cell: ExcelJS.Cell): string {
  * verdict later, never an exception here.
  */
 export async function parseMemberXlsx(bytes: ArrayBuffer): Promise<MemberImportRow[]> {
-  const wb = new ExcelJS.Workbook();
+  const wb = new (await excel()).Workbook();
   try {
     await wb.xlsx.load(bytes);
   } catch {
@@ -238,7 +263,7 @@ export type ReportLine = { row: MemberImportRow; status: string; reason: string 
  * file again. Same shape as the reference's `import_errors.xlsx`.
  */
 export async function buildErrorReport(lines: ReportLine[]): Promise<ArrayBuffer> {
-  const wb = new ExcelJS.Workbook();
+  const wb = new (await excel()).Workbook();
   const ws = wb.addWorksheet('Import errors');
   ws.columns = [
     { header: 'Row', width: 6 }, { header: 'Status', width: 10 }, { header: 'Reason', width: 60 },

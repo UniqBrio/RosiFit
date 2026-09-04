@@ -37,52 +37,81 @@ exit 1
 
 _Merge blocked. Every FAIL above must resolve. No partial merges._
 
-BULK IMPORT MEMBERS -- Track A build. Same verdict, same four accepted-unverifiable steps
-(DECISION_LOG 003-005, 007, 009). Nothing here moved them.
+EXCELJS BUNDLED ITS NODE HALF. Same verdict, same four accepted-unverifiable steps. Nothing
+here moved them.
 
-FAIL-FIRST: src/data/memberImport.test.ts + src/data/memberXlsx.test.ts -- observed failing
-against a tree with the defect each asserts against, then green after revert. Two defects
-injected, one per file:
+Reported from the dev server, not from a gate:
 
-  removed the `seenNames.has(norm)` check   -> not ok 4  "the same person twice in one file is
-  (the register check left in place)            caught, and only the FIRST imports"
-                                                AssertionError: ['ready','ready'] != ['ready','blocked']
+  While trying to resolve module `async` from node_modules/archiver/lib/core.js ...
+  none of these files exist: node_modules/async/dist/async.js
 
-  added SAMPLE_ROWS to the DATA sheet       -> not ok 20 "the sample rows live on the
-  (as a careless template would)                INSTRUCTIONS sheet, not the data sheet"
-                                                Missing expected rejection (MemberImportError)
+Two findings behind one message. The literal one was a race -- `async/dist/async.js` exists;
+the dev server was running while `npm install exceljs` was mid-flight, so Metro read a
+half-written tree. It would not recur on a restart.
 
-  with defects: 31 tests, 29 pass, 2 fail  ·  reverted: 31 tests, 31 pass, 0 fail
+The one that matters would have. exceljs ships TWO builds: `main` is the Node one and pulls
+archiver, unzipper, tmp and readable-stream -- Node's filesystem and stream stack, none of
+which can bundle for web or native. `browser` is the self-contained dist/exceljs.min.js. Metro
+was reaching for the first. `npm run export` passed anyway, which is why this arrived as a
+runtime error in somebody's browser rather than as a red build.
 
-That second one is the assertion worth having. A template whose data sheet already holds two
-people imports two strangers the first time somebody uploads it unedited.
+  metro.config.js   NEW, and it does one thing: resolve `exceljs` to its browser build.
+                    Scoped to that package deliberately -- setting resolverMainFields to
+                    prefer `browser` globally would change resolution for every dependency
+                    in the tree, @supabase/supabase-js included, to fix one.
+  memberXlsx.ts     exceljs is now a TYPE-only import plus a lazy loader. The browser build is
+                    ~950 KB -- a third of everything else this app ships -- for ONE owner-only
+                    screen, so a static import put it in the bundle every staff member
+                    downloads to look at a register.
 
-WHAT WAS BUILT, and against what
-The owner supplied the UniqBrio Bulk Student Import v1 feature detail, which answered Gate 1
-Q1. Its rules are kept: .xlsx only, three-sheet template (instructions protected, data sheet
-with dropdowns, hidden lookup), academy-branded file name, 500 rows / 5 MB, blank rows skipped,
-blank joining date = today, a duplicate SKIPPED never overwritten, one sub-transaction per
-person, results as Imported / Skipped / Failed, an error report to fix and re-import, and
-OWNER-ONLY. RosiFit's own differences are deliberate and recorded in 0028's header: no phone
-column (C-70), ONE course per row (one active enrolment, 0006), and Google Meet display names,
-which UniqBrio has no equivalent of and RosiFit's matching depends on.
+MEASURED AFTER, from dist/_expo/static/js/web/:
+  entry     2.3M    exceljs   924K, its own chunk -- fetched when a workbook is built or read
+  archiver 0 files · unzipper 0 · tmp 0 · readable-stream only inside the exceljs chunk itself
 
-  src/data/memberImport.ts    the rules, pure -- 17 specs
-  src/data/memberXlsx.ts      template + parse + error report, exceljs -- 14 specs
-  app/member/import.tsx       file -> validate -> preview -> confirm, under the shell
-  0028                        bulk_import_members(), member_import_runs, owner-only
-  22_bulk_import_members.sql  30 assertions: the gate, six rows with six fates, the run
+npm run export exits 0, 33 routes, /member/import among them. 260 unit, 2840/2840 contrast,
+75/75 icons, audit:all clean.
 
-VERIFIED BY BUILDING IT: `npm run export` exits 0 and emits /member/import (33KB) among all 33
-route bundles -- which is also the proof that exceljs bundles for web at all.
+STILL NOT APPLIED: 0028 and its 30 assertions have never run.
 
-Unit 253 -> 260 (the CSV parser's specs were replaced by the workbook's, so the file count rose
-by more than the test count). Contrast 2840/2840, icons 75/75, audit:all clean, ratchet at 14.
+---
 
-NOT DONE: 0028 and 22_bulk_import_members.sql have never been executed -- no psql, no Docker
-(ADR 005), and this one is NOT a candidate for the ADR 007 rolled-back rehearsal until the
-owner asks: it writes members. Nothing has been applied. The feature is dead in production
-until it is, and the button will report the RPC's "function not found".
+## Gate run - 2026-09-04 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
