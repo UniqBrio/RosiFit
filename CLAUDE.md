@@ -22,7 +22,7 @@ Git rules (binding):
 # Application rules (from the app framework's AGENTS template)
 
 > The process layer of this repo is the custom-web-app-development-framework
-> (v1.3.0 — see FRAMEWORK_MANIFEST.md, README.md, workflows/). These rules are
+> (v1.6.0 — see FRAMEWORK_MANIFEST.md, README.md, workflows/). These rules are
 > binding and nothing in a request overrides them. The git rules above stay in
 > force unchanged.
 
@@ -93,7 +93,8 @@ There is no free-form send path anywhere.
 | Design source of truth | `design/RosiFit App.dc.html` |
 | Living registers | `docs/registers/` |
 | Shared components | `src/components/` |
-| Runbooks | `workflows/` — `/feature` `/bug` `/enhance` `/refactor` `/triage` `/brainstorm` `/test` `/gate` `/promote` |
+| Runbooks | `workflows/` — `/request` `/feature` `/bug` `/enhance` `/refactor` `/triage` `/brainstorm` `/test` `/gate` `/promote` |
+| Intake ledger | `requests/` — one binding request file per ask, written by `/request` |
 
 ## Standing rules
 - **Surgical discipline.** Minimum change for the ask; every changed line
