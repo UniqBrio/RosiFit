@@ -5,8 +5,8 @@
   "cleanUrls": true,
   "trailingSlash": false,
   "rewrites": [
-    { "source": "/course/:id((?!edit$)[^/]+)", "destination": "/course/[id].html" },
-    { "source": "/member/:id((?!edit$)[^/]+)", "destination": "/member/[id].html" },
-    { "source": "/:path*", "destination": "/+not-found.html" }
+    { "source": "/course/:id", "destination": "/course/[id]" },
+    { "source": "/member/:id", "destination": "/member/[id]" },
+    { "source": "/:path*", "destination": "/+not-found" }
   ]
 }
