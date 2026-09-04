@@ -15,11 +15,12 @@
 >   (`create_member`, `holidays_apply_effects` + its three triggers + the
 >   `holidays_delete` policy + the DELETE grant, `set_offering_schedule`), so
 >   the schema is complete; only the ledger is short. Do not re-run them.
-> - **Edge Functions deployed**: all seven, redeployed 04-Sep-2026.
+> - **Edge Functions deployed**: all seven, 04-Sep-2026.
 >   `auth-login`, `auth-bootstrap`, `recovery-check` at **v5**, public
 >   (`verify_jwt=false` — nobody has a session when they call them);
->   `pin-issue`, `pin-reset`, `csv-import` at **v5** and `send-followups` at
->   **v4**, all JWT-required.
+>   `pin-issue` and `pin-reset` at **v5**, `csv-import` at **v6** and
+>   `send-followups` at **v5**, all JWT-required. The last two were
+>   redeployed for `0026` — see below.
 > - **`bootstrap_completed` is `true`.** The academy admin has registered.
 >   There are 3 `app_users` (1 super admin), 3 `auth.users` and 2 recovery
 >   answers on file.
@@ -59,18 +60,14 @@
 >   PostgreSQL 16. `supabase/tests/20_no_member_code.sql` has never run, so
 >   the spec that pins this behaviour is unexecuted even though the behaviour
 >   itself is verified in production.
-> - **THE TWO EDGE FUNCTIONS FOR `0026` ARE NOT DEPLOYED.** `csv-import` is
->   still at **v5** and `send-followups` at **v4**, both the pre-`0026` code.
->   Neither is broken by the migration — `member_code` is still a column, so
->   both still read it — but until they are redeployed:
->     * the match review screen shows a candidate's course and branch without
->       her address, because `csv-import` still returns `member_code` where
->       the app now expects `primary_email`. The app falls back cleanly; it
->       does not error.
->     * `send-followups` still builds a `member_code` variable. Harmless
->       today: no template uses it, and for a member added after `0026` it
->       would be null, which the renderer leaves as literal `{{member_code}}`.
->   Deploy both from this tree (`csv-import`, `send-followups`) to close it.
+> - **The two Edge Functions for `0026` ARE deployed** (04-Sep-2026), and the
+>   live source was read back to confirm it rather than trusting the deploy
+>   output. `csv-import` **v6** selects `id, full_name, name_normalized` with
+>   no `member_code`, reads `member_id, email` from `member_emails`, and
+>   returns `primary_email` on every candidate. `send-followups` **v5**
+>   selects `id, full_name` and its variable map has no `member_code` key.
+>   `verify_jwt=true` survived both deploys, and the other five functions were
+>   untouched.
 > - **Advisors**: run and acted on. See `0011`–`0013`, `0015`, and the open
 >   items below.
 >
