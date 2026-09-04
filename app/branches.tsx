@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Screen, Muted, Label, Button, Skeleton, EmptyState, ErrorState } from '../src/components/ui';
-import { ScreenHeader } from '../src/components/AppShell';
+import { ScreenHeader, ShellScreen } from '../src/components/AppShell';
 import { Field } from '../src/components/Field';
 import { Icon } from '../src/components/Icon';
 import { ConfirmDialog } from '../src/components/Sheet';
@@ -31,7 +31,7 @@ import { createBranch, removeBranch, dataSource, type BranchUsage } from '../src
  * refused looks refusable before it is made. 0019 is what enforces it -- this
  * screen only says so first.
  */
-export default function Branches() {
+function BranchesBody() {
   const { theme } = useTheme();
   const { flash } = useToast();
   const router = useRouter();
@@ -234,4 +234,13 @@ export default function Branches() {
         onConfirm={() => { if (confirmRemove) void remove(confirmRemove); }} />
     </Screen>
   );
+}
+
+/**
+ * Under the shell, not instead of it. This screen is pushed on the root
+ * stack, so it is not one of the tab navigator's own and wore no academy
+ * header and no Home · Reports · More pill until ShellScreen drew them.
+ */
+export default function Branches() {
+  return <ShellScreen><BranchesBody /></ShellScreen>;
 }

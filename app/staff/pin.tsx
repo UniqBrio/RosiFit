@@ -8,10 +8,11 @@ import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../../src/theme/tokens';
 import { takeIssuedPin } from '../../src/data/pending';
+import { ShellScreen } from '../../src/components/AppShell';
 
 const APP_LINK = 'https://rosifit.app/staff';
 
-export default function StaffPin() {
+function StaffPinBody() {
   const { theme } = useTheme();
   const { flash } = useToast();
   const router = useRouter();
@@ -166,5 +167,18 @@ function SecondaryRow({ icon, label, meta, onPress }:
       <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: theme.fgStrong }}>{label}</Text>
       <Text style={{ fontSize: 11, color: theme.muted }}>{meta}</Text>
     </Pressable>
+  );
+}
+
+/**
+ * Under the shell, not instead of it. This screen is pushed on the root
+ * stack, so it is not one of the tab navigator's own and wore no academy
+ * header and no Home · Reports · More pill until ShellScreen drew them.
+ */
+export default function StaffPin() {
+  return (
+    <ShellScreen title="PIN issued" subtitle="Shown once. There is no way back to this screen.">
+      <StaffPinBody />
+    </ShellScreen>
   );
 }

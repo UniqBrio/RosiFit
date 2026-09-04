@@ -37,48 +37,73 @@ exit 1
 
 _Merge blocked. Every FAIL above must resolve. No partial merges._
 
-0027 IS APPLIED, AND IT WAS REHEARSED. Same verdict, same four accepted-unverifiable steps
+THE SHELL WAS ON THE TAB GROUP ONLY. Same verdict, same four accepted-unverifiable steps
 (DECISION_LOG 003-005, 007, 009). Nothing here moved them.
 
-The harness could not run -- no psql, no Docker (ADR 005) -- and 0027 is ~250 lines of plpgsql
-moving enrolment history under a GiST exclusion with INCLUSIVE bounds, which is not something to
-apply on a reading the way 0026's catalogue-only change was. So it was rehearsed against
-PRODUCTION inside a DO block ending in RAISE, which the database rolls back itself (ADR 007).
+AcademyHeader and the Home · Reports · More pill are drawn by the Tabs navigator, so only its
+seven screens wore them. All 13 routes pushed on the ROOT stack -- course/[id], member/[id],
+upload, match, branches, audit, staff/index, staff/pin, appearance, profile, help, send/index,
+send/result -- replaced the whole chrome with a bare page and a native title bar. The owner's
+screenshot of a course detail is the case: no academy name, no Overview/Attendance row, no pill.
 
-  00 actor resolves                        offering A {1,3,5} | offering B {2,4}
-  01 name changed                          PASS
-  02 aliases reconciled to 2               PASS
-  03 removed alias DELETED                 PASS
-  04 "ZZ Probe One  " did not churn        PASS   (normalised reconciliation)
-  05 one live address                      PASS
-  06 removed address SOFT-deleted          PASS
-  07 exactly one primary                   PASS
-  08 moved_offering false when unchanged   PASS
-  09 illegal weekday REFUSED               PASS   ("days the course actually runs")
-  10 old enrolment KEPT, 2 rows            PASS
-  11 old ends YESTERDAY (2026-09-03)       PASS   -- the inclusive-bound case
-  12 old marked ended                      PASS
-  13 new starts TODAY                      PASS
-  14 exactly one active enrolment          PASS
-  15 her own days stored ({2})             PASS   -- legal at the NEW offering
-  16 moved_offering true                   PASS
-  17 blank days clears the override        PASS
-  18 audit rows attributed                 expected >=4, got 3 -- THE ASSERTION WAS WRONG, not
-                                           the function: one of the four calls was the deliberate
-                                           refusal at 09, which correctly writes no audit row
-  19 other enrolments untouched            PASS   (11 of 11)
-  20 attendance untouched                  PASS   (82 of 82)
+  ShellScreen        draws the same header and the same pill for a screen the navigator does
+                     not own, and the per-screen title block for the eight that had no back
+                     control of their own because they leaned on the native header
+  AcademyHeader      its tab row falls back to router.replace when there is no navigator --
+                     REPLACE, so tapping Attendance from a course goes to the workspace rather
+                     than stacking it on top
+  _layout.tsx        headerShown: false on all 13; the native bar would have been a third header
 
-Rollback verified afterwards by re-reading the counts: 0 probe rows left behind, and enrolments,
-schedules, aliases, live emails, attendance and audit all back at their prior values.
+Still bare on purpose: index, register, set-pin, forgot-pin -- the pre-session flow runs before
+there is an academy to name. Dialogs unaffected: transparentModal on the root stack renders OVER
+the shell, which is what a dialog over a screen means.
 
-STILL OWED: supabase/tests/21_update_member.sql has never executed. The rehearsal covers the same
-ground but it is not the same file, and it is the FILE that gets run next time. CI's db-harness
-job remains the rehearsal of record for both 0026 and 0027.
+VERIFIED BY BUILDING IT. `npm run export` (expo export --platform web) exits 0 and emits all 23
+route bundles including every wrapped screen. That is the strongest check available here -- it
+compiles the real route tree and both layouts -- and it is the one that would have caught a bad
+import depth or a broken navigator, which G5 Types alone would not.
 
-LIVE EVIDENCE FOR 0026, found while checking: two members created through the app at 06:13 today
-carry member_code NULL. The retirement works end to end in production, through the real import
-path, not just in the catalogue.
+npm run check green (229 unit, 2840/2840 contrast, 75/75 icons); audit:all clean, ratchet at 14.
+
+---
+
+## Gate run - 2026-09-04 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

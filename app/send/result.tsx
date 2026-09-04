@@ -8,13 +8,14 @@ import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, STATUS, statusSurface } from '../../src/theme/tokens';
 import { flaggedMembers, hasEmail } from '../../src/data/mock';
 import { peekSendResult } from '../../src/data/pending';
+import { ShellScreen } from '../../src/components/AppShell';
 
 /**
  * Step 3 of 3: RESULT, per member. "Sent" is claimed per address, never for
  * the batch -- a failed send names the member, the reason, and what to do,
  * because a silent failure here is a member nobody follows up.
  */
-export default function SendResult() {
+function SendResultBody() {
   const { theme } = useTheme();
   const { flash } = useToast();
   const router = useRouter();
@@ -118,5 +119,19 @@ function Count({ n, label, color }: { n: number; label: string; color: string })
       <Text style={{ fontSize: 28, fontWeight: '800', color, fontVariant: ['tabular-nums'] }}>{n}</Text>
       <Text style={{ fontSize: 11.5, color: theme.muted, marginTop: 2 }}>{label}</Text>
     </View>
+  );
+}
+
+/**
+ * Under the shell, not instead of it. This screen is pushed on the root
+ * stack, so it is not one of the tab navigator's own and wore no academy
+ * header and no Home · Reports · More pill until ShellScreen drew them.
+ */
+export default function SendResult() {
+  const router = useRouter();
+  return (
+    <ShellScreen title="Result" subtitle="Per member, per address — never claimed for the batch" onBack={() => router.back()}>
+      <SendResultBody />
+    </ShellScreen>
   );
 }

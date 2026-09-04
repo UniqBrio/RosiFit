@@ -15,6 +15,7 @@ import {
 import { peekStagedImport, clearStagedImport } from '../src/data/pending';
 import { csvCommit, type ImportDecision, type PreviewRow } from '../src/data/api';
 import { useMembers } from '../src/data/hooks';
+import { ShellScreen } from '../src/components/AppShell';
 
 /** Which status ink each outcome borrows. */
 const TONE: Record<MatchKind, keyof typeof STATUS> = {
@@ -44,7 +45,7 @@ function toMatchRows(rows: PreviewRow[]): MatchRow[] {
   }));
 }
 
-export default function MatchReview() {
+function MatchReviewBody() {
   const { theme } = useTheme();
   const { flash } = useToast();
   const router = useRouter();
@@ -370,5 +371,19 @@ export default function MatchReview() {
         }}
         emptyNote="No member matches that. Add her as a new member instead — course and branch come from the session being imported." />
     </Screen>
+  );
+}
+
+/**
+ * Under the shell, not instead of it. This screen is pushed on the root
+ * stack, so it is not one of the tab navigator's own and wore no academy
+ * header and no Home · Reports · More pill until ShellScreen drew them.
+ */
+export default function MatchReview() {
+  const router = useRouter();
+  return (
+    <ShellScreen title="Match review" subtitle="Every row the file could not resolve on its own" onBack={() => router.back()}>
+      <MatchReviewBody />
+    </ShellScreen>
   );
 }

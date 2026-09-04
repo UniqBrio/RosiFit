@@ -18,7 +18,7 @@ function Nav() {
       }}>
         <Stack.Screen name="index"  options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="upload"        options={{ title: 'Upload attendance' }} />
+        <Stack.Screen name="upload"        options={{ headerShown: false }} />
         <Stack.Screen name="register"      options={{ title: 'Register' }} />
         <Stack.Screen name="set-pin"       options={{ title: 'Your PIN' }} />
         <Stack.Screen name="forgot-pin"    options={{ title: 'Forgot your PIN' }} />
@@ -57,18 +57,18 @@ function Nav() {
         <Stack.Screen name="member/edit"   options={{ presentation: 'transparentModal', animation: 'fade', headerShown: false }} />
         <Stack.Screen name="holiday"       options={{ presentation: 'transparentModal', animation: 'fade', headerShown: false }} />
         <Stack.Screen name="branches"      options={{ headerShown: false }} />
-        <Stack.Screen name="staff/index"   options={{ title: 'Staff & access' }} />
+        <Stack.Screen name="staff/index"   options={{ headerShown: false }} />
         <Stack.Screen name="staff/add"     options={{ presentation: 'transparentModal', animation: 'fade', headerShown: false }} />
         {/* the PIN is shown once and only here; there is no way back to it */}
-        <Stack.Screen name="staff/pin"     options={{ title: 'PIN issued', headerBackVisible: false }} />
+        <Stack.Screen name="staff/pin"     options={{ headerShown: false }} />
         <Stack.Screen name="audit"         options={{ headerShown: false }} />
         <Stack.Screen name="change-mobile" options={{ presentation: 'transparentModal', animation: 'fade', headerShown: false }} />
         <Stack.Screen name="send/index"    options={{ headerShown: false }} />
-        <Stack.Screen name="send/result"   options={{ title: 'Result' }} />
-        <Stack.Screen name="match"         options={{ title: 'Match review' }} />
-        <Stack.Screen name="appearance"    options={{ title: 'Appearance' }} />
-        <Stack.Screen name="profile"       options={{ title: 'Your profile' }} />
-        <Stack.Screen name="help"          options={{ title: 'Help & support' }} />
+        <Stack.Screen name="send/result"   options={{ headerShown: false }} />
+        <Stack.Screen name="match"         options={{ headerShown: false }} />
+        <Stack.Screen name="appearance"    options={{ headerShown: false }} />
+        <Stack.Screen name="profile"       options={{ headerShown: false }} />
+        <Stack.Screen name="help"          options={{ headerShown: false }} />
       </Stack>
     </>
   );

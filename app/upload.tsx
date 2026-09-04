@@ -18,6 +18,7 @@ import { sha256Hex, pickCsvFile } from '../src/data/csv';
 import { csvPreview, type PreviewResult } from '../src/data/api';
 import { setStagedImport } from '../src/data/pending';
 import { scopeSessions } from '../src/data/uploadScope';
+import { ShellScreen } from '../src/components/AppShell';
 
 const STEPS = ['Course', 'File', 'Process', 'Summary'] as const;
 
@@ -38,7 +39,7 @@ const STEPS = ['Course', 'File', 'Process', 'Summary'] as const;
  * shortcuts, because when there IS one it is almost always the answer.
  */
 
-export default function Upload() {
+function UploadBody() {
   const { theme } = useTheme();
   const { flash } = useToast();
   const router = useRouter();
@@ -684,5 +685,19 @@ function Count({ n, label, color }: { n: number; label: string; color: string })
       <Text style={{ fontSize: 26, fontWeight: '800', color, fontVariant: ['tabular-nums'] }}>{n}</Text>
       <Text style={{ fontSize: 11.5, color: theme.muted, marginTop: 2 }}>{label}</Text>
     </View>
+  );
+}
+
+/**
+ * Under the shell, not instead of it. This screen is pushed on the root
+ * stack, so it is not one of the tab navigator's own and wore no academy
+ * header and no Home · Reports · More pill until ShellScreen drew them.
+ */
+export default function Upload() {
+  const router = useRouter();
+  return (
+    <ShellScreen title="Upload attendance" subtitle="The register from Google Meet, matched before anything is written" onBack={() => router.back()}>
+      <UploadBody />
+    </ShellScreen>
   );
 }

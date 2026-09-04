@@ -23,6 +23,22 @@ The first build had five scrolling chips and a branch dropdown in the header. **
 section, not a screen** — the tab covers the course list, a course's detail, the members list,
 the weekly review and the register, and its landing screen is the course list.
 
+> **CORRECTED 04-Sep-2026: the shell was on the tab group only.** `AcademyHeader` and the
+> `Home · Reports · More` pill are drawn by the `Tabs` navigator in `app/(tabs)/_layout.tsx`, so
+> only its own seven screens wore them. Everything **pushed on the root stack** — a course's
+> detail, a member, the register upload, match review, the audit log, branches, staff, the send
+> draft and its result, Appearance, your profile, Help — replaced the whole chrome with a bare
+> page carrying a native title bar. A section that loses the shell reads as having left the app,
+> not as having gone one level into it, and the sentence above claiming the Attendance tab
+> "covers a course's detail" was false on screen: opening one hid the tab row entirely.
+> **Now:** `ShellScreen` (`src/components/AppShell.tsx`) draws the same header and the same pill
+> for a screen the navigator does not own, and all 13 of those routes are wrapped in it with
+> `headerShown: false`. Eight had no back control of their own because they leaned on the native
+> header, so `ShellScreen` draws the per-screen title block for them too.
+> **Still bare, deliberately:** `index`, `register`, `set-pin` and `forgot-pin` — the pre-session
+> flow runs before there is an academy to name or a tab to be on. Dialogs are unaffected: they
+> are `transparentModal` routes on the root stack and render *over* the shell.
+
 **Route inventory — all 33, so the count is auditable** (35 `.tsx` files under `app/` less the
 two `_layout.tsx`; recounted 03-Sep-2026):
 

@@ -1,7 +1,7 @@
 import { View, Text, Pressable } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useMembers } from '../../src/data/hooks';
-import { ScreenHeader } from '../../src/components/AppShell';
+import { ScreenHeader, ShellScreen } from '../../src/components/AppShell';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Screen, H2, Muted, Label, Button, Skeleton, ErrorState } from '../../src/components/ui';
 import { Icon } from '../../src/components/Icon';
@@ -13,7 +13,7 @@ import {
   AVATAR_TINTS, initials,
 } from '../../src/data/mock';
 
-export default function MemberDetail() {
+function MemberDetailBody() {
   const { theme } = useTheme();
   const { flash } = useToast();
   const router = useRouter();
@@ -217,4 +217,13 @@ function Tile({ label, value, color, unit, sub }:
       </Text>
     </View>
   );
+}
+
+/**
+ * Under the shell, not instead of it. This screen is pushed on the root
+ * stack, so it is not one of the tab navigator's own and wore no academy
+ * header and no Home · Reports · More pill until ShellScreen drew them.
+ */
+export default function MemberDetail() {
+  return <ShellScreen><MemberDetailBody /></ShellScreen>;
 }

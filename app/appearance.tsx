@@ -7,6 +7,8 @@ import { Icon } from '../src/components/Icon';
 import { useTheme, CUSTOM_KEY, type ThemeMode } from '../src/theme/ThemeProvider';
 import { useToast } from '../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS, customAccent, customShades, hueFromHex } from '../src/theme/tokens';
+import { ShellScreen } from '../src/components/AppShell';
+import { useRouter } from 'expo-router';
 
 /**
  * Appearance — one colour, three numbered steps, and a preview of the app.
@@ -24,7 +26,7 @@ import { SPACE, RADIUS, TAP_MIN, STATUS, customAccent, customShades, hueFromHex 
  * "no custom pick can fail contrast", and this is what makes the promise
  * true rather than hopeful.
  */
-export default function Appearance() {
+function AppearanceBody() {
   const {
     theme, mode, setMode, accentKey, setAccentKey, accents, hue, setHue, isCustom, customRatio,
   } = useTheme();
@@ -358,5 +360,19 @@ export default function Appearance() {
         {`${mode === 'system' ? 'System' : mode === 'dark' ? 'Dark' : 'Light'} · ${accentName} · yours only`}
       </Muted>
     </Screen>
+  );
+}
+
+/**
+ * Under the shell, not instead of it. This screen is pushed on the root
+ * stack, so it is not one of the tab navigator's own and wore no academy
+ * header and no Home · Reports · More pill until ShellScreen drew them.
+ */
+export default function Appearance() {
+  const router = useRouter();
+  return (
+    <ShellScreen title="Appearance" subtitle="Theme and accent, applied everywhere at once" onBack={() => router.back()}>
+      <AppearanceBody />
+    </ShellScreen>
   );
 }

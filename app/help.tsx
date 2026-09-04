@@ -5,8 +5,10 @@ import { useTheme } from '../src/theme/ThemeProvider';
 import { useToast } from '../src/components/Toast';
 import { SPACE, RADIUS, STATUS } from '../src/theme/tokens';
 import { SUPPORT_PHONE } from '../src/data/mock';
+import { ShellScreen } from '../src/components/AppShell';
+import { useRouter } from 'expo-router';
 
-export default function Help() {
+function HelpBody() {
   const { theme } = useTheme();
   const { flash } = useToast();
 
@@ -62,5 +64,19 @@ export default function Help() {
         </Muted>
       </View>
     </Screen>
+  );
+}
+
+/**
+ * Under the shell, not instead of it. This screen is pushed on the root
+ * stack, so it is not one of the tab navigator's own and wore no academy
+ * header and no Home · Reports · More pill until ShellScreen drew them.
+ */
+export default function Help() {
+  const router = useRouter();
+  return (
+    <ShellScreen title="Help & support" subtitle="How the academy reaches somebody who can help" onBack={() => router.back()}>
+      <HelpBody />
+    </ShellScreen>
   );
 }

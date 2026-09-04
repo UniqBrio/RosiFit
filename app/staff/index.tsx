@@ -12,6 +12,7 @@ import { useStaff } from '../../src/data/hooks';
 import { isConfigured } from '../../src/lib/supabase';
 import { pinIssue, pinReset, staffReenable } from '../../src/data/api';
 import { setIssuedPin } from '../../src/data/pending';
+import { ShellScreen } from '../../src/components/AppShell';
 
 /**
  * Adding a person and giving them a login are TWO steps, on purpose. A record
@@ -23,7 +24,7 @@ const ACCESS_TONE: Record<string, StatusKey> = {
   notEnabled: 'absent', awaiting: 'awaiting', disabled: 'cancelled', active: 'present',
 };
 
-export default function StaffList() {
+function StaffListBody() {
   const { theme } = useTheme();
   const { flash } = useToast();
   const router = useRouter();
@@ -214,5 +215,19 @@ export default function StaffList() {
         </View>
       </Sheet>
     </Screen>
+  );
+}
+
+/**
+ * Under the shell, not instead of it. This screen is pushed on the root
+ * stack, so it is not one of the tab navigator's own and wore no academy
+ * header and no Home · Reports · More pill until ShellScreen drew them.
+ */
+export default function StaffList() {
+  const router = useRouter();
+  return (
+    <ShellScreen title="Staff & access" subtitle="Who can sign in, and what each of them may do" onBack={() => router.back()}>
+      <StaffListBody />
+    </ShellScreen>
   );
 }

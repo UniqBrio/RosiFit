@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { View, Text } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Screen, Muted, Label, Body, Button, Skeleton, ErrorState, EmptyState } from '../../src/components/ui';
-import { ScreenHeader } from '../../src/components/AppShell';
+import { ScreenHeader, ShellScreen } from '../../src/components/AppShell';
 import { ConfirmDialog } from '../../src/components/Sheet';
 import { Icon } from '../../src/components/Icon';
 import { useTheme } from '../../src/theme/ThemeProvider';
@@ -36,7 +36,7 @@ import { setSendResult } from '../../src/data/pending';
  * template picker: C-68 and guardrail 5 hold, and 0021 moved the authoring to
  * the course where it belongs.
  */
-export default function SendDraft() {
+function SendDraftBody() {
   const { theme } = useTheme();
   const { flash } = useToast();
   const router = useRouter();
@@ -248,4 +248,13 @@ export default function SendDraft() {
         onConfirm={() => { void send(); }} />
     </Screen>
   );
+}
+
+/**
+ * Under the shell, not instead of it. This screen is pushed on the root
+ * stack, so it is not one of the tab navigator's own and wore no academy
+ * header and no Home · Reports · More pill until ShellScreen drew them.
+ */
+export default function SendDraft() {
+  return <ShellScreen><SendDraftBody /></ShellScreen>;
 }

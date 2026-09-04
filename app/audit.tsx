@@ -1,7 +1,7 @@
 import { View, Text, Pressable, ScrollView } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Muted, Label, Skeleton, EmptyState, ErrorState } from '../src/components/ui';
-import { ScreenHeader } from '../src/components/AppShell';
+import { ScreenHeader, ShellScreen } from '../src/components/AppShell';
 import { Icon } from '../src/components/Icon';
 import { useTheme } from '../src/theme/ThemeProvider';
 import { useToast } from '../src/components/Toast';
@@ -80,7 +80,7 @@ const COLS = [
 
 const TABLE_WIDTH = COLS.reduce((w, c) => w + c.width, 0);
 
-export default function Audit() {
+function AuditBody() {
   const { theme } = useTheme();
   const { flash } = useToast();
   const router = useRouter();
@@ -251,4 +251,13 @@ export default function Audit() {
       </View>
     </ScrollView>
   );
+}
+
+/**
+ * Under the shell, not instead of it. This screen is pushed on the root
+ * stack, so it is not one of the tab navigator's own and wore no academy
+ * header and no Home · Reports · More pill until ShellScreen drew them.
+ */
+export default function Audit() {
+  return <ShellScreen><AuditBody /></ShellScreen>;
 }

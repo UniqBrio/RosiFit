@@ -14,6 +14,7 @@ import { weekStart, iso, label as periodLabel } from '../../src/data/period';
 import { deleteCourse, dataSource } from '../../src/data/repository';
 import { useIdentity } from '../../src/data/session';
 import { ALL_BRANCHES } from '../../src/state/academy';
+import { ShellScreen } from '../../src/components/AppShell';
 
 /**
  * The canvas' COURSE DETAIL.
@@ -53,7 +54,7 @@ type DayCell = {
   expected: number;
 };
 
-export default function CourseDetail() {
+function CourseDetailBody() {
   const { theme } = useTheme();
   const { flash } = useToast();
   const router = useRouter();
@@ -689,4 +690,13 @@ function MemberCard({ member, tint, weekLabel, noEmail }:
       </View>
     </View>
   );
+}
+
+/**
+ * Under the shell, not instead of it. This screen is pushed on the root
+ * stack, so it is not one of the tab navigator's own and wore no academy
+ * header and no Home · Reports · More pill until ShellScreen drew them.
+ */
+export default function CourseDetail() {
+  return <ShellScreen><CourseDetailBody /></ShellScreen>;
 }

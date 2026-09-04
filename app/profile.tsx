@@ -7,6 +7,7 @@ import { useToast } from '../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS } from '../src/theme/tokens';
 import { useIdentity, signOut, type Identity } from '../src/data/session';
 import { useAcademyDetails } from '../src/data/hooks';
+import { ShellScreen } from '../src/components/AppShell';
 
 type Row = { label: string; value: string; note: string; editable?: boolean; to?: '/change-mobile' };
 
@@ -37,7 +38,7 @@ function rowsFor(me: Identity, academy: string): Row[] {
   ];
 }
 
-export default function Profile() {
+function ProfileBody() {
   const { theme } = useTheme();
   const { flash } = useToast();
   const router = useRouter();
@@ -152,5 +153,19 @@ export default function Profile() {
         }}>Sign Out</Text>
       </Pressable>
     </Screen>
+  );
+}
+
+/**
+ * Under the shell, not instead of it. This screen is pushed on the root
+ * stack, so it is not one of the tab navigator's own and wore no academy
+ * header and no Home · Reports · More pill until ShellScreen drew them.
+ */
+export default function Profile() {
+  const router = useRouter();
+  return (
+    <ShellScreen title="Your profile" subtitle="Your name, your mobile and your PIN" onBack={() => router.back()}>
+      <ProfileBody />
+    </ShellScreen>
   );
 }

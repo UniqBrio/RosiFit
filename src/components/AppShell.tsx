@@ -142,7 +142,13 @@ export function AcademyHeader({ navigation }: { navigation?: TabNavigation }) {
                  five-chip row this replaces had exactly the same defect; it
                  was simply harder to see with five chips than with two tabs.
                  NavPill has always done it this way and has always worked. */
-              onPress={() => navigation?.navigate(t.route)}
+              onPress={() => (navigation
+                ? navigation.navigate(t.route)
+                // No navigator: this header is being drawn by ShellScreen on
+                // a screen the TAB group does not own. REPLACE, not push --
+                // tapping Attendance from a course detail means "go to the
+                // workspace", not "put the workspace on top of the course".
+                : router.replace(t.route === 'index' ? '/(tabs)' : `/(tabs)/${t.route}`))}
               testID={`nav-tab-${t.label.toLowerCase()}`}
               accessibilityRole="tab" accessibilityState={{ selected: on }}
               accessibilityLabel={t.label}
@@ -221,6 +227,106 @@ export function NavPill({ state, navigation }: BottomTabBarProps) {
           );
         })}
       </View>
+    </View>
+  );
+}
+
+/**
+ * The SAME pill, for a screen the tab navigator does not own.
+ *
+ * NavPill above takes the navigator's own `state` and `navigate`, which a
+ * pushed screen has no access to. This one goes through the router, and it
+ * REPLACES rather than pushes: the three destinations are places, not steps,
+ * and stacking Reports on top of a course detail leaves a back button that
+ * returns to a screen the person had already finished with.
+ */
+function ShellNavPill() {
+  const { theme } = useTheme();
+  const router = useRouter();
+  const path = usePathname();
+  const insets = useSafeAreaInsets();
+
+  const active = (n: typeof NAV[number]) =>
+    path === n.match || (n.also?.includes(path) ?? false);
+
+  return (
+    <View pointerEvents="box-none" style={{
+      position: 'absolute', left: 0, right: 0, bottom: insets.bottom + 18,
+      alignItems: 'center',
+    }}>
+      <View accessibilityRole="tablist" style={{
+        flexDirection: 'row', alignItems: 'center', gap: 4, padding: 7,
+        borderRadius: RADIUS.pill, backgroundColor: theme.shell,
+        borderWidth: 1, borderColor: theme.lineStrong,
+      }}>
+        {NAV.map(n => {
+          const on = active(n);
+          return (
+            <Pressable key={n.label} testID={`shell-nav-${n.label.toLowerCase()}`}
+              onPress={() => router.replace(n.href)}
+              accessibilityRole="tab" accessibilityState={{ selected: on }}
+              accessibilityLabel={n.label}
+              style={({ pressed }) => ({
+                width: 78, height: 54, borderRadius: RADIUS.pill,
+                alignItems: 'center', justifyContent: 'center', gap: 2,
+                backgroundColor: on ? theme.control : 'transparent',
+                opacity: pressed ? 0.7 : 1,
+              })}>
+              <Icon name={n.icon} size={21} color={on ? theme.accentInk : theme.muted} />
+              <Text style={{ fontSize: 9.5, fontWeight: '800',
+                color: on ? theme.accentInk : theme.muted }}>{n.label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+/**
+ * The shell, for a screen that is NOT in the tab group.
+ *
+ * WHY THIS EXISTS
+ * The academy header and the floating pill are drawn by the Tabs navigator in
+ * app/(tabs)/_layout.tsx, so only its own screens wore them. Everything
+ * pushed on the root stack -- a course, a member, the register upload, the
+ * audit log, Appearance -- replaced the whole shell with a bare page: no
+ * academy name, no Overview/Attendance row, no Home · Reports · More. The
+ * canvas has one chrome, and a screen that drops it reads as having left the
+ * app rather than as having gone one level into it.
+ *
+ * The screens that stay bare are the ones with nothing to draw it FROM: the
+ * pre-session flow (sign-in, register, PIN, forgotten PIN) runs before there
+ * is an academy or a tab to be on.
+ *
+ * Dialogs are unaffected. They are transparentModal routes on the root stack,
+ * so they render OVER whatever is beneath -- including this.
+ */
+export function ShellScreen({ children, title, subtitle, onBack }: {
+  children: React.ReactNode;
+  /** Draws the per-screen title block for a screen that has none of its own.
+   *  Screens that already render a ScreenHeader (audit, branches, send) pass
+   *  nothing and keep theirs -- two title blocks is the defect this replaces,
+   *  not a feature of it. */
+  title?: string;
+  subtitle?: string;
+  /** Omitted deliberately on a screen with no way back -- staff/pin shows a
+   *  PIN once and there is nothing to return to. */
+  onBack?: () => void;
+}) {
+  const { theme } = useTheme();
+  return (
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      <AcademyHeader />
+      <View style={{ flex: 1 }}>
+        {title ? (
+          <View style={{ paddingHorizontal: SPACE.lg, paddingTop: SPACE.lg }}>
+            <ScreenHeader title={title} subtitle={subtitle} onBack={onBack} />
+          </View>
+        ) : null}
+        {children}
+      </View>
+      <ShellNavPill />
     </View>
   );
 }
