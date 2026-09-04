@@ -17,4 +17,4 @@ app/send/result.tsx|2
 app/staff/add.tsx|2
 app/staff/index.tsx|5
 app/staff/pin.tsx|4
-app/upload.tsx|5
+app/upload.tsx|3

@@ -104,24 +104,62 @@ function findHeader(lines: string[]): { index: number; cells: string[] } | null 
   return null;
 }
 
-/** The preamble as key -> value. Meet writes "Meeting code,abc-defg-hij". */
+/**
+ * The label that opens a preamble line, and what is left after it.
+ *
+ * WHAT WAS WRONG HERE
+ * This read `cells[0]` as the label and `cells[1..]` as the value, which only
+ * works for the two-column shape `Meeting code,abc-defg-hij`. A real export
+ * writes ONE cell -- "Meeting code: gzj-yhru-ehp" -- often behind a `*` marker
+ * in the first column:
+ *
+ *     *,Meet
+ *     *,Meeting code: gzj-yhru-ehp
+ *     *,Created on 2026-08-31 20:12:56
+ *     *,Ended on 2026-08-31 20:15:25
+ *     Full Name,First Seen,Time in Call
+ *
+ * Against that file every field came back null. The rows still parsed, so
+ * nothing looked broken -- the file's ONLY evidence of which meeting it came
+ * from and when was silently discarded, and the session it belongs to could
+ * not be derived at all.
+ *
+ * Matched by PREFIX rather than by splitting on ':', because the value itself
+ * contains colons: splitting "Created on 2026-08-31 20:12:56" at the first
+ * one yields the time 12:56 and a date ending in 20.
+ */
+const LABELS = {
+  code: /^\s*(?:meeting|conference)\s*code\b\s*[:\-]?\s*/i,
+  created: /^\s*(?:created|started)\s*(?:on|at)?\b\s*[:\-]?\s*/i,
+  ended: /^\s*(?:ended|finished)\s*(?:on|at)?\b\s*[:\-]?\s*/i,
+} as const;
+
+/** The preamble as key -> value, in whichever column and shape Meet wrote it. */
 function readMeta(lines: string[]): MeetMeta {
   const pick = (re: RegExp): string | null => {
     for (const line of lines) {
       const cells = splitLine(line);
-      if (cells.length >= 2 && re.test(cells[0].toLowerCase())) {
-        // Later cells are joined back: a timestamp Meet did not quote can
-        // arrive split across commas, and half a date is worse than none.
-        const value = cells.slice(1).filter(Boolean).join(', ').trim();
-        if (value) return value;
+      for (let i = 0; i < cells.length; i++) {
+        const cell = cells[i];
+        const m = cell.match(re);
+        if (!m) continue;
+        const rest = cell.slice(m[0].length).trim();
+        // "Meeting code: abc" -- the value is in the same cell.
+        if (rest) return rest;
+        // "Meeting code","abc" -- the label filled the cell on its own, so
+        // the value is what follows. Later cells are joined back: a timestamp
+        // Meet did not quote arrives split across commas, and half a date is
+        // worse than none.
+        const after = cells.slice(i + 1).filter(Boolean).join(', ').trim();
+        if (after) return after;
       }
     }
     return null;
   };
   return {
-    code: pick(/meeting code|conference code|^code$/),
-    created: pick(/created|start/),
-    ended: pick(/ended|finish|end$/),
+    code: pick(LABELS.code),
+    created: pick(LABELS.created),
+    ended: pick(LABELS.ended),
   };
 }
 
@@ -193,4 +231,58 @@ export function meetMatchesSession(
   const fileDate = meetCreatedDate(created);
   if (!fileDate || !sessionDateIso) return null;
   return fileDate === sessionDateIso.slice(0, 10);
+}
+
+/**
+ * The clock time a Meet file says the call started, as HH:MM:SS.
+ *
+ * The session a file belongs to is identified by its MEETING CODE and its
+ * DATE AND TIME, so the time is carried alongside the date rather than thrown
+ * away: two sessions of the same course can run on one day, and the date
+ * alone cannot tell them apart.
+ *
+ * Null when the line is missing or carries no clock -- which the screen shows
+ * as "no time in the file", never as midnight. A time nobody wrote is not
+ * 00:00:00, and recording it as such would put a morning class at midnight.
+ */
+export function meetCreatedTime(created: string | null): string | null {
+  if (!created) return null;
+  const m = created.match(/\b(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm)?/i);
+  if (!m) return null;
+  let hour = Number(m[1]);
+  const suffix = m[4]?.toLowerCase();
+  if (suffix === 'pm' && hour < 12) hour += 12;
+  if (suffix === 'am' && hour === 12) hour = 0;
+  if (hour > 23 || Number(m[2]) > 59) return null;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(hour)}:${m[2]}:${m[3] ?? '00'}`;
+}
+
+/**
+ * ONE PERSON, ONE ROW.
+ *
+ * Meet writes a participant once per JOIN, so anybody whose connection
+ * dropped appears twice -- and the attendance table's own invariant is one
+ * record per member per session (attendance_unique_live). Left alone, the
+ * second row reaches the import and the whole transaction dies on a unique
+ * violation: a raw Postgres error, for a file that is perfectly normal.
+ *
+ * The first appearance is kept because it is when she arrived. The duplicates
+ * are COUNTED AND NAMED rather than dropped quietly -- a file that says 14
+ * rows and imports 12 has to say why, or the two look lost.
+ *
+ * Matched on a casefolded, whitespace-collapsed name: "Divya  R" and "divya r"
+ * are one person rejoining, and importing them as two would put a member in
+ * her own session twice.
+ */
+export function dedupeRows(rows: ParsedRow[]): { rows: ParsedRow[]; duplicates: string[] } {
+  const seen = new Map<string, ParsedRow>();
+  const duplicates: string[] = [];
+  for (const r of rows) {
+    const key = r.full_name.trim().toLowerCase().replace(/\s+/g, ' ');
+    if (!key) continue;
+    if (seen.has(key)) { duplicates.push(r.full_name); continue; }
+    seen.set(key, r);
+  }
+  return { rows: [...seen.values()], duplicates };
 }

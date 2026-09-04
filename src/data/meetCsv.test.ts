@@ -12,7 +12,10 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseMeetCsv, parseMinutes, CSV_REQUIRED_COLUMN } from './meetCsv';
+import {
+  parseMeetCsv, parseMinutes, CSV_REQUIRED_COLUMN,
+  meetCreatedDate, meetCreatedTime, dedupeRows,
+} from './meetCsv';
 
 /** A real-shaped export: preamble, blank line, then the table. */
 const WITH_PREAMBLE = [
@@ -135,7 +138,7 @@ test('an unreadable duration is 0, so the 15-minute rule drops it', () => {
 });
 
 // -------------------------------------------------- the file's own date
-import { meetCreatedDate, meetMatchesSession } from './meetCsv';
+import { meetMatchesSession } from './meetCsv';
 
 test('an ISO timestamp gives its date', () => {
   assert.equal(meetCreatedDate('2026-08-22 17:55:00'), '2026-08-22');
@@ -172,4 +175,121 @@ test('an unknown date is null, not false', () => {
 
 test('a session date carrying a time still compares by day', () => {
   assert.equal(meetMatchesSession('2026-08-22 17:55:00', '2026-08-22T18:00:00Z'), true);
+});
+
+// ===================================================================
+// The real export shape: a '*' marker column, and the label and value
+// together in ONE cell. Against this file every meta field used to come back
+// null -- the rows parsed, so nothing looked broken, while the file's only
+// evidence of WHICH meeting and WHEN was silently discarded.
+// ===================================================================
+const REAL_EXPORT = [
+  '*,Meet',
+  '*,Meeting code: gzj-yhru-ehp',
+  '*,Created on 2026-08-31 20:12:56',
+  '*,Ended on 2026-08-31 20:15:25',
+  'Full Name,First Seen,Time in Call',
+  'RosiFit,2026-08-31 20:12:56,00:00:32',
+  'UniqBotz Info,2026-08-31 20:12:58,00:02:28',
+].join('\n');
+
+test('the meeting code is read from a starred, single-cell preamble', () => {
+  assert.equal(parseMeetCsv(REAL_EXPORT).meta.code, 'gzj-yhru-ehp');
+});
+
+test('created and ended are read from the same shape', () => {
+  const { meta } = parseMeetCsv(REAL_EXPORT);
+  assert.equal(meta.created, '2026-08-31 20:12:56');
+  assert.equal(meta.ended, '2026-08-31 20:15:25');
+});
+
+test('the value keeps its own colons', () => {
+  // Splitting "Created on 2026-08-31 20:12:56" at the first ':' yields the
+  // time 12:56 and a date ending in 20. The label is matched by PREFIX.
+  assert.equal(meetCreatedDate(parseMeetCsv(REAL_EXPORT).meta.created), '2026-08-31');
+});
+
+test('the header below four preamble lines is still found', () => {
+  const p = parseMeetCsv(REAL_EXPORT);
+  assert.equal(p.skipped, 4);
+  assert.equal(p.rows.length, 2);
+  assert.equal(p.rows[0].full_name, 'RosiFit');
+});
+
+test('the two-column preamble shape still works', () => {
+  // The older export wrote "Meeting code","abc-defg-hij" across two cells.
+  const p = parseMeetCsv([
+    'Meeting code,abc-defg-hij',
+    'Created on,2026-08-31 20:12:56',
+    'Full Name,Time in Call',
+    'Divya Ramesh,00:45:00',
+  ].join('\n'));
+  assert.equal(p.meta.code, 'abc-defg-hij');
+  assert.equal(meetCreatedDate(p.meta.created), '2026-08-31');
+});
+
+// ------------------------------------------------------- meetCreatedTime
+test('the clock time is read alongside the date', () => {
+  assert.equal(meetCreatedTime('2026-08-31 20:12:56'), '20:12:56');
+});
+
+test('a 12-hour time is converted, both halves of the day', () => {
+  assert.equal(meetCreatedTime('Aug 31, 2026, 5:55 PM'), '17:55:00');
+  assert.equal(meetCreatedTime('Aug 31, 2026, 5:55 AM'), '05:55:00');
+  assert.equal(meetCreatedTime('Aug 31, 2026, 12:05 AM'), '00:05:00');
+  assert.equal(meetCreatedTime('Aug 31, 2026, 12:05 PM'), '12:05:00');
+});
+
+test('no clock in the line is null, NEVER midnight', () => {
+  // A time nobody wrote is not 00:00:00. Recording it as such would put a
+  // morning class at midnight and make two sessions on one day collide.
+  assert.equal(meetCreatedTime('Created on 2026-08-31'), null);
+  assert.equal(meetCreatedTime(null), null);
+  assert.equal(meetCreatedTime(''), null);
+});
+
+test('an impossible clock is refused rather than wrapped', () => {
+  assert.equal(meetCreatedTime('2026-08-31 99:99'), null);
+});
+
+// ------------------------------------------------------------ dedupeRows
+const row = (full_name: string, minutes_in_call = 30) => ({ full_name, minutes_in_call });
+
+test('a participant who rejoined is ONE row', () => {
+  // Meet writes a line per JOIN. attendance_unique_live is one record per
+  // member per session, so the second line would kill the whole import on a
+  // unique violation -- for a perfectly normal file.
+  const { rows, duplicates } = dedupeRows([row('Divya Ramesh'), row('Divya Ramesh')]);
+  assert.equal(rows.length, 1);
+  assert.deepEqual(duplicates, ['Divya Ramesh']);
+});
+
+test('the FIRST appearance is the one kept — it is when she arrived', () => {
+  const { rows } = dedupeRows([
+    { full_name: 'Divya Ramesh', first_seen: '20:00', minutes_in_call: 5 },
+    { full_name: 'Divya Ramesh', first_seen: '20:40', minutes_in_call: 50 },
+  ]);
+  assert.equal(rows[0].first_seen, '20:00');
+});
+
+test('casing and doubled spaces are the same person', () => {
+  const { rows, duplicates } = dedupeRows([row('Divya  R'), row('divya r'), row('DIVYA R')]);
+  assert.equal(rows.length, 1);
+  assert.equal(duplicates.length, 2);
+});
+
+test('two different people both survive', () => {
+  const { rows, duplicates } = dedupeRows([row('Divya Ramesh'), row('Aarthi Venkat')]);
+  assert.equal(rows.length, 2);
+  assert.deepEqual(duplicates, []);
+});
+
+test('a blank name is dropped and is not counted as a duplicate', () => {
+  const { rows, duplicates } = dedupeRows([row(''), row('   '), row('Divya Ramesh')]);
+  assert.equal(rows.length, 1);
+  assert.deepEqual(duplicates, []);
+});
+
+test('nothing in, nothing out', () => {
+  assert.deepEqual(dedupeRows([]), { rows: [], duplicates: [] });
 });

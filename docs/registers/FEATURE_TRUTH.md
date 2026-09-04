@@ -122,11 +122,48 @@ The month calendar, closures, and the attendance register upload.
 | Declare a holiday over a date range | ◻ | A **closure**, not a cancellation |
 | Upload an attendance register (CSV) | ◻ | Preview then commit; the commit is server-side (`0014`, `csv-import`) |
 | The upload is scoped to where it was opened from | ✅ | A day opens straight into that session; a course narrows to its own; Attendance narrows nothing (`src/data/uploadScope.ts`) |
+| Upload works with nothing scheduled | ✅ | The first choice is the **course**; the session comes from the file's own date (0024) |
+| One person, one session, one day | ✅ | `attendance_unique_live`, plus in-file duplicates collapsed and **named** before import |
 | Five outcomes, blocking distinguished from not | ✅ | `OUTCOME_META` — a letter, a word and an icon each, and the count that blocks is stated |
 
 **Rules and validations** — a holiday shows its impact **before** anything is applied, and states
 out loud what it will not do. Attendance is never written by the client: `authenticated` holds no
 write grant on the engine tables, so a register can only arrive through the import function.
+
+**A session comes from the file, not from a timetable.** The upload used to require a session to
+upload *against*: step one listed `sessions` rows already scheduled and waiting, and the import
+carried the offering and date chosen from that list. A course whose classes are not on a fixed
+timetable has no such rows — so the screen said *"Every session has a file"* and there was no way
+in at all, for exactly the academy that needs it most.
+
+The first choice is now the **course**, which always exists. The **date comes from the file**:
+Google Meet writes its meeting code and the created/ended timestamps above the table, and those
+identify the session. Days already awaiting a file are still offered first as shortcuts, because
+when there is one it is almost always the answer — and taking the shortcut is the only case where
+the file's date can be *checked* against an expected day. A file with no `Created on` line cannot
+be processed and says so; landing attendance on a date nobody chose is worse than refusing.
+
+`meeting_code` and `meeting_started_at` are recorded on the import (0024), so a register is
+traceable to the meeting it came from.
+
+**Who was due at a class nobody scheduled.** A session the import creates gets
+`expectation_mode = 'all_enrolled'` when the offering's weekdays do not cover that date, and
+`'schedule'` when they do. Without that split the default asks the schedule, and for an off-schedule
+date the answer is *nobody*: `expected_count` 0, not one absence recorded, and the follow-up engine
+blind to a class that really happened. Attendance would have been "recorded" and counted for
+nothing.
+
+**Time in call decides nothing.** There was a 15-minute floor: anybody in the call for less was
+dropped before matching, so a member who reconnected or joined from a phone was marked absent from
+a class she attended. Being named in the file is the evidence; the duration is kept alongside it
+for the record and read by nobody.
+
+**One person, one session, one day.** `attendance_unique_live (session_id, member_id)` and
+`sessions_unique_live (offering_id, session_date)` make both halves database invariants. Meet
+writes a line per *join*, so a dropped connection appears twice — collapsed before the preview, on
+the normalised name, and the repeats are **named on screen**, never quietly discarded. A second
+file for a day already imported is not refused, because a corrected export is a real thing, but it
+is announced: it **corrects** that register rather than adding to it.
 
 **The upload screen is scoped by its entry point.** It had one door wearing three hats: opened
 from an awaiting **day** on a course, from the **course**, or from the academy-wide **Attendance**

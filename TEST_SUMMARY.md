@@ -1,3 +1,49 @@
+FAIL-FIRST: src/data/meetCsv.test.ts (the real export shape) and supabase/tests/18_import_session.sql
+- both were observed failing against the tree BEFORE the fix, and the first failure was found by
+running the parser against a REAL Google Meet export rather than against a fixture I wrote.
+
+The file:
+
+    *,Meet
+    *,Meeting code: gzj-yhru-ehp
+    *,Created on 2026-08-31 20:12:56
+    *,Ended on 2026-08-31 20:15:25
+    Full Name,First Seen,Time in Call
+    RosiFit,2026-08-31 20:12:56,00:00:32
+    UniqBotz Info,2026-08-31 20:12:58,00:02:28
+
+Parsed against the old reader:
+
+    rows      : [{"full_name":"RosiFit",...},{"full_name":"UniqBotz Info",...}]
+    skipped   : 4
+    meta.code : null
+    created   : null
+    ended     : null
+    date      : null
+
+THE ROWS PARSED, so nothing looked broken. readMeta took cells[0] as the label and cells[1..] as
+the value, which only fits `Meeting code,abc-defg-hij`. A real export writes ONE cell -- "Meeting
+code: gzj-yhru-ehp" -- behind a `*` marker, so the file's only evidence of WHICH meeting it came
+from and WHEN was silently discarded. The session could not be derived from the file at all, which
+is the whole mechanism this change rests on.
+
+The value is matched by PREFIX, not by splitting on ':', and there is a case pinning why:
+"Created on 2026-08-31 20:12:56" split at its first colon yields the time 12:56 and a date ending
+in 20.
+
+18_import_session.sql failed against 0023 on the assertion that matters most:
+
+    FAIL  a session the schedule does not cover expects EVERYONE ENROLLED, not nobody
+          got 'schedule' want 'all_enrolled'
+    FAIL  both enrolled members were due -- this is the number that used to be 0
+          got 0 want 2
+
+That is the defect stated exactly: attendance "recorded" for a class that counted for nobody.
+
+ALSO OBSERVED, my own bug rather than the product's: three assertions first errored with "column
+reference status is ambiguous" -- attendance_records and sessions both have one and I joined them
+without qualifying. Fixed in the spec, not in the product.
+
 NOT OBSERVED FAILING: rosterScope (src/data/course.test.ts, 8 new cases) - the helper is new and
 every case passed on its first run. It was not written for a defect already in the tree; it was
 written because the change that needed it INTRODUCED the exposure. The chevron on a course card
@@ -105,6 +151,46 @@ The defect was reproduced first, in one statement on the harness, before any cod
     select public.audit_log('communication.batch_sent','email_batch','b1'); commit;
     -->  actor_app_user_id | actor_kind |          action
          ------------------+------------+--------------------------
+
+## Gate run - 2026-09-04 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
 
 ## Gate run - 2026-09-04 - VERDICT: FAIL
 
