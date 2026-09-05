@@ -37,63 +37,125 @@ exit 1
 
 _Merge blocked. Every FAIL above must resolve. No partial merges._
 
-THE FOLLOW-UP THRESHOLD IS THE ACADEMY'S NOW, 1..7. Same verdict, same four accepted-
+THE APP SAID SENT FOR AN EMAIL IT NEVER SENT (RC-015). Same verdict, same four accepted-
 unverifiable steps.
 
-Asked to seed a member who satisfies the missed-session rule so a live SES send could be
-tested. Seeding her was easy; getting her PAST the rule was not, and the reason is a defect:
+Reported by the owner after the first live send: the Result screen showed 1 sent / 0 failed /
+0 excluded, and no email arrived. email_messages agreed and gave it away:
 
-  save_course hard-coded the count at FOUR (0022, in the values list, twice). Postnatal runs
-  four days a week and its schedule only starts 04-Sep, so this week holds ONE session --
-  four was unreachable without inventing sessions the course never ran. And a course running
-  once or twice a week could never reach four in a week AT ALL: its trigger reads as switched
-  on in the form and is unreachable by arithmetic. Prenatal here runs three days; its weekly
-  rule could never have fired.
+  status 'sent' · provider 'dev' · provider_message_id 'dev-869384b3-...'
 
-course_follow_up_config has carried weekly_threshold and consecutive_threshold since 0009. The
-columns were always there. Only the form and save_course insisted on four.
+Two faults, and the second hid the first.
 
-  0030          p_threshold smallint default 4, range 1..7, checked in SQL. The old 9-arg
-                signature is DROPPED, not left beside it -- two save_course functions differing
-                only in a defaulted trailing argument is an ambiguous call for PostgREST.
-  followup.ts   MIN/MAX_THRESHOLD and clampThreshold, in the PURE layer: the form imports
-                react-native, which cannot be transformed under node, so anything a spec needs
-                to reach lives there. It is also the layer that already owns what a rule means.
-  course/edit   a - N + stepper. Both radio labels now say the real number, and when the
-                threshold exceeds the days the course runs it says so in place: "This course
-                runs 2 days a week, so 4 can never be reached -- nobody will ever be followed
-                up." That sentence is the defect, made visible where it is caused.
+  the names   the account had AWS_SES_REGION and SES_FROM; the function read AWS_REGION and
+              SES_FROM_ADDRESS. EMAIL_PROVIDER was absent, and it was checked FIRST -- so the
+              dev provider was chosen before the AWS values were ever looked at.
+  the shape   the dev provider returns {ok:true, providerMessageId:'dev-...'}. send-followups
+              cannot tell that from a delivery, so it wrote 'sent', bumped last_emailed_at and
+              reported success.
 
-FAIL-FIRST: src/data/threshold.test.ts -- observed failing against a tree where clampThreshold
-trusts the stored value as-is (`return n`), which is exactly what the form would do if it
-believed whatever the database handed it. 0009 put no CHECK on these columns, so a row written
-before 0030 or by hand can say anything.
+SETUP.md predicted this exactly -- "a send that looks successful and sent nothing is worse than
+one that fails" -- and it shipped anyway, because nothing enforced the sentence.
 
-  with the defect: 7 tests, 2 pass, 5 FAIL
-    not ok 2  the stepper cannot go below one
-    not ok 3  the stepper cannot go above seven
-    not ok 5  a stored value outside the range is pulled back in, not trusted
-    not ok 6  a fraction rounds rather than sneaking through
-    not ok 7  a nonsense value falls back to four, the number this always used to be
-  reverted:        7 tests, 7 pass, 0 fail
+  resolveEmailProvider()  returns the provider AND what is missing
+  send-followups          refuses with a 503 naming the absent secrets, BEFORE the batch row is
+                          written, so a refused send leaves nothing behind to explain
+  the switch              is now the four AWS values, not EMAIL_PROVIDER. Setting
+                          EMAIL_PROVIDER=dev explicitly still logs instead of sending.
+  both spellings          AWS_REGION / AWS_SES_REGION and SES_FROM_ADDRESS / SES_FROM accepted,
+                          and SES_CONFIG_SET passed to SES when present
 
-Seven unit specs (266 -> 273) pin the bounds, the rounding and the NaN fallback.
-supabase/tests/23_course_threshold.sql adds 14 assertions -- unrun, no psql (ADR 005).
+Deployed: send-followups v6. With the owner's existing secrets the four required values now all
+resolve, so the next send either delivers or fails loudly with SES's own words in
+failure_reason.
 
-REHEARSED against production by the ADR 007 rolled-back method, 10 of 10:
+NOT TESTED, and said plainly: the send path has no spec at all. Exercising it means mocking
+Deno's env inside an Edge Function or sending real mail. The cheap rung named in RC-015 is a
+pure assertion that resolveEmailProvider() reports every missing name -- it would have caught
+this -- and it is not written.
 
-  01 exactly one save_course (no overload)      06 eight REFUSED
-  02 an omitted argument still means 4          07 neither refused call wrote a course
-  03 threshold 1 accepted, returned             08 Postnatal edits to 1
-  04 the disabled trigger keeps the count       09 Shazia IS FLAGGED -- "Missed 1 of 1
-  05 zero REFUSED                                  sessions this week", email true
-                                                10 nobody else pulled in (1 on the list)
+The one provider='dev' row from 05-Sep is LEFT STANDING. It is the evidence, and deleting the
+record of a message the academy believes it sent would be the same lie one layer down.
 
-That tenth one mattered: Anita is also in Postnatal and has a REAL third-party address on
-file. She has no absences, so she stays off the list and cannot receive a test email.
+---
 
-Rolled back clean: 0 probe courses, Postnatal still at 4. Live: one save_course, it takes
-p_threshold, ledger 26.
+## Gate run - 2026-09-05 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-05 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

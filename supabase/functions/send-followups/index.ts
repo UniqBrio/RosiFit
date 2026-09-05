@@ -6,7 +6,7 @@ import { handlePreflight } from '../_shared/cors.ts';
 import { json, errorJson, HttpError } from '../_shared/response.ts';
 import { adminClient } from '../_shared/db.ts';
 import { requireCaller } from '../_shared/authz.ts';
-import { getEmailProvider } from './email.ts';
+import { resolveEmailProvider } from './email.ts';
 
 function renderTemplate(tpl: string, vars: Record<string, string>): string {
   return tpl.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] ?? `{{${k}}}`);
@@ -31,6 +31,23 @@ Deno.serve(async (req) => {
     if (!templateId) throw new HttpError(400, 'Choose a template.');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(periodFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(periodTo)) {
       throw new HttpError(400, 'Choose a valid period.');
+    }
+
+    // REFUSE RATHER THAN PRETEND, and refuse FIRST -- before the batch row,
+    // before a single email_messages row. With the AWS secrets incomplete
+    // this used to fall through to the dev provider, which logs the message
+    // and returns success, so every recipient was recorded 'sent' and nothing
+    // was delivered. That happened on this project: a live send on
+    // 05-Sep-2026 wrote provider='dev' and the screen said SENT.
+    // A send that looks successful and sent nothing is worse than one that
+    // fails. This is the same 503-naming-the-fix shape PIN_PEPPER already
+    // uses (CP-006), and doing it here means a refused send leaves nothing
+    // behind to explain.
+    const { provider, missing } = resolveEmailProvider();
+    if (missing.length > 0) {
+      throw new HttpError(503,
+        `Email is not configured, so nothing was sent. Missing: ${missing.join(', ')}. `
+        + 'Set them as Edge Function secrets, then try again — no message was recorded.');
     }
 
     const { data: template, error: tplErr } = await admin.from('email_templates')
@@ -102,7 +119,6 @@ Deno.serve(async (req) => {
       throw new HttpError(500, 'Could not start the send.');
     }
 
-    const provider = getEmailProvider();
     const results: Array<{ member_id: string; name: string; status: string; reason?: string }> = [];
     let sent = 0, failed = 0, excluded = 0;
 

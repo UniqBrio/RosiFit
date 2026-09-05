@@ -83,12 +83,17 @@ export class SesEmailProvider implements EmailProvider {
   constructor(
     private region: string, private accessKeyId: string,
     private secretAccessKey: string, private fromAddress: string,
+    /** SES configuration set, if the account uses one. Optional: it turns on
+     *  SES's own open/bounce/complaint tracking and changes nothing here when
+     *  absent. */
+    private configSet?: string,
   ) {}
 
   async send(msg: EmailMessage): Promise<EmailResult> {
     try {
       const res = await sesSendEmail(this.region, this.accessKeyId, this.secretAccessKey, {
         FromEmailAddress: this.fromAddress,
+        ...(this.configSet ? { ConfigurationSetName: this.configSet } : {}),
         Destination: { ToAddresses: [msg.to] },
         Content: {
           Simple: {
@@ -110,17 +115,63 @@ export class SesEmailProvider implements EmailProvider {
 /** EMAIL_PROVIDER=ses with complete AWS_* secrets -> SES. Anything else,
  *  including local dev where those secrets are never set, -> the dev
  *  provider. Never throws: a missing secret degrades to logging, not 500s. */
-export function getEmailProvider(): EmailProvider {
-  const which = Deno.env.get('EMAIL_PROVIDER') ?? 'dev';
-  if (which === 'ses') {
-    const region = Deno.env.get('AWS_REGION');
-    const accessKeyId = Deno.env.get('AWS_ACCESS_KEY_ID');
-    const secretAccessKey = Deno.env.get('AWS_SECRET_ACCESS_KEY');
-    const from = Deno.env.get('SES_FROM_ADDRESS');
-    if (region && accessKeyId && secretAccessKey && from) {
-      return new SesEmailProvider(region, accessKeyId, secretAccessKey, from);
+/**
+ * Which provider, and WHAT IS MISSING if it is not the real one.
+ *
+ * The old version answered only the first half and fell back to the dev
+ * provider with a console.warn nobody reads. A send then recorded
+ * `status='sent'` for every recipient and delivered nothing — the exact
+ * "looks successful, sent nothing" failure SETUP.md warns about, and it
+ * happened: a live send on 05-Sep-2026 wrote provider='dev'.
+ *
+ * So `missing` comes back with it, and the caller refuses rather than
+ * reporting a delivery it did not make.
+ *
+ * TWO NAMES PER SECRET, on purpose. `AWS_REGION` and `SES_FROM_ADDRESS` are
+ * what this file has always read; `AWS_SES_REGION` and `SES_FROM` are what
+ * somebody setting these up actually reaches for, and both were set on this
+ * project before anyone noticed the mismatch. Accepting both costs one
+ * `??` and removes a class of silent misconfiguration.
+ */
+export function resolveEmailProvider(): { provider: EmailProvider; missing: string[] } {
+  const env = (...names: string[]): string | undefined => {
+    for (const n of names) {
+      const v = Deno.env.get(n);
+      if (v && v.trim()) return v.trim();
     }
-    console.warn('[send-followups] EMAIL_PROVIDER=ses but AWS secrets are incomplete; using the dev provider.');
+    return undefined;
+  };
+
+  // Explicitly asking for the dev provider is a real answer, and the only one
+  // that lets a deployment log mail instead of sending it on purpose.
+  if (env('EMAIL_PROVIDER') === 'dev') return { provider: new DevEmailProvider(), missing: [] };
+
+  const region = env('AWS_REGION', 'AWS_SES_REGION');
+  const accessKeyId = env('AWS_ACCESS_KEY_ID');
+  const secretAccessKey = env('AWS_SECRET_ACCESS_KEY');
+  const from = env('SES_FROM_ADDRESS', 'SES_FROM');
+  const configSet = env('SES_CONFIG_SET');
+
+  const missing: string[] = [];
+  if (!region) missing.push('AWS_REGION (or AWS_SES_REGION)');
+  if (!accessKeyId) missing.push('AWS_ACCESS_KEY_ID');
+  if (!secretAccessKey) missing.push('AWS_SECRET_ACCESS_KEY');
+  if (!from) missing.push('SES_FROM_ADDRESS (or SES_FROM)');
+
+  if (missing.length === 0) {
+    return {
+      provider: new SesEmailProvider(region!, accessKeyId!, secretAccessKey!, from!, configSet),
+      missing: [],
+    };
   }
-  return new DevEmailProvider();
+  // EMAIL_PROVIDER is no longer the switch. Four complete AWS values ARE the
+  // switch: a deployment that has them means to send, and one that does not
+  // cannot. A separate flag was one more thing to forget, and forgetting it
+  // looked exactly like success.
+  return { provider: new DevEmailProvider(), missing };
+}
+
+/** Kept for callers that only want the provider. */
+export function getEmailProvider(): EmailProvider {
+  return resolveEmailProvider().provider;
 }

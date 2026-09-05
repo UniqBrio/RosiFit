@@ -117,26 +117,16 @@
 >
 > **What still needs a human:**
 >
-> 1. **AWS SES secrets** — `EMAIL_PROVIDER=ses`, `AWS_REGION`,
->    `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `SES_FROM_ADDRESS`. Only
->    `send-followups` needs them. **`EMAIL_PROVIDER=ses` is the switch and is
->    easy to miss**: without it, or with any one of the four AWS values
->    missing, `getEmailProvider()` falls back to the dev provider, and every
->    message is recorded `status='sent'` with `provider='dev'` while nothing
->    leaves the building. A send that looks successful and sent nothing is
->    worse than one that fails.
-> 2. **Vercel environment variables** — the two `EXPO_PUBLIC_` values on the
->    `rosi-fit` project. These appear to be set already (the deployed app
->    reaches Supabase and has written real rows), but that is inference from
->    behaviour, not a reading of the Vercel config. See §5.
->
-> **Why the previous block was wrong**, recorded so the next reader trusts the
-> project over the file: it claimed `0001`–`0014` when `0015` was also applied;
-> it claimed `bootstrap_completed` was `false` when the admin had registered;
-> and it said `PIN_PEPPER` was unset when it had been set. `apply_0016_0018.sql`
-> disagreed with it too, claiming `0001`–`0015`. Two hand-written claims, both
-> stale, disagreeing with each other — which is the argument for querying
-> `list_migrations` and probing for objects before believing any of it.
+> 1. **AWS SES secrets** — `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
+>    `AWS_REGION` *(or `AWS_SES_REGION`)`, `SES_FROM_ADDRESS` *(or `SES_FROM`)*,
+>    and optionally `SES_CONFIG_SET`. Only `send-followups` needs them.
+>    **`EMAIL_PROVIDER` is NO LONGER the switch** (05-Sep-2026, RC-015): the
+>    four AWS values are. It was one more thing to forget, and forgetting it
+>    looked exactly like success — the send recorded `status='sent'` with
+>    `provider='dev'` and delivered nothing. The function now **refuses with a
+>    503 naming the missing secrets, before it writes anything**. Set
+>    `EMAIL_PROVIDER=dev` explicitly if you want a deployment to log mail
+>    instead of sending it.
 
 RosiFit needs its **own** Supabase project. Do not put it in a project that
 already holds another product: the schema assumes it owns `public`, and

@@ -186,6 +186,51 @@ record, and nothing asked it for one. See the framework-update note in the close
 
 ---
 
+## RC-015 — the app said SENT for an email it never sent
+**Date:** 05-Sep-2026 · **Severity:** S1 · **Modules:** `supabase/functions/send-followups/`
+
+**Symptom** — reported by the owner: *"I just clicked on send communication, it says message sent
+but I don't receive any message."* The Result screen showed **1 sent · 0 failed · 0 excluded** and a
+green SENT beside her name. `email_messages` agreed: `status='sent'`,
+`provider_message_id='dev-869384b3…'`. Nothing had been sent.
+
+**Root cause** — two faults, and the second is the one that made the first invisible.
+
+1. **The secret names did not match.** The account had `AWS_SES_REGION` and `SES_FROM`; the
+   function read `AWS_REGION` and `SES_FROM_ADDRESS`. `EMAIL_PROVIDER` was absent entirely, and it
+   was the first thing checked — so `getEmailProvider()` returned the dev provider before it ever
+   looked at the AWS values.
+2. **The dev provider reports success.** It writes the message to the function log and returns
+   `{ ok: true, providerMessageId: 'dev-…' }`. `send-followups` cannot tell that from a delivery,
+   so it recorded `sent`, bumped `last_emailed_at`, and told the screen 1 sent.
+
+The fallback was deliberate — *"Never throws: a missing secret degrades to logging, not 500s"* —
+and `SETUP.md` even predicted the consequence: *"every message is recorded status='sent' with
+provider='dev' while nothing leaves the building. A send that looks successful and sent nothing is
+worse than one that fails."* It was written down, and it still shipped, because nothing enforced it.
+
+**Fix** — `resolveEmailProvider()` returns the provider **and what is missing**, and
+`send-followups` refuses with a 503 naming the absent secrets **before the batch row is written**,
+so a refused send leaves nothing to explain. `EMAIL_PROVIDER` is no longer the switch: four complete
+AWS values are. A separate flag was one more thing to forget, and forgetting it looked like success.
+Both spellings of the region and the from-address are accepted, and `SES_CONFIG_SET` is passed to
+SES when present. Setting `EMAIL_PROVIDER=dev` explicitly still logs instead of sending — that is a
+real answer, and now the only way to reach the dev provider on a deployment.
+
+**Recurrence risk** — the class is "a degraded fallback that returns the success shape". It is
+worth grepping for on any provider abstraction added later: a stub that satisfies the interface
+will satisfy the caller too.
+
+**Prevention** — prose, and one honest gap. The refusal is the guard, and it has no test: the
+send path has no spec at all, because exercising it means either mocking Deno's env inside an Edge
+Function or sending real mail. The nearest cheap rung would assert that `resolveEmailProvider()`
+reports every missing name — pure, and it would have caught the name mismatch.
+
+**Left standing:** the one `provider='dev'` row from 05-Sep. It is the evidence, and deleting the
+record of a message the academy believes it sent would be the same lie one layer down.
+
+---
+
 ## RC-014 — a mistyped joining date was imported as a real one, because the cast did not raise
 **Date:** 05-Sep-2026 · **Severity:** S2 · **Modules:** `supabase/migrations/0028_bulk_import_members.sql`
 
