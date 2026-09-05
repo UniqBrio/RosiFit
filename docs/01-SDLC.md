@@ -50,6 +50,7 @@ a Track B change being run as a Track A one, or a Track C fix skipping root caus
 | The request is… | Track | Runbook | Gates |
 |---|---|---|---|
 | A new capability | **A — New feature** | [workflows/feature.md](../workflows/feature.md) | 1, 2, 3, 4 + test gate |
+| A whole new application (nothing scaffolded yet) | **Intake → initialization → A** | [02-PROJECT-INITIALIZATION.md](./02-PROJECT-INITIALIZATION.md), then [workflows/feature.md](../workflows/feature.md) in the new app | Scaffold + day-one steps, then gates 1–4 |
 | A change to something that exists | **B — Enhancement** | [workflows/enhance.md](../workflows/enhance.md) | Plan approval + test gate |
 | Something is broken | **C — Bug fix** | [workflows/bug.md](../workflows/bug.md) | Root-cause statement + test gate |
 | Same behaviour, better structure | **D — Refactor** | [workflows/refactor.md](../workflows/refactor.md) | Scope approval + characterization + test gate |
@@ -88,9 +89,37 @@ decision the requester never made, discovered only after the build.
   └─────────────┘  └────────────┘  └─────────────┘  └──────────────────┘
 ```
 
-A **gate** is a stop. Work does not continue past it without an explicit approval or an
-explicit machine PASS. Gates 1–4 are human approvals; Gate 5 is mechanical; Gate 6 is human
-approval informed by a mechanical parity check.
+A **gate** is a stop — but who stops there depends on the **run mode**. Gate 5 is always
+mechanical and always blocking; Gate 6 (production) is always a human approval, in every mode.
+
+### Run modes (added 05-Sep-2026, owner directive)
+
+| Mode | Gates 1–4 behave as | Chosen by |
+|---|---|---|
+| **auto** *(default)* | **Checkpoints**: the artifact is produced in full, open decisions are taken on the written recommendation, each is logged to the run's ASSUMPTIONS ledger, and the run proceeds immediately | The default; or `RUN MODE: auto` in the request file |
+| **confirm** | **Approvals**: the run stops and waits for the requester at each gate | `RUN MODE: confirm` in the request file, or the requester saying so |
+
+Auto mode moves the review, it does not delete it: every gate artifact and the full
+assumptions ledger land in the run report, the request file's stated FIELDS remain binding
+(an assumption may never override one), and the mechanical test gate still blocks the merge.
+What auto removes is the *waiting* — the four synchronous round-trips that dominate
+wall-clock time on a scoped feature.
+
+**Hard stops that survive auto mode** — the run always stops and asks, in any mode, for:
+a destructive or hard-to-reverse operation (dropping/rewriting real data, deleting files not
+created this run) · removing or reshaping an existing capability · anything touching the
+safety floor · outbound sends · production · and a genuine fork where both readings are
+defensible, expensive, and costly to undo. Everything else is a recommendation taken and
+recorded, reviewable after the fact.
+
+**Proportional ceremony.** The run also declares its **scale** at Step 0. A **scoped**
+feature (roughly: ≤5 files, no schema change beyond additive columns, no new navigation area,
+no new shared component) produces ONE combined run document — assumptions, requirements
+deltas, design essentials, plan, and the QA verdicts for touched areas — instead of four
+separate gate artifacts, and skips the feasibility brief unless build-vs-buy is a real
+question. A **full**-scale feature keeps every artifact. The obligations are identical; only
+the packaging and the prose shrink. This is the difference between a five-minute run and a
+forty-minute one, and none of it touches what is checked.
 
 Not every track runs every gate. A one-line bug fix runs stages 0, 5, 6, 7 — and it still
 runs stage 6, because a one-line change is exactly the size of change that ships regressions.
@@ -111,8 +140,15 @@ Read, in this order:
 ### Stage 1 — Requirements → **GATE 1**
 
 Produce a question set, one question or one tight group at a time, each paired with a
-**reasoned recommendation** rather than a blank. A blank question transfers work to the
-requester; a recommendation lets them answer by saying "yes".
+**reasoned recommendation and real alternatives** (options always include "Other: describe
+your own") rather than a blank. A blank question transfers work to the requester; a
+recommendation with its reasoning lets them answer by saying "yes" — or overrule it, informed.
+
+For a **new application or new module**, the stage opens with the **product-advisor pass**
+([24 §2](./24-DESIGN-PLANNING.md)): timeboxed research of comparable products, filtered
+through the context lenses (type, region, legal/regulatory, customers, scale, standards),
+delivered as a Must-Have / Recommended / Good-to-Have triage plus a reasoned ignored list —
+one consolidated package, a hard stop in every run mode, the requester deciding every row.
 
 Cover: objective · users and roles · flow · entry points · navigation · permissions · business
 rules · validation · edge cases · states · fields · search/filter/sort · notifications ·
@@ -125,7 +161,8 @@ Two items that are always forgotten and always expensive:
 - **Platform limitations.** If a requirement depends on a capability with a register entry,
   say so *now* and propose the fallback. A limitation discovered during testing is a redesign.
 
-→ **GATE 1: the requester answers. Do not proceed on assumptions.**
+→ **GATE 1** — confirm mode: the requester answers. Auto mode: recommendations are taken as
+answers, logged to the ASSUMPTIONS ledger; a hard-stop question still waits.
 
 ### Stage 2 — Feasibility → **GATE 2**
 
@@ -137,7 +174,8 @@ blocked by cost or a platform ceiling, the brief must contain at least one *feas
 alternative — a descoped version, a phased plan, different tooling — each with its own cost
 and trade-offs. A dead-end verdict with no way forward is an incomplete brief.
 
-→ **GATE 2: the requester approves the direction.**
+→ **GATE 2** — confirm mode: the requester approves the direction. Auto mode: the verdict is
+taken and logged; Defer/Drop or a real build-vs-buy fork is a hard stop.
 
 ### Stage 3 — Design → **GATE 3**
 
@@ -164,7 +202,8 @@ Mandatory passes:
 | Real-data + scenario dry run | Walk the design against 8–10 realistic records (a duplicate, a missing field, a typo) AND the most frequent scenarios — interactions counted against the budget, one pass keyboard-only. | [24 §9](./24-DESIGN-PLANNING.md) |
 | Validation loop | All 18 areas of the design-quality checklist, verdict + evidence each; refine and re-validate; Gate 3 sees **Production-ready or better**, or the findings with a question. | [checklists/DESIGN_QUALITY_CHECKLIST.md](../checklists/DESIGN_QUALITY_CHECKLIST.md), [24 §10–11](./24-DESIGN-PLANNING.md) |
 
-→ **GATE 3: the requester approves the design.**
+→ **GATE 3** — confirm mode: the requester approves the design. Auto mode: a design graded
+Production-ready+ proceeds; a lower grade or a material design fork is a hard stop.
 
 ### Stage 4 — Implementation plan → **GATE 4**
 
@@ -182,7 +221,9 @@ The plan is the last cheap place to be wrong. It contains:
 - Security plan: what data this stores, why, and which policies change.
 - Test plan: the cases to be added, by dimension (see stage 6).
 
-→ **GATE 4: the requester approves the plan before any code is written.**
+→ **GATE 4** — confirm mode: the requester approves the plan before any code is written.
+Auto mode: the plan is logged and the build starts immediately; destructive migrations and
+capability removals are hard stops.
 
 ### Stage 5 — Build + close-out
 

@@ -13,6 +13,70 @@ current; adopt a **MAJOR** within one quarter.
 
 ---
 
+## v1.11.0 — adopted 05-Sep-2026 (from: v1.7.0, via 1.8.0 · 1.9.0 · 1.10.0)
+
+### What kind of adoption this is
+
+**Half A (PROCESS) only, by hand** — the same method as v1.6.0 and v1.7.0. Every process file
+changed upstream was compared against framework **v1.7.0** first; only files still
+**byte-identical** to it were replaced with their **v1.11.0** version.
+
+**Scope held: nothing under `app/`, `src/`, `supabase/`, `assets/`, `db/`, `design/` or
+`.harness/` was touched.** Asserted mechanically from `git status`, not by inspection.
+
+### Auto-applied — pristine in RosiFit, changed upstream (21)
+
+`.claude/commands/feature.md` · `.claude/commands/request.md` · `FRAMEWORK_MANIFEST.md` ·
+`README.md` · `UPGRADES.md` · `VERSION` · `checklists/DEFINITION_OF_DONE.md` ·
+`docs/00-OVERVIEW.md` · `docs/01-SDLC.md` · `docs/02-PROJECT-INITIALIZATION.md` ·
+`docs/24-DESIGN-PLANNING.md` · `scripts/new-app.mjs` · `templates/gates/GATE1_QUESTIONS.md` ·
+`templates/requests/REQUEST_CHANGE.md` · `templates/requests/REQUEST_NEW.md` ·
+`tests/cases/FRAMEWORK_PROCESS_CASES.md` · `workflows/enhance.md` · `workflows/feature.md` ·
+`workflows/promote.md` · `workflows/refactor.md` · `workflows/request.md`
+
+### Added — new in v1.11.0 (1)
+
+`docs/registers/COMPONENT_LIBRARY.md` — the component registry. Added because it is **new**
+(nothing of RosiFit's was overwritten), `workflows/feature.md` A3.1 and the DoD now read it,
+and `check-rule-coverage.mjs` does **not** parse it, so the rule-coverage ratchet is
+unaffected. Its §3 reference stack (`typescript-react-postgres`, seeded from the framework's
+`starter/`) is **not RosiFit's stack** (React Native Expo PWA): RosiFit reads §1 (the
+standard baseline) as-is, and a `react-native-expo-supabase` subsection is a future
+contribute-back, not something this pass invents.
+
+### Skipped — app-owned (1)
+
+| File | Why |
+|---|---|
+| `CHANGELOG.md` | RosiFit's own changelog; framework entries do not belong in it |
+
+`CLAUDE.md` (expected-divergent) gained only the version reference.
+
+### App action required — none mechanically, one behavioural note
+
+All four releases are MINOR and `UPGRADES.md` records "no gate, baseline, or guard changed".
+**But 1.9.0 changed a default:** a Track A/B/D run with no `RUN MODE` stated now runs in
+**auto** — gates 1–4 become checkpoints whose open decisions are taken on the written
+recommendation and logged to the run's ASSUMPTIONS ledger, with the review moved to the end.
+A requester who wants every gate to wait writes `RUN MODE: confirm` in the request file or
+says so. The hard stops that survive auto (destructive ops, capability removal, the safety
+floor, outbound sends, **production — Gate 6 is human in every mode**) and the mechanical
+test gate are unchanged; RosiFit's own BINDING rules in `CLAUDE.md` (PROD SQL shown and
+approved first, one migration at a time) are unaffected.
+
+1.8.0's NEW-APP route fires only when no scaffolded codebase exists — never here.
+1.10.0's product-advisor pass fires only for a new module, and is a hard stop in every mode.
+
+### Verification
+
+- `node scripts/audits/check-rule-coverage.mjs` — OK, 1 known violation, none new (unchanged).
+- `node scripts/audits/check-dead-weight.mjs` — OK, clean gate (unchanged).
+- `npm run check` — **not run**: `node_modules/` absent in the adopting session; nothing under
+  `src/` or `app/` changed, so its inputs are identical to before this pass.
+- Deferred list unchanged from v1.3.0.
+
+---
+
 ## v1.7.0 — adopted 05-Sep-2026 (from: v1.6.0)
 
 ### What kind of adoption this is

@@ -96,7 +96,8 @@ session. See [21-AGENT-WIRING.md](./21-AGENT-WIRING.md). Without this the rest i
 code review · security · accessibility · release readiness · business readiness · manual test
 
 ### The living registers
-`docs/registers/` — root causes · canonical patterns · design rules · known limitations ·
+`docs/registers/` — root causes · canonical patterns · design rules · component library
+(stack-keyed reuse + the standard baseline) · known limitations ·
 permissions · feature truth · product lexicon · AI governance · candidates (promotion parking
 lot) · environments · test accounts · technical debt · decisions
 
@@ -104,7 +105,9 @@ lot) · environments · test accounts · technical debt · decisions
 
 ## How to actually use it
 
-**Starting a new application** → [02-PROJECT-INITIALIZATION.md](./02-PROJECT-INITIALIZATION.md).
+**Starting a new application** → [02-PROJECT-INITIALIZATION.md](./02-PROJECT-INITIALIZATION.md) —
+or simply `/request` the app you want: intake classifies it NEW-APP and routes through
+initialization before Track A runs in the new app.
 
 **Doing a piece of work** → classify it ([01](./01-SDLC.md) §2), open that runbook, follow it.
 Or simply start every piece of work at [workflows/request.md](../workflows/request.md)
