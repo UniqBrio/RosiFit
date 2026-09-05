@@ -5,7 +5,8 @@ import { ScreenHeader } from '../../src/components/AppShell';
 import { Icon } from '../../src/components/Icon';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { SPACE, RADIUS, TAP_MIN, STATUS } from '../../src/theme/tokens';
-import { STAFF, BRANCHES, SUPPORT_PHONE } from '../../src/data/mock';
+import { SUPPORT_PHONE } from '../../src/data/mock';
+import { useBranchUsage, useStaff } from '../../src/data/hooks';
 import { useIdentity, signOut } from '../../src/data/session';
 
 type Item = {
@@ -27,6 +28,32 @@ export default function More() {
   const { theme, mode, accentKey, accents, isCustom } = useTheme();
   const router = useRouter();
   const { identity, loading, signedOut } = useIdentity();
+
+  /**
+   * The counts on these rows are the LIVE counts, not the fixture's.
+   *
+   * They were String(BRANCHES.length - 1) and String(STAFF.length) -- module
+   * constants from src/data/mock -- so this screen said "Branches 3" to an
+   * academy that has one, and the Branches screen it opens said "1 branch".
+   * A row that promises three of something and leads to one reads as a broken
+   * list rather than as a wrong label, which is how it was reported.
+   *
+   * useBranchUsage also carries the branch-changed subscription, so adding or
+   * removing a branch corrects this row without a remount.
+   *
+   * Staff is NOT fetched for a staff account: app_users_read is
+   * is_super_admin(), so the request would only 403, and the row is
+   * adminOnly anyway. 'loading' is what useAsync honours to skip a load.
+   */
+  const branches = useBranchUsage();
+  const staff = useStaff(identity?.isSuperAdmin ? undefined : 'loading');
+
+  // '' while a count is still unknown -- the row renders without a meta, and
+  // its accessibilityLabel drops it too. A 0 would be a claim we cannot make
+  // yet, and 0 branches is a real state this academy could be in.
+  const count = (n: number | undefined) => (n === undefined ? '' : String(n));
+  const branchCount = count(branches.data?.length);
+  const staffCount = count(staff.data?.length);
 
   const leave = async () => {
     // Signing out has to end the SESSION, not just the route. Replacing the
@@ -64,13 +91,13 @@ export default function More() {
   const groups: { title: string; items: Item[] }[] = [
     {
       title: 'Configuration', items: [
-        { icon: 'apartment',   label: 'Branches',  meta: String(BRANCHES.length - 1), to: '/branches' },
+        { icon: 'apartment',   label: 'Branches',  meta: branchCount, to: '/branches' },
         { icon: 'event_busy',  label: 'Holidays',  meta: 'add',                       to: '/holiday' },
       ],
     },
     {
       title: 'Access', items: [
-        { icon: 'badge',   label: 'Staff & access', meta: String(STAFF.length), to: '/staff', adminOnly: true },
+        { icon: 'badge',   label: 'Staff & access', meta: staffCount, to: '/staff', adminOnly: true },
         { icon: 'history', label: 'Audit log',      meta: 'today',              to: '/audit', adminOnly: true },
       ],
     },
