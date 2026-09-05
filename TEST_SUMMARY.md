@@ -37,40 +37,74 @@ exit 1
 
 _Merge blocked. Every FAIL above must resolve. No partial merges._
 
-THE SAME METRO ERROR, REPORTED AGAIN -- and metro.config.js was never the fix it looked like.
-Same verdict, same four accepted-unverifiable steps.
+THE COURSE IS PER ROW, AND THE DROPDOWN NOW REFUSES. Same verdict, same four
+accepted-unverifiable steps.
 
-The owner's log dates it: `Web Bundled 29483990ms`, ~8 hours. That dev server had been up since
-before metro.config.js existed, and METRO READS THAT FILE ONCE, AT STARTUP. So the repo looked
-fixed, `npm run export` passed, and the person in front of the app kept seeing the identical
-error. A fix that depends on someone restarting a long-running process is not a fix; it is a
-note in a commit message nobody has read.
+The screen asked for a course before it would take a file. That is one upload per course for an
+academy that runs three, and the file already has a Course column -- so the question was being
+asked twice and answered once. The picker is gone; one spreadsheet covers every course.
 
-What was wrong with the shape of it: `import('exceljs')` leaves the CHOICE OF BUILD to the
-bundler, and then a config file has to take that choice back. Naming the file removes the
-question entirely.
+  no picker        the screen goes straight to the file. Opened from a course detail, that
+                   course is STATED as what a blank Course cell falls back to -- a default for
+                   the file, never a filter: a row naming another course still joins that one.
+  errorStyle stop  Excel's default for a list rule is an "information" prompt with a Continue
+                   button, so a hand-typed course landed in the cell and the file only failed
+                   once it reached RosiFit. 'stop' makes the dropdown the ONLY way in, and the
+                   message says where a new course actually comes from -- add it in RosiFit,
+                   download the template again.
+  no courses       the template is not offered AT ALL. It would list an empty dropdown and
+                   every row would fail on upload, so the screen says to add a course first.
 
-  memberXlsx.ts   imports `exceljs/dist/exceljs.min.js` by path. Measured first: that build
-                  makes ZERO require() calls and loads under plain node, so it is self-contained
-                  on web, on native, and in the Node renderer that prerenders these routes --
-                  which is the half that was actually failing (`router-server/node/render.js`).
-  exceljs-browser.d.ts  the declaration that keeps it typed. `any` would hand back the safety
-                  that naming the file buys.
-  metro.config.js STAYS, demoted in its own comment to a second line of defence: so a future
-                  plain `import 'exceljs'` cannot quietly bring the Node build back.
-  the specs       now build their fixtures through the SAME loader the app uses, so they
-                  exercise the build that ships rather than exceljs's node half.
+Three specs added (31 -> 34): the stop style on both dropdowns and the message that names the
+remedy; the lookup listing every course once; and a file carrying rows for DIFFERENT courses
+validating with no course chosen up front.
 
-MEASURED, after clearing .expo/web/cache, .expo/static-tmp, node_modules/.cache and dist:
-  archiver 0 files · unzipper 0 · async/dist 0 · lib/core.js 0  -- across ALL of dist/,
-  server-rendered HTML included, not just the web chunks
-  21 routes prerendered by the Node renderer · exceljs still its own chunk
+266 unit, 2840/2840 contrast, 75/75 icons.
 
-260 unit, 2840/2840 contrast, 75/75 icons, audit:all clean.
+AUDIT NOTE, not mine to fix: audit:testids BLOCKS on app/register.tsx (coverage 3 -> 2, and the
+baseline still says 3). That file is modified and UNSTAGED in this shared worktree by another
+session; the improvement and its baseline rewrite belong to their commit. No file in this change
+introduced a violation.
 
-STILL TRUE: a running dev server must be restarted -- `npx expo start -c` -- because the caches
-above are the ones it reads. The difference is that after this commit the restart is a cache
-concern, not the fix.
+---
+
+## Gate run - 2026-09-05 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
@@ -2121,3 +2155,34 @@ _Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
+
+---
+
+## 05-Sep-2026 — Continue validates the mobile number
+`requests/2026-09-05-mobile-number-not-validated.md` · Track C · RC-015
+
+**FAIL-FIRST** — `src/data/signin.test.ts`, run against the pre-fix tree
+(`npx tsx --test src/data/signin.test.ts`), captured in
+`.evidence/continue-validation-fail-first.txt`:
+
+```
+not ok 20 - a recognised number goes to the PIN screen, never straight in
+not ok 21 - an unrecognised number goes to registration
+not ok 22 - a lookup that did not answer STAYS on the number screen
+```
+
+`(0 , import_signin.continueDestination) is not a function` — the decision the
+screen was making inline did not exist as anything a test could reach, which
+is the reason it could be wrong without anybody noticing.
+
+**PASS after the fix** — 22/22 in that file; `npm run check` green end to end:
+typecheck · 266 unit cases · 2,840/2,840 contrast pairs · 75/75 icons.
+
+**NOT OBSERVED FAILING** — the server half. `supabase/functions/auth-lookup/`
+is new, has no JS test path (Deno, deployed separately), and **is not deployed**,
+so nothing has exercised it against a real `app_users` row. Its behaviour is
+proven only by reading. That is a real gap, not a formality: the three JS cases
+prove what the screen does with an answer, not that the answer is right.
+
+**DB harness — N/A.** No migration. `auth-lookup` reads `app_users.phone_e164`,
+a column `auth-login` already reads; nothing about the schema changes.

@@ -21,7 +21,6 @@ import { View, Text, Pressable } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Screen, H2, Body, Muted, Label, Button, Skeleton, ErrorState, EmptyState } from '../../src/components/ui';
 import { Icon } from '../../src/components/Icon';
-import { SearchPicker } from '../../src/components/Sheet';
 import { ShellScreen } from '../../src/components/AppShell';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
@@ -59,27 +58,21 @@ function MemberImportBody() {
   const [academy, setAcademy] = useState('RosiFit Academy');
   useEffect(() => { void fetchAcademyName().then(setAcademy).catch(() => undefined); }, []);
 
-  const [course, setCourse] = useState('');
-  const [branch, setBranch] = useState('');
-  const [picker, setPicker] = useState<'course' | 'branch' | null>(null);
   const [file, setFile] = useState<{ name: string; rows: MemberImportRow[] } | null>(null);
   const [verdicts, setVerdicts] = useState<RowVerdict[] | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
   const [busy, setBusy] = useState<'template' | 'reading' | 'importing' | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
 
-  // The course the button was pressed on wins and cannot be changed here:
-  // "add these to THIS course" is the whole act. From the course list, it
-  // is chosen. Either way it is decided BEFORE the file, because forty names
-  // are worth nothing until it is known which course they join.
-  const chosenCourse = opened?.name ?? course;
-  const chosenOffering = useMemo(() => {
-    const c = courseList.find(x => x.name === chosenCourse);
-    if (!c) return null;
-    if (c.offerings.length === 1) return c.offerings[0];
-    return c.offerings.find(o => o.branch === branch) ?? null;
-  }, [courseList, chosenCourse, branch]);
-  const chosenBranch = chosenOffering?.branch ?? branch;
+  // THE COURSE IS PER ROW, and it lives in the file. There is no picker
+  // here: one spreadsheet can carry members for as many courses as the
+  // academy runs, and asking for a single course up front would have meant
+  // one upload per course. Opened from a course detail, that course is what
+  // a BLANK Course cell falls back to -- a default for the file, never a
+  // filter, and a row naming another course still joins the one it names.
+  const chosenOffering = opened?.offerings[0] ?? null;
+  const chosenCourse = opened?.name ?? '';
+  const chosenBranch = chosenOffering?.branch ?? '';
 
   const offerings = useMemo(
     () => courseList.flatMap(c => c.offerings.map(o => ({ course: c.name, branch: o.branch }))),
@@ -142,19 +135,22 @@ function MemberImportBody() {
    * comes back is the count the database accepted -- never the count sent.
    */
   const confirm = async () => {
-    if (!chosenOffering || !file || ready.length === 0 || busy) return;
+    if (!file || ready.length === 0 || busy) return;
     setBusy('importing');
     setRefusal(null);
     try {
       const r = await bulkImportMembers({
         rows: ready.map(v => v.row),
-        default_offering_id: chosenOffering.id,
+        // null when this was not opened from a course: then every row must
+        // name its own, and one that does not is refused by name rather than
+        // quietly filed under whichever course happened to be first.
+        default_offering_id: chosenOffering?.id ?? null,
         file_name: file.name,
       });
       setResult(r);
       flash(r.failed === 0 && r.skipped === 0
-        ? `${r.inserted} member${r.inserted === 1 ? '' : 's'} added to ${chosenCourse}`
-        : `${r.inserted} imported · ${r.skipped} skipped · ${r.failed} failed`,
+        ? `${r.inserted} member${r.inserted === 1 ? '' : 's'} imported`
+        : `${r.inserted} imported \u00b7 ${r.skipped} skipped \u00b7 ${r.failed} failed`,
         r.failed ? 'warn' : undefined);
     } catch (e) {
       setRefusal(e instanceof Error ? e.message : 'The import could not be started. Nothing has been saved.');
@@ -208,19 +204,23 @@ function MemberImportBody() {
       </Screen>
     );
   }
-  // EMPTY (not configured): there is nothing to import INTO.
+  // EMPTY (not configured), and now the ONLY gate before the file.
+  // The template's Course column is a dropdown fed from the academy's own
+  // courses, and a course typed by hand is refused by Excel itself — so a
+  // template built with no courses in it would offer an empty list and every
+  // row would fail on upload. The template is not offered at all until there
+  // is something for it to list.
   if (courseList.length === 0) {
     return (
       <Screen>
-        <EmptyState title="No course yet"
-          body="A member joins a course at a branch, so add the course first — then this import has somewhere to put her."
+        <EmptyState title="Add a course first"
+          body="The template's Course column is a dropdown of your own courses, and a course typed by hand is refused — so there is nothing to build one from yet. Add a course, then come back and download the template."
           action="Add Course" onAction={() => router.push('/course/edit')} />
       </Screen>
     );
   }
 
   const branchOptions = courseList.find(c => c.name === chosenCourse)?.offerings.map(o => o.branch) ?? [];
-  const canChoose = Boolean(chosenOffering) && !busy;
   const dark = theme.isDark;
 
   // ------------------------------------------------------------ results
@@ -241,7 +241,7 @@ function MemberImportBody() {
           </View>
           <Muted style={{ marginTop: SPACE.md }}>
             {result.inserted === result.total
-              ? `Every row landed. ${chosenCourse} · ${chosenBranch} has ${result.inserted} more member${result.inserted === 1 ? '' : 's'}.`
+              ? `Every row landed \u2014 ${result.inserted} member${result.inserted === 1 ? '' : 's'} on the register, each in the course her row named.`
               : 'Skipped rows were already on the register and were not changed. Failed rows wrote nothing; the report says why, row by row.'}
           </Muted>
         </View>
@@ -269,40 +269,31 @@ function MemberImportBody() {
   // -------------------------------------------------------- the import
   return (
     <Screen>
-      {/* STEP 1 — where they are going */}
-      <Label>Course</Label>
+      {/* Opened from a course, that course is what a BLANK Course cell means.
+          Stated, not offered: it is a default for the file, not a decision to
+          take here, and a row naming another course still joins that one. */}
       {opened ? (
         <View style={{
-          marginTop: 8, padding: SPACE.lg, borderRadius: RADIUS.md,
+          padding: SPACE.lg, borderRadius: RADIUS.md,
           backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
           flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
         }}>
           <Icon name="school" size={20} color={theme.accentInk} />
-          <Text style={{ flex: 1, fontSize: 15, fontWeight: '700', color: theme.fgStrong }}>
-            {`${opened.name}${chosenBranch ? ` · ${chosenBranch}` : ''}`}
-          </Text>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: theme.fgStrong }}>
+              {`${opened.name}${chosenBranch ? ` \u00b7 ${chosenBranch}` : ''}`}
+            </Text>
+            <Muted style={{ marginTop: 2 }}>A row with a blank Course joins this one.</Muted>
+          </View>
         </View>
-      ) : (
-        <>
-          <PickRow testID="import-course" icon="school"
-            value={chosenCourse || 'Choose a course'} muted={!chosenCourse}
-            onPress={() => setPicker('course')} />
-          {branchOptions.length > 1 ? (
-            <>
-              <Label style={{ marginTop: SPACE.md }}>Branch</Label>
-              <PickRow testID="import-branch" icon="apartment"
-                value={chosenBranch || 'Choose a branch'} muted={!chosenBranch}
-                onPress={() => setPicker('branch')} />
-            </>
-          ) : null}
-        </>
-      )}
+      ) : null}
 
       {/* STEP 2 — the template, offered BEFORE the picker: the commonest way
           to fail an import is to build the file first. */}
-      <Label style={{ marginTop: SPACE.xl }}>The file</Label>
+      <Label style={{ marginTop: opened ? SPACE.xl : 0 }}>The file</Label>
       <Muted style={{ marginTop: 4 }}>
-        {`An Excel workbook (.xlsx), one member per row on the Member Data sheet, up to ${MEMBER_IMPORT_MAX_ROWS} rows. Only her name is required.`}
+        {`An Excel workbook (.xlsx), one member per row on the Member Data sheet, up to ${MEMBER_IMPORT_MAX_ROWS} rows. `
+         + 'Only her name is required, and each row picks its own course from a dropdown \u2014 one file can cover every course you run.'}
       </Muted>
       <View style={{
         marginTop: SPACE.md, padding: SPACE.lg, borderRadius: RADIUS.md,
@@ -322,11 +313,8 @@ function MemberImportBody() {
           onPress={() => void downloadTemplate()} disabled={busy !== null} />
         <Button testID="import-choose" style={{ flex: 1 }}
           label={busy === 'reading' ? 'Reading…' : file ? 'Choose another' : 'Choose file'}
-          onPress={() => void choose()} disabled={!canChoose} />
+          onPress={() => void choose()} disabled={busy !== null} />
       </View>
-      {!chosenOffering ? (
-        <Muted style={{ marginTop: 8 }}>Choose the course first — a member joins a course at a branch.</Muted>
-      ) : null}
 
       {refusal ? (
         <View style={{ marginTop: SPACE.lg }}>
@@ -371,7 +359,7 @@ function MemberImportBody() {
           <Button testID="import-confirm" style={{ marginTop: SPACE.xl }}
             label={busy === 'importing' ? `Importing ${ready.length}…` : `Import ${ready.length} member${ready.length === 1 ? '' : 's'}`}
             onPress={() => void confirm()}
-            disabled={ready.length === 0 || busy !== null || !chosenOffering} />
+            disabled={ready.length === 0 || busy !== null} />
           <Muted style={{ marginTop: 9, textAlign: 'center' }}>
             {ready.length === 0
               ? 'Nothing in this file can be imported yet.'
@@ -380,20 +368,6 @@ function MemberImportBody() {
         </>
       ) : null}
 
-      <SearchPicker open={picker === 'course'} onClose={() => setPicker(null)}
-        title="Choose a course" placeholder="Search courses"
-        options={courseList.map(c => ({
-          label: c.name,
-          meta: c.offerings.length ? `${c.offerings.length} branch${c.offerings.length > 1 ? 'es' : ''}` : 'no branch yet',
-        }))}
-        value={chosenCourse}
-        emptyNote="No course has been added yet. A member joins a course at a branch, so add the course first."
-        onSelect={l => { setCourse(l); setBranch(''); setVerdicts(null); setFile(null); setResult(null); setPicker(null); }} />
-      <SearchPicker open={picker === 'branch'} onClose={() => setPicker(null)}
-        title="Choose a branch" placeholder="Search branches"
-        options={branchOptions.map(label => ({ label }))} value={chosenBranch}
-        emptyNote="That course does not run at any branch yet."
-        onSelect={l => { setBranch(l); setVerdicts(null); setFile(null); setResult(null); setPicker(null); }} />
     </Screen>
   );
 }
@@ -440,24 +414,6 @@ function Count({ n, label, color }: { n: number; label: string; color: string })
   );
 }
 
-function PickRow({ icon, value, onPress, muted, testID }:
-  { icon: string; value: string; onPress: () => void; muted?: boolean; testID: string }) {
-  const { theme } = useTheme();
-  return (
-    <Pressable testID={testID} onPress={onPress}
-      accessibilityRole="button" accessibilityLabel={value} accessibilityHint="Opens a searchable list"
-      style={{
-        marginTop: 8, minHeight: 52, borderRadius: RADIUS.md,
-        backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
-        paddingHorizontal: SPACE.lg, flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
-      }}>
-      <Icon name={icon} size={20} color={theme.accentInk} />
-      <Text style={{ flex: 1, fontSize: 15, fontWeight: muted ? '400' : '600',
-        color: muted ? theme.muted : theme.fgStrong }}>{value}</Text>
-      <Icon name="arrow_drop_down" size={22} color={theme.muted} />
-    </Pressable>
-  );
-}
 
 export default function MemberImport() {
   const router = useRouter();

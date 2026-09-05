@@ -51,6 +51,52 @@ test('the data sheet carries every column, in order, and dropdowns fed from the 
   assert.match(String(courseRule.formulae[0]), new RegExp(SHEET_COURSES));
 });
 
+test('the Course dropdown STOPS a typed-in course, it does not merely warn', async () => {
+  // Excel's default for a list rule is an "information" prompt with a
+  // Continue button, so a hand-typed course would land in the cell and the
+  // file would only fail once it reached RosiFit. errorStyle 'stop' is what
+  // makes the dropdown the only way in -- an academy cannot invent a course
+  // by typing it here.
+  const bytes = await buildMemberTemplate(opts);
+  const wb = new (await excel()).Workbook();
+  await wb.xlsx.load(bytes);
+  const data = wb.getWorksheet(SHEET_DATA)!;
+  const rules = (data as unknown as { dataValidations: { model: Record<string, ExcelJS.DataValidation> } })
+    .dataValidations.model;
+  const course = rules[Object.keys(rules).find(r => r.startsWith('C2'))!];
+  const branch = rules[Object.keys(rules).find(r => r.startsWith('D2'))!];
+  assert.equal(course.errorStyle, 'stop', 'Course refuses anything off the list');
+  assert.equal(branch.errorStyle, 'stop', 'Branch too');
+  assert.match(String(course.error), /add the course in RosiFit first/,
+    'and says where a new course actually comes from');
+});
+
+test('the dropdown lists every course the academy runs, once each', async () => {
+  const bytes = await buildMemberTemplate(opts);
+  const wb = new (await excel()).Workbook();
+  await wb.xlsx.load(bytes);
+  const lookup = wb.getWorksheet(SHEET_COURSES)!;
+  const listed: string[] = [];
+  lookup.eachRow((r, i) => { if (i > 1 && r.getCell(1).value) listed.push(String(r.getCell(1).value)); });
+  assert.deepEqual(listed.sort(), ['Prenatal Flow', 'Yoga Flow']);
+});
+
+test('a file may carry rows for DIFFERENT courses — the course is per row', async () => {
+  // The screen asks for no course at all now; one spreadsheet covers every
+  // course the academy runs, and each row joins the one it names.
+  const bytes = await workbookWith([
+    ['Anitha Rajesh', '', 'Yoga Flow', 'Velachery', '', ''],
+    ['Divya Balakrishnan', '', 'Prenatal Flow', 'Anna Nagar', '', ''],
+  ]);
+  const rows = await parseMemberXlsx(bytes);
+  const v = validateMemberRows(rows, {
+    existingNames: new Set(), existingAliases: new Set(), existingEmails: new Set(),
+    offerings, defaultCourse: '', defaultBranch: '', today: '2026-09-04',
+  });
+  assert.deepEqual(v.map(x => x.state), ['ready', 'ready'], 'no course chosen up front, both rows fine');
+  assert.deepEqual(v.map(x => x.row.course), ['Yoga Flow', 'Prenatal Flow']);
+});
+
 test('the sample rows live on the INSTRUCTIONS sheet, not the data sheet', async () => {
   // A template whose data sheet already holds two people imports two
   // strangers the first time somebody uploads it unedited.

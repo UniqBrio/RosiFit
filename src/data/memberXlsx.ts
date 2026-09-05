@@ -121,10 +121,10 @@ export async function buildMemberTemplate(opts: TemplateOptions): Promise<ArrayB
   info.addRow(['', `Fill in the "${SHEET_DATA}" sheet, one member per row. Only "${MEMBER_IMPORT_REQUIRED}" is required.`]);
   info.addRow(['', `Up to ${MEMBER_IMPORT_MAX_ROWS} members per file. Blank rows are ignored.`]);
   info.addRow(['', 'A member already on the register is skipped, never changed — edit her in the app instead.']);
+  info.addRow(['', 'THE COURSE IS PER ROW. One file can carry members for as many courses as you run — pick each row’s course from the dropdown.']);
+  info.addRow(['', 'The dropdown lists the courses this academy has TODAY. A course typed by hand is refused; add it in RosiFit first, then download the template again.']);
   if (opts.openedFrom) {
     info.addRow(['', `Downloaded from ${opts.openedFrom.course} · ${opts.openedFrom.branch}: a row with a blank Course joins that course.`]);
-  } else {
-    info.addRow(['', 'Every row needs a Course (pick one from the dropdown), or open this import from inside a course.']);
   }
   info.addRow([]);
   info.addRow(['Columns']).font = { bold: true };
@@ -153,18 +153,25 @@ export async function buildMemberTemplate(opts: TemplateOptions): Promise<ArrayB
   data.getRow(1).font = { bold: true };
   data.views = [{ state: 'frozen', ySplit: 1 }];
   const last = MEMBER_IMPORT_MAX_ROWS + 1;
+  // STOP, not warn. Excel's default for a list rule is an "information"
+  // prompt with a Continue button, so a course typed by hand lands in the
+  // cell anyway and the file only fails once it reaches RosiFit. errorStyle
+  // 'stop' makes the dropdown the ONLY way in -- an academy cannot invent a
+  // course by typing it here, which is the point of the hidden lookup sheet.
   if (courses.length) {
-    addRule(data,`C2:C${last}`, {
-      type: 'list', allowBlank: true, showErrorMessage: true,
+    addRule(data, `C2:C${last}`, {
+      type: 'list', allowBlank: true, showErrorMessage: true, errorStyle: 'stop',
       formulae: [`'${SHEET_COURSES}'!$A$2:$A$${courses.length + 1}`],
-      errorTitle: 'Not a course', error: 'Pick a course from the list, or leave it blank.',
+      errorTitle: 'Not one of your courses',
+      error: 'Pick a course from the list. To use a new one, add the course in RosiFit first, then download the template again.',
     });
   }
   if (branches.length) {
-    addRule(data,`D2:D${last}`, {
-      type: 'list', allowBlank: true, showErrorMessage: true,
+    addRule(data, `D2:D${last}`, {
+      type: 'list', allowBlank: true, showErrorMessage: true, errorStyle: 'stop',
       formulae: [`'${SHEET_COURSES}'!$B$2:$B$${branches.length + 1}`],
-      errorTitle: 'Not a branch', error: 'Pick a branch from the list, or leave it blank.',
+      errorTitle: 'Not one of your branches',
+      error: 'Pick a branch from the list, or leave it blank when the course runs at only one.',
     });
   }
   addRule(data, `F2:F${last}`, {

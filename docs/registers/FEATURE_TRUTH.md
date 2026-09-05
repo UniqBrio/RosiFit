@@ -113,7 +113,7 @@ name from an uploaded register to an existing member.
 | Edit a member | ◻ | **Her name is the only required field** |
 | Several email addresses, exactly one primary | ◻ | `member_emails.is_primary` |
 | No member code is assigned, and none is shown | ✅ | Retired in `0026` (ADR 006). No screen renders one; pre-`0026` codes stay in the column and stay searchable, so somebody holding one from an export can still find her |
-| Bulk import members from an `.xlsx` file | ✅ | `app/member/import.tsx`, `src/data/memberXlsx.ts` (template + parse, exceljs 4.4.0), `src/data/memberImport.ts` (rules), `bulk_import_members` (0028). File → validate → preview → confirm, as the canvas' `goBulkImport` names it. Modelled on the UniqBrio Bulk Student Import v1: three-sheet template (Instructions & Sample, protected · Member Data with dropdowns · hidden Courses lookup), academy-branded file name, 500 rows / 5 MB, blank rows skipped, blank joining date = today, a duplicate **skipped, never overwritten**, every row in its own sub-transaction (§15.2 "some rows blocked"), results as Imported / Skipped / Failed, and an error report (Row · Status · Reason · every column) to fix and re-import. **Owner-only.** RosiFit's own differences, on purpose: no phone column (C-70), ONE course per row (one active enrolment, 0006), and Google Meet display names. 31 specs under `src/data/`, 30 assertions in `supabase/tests/22_bulk_import_members.sql`. **Closes the defect** where Bulk Import opened the attendance importer (`/upload`) |
+| Bulk import members from an `.xlsx` file | ✅ | `app/member/import.tsx`, `src/data/memberXlsx.ts` (template + parse, exceljs 4.4.0 browser build), `src/data/memberImport.ts` (rules), `bulk_import_members` (0028, date shape 0029). File → validate → preview → confirm, as the canvas' `goBulkImport` names it. **The course is PER ROW**: the screen asks for none, so one file covers every course the academy runs. The template's Course and Branch columns are dropdowns fed from a hidden lookup of the academy's own offerings, with `errorStyle: 'stop'` — a course typed by hand is refused **by Excel**, not merely on upload, so nobody can invent one in the file. Opened from a course detail, that course is what a **blank** Course cell falls back to. With no course on the register the template is not offered at all: there would be nothing to list, so the screen says to add a course first. Modelled on UniqBrio Bulk Student Import v1: three-sheet template, academy-branded name, 500 rows / 5 MB, blank rows skipped, blank joining date = today, a duplicate **skipped, never overwritten**, each row in its own sub-transaction (§15.2 "some rows blocked"), Imported / Skipped / Failed, and an error report (Row · Status · Reason · every column) to fix and re-import. **Owner-only.** RosiFit's own differences: no phone column (C-70), ONE course per row (one active enrolment, 0006), Google Meet display names. 34 specs under `src/data/`, 37 assertions in `supabase/tests/22_bulk_import_members.sql`. **Closes the defect** where Bulk Import opened the attendance importer (`/upload`) |
 | Aliases | ◻ | What the uploaded register matches on |
 | Link an unmatched name to an existing member | ◻ | `app/match.tsx`; branch, known display names, last-attended and her address come from the import preview |
 
@@ -360,34 +360,49 @@ app for the sign-in screen.
 ---
 
 ### Identity — `index` · `register` · `set-pin` · `forgot-pin` · `change-mobile` · `profile`
-**Last confirmed:** 03-Sep-2026
+**Last confirmed:** 05-Sep-2026 (sign-in rows only; the rest still 03-Sep-2026)
 
 Sign-in by mobile and PIN, first registration, PIN changes, recovery, and the profile screen.
 
 | Capability | Status | Notes |
 |---|---|---|
-| Sign in with mobile + PIN | ◻ | `auth-login`; **currently returns 500 — `PIN_PEPPER` unset**. One button: Continue always goes to the PIN step |
-| An unknown number reaches registration | ◻ | Decided by the server's answer, not by a public lookup — see the note below |
+| Sign in with mobile + PIN | ◻ | `auth-login`. **Continue now validates the number first** (05-Sep-2026): a registered number goes to the PIN step, the PIN is still required. `PIN_PEPPER` is set as of 04-Sep-2026 per `supabase/SETUP.md` |
+| An unknown number reaches registration | ◻ | **From Continue, by a public lookup** (`auth-lookup`), 05-Sep-2026 — see the note below. **Blocked until `auth-lookup` is deployed**; it is written and not deployed |
 | A PIN can be typed, not only tapped | ✅ | Both keypads carry a real field over the boxes, with a caret on the box being filled |
-| Register the academy admin | ◻ | `auth-bootstrap`; **not yet done — `bootstrap_completed` is `false`** |
+| Register the academy admin | ◻ | `auth-bootstrap`. **Done — `bootstrap_completed` is `true`** as of 04-Sep-2026 per `supabase/SETUP.md`, so the form now refuses a second academy and says so. Step 1 has a Back to sign-in (05-Sep-2026) |
 | Set or change a PIN | ◻ | One screen, two lives: first PIN after a temporary one, or a self-change from Profile |
 | Recover a forgotten PIN | ◻ | Two security questions, **three attempts, then a 30-minute lockout** |
 | Change your own mobile number | ◻ | Authenticated, verified and audited |
 | PINs never stored readable | ✅ | Column-name guard in `supabase/tests/01_auth.sql` |
 
-**Rules and validations** — the sign-in screen has **one** button. The canvas looks a number up on
-Continue and jumps straight to registration when it is unknown; against the real project that
-needs a public *"does this number have an account"* endpoint, which is a **staff-enumeration
-oracle** — anyone could dial numbers until one came back registered. `auth-login` is built the
-other way round: an unknown number and a wrong PIN answer **identically** once the academy exists,
-and the one case it will name is the global fact that nobody has registered at all. So Continue
-always moves to the PIN step and the **server** picks the destination on the answer — the
-bootstrap refusal routes to `register` with the number carried across, every other failure stays
-put with its message. The predicate that reads that answer is `src/data/signin.ts`
-(`needsRegistration`), tested rather than inlined: too eager and a member who mistyped her PIN
-registers a second academy; too strict and the first admin is stranded on a PIN screen no PIN can
-pass. A pasted number keeps its country code, so `groupPhone` drops a leading `91` or `0` — but
-only when the input is longer than ten digits, since `91234 56789` is a real number.
+**Rules and validations** — the sign-in screen has **one** button, and **Continue validates the
+number before the PIN step** (05-Sep-2026, ADR 016 / `docs/decisions/008`). A registered number
+opens the PIN screen — the PIN is still required, Continue never signs anybody in; an
+unregistered one opens registration with the number carried across; a lookup that did not answer
+leaves her exactly where she is with the reason. That third case is the one that matters:
+answering "not registered" because a connection dropped would walk a real staff member into
+creating a second academy, so `continueDestination` takes `null` and returns `stay`
+(`src/data/signin.ts`, three cases in `src/data/signin.test.ts`).
+
+**This is a knowing trade.** The lookup is `auth-lookup`, public and unauthenticated, and it is a
+**staff-enumeration oracle**: anyone can dial numbers until one answers `registered: true`. Until
+05-Sep-2026 the app refused to ship one, and `auth-login` is still built the other way round — an
+unknown number and a wrong PIN answer **identically** once the academy exists. The repo owner was
+shown the trade in full and chose the canvas' behaviour; rate-limiting was offered and declined.
+The cost is TD-017. What the oracle does not give: no name, no `kind`, no `is_active`, no
+`pin_set_at`, nothing that narrows a PIN guess — and `auth-login`'s five-attempt lockout is
+untouched. A **disabled** account still answers `registered: true`, because sending a disabled
+staff member to register a new academy would be worse than the sentence `auth-login` gives her.
+
+`needsRegistration` is kept even though Continue now catches the case it was written for: it
+still fires if an account disappears between Continue and the PIN, and its five tests still pin
+the distinction. A pasted number keeps its country code, so `groupPhone` drops a leading `91` or
+`0` — but only when the input is longer than ten digits, since `91234 56789` is a real number.
+
+Because an unrecognised number now reaches the registration form **including after the academy is
+registered** — the owner's explicit instruction — a mistyped digit lands on that form, so
+`app/register.tsx` gained a Back on step 1. Before this change the form's only exit was the
+browser's own back button.
 
 Recovery answers are collected **up front at registration**, because
 they are the only way a reset works later without a phone call. Every terminal state says plainly
@@ -396,8 +411,12 @@ changed is worse than the lockout itself. Changing the mobile number is cheap an
 PIN derives from the immutable account id, not the phone number — so moving the number leaves the
 PIN working.
 
-**Limits** — **sign-in does not work on the live project today.** `PIN_PEPPER` is an Edge Function
-secret that has not been set; until it is, every auth function returns 500 and the app says so.
+**Limits** — ◻ **Continue does not work on the live project until `auth-lookup` is deployed.**
+It is the one Edge Function in the tree production does not have; until it is deployed
+(`--no-verify-jwt`), Continue answers "could not be reached" for every number rather than
+guessing. The earlier limit recorded here — `PIN_PEPPER` unset, every auth function returning
+500 — was resolved on 04-Sep-2026 per `supabase/SETUP.md`, which also records
+`bootstrap_completed` as `true`. Both marks are ◻: read from `SETUP.md`, not re-verified here.
 
 **Benefit** — a coach signs in with a number she already knows and four digits, on a shared phone.
 
