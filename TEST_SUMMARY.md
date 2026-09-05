@@ -37,46 +37,85 @@ exit 1
 
 _Merge blocked. Every FAIL above must resolve. No partial merges._
 
-SEND AS A DIALOG, THE SCRIM VALUE (RC-018), AND HOLIDAYS OFF THE MORE LIST. Same five
-accepted-unverifiable classes as every run here -- G1/G2/G3 (no design/tokens.json, ADR 001,
-TD-001/002/003), G6 BLOCKED (no eslint, TD-004), G8 FAIL on an empty log (no test:functional,
-TD-006). None is touched by this change.
+TAP-TO-INSERT DETAIL CHIPS (ADR 011, Track E -> Track B). Same five accepted-unverifiable
+classes as every run on this repo -- G1/G2/G3 no design/tokens.json (ADR 001, TD-001/002/003),
+G6 BLOCKED no eslint (TD-004), G8 FAIL on an empty log, no test:functional (TD-006). None is
+touched by this change.
 
-FAIL-FIRST: src/theme/scrim.test.ts - "DARK.scrim alpha 0.7 hides the screen behind it; must
-be <= 0.55", against the pre-fix tree. Observed, not asserted. The LIGHT assertion PASSED
-before the fix, which is the test agreeing with the reported selectivity (the screenshot was
-dark theme) rather than being written around the change.
+316 unit (305 + 11 appended to message.test.ts), 2840/2840 contrast, 75/75 icons, audit:all
+clean, G5 types PASS.
 
-305 unit (300 + 5 scrim), 2840/2840 contrast, 75/75 icons, audit:all clean.
+READ THIS BEFORE TRUSTING THE NUMBER. The working tree at gate time ALSO CONTAINED ANOTHER
+SESSION'S UNCOMMITTED WORK -- app/course/[id].tsx, app/member/edit.tsx, src/data/repository.ts
+and requests/2026-09-05-park-unresolved-upload-rows.md, none of them mine and none of them in
+my commit. This is the shared worktree behaving as it does. So the 316 is a verdict on the
+COMBINATION, not on this change in isolation, and it cannot be decomposed after the fact. The
+files I did commit were diff-reviewed line by line (B6) and carry only lines that trace to
+requests/2026-09-05-insert-a-detail-chips.md.
 
-THE HONEST LIMIT ON THIS ONE, and it is the whole reason RC-018 exists. Round 1 (c5620a0)
-verified its backdrop fix with screenshots taken by the agent that wrote it, against a
-criterion -- "the screen behind is visible" -- that the same agent chose. Both were true and
-the requester saw a black screen anyway, because VISIBLE and LEGIBLE are different claims and
-nothing in the repo forced the distinction. scrim.test.ts is the first rung that can disagree
-with an author: it states the criterion as a bounded number, ahead of the judgement.
+NOT OBSERVED FAILING: the chip ROW itself -- src/components/TokenChips.tsx. It is new surface
+with no prior behaviour, so there is no pre-change state in which a test of it could fail. What
+IS covered, and was written to be, is the part with edge cases: insertToken's cursor, spacing,
+selection-replacement, append-on-no-focus and out-of-range handling, plus the assertion that
+every chip inserts a token the Edge Function can actually fill -- a chip that inserted an
+unbuildable token would send literal braces to every member of the course. Rendering the row is
+the part no rung here can reach (TD-006, G8).
 
-It is still NARROW. It bounds an alpha; it cannot see a pixel. A scrim inside the bound with a
-40px blur over it would pass here and fail a person. The rung that would catch THAT is a render
-check and this repo has none -- .harness/allroutes.mjs cannot run on this machine at all: it
-hardcodes /opt/node22 and /opt/pw-browsers paths from a Linux box and needs a dev server on
-8100. So the visual verification for this change is the requester's own eyes, and that is
-recorded here rather than implied.
+DESIGN PASS, recorded because VISUAL?=yes obliged it:
+  States      the chips are static content of a section that only renders in the LOADED state;
+              empty/loading/error/offline/permission-denied unchanged and unreachable for them.
+  Both themes semantic tokens only -- theme.surface, theme.lineStrong, theme.fg, theme.dim.
+              Mirrors the frequency-day chips in the same form, minus the selected state.
+  Strings     one explainer line + 13 chip labels. Every other string on the screen frozen.
+  Permissions unchanged -- already inside the super-admin course form, and save_course (0030)
+              restates the check server-side.
+  Keyboard    each chip is a Pressable with accessibilityRole=button and an accessibilityLabel
+              carrying the FULL phrase ("Add to the subject: her first name"), not the clipped
+              chip text. They sit in visual order between the field and the preview.
 
-BASELINE PAID DOWN, not regenerated around: .baselines/testid-app-baseline.txt loses
-app/send/result.tsx|2 and gains nothing -- 14 entries to 13. The two untestidded controls on
-that screen were given ids (result-done, result-retry-<memberId>, the database id and never
-the index) as part of converting it, so the entry is gone rather than rewritten at a new count.
+The 44pt height is TAP_MIN and is not negotiable, which is what made one-row-per-field a real
+cost rather than a free choice -- the alternative, a single shared row targeting whichever
+field was touched last, was rejected in ADR 011 for carrying hidden state.
 
-A SMALL TRAP WORTH RECORDING: the hardcoded-colour audit counts hex literals in COMMENTS.
-Explaining the scrim maths with the actual background values in prose pushed
-src/theme/tokens.ts from 97 to 99 and BLOCKED. The audit is right to count them -- a hex in a
-comment is how a real one gets pasted in later -- so the comments were reworded rather than the
-baseline raised.
+---
 
-HOLIDAYS: removing the More row leaves /holiday reachable only by URL. That is recorded as
-TD-023 and NOT resolved: the row's removal was asked for, deleting a migrated feature with
-0017's triggers behind it was not.
+## Gate run - 2026-09-05 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

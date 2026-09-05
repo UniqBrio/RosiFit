@@ -10,7 +10,8 @@ import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../../src/theme/tokens';
 import { DAY_NAMES } from '../../src/data/mock';
-import { fillTokens, unknownTokens } from '../../src/data/message';
+import { fillTokens, unknownTokens, insertToken } from '../../src/data/message';
+import { TokenChips } from '../../src/components/TokenChips';
 import { clampThreshold, MIN_THRESHOLD, MAX_THRESHOLD } from '../../src/data/followup';
 import {
   useCourses, useBranchUsage, useTemplates, useSenders, useCourseMessage, useFollowUp,
@@ -92,6 +93,12 @@ export default function CourseEdit() {
   const [templateId, setTemplateId] = useState<string | null>(null);
   const [subject, setSubject] = useState<string | null>(null);
   const [body, setBody] = useState<string | null>(null);
+  /* Where the cursor is in each field, so a tapped chip lands where the person
+   * is writing rather than at the end. `null` is "never focused", which
+   * insertToken reads as append -- inserting at index 0 would silently reorder
+   * a sentence somebody had already written. */
+  const [subjectSel, setSubjectSel] = useState<{ start: number; end: number } | null>(null);
+  const [bodySel, setBodySel] = useState<{ start: number; end: number } | null>(null);
   const [open, setOpen] = useState<null | 'branch' | 'sender' | 'template'>(null);
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -167,6 +174,22 @@ export default function CourseEdit() {
       }
     : null;
   const stray = [...new Set([...unknownTokens(shownSubject), ...unknownTokens(shownBody)])];
+
+  /* Inserting works on the SHOWN value, not on `subject`/`body`. Those are
+   * null while the course still follows its template, and splicing into null
+   * would drop the template's words on the floor. Writing the result back
+   * flips the course to its own wording -- which is exactly what typing a
+   * character already does, so the chip and the keyboard agree. */
+  const insertIntoSubject = (token: string) => {
+    const r = insertToken(shownSubject, token, subjectSel?.start ?? -1, subjectSel?.end ?? -1);
+    setSubject(r.text);
+    setSubjectSel({ start: r.caret, end: r.caret });
+  };
+  const insertIntoBody = (token: string) => {
+    const r = insertToken(shownBody, token, bodySel?.start ?? -1, bodySel?.end ?? -1);
+    setBody(r.text);
+    setBodySel({ start: r.caret, end: r.caret });
+  };
 
   const save = async () => {
     if (!valid || saving || !branchId || !sender || !templateId) return;
@@ -346,6 +369,7 @@ export default function CourseEdit() {
                 testID="course-subject"
                 value={shownSubject}
                 onChangeText={setSubject}
+                onSelectionChange={e => setSubjectSel(e.nativeEvent.selection)}
                 placeholder="We missed you this week, {{first_name}}"
                 placeholderTextColor={theme.muted}
                 accessibilityLabel="Message subject"
@@ -355,11 +379,26 @@ export default function CourseEdit() {
                   backgroundColor: theme.surface2, borderWidth: 1, borderColor: theme.lineStrong,
                 }} />
 
+              {/* Said ONCE, in front of the first chip row, and by example.
+                  "It becomes a code" is abstract; showing the code beside what
+                  it turns into is what a non-technical reader can act on. */}
+              <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.md }}>
+                <Icon name="info" size={15} color={theme.dim} />
+                <Muted style={{ flex: 1 }}>
+                  Tap a detail to add it. It appears as {'{{first_name}}'} while you write, and
+                  each member receives her own name in its place — the preview below shows what
+                  she will actually read.
+                </Muted>
+              </View>
+              <TokenChips label="Add to the subject" testIDPrefix="course-subject-token"
+                onInsert={insertIntoSubject} />
+
               <Label style={{ marginTop: SPACE.md }}>Message</Label>
               <TextInput
                 testID="course-body"
                 value={shownBody}
                 onChangeText={setBody}
+                onSelectionChange={e => setBodySel(e.nativeEvent.selection)}
                 multiline
                 accessibilityLabel="Message body"
                 style={{
@@ -367,6 +406,9 @@ export default function CourseEdit() {
                   padding: SPACE.md, color: theme.fgStrong, fontSize: 14, lineHeight: 20,
                   backgroundColor: theme.surface2, borderWidth: 1, borderColor: theme.lineStrong,
                 }} />
+
+              <TokenChips label="Add to the message" testIDPrefix="course-body-token"
+                onInsert={insertIntoBody} />
 
               {/* The preview is the point. This wording is authored once and
                   sent to everyone in the course, so an unresolved token is not

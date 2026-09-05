@@ -25,6 +25,7 @@
 | 016 | [Continue validates the number, and the enumeration oracle is accepted](../decisions/008-continue-validates-the-number.md) | Accepted | 05-Sep-2026 | |
 | 017 | [The attendance upload and its match review are dialogs, not pages](../decisions/009-upload-and-match-are-dialogs.md) | Accepted | 05-Sep-2026 | |
 | 018 | [A member's Active/Inactive is STORED, and it is the engine's own `members.status`](../decisions/010-member-status-is-stored-not-derived.md) | Accepted | 05-Sep-2026 | |
+| 019 | [A detail is TAPPED into the wording, not typed](../decisions/011-inserting-a-detail-into-the-wording.md) | Accepted | 05-Sep-2026 | |
 
 Status: `Proposed` · `Accepted` · `Superseded by NNN` · `Deprecated`
 

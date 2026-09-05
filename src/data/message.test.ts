@@ -9,7 +9,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fillTokens, unknownTokens, MESSAGE_TOKENS } from './message';
+import { fillTokens, unknownTokens, MESSAGE_TOKENS, insertToken } from './message';
 import type { Member } from './mock';
 
 const member = (over: Partial<Member> = {}): Member => ({
@@ -116,4 +116,73 @@ test('the seeded template renders with nothing left over', () => {
     + '\n\nNothing is wrong -- we would just like to see you back on the mat.\n\n{{academy_name}}';
   assert.deepEqual(unknownTokens(seeded), []);
   assert.ok(!fillTokens(seeded, ctx()).includes('{{'));
+});
+
+// ------------------------------------------------- inserting from the chips
+// The academy writing this wording is not technical. The chip row exists so a
+// 13-token vocabulary does not have to be memorised and typed letter-perfect,
+// and these pin the part of that which is not visible at the call site.
+
+test('every token carries a short chip label and a full meaning', () => {
+  // The chip is what is tapped; `means` is what a screen reader is told. A
+  // token with a blank either is a chip nobody can identify.
+  for (const t of MESSAGE_TOKENS) {
+    assert.ok(t.chip.trim().length > 0, `${t.token} has no chip label`);
+    assert.ok(t.means.trim().length > 0, `${t.token} has no meaning`);
+    assert.ok(t.chip.length <= 16, `${t.chip} is too long to sit in a chip row`);
+  }
+});
+
+test('chip labels are unique — two chips reading the same is unusable', () => {
+  const chips = MESSAGE_TOKENS.map(t => t.chip);
+  assert.equal(new Set(chips).size, chips.length);
+});
+
+test('a token goes in at the cursor, not at the end', () => {
+  const r = insertToken('Hello  and welcome', '{{first_name}}', 6, 6);
+  assert.equal(r.text, 'Hello {{first_name}} and welcome');
+});
+
+test('the caret lands after the token, ready to keep typing', () => {
+  const r = insertToken('', '{{first_name}}', 0, 0);
+  assert.equal(r.text, '{{first_name}}');
+  assert.equal(r.caret, '{{first_name}}'.length);
+});
+
+test('a space is added after a word, so "Hi," does not become "Hi,Divya"', () => {
+  assert.equal(insertToken('Hi,', '{{first_name}}', 3, 3).text, 'Hi, {{first_name}}');
+  assert.equal(insertToken('Hello', '{{first_name}}', 5, 5).text, 'Hello {{first_name}}');
+});
+
+test('no space is doubled where one already exists', () => {
+  assert.equal(insertToken('Hi ', '{{first_name}}', 3, 3).text, 'Hi {{first_name}}');
+});
+
+test('closing punctuation keeps its place', () => {
+  // "{{first_name}}," reads right; "{{first_name}} ," does not.
+  const r = insertToken('Hello , welcome', '{{first_name}}', 6, 6);
+  assert.equal(r.text, 'Hello {{first_name}}, welcome');
+});
+
+test('a selection is replaced, the way typing over it would', () => {
+  const r = insertToken('Hello NAME there', '{{first_name}}', 6, 10);
+  assert.equal(r.text, 'Hello {{first_name}} there');
+});
+
+test('a field never focused appends rather than inserting at the start', () => {
+  // -1 is "no selection". Inserting at 0 would silently reorder a sentence
+  // somebody had already written, which is the worse failure.
+  assert.equal(insertToken('Hello', '{{first_name}}', -1, -1).text, 'Hello {{first_name}}');
+});
+
+test('an out-of-range cursor appends instead of throwing', () => {
+  assert.equal(insertToken('Hi', '{{first_name}}', 99, 99).text, 'Hi {{first_name}}');
+});
+
+test('what the chips insert is exactly what the sender can fill', () => {
+  // The whole point: a chip that inserted a token the Edge Function does not
+  // build would send as literal braces to every member of the course.
+  const all = MESSAGE_TOKENS.reduce(
+    (acc, t) => insertToken(acc.text, t.token, -1, -1), { text: '', caret: 0 });
+  assert.deepEqual(unknownTokens(all.text), []);
 });
