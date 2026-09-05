@@ -12,6 +12,148 @@
 
 ---
 
+## 1.11.0 — 05-Sep-2026 — MINOR
+
+**The component library: discover → reuse → build the missing piece → register → reuse.**
+The same functionality was being rebuilt per app — auth flows, theme plumbing, navigation,
+shared states — costing time and breeding inconsistency. The framework already *was* a
+component library for one stack (`starter/`); what was missing was the registry, the
+lookup-before-build step, and the contribute-back loop.
+
+### Added
+- **`docs/registers/COMPONENT_LIBRARY.md`** — the central registry. §1 the **standard
+  baseline** every app includes regardless of business requirements (light+dark themes and
+  theme configuration, login/logout/forgot/reset, navigation shell, shared states, data
+  plumbing, safety defaults) — the advisor pass places these in Must-Have automatically and
+  spends no research on them. §3 implementations **keyed by stack**: the reference stack
+  (`typescript-react-postgres`) seeded from `starter/` with honest **GAP** rows for what is
+  wanted but not yet built (login/logout screens, forgot/reset flow, header/footer shell,
+  common forms) — a row is a claim that working code exists, never an intention. New stacks
+  get their own subsection pointing at one implementation repository each.
+- **The lookup order** (feature.md A3.1, docs/24 §6): this app → the library for this stack →
+  build. Rebuilding a registered component is a defect — the CANONICAL_PATTERNS rule applied
+  to components.
+- **The contribute-back loop** (registry §4, promote.md, DoD): a component built for a
+  *baseline* concern is generalized (lexicon-grep clean), registered, and its GAP row flipped
+  READY **in the same change** — baseline concerns were declared common in advance, so they
+  skip the rule of three. Every other reusable-looking component still goes through
+  `/promote` (park n=1, promote at n=2 from a different app) — the museum-of-accidents guard
+  stands.
+- `docs/02` step 2: a non-reference stack reads the registry first; unbuilt baseline concerns
+  are built once against the same standards and contributed back, so the next app on that
+  stack starts where this one finished.
+- Cases FW-LIB-001..003; a DoD item carries the contribute-back obligation.
+
+### App action required
+**None.** Reference-stack apps already receive the library via the scaffold; the registry
+makes it discoverable and gives its gaps a place to close.
+
+---
+
+## 1.10.0 — 05-Sep-2026 — MINOR
+
+**The product-advisor pass.** For a new application or a new module there is no codebase to
+answer scope questions from — they are product decisions, and guessing them ships the wrong
+v1. Gate 1 now runs as an advisor for those cases: **research → context → questions →
+recommend with reasoning → alternatives → the requester decides.**
+
+### Added
+- **`docs/24` §2 — the product-advisor pass.** Timeboxed research (3–5 comparable products,
+  one pass; web research where available, model knowledge declared and dated where not);
+  candidate features filtered through explicit context lenses (complexity, type/purpose,
+  region and market, legal/regulatory/cultural, business context, target customers,
+  scale/growth, industry standards, deliberate exclusions); triaged **Must-Have /
+  Recommended / Good-to-Have**, each tier reasoned, plus the **ignored list** — features
+  found in research and deliberately excluded, with why. Research is input, never authority.
+- **Question format hardened** (`GATE1_QUESTIONS.md`, `feature.md` A1, `01-SDLC` Stage 1):
+  every question carries the recommendation, *why it wins here*, and real alternatives;
+  options always end with **"Other: describe your own"**; the requester's choice — including
+  a custom one — binds like a stated FIELD.
+- **Run-mode interaction defined:** the triage + questions are ONE consolidated package and
+  a **hard stop in every run mode** — scope is the requester's decision and is expensive to
+  undo. A scoped in-area feature skips the advisor pass entirely, so the 1.9.0 speed win is
+  untouched where it matters.
+- `REQUEST_NEW.md` gains a `MARKET / REGION` field feeding the regional/legal lenses.
+- Cases FW-ADVISOR-001..003.
+
+### App action required
+**None.** The pass fires only for new applications and new modules.
+
+---
+
+## 1.9.0 — 05-Sep-2026 — MINOR
+
+**The speed release: run modes and proportional ceremony.** Root-cause finding from a real
+comparison (a bulk-import feature: ~40 minutes here vs ~5 minutes in the owner's previous
+lighter flow): (1) Track A blocked **four times** waiting for a human — the synchronous
+round-trips, not the work, dominated wall-clock; (2) every feature ran maximum ceremony —
+four separate gate artifacts, the full 18-area loop, a canvas — regardless of size; (3) prose
+restated and registers re-read across stages.
+
+### Added
+- **Run modes** (`docs/01` §Run modes). **auto** *(new default)*: gates 1–4 become
+  checkpoints — the artifact is produced in full, open decisions are taken on the written
+  recommendation and logged to the run's **ASSUMPTIONS ledger**, and the run proceeds
+  immediately. **confirm**: the pre-1.9.0 behaviour, every gate waits — chosen with
+  `RUN MODE: confirm` in the request file or by saying so. Auto moves the review to the end
+  (the run report: FIELDS + ledger + artifacts + QA verdicts + preview URL); it never removes
+  it. Stated request FIELDS bind identically in both modes.
+- **Hard stops that survive auto**: destructive/hard-to-reverse operations, capability
+  removal or reshaping, the safety floor, outbound sends, production (Gate 6 is human in
+  every mode), and genuine expensive forks. The mechanical test gate blocks in every mode.
+- **Proportional ceremony**: the run declares its **scale** at Step 0. A *scoped* feature
+  (≤5 files, additive-only schema, no new nav area or shared component) produces ONE combined
+  `RUN_<feature>.md` instead of four gate artifacts, skips the feasibility brief unless
+  build-vs-buy is real, and skips the canvas in auto mode. Obligations identical — states,
+  themes, keyboard, verdicts all still checked — only the packaging shrinks.
+- **Speed discipline** (Track A Step 0): registers read once per run, terse tables over
+  prose, no restating, independent checks batched.
+
+### Changed
+- `workflows/feature.md` (Step 0 items 7–8, gates 1–4, close-out run report),
+  `workflows/enhance.md` (B3/B4), `workflows/refactor.md` (D0), `workflows/request.md`
+  (RUN MODE capture), both request templates (RUN MODE field + standing instructions),
+  `docs/01-SDLC.md`, `README.md`, `.claude/commands/feature.md`. Cases FW-MODE-001..004.
+
+### App action required
+**None mechanically — but note the default changed:** a run with no `RUN MODE` stated now
+proceeds through gates 1–4 without waiting. Any requester who wants the old behaviour writes
+`RUN MODE: confirm` in the request file or says so. Production approval and the test gate
+are unchanged in every mode.
+
+---
+
+## 1.8.0 — 05-Sep-2026 — MINOR
+
+**A new app can now be born through `/request`.** Audit finding: a whole-new-application ask
+("build me a CRM") classified as **NEW** and dropped into Track A — a feature track whose
+Step 0 reads the app's rules, registers and sibling screens, none of which exist for a
+greenfield product. There was no intake route to initialization, so the one command that is
+supposed to start *any* work could not start an application.
+
+### Added
+- **NEW-APP classification** in `workflows/request.md` — the test is whether a scaffolded
+  codebase exists to receive the work. The flow: REQUEST_NEW scoped to the **first shippable
+  slice** (the rest listed in EXPLICITLY OUT as later `/request` runs — an application is a
+  list, and a list is triage's job, not one request file's) → continue into
+  `docs/02-PROJECT-INITIALIZATION.md` (`npm run new:app`, day-one steps) → the request file
+  moves into the new app's `requests/` as its first ledger entry → Track A runs **inside the
+  new app**, first gate restating the FIELDS as always. Empty registers and the starter as
+  the sibling pattern are stated as expected, not blockers.
+- `scripts/new-app.mjs` seeds the **`requests/` intake ledger** (folder + contract README)
+  in every scaffold, so `/request` inside a new app finds its ledger armed like the registers.
+
+### Changed
+- `templates/requests/REQUEST_NEW.md` standing instructions carry the NEW-APP note;
+  `.claude/commands/request.md`, `docs/01-SDLC.md` §2 table, `docs/02` preamble and
+  `docs/00-OVERVIEW.md` aligned. Case FW-INTAKE-007 added.
+
+### App action required
+**None.** Existing apps already exist — this route only fires when nothing is scaffolded.
+An existing app missing `requests/README.md` gains it on the next upgrade or first `/request`.
+
+---
+
 ## 1.7.0 — 04-Sep-2026 — MINOR
 
 **The design release: the design stage becomes a design-intelligence layer.** Motivated by a
