@@ -23,9 +23,9 @@ screenshots, old support answers and old test cases still refer to it.
 
 | ID | Platform | Capability | Why it cannot work | Reference | What we tell the user | Fallback | Affected modules |
 |---|---|---|---|---|---|---|---|
+| KL-001 | React Native (iOS / Android) | Blurring what is BEHIND an element — the frosted-glass backdrop under a form dialog | React Native has no backdrop-filter equivalent in core. `ViewStyle` accepts `filter` (which filters the element ITSELF) but has no property that filters the element's backdrop, so a scrim cannot frost the screen under it. react-native-web does support it, because there it is plain CSS. | `node_modules/react-native/types/...` — `ViewStyle` declares no `backdropFilter`; `node_modules/react-native-web/dist/modules/prefixStyles/static.js` DOES carry `backdropFilter` in its prefix table, which is the asymmetry. MDN: `backdrop-filter` is a CSS property. | Nothing — no native build ships today. RosiFit is a PWA and every user is on the web platform, where the blur renders. | The scrim alone, exactly as it rendered before 05-Sep-2026. The dialog is legible and the screen behind is still visible through it; it is simply not frosted. `Platform.OS === 'web'` gates it in `FormDialog`, so nothing is broken, only plainer. | `src/components/FormDialog.tsx` |
 
-_No entries. RosiFit has not yet hit a genuine platform limit that needed recording — a row
-here requires a **reference** proving the limit is the platform's and not ours._
+_A row here requires a **reference** proving the limit is the platform's and not ours._
 
 ## Resolved / expired
 

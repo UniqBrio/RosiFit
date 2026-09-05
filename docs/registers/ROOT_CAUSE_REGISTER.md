@@ -59,6 +59,67 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-016 — a global screenOption silently cancelled a per-screen presentation, and both sites still read as correct
+**Date:** 05-Sep-2026 · **Severity:** S3 · **Modules:** `app/_layout.tsx`, `src/components/FormDialog.tsx`
+
+**Symptom** — "The dialog should open top of screen from where that button is clicked or form is
+opened. same goes for all forms." Clarified by the requester: the dialog itself was right; what
+was wrong was behind it — "the background from where dialog is opened should be shows as blurred
+screen as dialog is opens". A screenshot of "Welcome a new member" showed the card floating on a
+flat near-black field with no trace of the screen it was opened from.
+
+**Root cause** — `Nav`'s `<Stack screenOptions={{ contentStyle: { backgroundColor: theme.bg } }}>`
+applied to every screen in the app, the `transparentModal` dialog routes included — at the time
+seven, the six forms and `upload`. So each dialog route painted an opaque `#08040A` panel over the screen
+`transparentModal` had gone to the trouble of keeping mounted. **Neither site was wrong on its own.** The screenOption is the right
+default for the screens that are pages; the per-screen `presentation` is the right option
+for the ones that are dialogs; the defect existed only in their composition, which is written down
+nowhere and visible in neither file. The 04-Sep correction that introduced `transparentModal`
+tested the half it changed — the form was no longer a whole page — and recorded "the screen
+underneath stays mounted and visible" in three places, a claim that was true of `mounted` and
+false of `visible` from the moment it was written.
+
+**Fix** — The three properties that make a route a dialog are now ONE named object,
+`DIALOG_SCREEN` in `app/_layout.tsx`, carrying `presentation`, `animation`, `headerShown` and the
+`contentStyle: transparent` that was missing; the dialog routes spread it rather than each repeating
+— and each being able to drop — a property. The ground moved to a `View` wrapping the whole
+`Stack`, so a dialog route opened cold still lands on `theme.bg` instead of the navigator's white.
+`FormDialog`'s scrim gained `backdrop-filter: blur(14px)` on web, which is what keeps the
+now-visible screen a backdrop rather than competing content. This addresses the cause because the
+composition is no longer something six call sites have to get right independently: there is one
+place where "what makes a route a dialog" is written, and it is the place a future option is added.
+
+**Files** — `app/_layout.tsx`, `src/components/FormDialog.tsx`,
+`docs/registers/FEATURE_TRUTH.md`, `requests/2026-09-05-dialog-opens-at-top.md`.
+
+**How to verify** — Open any of the dialog routes from a screen (not by URL): member/edit,
+course/edit, offering/edit, staff/add, holiday, change-mobile, upload, match. The screen behind must be
+recognisable through the scrim and blurred, in BOTH themes. The mechanical check that it has not
+regressed: every route that renders a `FormDialog` must take `DIALOG_SCREEN` —
+`grep -c "options={DIALOG_SCREEN}" app/_layout.tsx` equals the number of routes that render a
+`FormDialog` — 8 since decision 009 added `match` — and no `Stack.Screen` line carries
+`presentation: 'transparentModal'` inline: `grep -c "options={{ presentation: 'transparentModal'" app/_layout.tsx`
+is **0**. Compare the two greps rather than trusting the number written here; it moves every time a
+screen becomes a dialog, and a stale count reads as a failure.
+
+**Recurrence risk** — `match` was the live second instance when this entry was written: declared
+`transparentModal`, described in its own comment as "a dialog over the screen that opened it", and
+drawing an opaque `ShellScreen` that had never shown anything underneath. It was deliberately left
+alone by THIS change — the request scoped to forms, and `match` was not one — and was converted
+hours later, in the same working tree and on the same day, by decision 009. **That overlap belongs
+in this entry:** two changes reached `app/_layout.tsx` concurrently, and the second one adopting
+`DIALOG_SCREEN` rather than copying three properties is the only reason `match` did not ship the
+third-half bug a second time. Which is the argument for the named object, made by accident. The
+general class is "a global default and a per-screen option that only conflict
+when composed". Every other `screenOptions` property is a candidate: `headerStyle`,
+`headerTintColor` and `contentStyle` all apply to routes that draw their own chrome. The same
+shape exists wherever this app sets a default centrally and overrides it locally — the theme
+provider and `AppShell` are the two other places. Nothing automated catches it: a gate would have
+to render the route and look at what is behind the dialog, which is why the verify step above is
+a human one.
+
+---
+
 ## RC-015 — Continue accepted any ten digits, because a deliberate divergence from the canvas lived only in a code comment
 **Date:** 05-Sep-2026 · **Severity:** S3 · **Modules:** `app/index.tsx`, `src/data/signin.ts`, `supabase/functions/auth-login`, `app/register.tsx`
 

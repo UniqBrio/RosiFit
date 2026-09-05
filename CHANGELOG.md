@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — A form now opens over the screen you were on
+
+Open Add Member, Add Course, Upload attendance or any other form and the
+screen you opened it from is still there behind it, blurred. It used to
+disappear behind a flat black panel, which made a form feel like somewhere you
+had travelled to rather than something you were doing to the page in front of
+you.
+
+Nothing about the form itself has changed — same size, same place, same
+buttons, same words. Only what is behind it.
+
 ## Unreleased — Continue checks the number
 
 Type your mobile number, press **Continue**, and RosiFit now checks it before

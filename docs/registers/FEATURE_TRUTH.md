@@ -133,10 +133,27 @@ Pushed as a page it wears the stack's header — so the only way out is in the c
 sits below however much has been typed. `member/edit`, `course/edit`, `offering/edit`, `holiday`,
 `staff/add` and `change-mobile` all render through one shell
 (`src/components/FormDialog.tsx`): a title saying what is being decided, a subtitle naming what it
-applies to, a close that leaves without saving, and a **pinned** footer. Deliberately *not*
+applies to, a close that leaves without saving, and a **pinned** footer. `upload` and `match`
+render through the same shell as of 05-Sep-2026 — see the correction below. Deliberately *not*
 converted: `register` / `set-pin` / `forgot-pin` are the pre-session auth flow and own the screen;
-`upload` and `match` are multi-step reviews; `branches`, `staff/index`, `audit`, `appearance`,
-`profile` and `help` are places, not decisions.
+`branches`, `staff/index`, `audit`, `appearance`, `profile` and `help` are places, not decisions,
+and `member/import` is a review entered from More rather than taken over a screen.
+
+> **CORRECTED 05-Sep-2026 — `upload` and `match` came off the exclusion list.** They were
+> excluded as "multi-step reviews", not forms. That was a true statement about their SHAPE and
+> the wrong test to apply: the attendance upload is opened by a button on the register it is
+> about, and as a page it replaced that register with a full window of its own — academy header,
+> a back arrow, the nav pill — for the whole of the upload. A review taken *over* the screen it
+> concerns is still something done to that screen. Both are now `transparentModal` routes
+> rendering through `FormDialog`, carrying their existing titles and subtitles into its bar,
+> from all four entry points: the Attendance register's Upload button and its empty state, a day
+> on a course, and the "awaiting a file" notification. `member/import` stays a page — it is
+> reached from More, not taken over anything. Decision 009; request
+> `requests/2026-09-05-upload-attendance-as-dialog.md`.
+>
+> One behaviour changed with them: finishing an import used to `push`/`replace` the tab group and
+> land on Home. From under a modal that mounts a **second copy of the whole shell** over the
+> first, so both screens now dismiss back to whatever opened them.
 
 > **CORRECTED 04-Sep-2026.** This paragraph was true on a phone and false in a browser, and it
 > said so in three places at once — here, in `FormDialog`'s doc comment and in `app/_layout.tsx`.
@@ -148,6 +165,19 @@ converted: `register` / `set-pin` / `forgot-pin` are the pre-session auth flow a
 > centred card (max 560px wide, 90% of viewport height, body scrolling inside it), and the six
 > routes use `presentation: 'transparentModal'` so the screen underneath stays mounted and
 > visible. Adoption is 6/6, verified by `grep -l FormDialog app/`.
+
+> **CORRECTED AGAIN 05-Sep-2026 — it was three halves, and "visible" was the false one.**
+> `mounted` was true; `visible` was not. The `Stack`'s `screenOptions` painted `contentStyle:
+> theme.bg` onto EVERY screen, dialog routes included, so each of the six covered the mounted
+> screen with an opaque `#08040A` panel and the backdrop was a flat black field. The paragraph
+> above described a property the app did not have, and the screenshot that reported it is the
+> only reason anyone found out. **What makes it true now:** the three properties are one object,
+> `DIALOG_SCREEN` in `app/_layout.tsx` — `presentation: 'transparentModal'`, `animation: 'fade'`,
+> `headerShown: false` and `contentStyle: { backgroundColor: 'transparent' }` — spread by every
+> route that renders a `FormDialog` (the six forms, plus `upload` and `match` from decision 009), with `theme.bg` moved to a `View` around the whole `Stack` so a dialog opened cold still
+> has a ground. `FormDialog`'s scrim adds `backdrop-filter: blur(14px)` on web, so the screen you
+> opened the form from reads as a blurred backdrop rather than as content behind glass.
+> See RC-016. Adoption is 8/8, verified by `grep -c "options={DIALOG_SCREEN}" app/_layout.tsx`.
 
 **The member code is not shown anywhere.** It is an internal identifier: it tells nobody which
 member this is, and it was the entire second line for anyone with no email address. Her detail

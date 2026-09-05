@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { View, Text, Pressable, ScrollView, useWindowDimensions } from 'react-native';
+import type { ViewStyle } from 'react-native';
+import { View, Text, Pressable, ScrollView, useWindowDimensions, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Muted, Button } from './ui';
 import { Icon } from './Icon';
@@ -42,10 +43,30 @@ import { SPACE, RADIUS } from '../theme/tokens';
  *
  * On a narrow screen the panel takes the width it is given and the scrim
  * collapses to almost nothing, so the phone behaviour is unchanged.
+ *
+ * WHY THE BACKDROP IS BLURRED, NOT JUST DIMMED
+ * The scrim's job is to say "this is over something", and it can only say it
+ * about something you can SEE. It was saying it about a flat near-black field:
+ * the Stack painted every screen `theme.bg`, dialog routes included, so the
+ * screen the form was opened FROM was mounted and completely hidden (the
+ * third half, now in `DIALOG_SCREEN` -- app/_layout.tsx). With the screen
+ * showing through, the blur is what keeps it BACKDROP rather than competing
+ * content: you can tell where you are without being able to read it.
  */
 const DIALOG_MAX_W = 560;
 /** Never taller than this share of the viewport: the footer must stay on screen. */
 const DIALOG_MAX_H = 0.9;
+/**
+ * Web only, and deliberately so. `backdrop-filter` is a CSS property that
+ * react-native-web passes through (it is in the library's own prefix table);
+ * React Native itself has no equivalent, so native gets the scrim alone --
+ * exactly what it rendered before this. A browser too old for the property
+ * ignores it and lands in the same place. Nothing depends on the blur being
+ * there, which is what makes it safe to ship without a native module.
+ */
+const BACKDROP_BLUR = (Platform.OS === 'web'
+  ? { backdropFilter: 'blur(14px)' }
+  : null) as ViewStyle | null;
 
 export function FormDialog({
   title, subtitle, onClose, children, hint, cancelLabel = 'Cancel',
@@ -79,10 +100,10 @@ export function FormDialog({
   const close = onClose ?? (() => router.back());
 
   return (
-    <View style={{
+    <View style={[{
       flex: 1, backgroundColor: theme.scrim,
       alignItems: 'center', justifyContent: 'center', padding: SPACE.lg,
-    }}>
+    }, BACKDROP_BLUR]}>
       {/* Tapping beside the dialog leaves it, the way tapping beside any
           dialog does. It is the SAME action as the close button, never a
           quiet save -- nothing typed is kept by walking away from it. */}
