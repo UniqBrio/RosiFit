@@ -12,6 +12,7 @@ import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../../src/theme/tokens';
 import { DAY_NAMES } from '../../src/data/mock';
+import { memberWeekdays } from '../../src/data/memberDays';
 import { useCourses, useMembers } from '../../src/data/hooks';
 import { createMember, updateMember } from '../../src/data/repository';
 
@@ -60,7 +61,12 @@ export default function MemberEdit() {
   const [name, setName] = useState(existing?.name ?? '');
   const [course, setCourse] = useState(existing?.course ?? '');
   const [branch, setBranch] = useState(existing?.branch ?? '');
-  const [joined, setJoined] = useState('');
+  // Today, on the ADD form only. Almost every member is entered on the day
+  // she walks in, so a blank field made the common case a date-picker trip
+  // and left `joined_on` null whenever it was skipped. The EDIT form keeps it
+  // blank: it does not save this field, and today's date on a record that
+  // joined last year reads as a fact it isn't.
+  const [joined, setJoined] = useState(id ? '' : iso(new Date()));
   const [aliases, setAliases] = useState<string[]>(existing?.aliases ?? []);
   const [aliasDraft, setAliasDraft] = useState('');
   const [emails, setEmails] = useState(existing?.emails ?? []);
@@ -111,6 +117,29 @@ export default function MemberEdit() {
     return set;
   }, [chosenCourse, offering]);
 
+  /**
+   * ADD seeds her days from the course; EDIT does not.
+   *
+   * She joins a course to attend the days it runs, so making her tick them
+   * one by one asks her to re-state the course she just chose. The row opens
+   * with all of them on and she takes off the ones she will not attend.
+   *
+   * Re-seeded on the course|branch identity and nothing else: the union of a
+   * course's offerings narrows to one offering's days when the branch lands,
+   * and a re-render must never undo a day she has just taken off.
+   *
+   * Edit is deliberately excluded. Her saved override is not on the Member
+   * record, so seeding that form from the COURSE would show days that are
+   * not hers -- worse than the blank row it shows today.
+   */
+  const seedKey = existing ? '' : `${course}|${branch}`;
+  const [seededDays, setSeededDays] = useState<string | null>(null);
+  useEffect(() => {
+    if (existing || seededDays === seedKey) return;
+    setDays([...courseDays]);
+    setSeededDays(seedKey);
+  }, [existing, seedKey, seededDays, courseDays]);
+
   const addAlias = () => {
     const a = aliasDraft.trim();
     if (!a) return;
@@ -144,9 +173,10 @@ export default function MemberEdit() {
     // so the ORDER here is the meaning
     const addresses = [...emails].sort((a, b) => Number(b.primary) - Number(a.primary))
       .map(e => e.address);
-    // blank means she follows the offering's days, which is not the same as
-    // an empty list
-    const weekdays = days.length ? days.map(d => DAY_NAMES.indexOf(d)) : null;
+    // null means she follows the offering's days, which is not the same as
+    // an empty list -- and a row still on its seeded default is one of the
+    // ways of saying it (src/data/memberDays.ts)
+    const weekdays = memberWeekdays(days, courseDays, !existing);
     try {
       if (existing) {
         // The arrays are the WHOLE list, not a patch: a display name or an
@@ -352,7 +382,9 @@ export default function MemberEdit() {
             string, and the old sentence began " has no offering running yet"
             -- a claim about nothing, with a hole where the name goes. */}
         {courseDays.size
-          ? `Leave blank and she follows the days ${course} offerings run — ${[...courseDays].join(', ')}. Only those days can be picked.`
+          ? existing
+            ? `Leave blank and she follows the days ${course} offerings run — ${[...courseDays].join(', ')}. Only those days can be picked.`
+            : `Every day ${course} runs is already on — ${[...courseDays].join(', ')}. Take off any she will not attend; leave them all on and she follows the course.`
           : course
             ? `${course} has no offering running yet, so there are no days to pick.`
             : 'Choose her course first — her days can only be days that course runs.'}

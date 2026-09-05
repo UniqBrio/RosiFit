@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Screen, H2, Body, Muted, Label, Button } from '../src/components/ui';
+import { H2, Body, Muted, Label, Button } from '../src/components/ui';
 import { Field } from '../src/components/Field';
 import { Icon } from '../src/components/Icon';
 import { Sheet, SearchPicker } from '../src/components/Sheet';
@@ -15,7 +15,7 @@ import {
 import { peekStagedImport, clearStagedImport } from '../src/data/pending';
 import { csvCommit, type ImportDecision, type PreviewRow } from '../src/data/api';
 import { useMembers } from '../src/data/hooks';
-import { ShellScreen } from '../src/components/AppShell';
+import { FormDialog } from '../src/components/FormDialog';
 
 /** Which status ink each outcome borrows. */
 const TONE: Record<MatchKind, keyof typeof STATUS> = {
@@ -68,6 +68,21 @@ function MatchReviewBody() {
   const [importing, setImporting] = useState(false);
   const members = useMembers();
 
+  /**
+   * Back to the screen the upload was opened FROM: this dialog and the
+   * upload dialog behind it both come off the stack.
+   *
+   * It used to be router.replace('/(tabs)'). That was harmless while this
+   * was a page; from under a modal it mounts a SECOND copy of the whole
+   * shell over the first -- the trap app/(tabs)/_layout.tsx already
+   * documents. POP clamps to what is there, so a match opened directly by
+   * its URL simply lands as far back as the stack goes.
+   */
+  const backToOpener = () => {
+    if (router.canDismiss()) router.dismiss(2);
+    else router.replace('/(tabs)');
+  };
+
   const done = index >= decisionRows.length;
   const decided = Math.min(index, decisionRows.length);
   const remaining = decisionRows.slice(index);
@@ -84,7 +99,7 @@ function MatchReviewBody() {
   const runImport = async () => {
     if (!staged) {
       flash('Rows imported against this session');
-      router.replace('/(tabs)');
+      backToOpener();
       return;
     }
     setImporting(true);
@@ -92,7 +107,7 @@ function MatchReviewBody() {
       const result = await csvCommit(staged.import_id, decisions);
       clearStagedImport();
       flash(`${result.present_or_extra} present · ${result.new_members} new member${result.new_members === 1 ? '' : 's'}`);
-      router.replace('/(tabs)');
+      backToOpener();
     } catch (err) {
       // The whole file failed together -- nothing landed -- so say that
       // rather than leaving anyone to wonder which half went in.
@@ -106,7 +121,7 @@ function MatchReviewBody() {
     const okInk = ink('present');
     const total = allRows.length + (staged?.dropped_count ?? 0);
     return (
-      <Screen>
+      <FormDialog title="Match review" subtitle="Every row the file could not resolve on its own">
         <Muted>{`All ${decisionRows.length} decided`}</Muted>
         <View style={{
           marginTop: SPACE.lg, padding: SPACE.xl, borderRadius: RADIUS.lg,
@@ -129,7 +144,7 @@ function MatchReviewBody() {
             to wherever the person started. Going back returns them there. */}
         <Button testID="match-back" label="Back" variant="secondary" style={{ marginTop: SPACE.sm }}
           onPress={() => router.back()} />
-      </Screen>
+      </FormDialog>
     );
   }
 
@@ -174,8 +189,69 @@ function MatchReviewBody() {
     }
   };
 
+  /**
+   * The sheet and the picker belong to the VIEWPORT, not to the dialog's
+   * scrolling body. The card clips its overflow, so a bottom sheet rendered
+   * inside it would be cut off by the card's own edge; FormDialog takes them
+   * as `overlays` and draws them outside it.
+   */
+  const overlays = (
+    <>
+      {/* Outcome B: the address is added to the member RECORD, which is the
+          only place an email ever comes from -- never from the file (C-75). */}
+      <Sheet open={emailFor !== null} onClose={() => setEmailFor(null)}
+        title={emailFor ? `Add an email for ${emailFor.candidates[0]?.name ?? 'her'}` : ''}>
+        <Muted style={{ marginTop: 9 }}>
+          Her attendance imports either way. An address here makes her eligible for follow-up sends.
+        </Muted>
+        <View style={{ marginTop: SPACE.lg }}>
+          <Field label="Email address" value={emailValue} onChange={setEmailValue}
+            placeholder="name@example.com" keyboardType="email-address"
+            hint="Saved on her member record, not on the file." />
+        </View>
+        <View style={{ flexDirection: 'row', gap: SPACE.md, marginTop: SPACE.lg }}>
+          <Button label="Cancel" variant="secondary" onPress={() => setEmailFor(null)} style={{ flex: 1 }} />
+          <Button label="Add email" style={{ flex: 1 }}
+            disabled={!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(emailValue.trim())}
+            onPress={() => {
+              const row = emailFor;
+              setEmailFor(null);
+              if (!row) return;
+              advance(`Row ${row.row}: email added`, {
+                row: row.row, action: 'add_email', email: emailValue.trim(),
+              });
+            }} />
+        </View>
+      </Sheet>
+
+      {/* Outcome E: link to somebody already on the register, searched by
+          the operator -- nothing is guessed from the name. */}
+      <SearchPicker
+        open={linking !== null} onClose={() => setLinking(null)}
+        title="Link to an existing member" placeholder="Search by name"
+        options={(members.data ?? []).map(m => ({
+          label: m.name, meta: `${m.course} · ${m.branch}`, value: m.id,
+        }))}
+        onSelect={memberId => {
+          const row = linking;
+          setLinking(null);
+          if (!row) return;
+          // Matched on her ID, not on a display string. Two members can share
+          // a name, and linking an attendance row to the wrong one is the
+          // mistake this screen exists to prevent.
+          const chosen = (members.data ?? []).find(m => m.id === memberId);
+          if (!chosen) return;
+          advance(`Row ${row.row} linked to ${chosen.name}`, {
+            row: row.row, action: 'link_existing', member_id: chosen.id, remember_alias: true,
+          });
+        }}
+        emptyNote="No member matches that. Add her as a new member instead — course and branch come from the session being imported." />
+    </>
+  );
+
   return (
-    <Screen>
+    <FormDialog title="Match review" subtitle="Every row the file could not resolve on its own"
+      overlays={overlays}>
       <Muted style={{ fontVariant: ['tabular-nums'] }}>
         {`Decision ${decided + 1} of ${DECISION_ROWS.length} · ${blocking} block the import`}
       </Muted>
@@ -320,70 +396,16 @@ function MatchReviewBody() {
           ? 'One row still needs a decision, but it does not block — attendance imports either way.'
           : `${blocking} of ${remaining.length} remaining decisions block the import. Nothing is written until they are made.`}
       </Muted>
-
-      {/* Outcome B: the address is added to the member RECORD, which is the
-          only place an email ever comes from -- never from the file (C-75). */}
-      <Sheet open={emailFor !== null} onClose={() => setEmailFor(null)}
-        title={emailFor ? `Add an email for ${emailFor.candidates[0]?.name ?? 'her'}` : ''}>
-        <Muted style={{ marginTop: 9 }}>
-          Her attendance imports either way. An address here makes her eligible for follow-up sends.
-        </Muted>
-        <View style={{ marginTop: SPACE.lg }}>
-          <Field label="Email address" value={emailValue} onChange={setEmailValue}
-            placeholder="name@example.com" keyboardType="email-address"
-            hint="Saved on her member record, not on the file." />
-        </View>
-        <View style={{ flexDirection: 'row', gap: SPACE.md, marginTop: SPACE.lg }}>
-          <Button label="Cancel" variant="secondary" onPress={() => setEmailFor(null)} style={{ flex: 1 }} />
-          <Button label="Add email" style={{ flex: 1 }}
-            disabled={!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(emailValue.trim())}
-            onPress={() => {
-              const row = emailFor;
-              setEmailFor(null);
-              if (!row) return;
-              advance(`Row ${row.row}: email added`, {
-                row: row.row, action: 'add_email', email: emailValue.trim(),
-              });
-            }} />
-        </View>
-      </Sheet>
-
-      {/* Outcome E: link to somebody already on the register, searched by
-          the operator -- nothing is guessed from the name. */}
-      <SearchPicker
-        open={linking !== null} onClose={() => setLinking(null)}
-        title="Link to an existing member" placeholder="Search by name"
-        options={(members.data ?? []).map(m => ({
-          label: m.name, meta: `${m.course} · ${m.branch}`, value: m.id,
-        }))}
-        onSelect={memberId => {
-          const row = linking;
-          setLinking(null);
-          if (!row) return;
-          // Matched on her ID, not on a display string. Two members can share
-          // a name, and linking an attendance row to the wrong one is the
-          // mistake this screen exists to prevent.
-          const chosen = (members.data ?? []).find(m => m.id === memberId);
-          if (!chosen) return;
-          advance(`Row ${row.row} linked to ${chosen.name}`, {
-            row: row.row, action: 'link_existing', member_id: chosen.id, remember_alias: true,
-          });
-        }}
-        emptyNote="No member matches that. Add her as a new member instead — course and branch come from the session being imported." />
-    </Screen>
+    </FormDialog>
   );
 }
 
 /**
- * Under the shell, not instead of it. This screen is pushed on the root
- * stack, so it is not one of the tab navigator's own and wore no academy
- * header and no Home · Reports · More pill until ShellScreen drew them.
+ * A DIALOG over the screen the upload was opened from, like the upload
+ * itself. The card, its title bar and its close are drawn by FormDialog from
+ * inside the body -- the body owns the sheet and the picker it hands to
+ * `overlays`, so the dialog cannot be wrapped around it from out here.
  */
 export default function MatchReview() {
-  const router = useRouter();
-  return (
-    <ShellScreen title="Match review" subtitle="Every row the file could not resolve on its own" onBack={() => router.back()}>
-      <MatchReviewBody />
-    </ShellScreen>
-  );
+  return <MatchReviewBody />;
 }

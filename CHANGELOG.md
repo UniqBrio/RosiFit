@@ -1,5 +1,56 @@
 # Changelog
 
+## Unreleased — A member can be marked inactive, and two rows lost a floor
+
+**Marking somebody inactive now exists.** Tap the Active pill on her row in a
+course and she comes off the follow-up rule: she stays on the roster, her
+attendance goes on being recorded, her enrolment and her history are untouched
+— but she is not listed for follow-up and nothing is sent to her. Tapping it
+again puts her straight back. It is recorded in the audit log, with your name
+on it.
+
+That pill used to be read-only, and it was not even reading the right thing:
+it said "Inactive" for anybody the week expected at nothing, which is a fact
+about her schedule, not about her membership. The academy database has always
+had a status column for her, and the query that decides who gets an email has
+always insisted on it being active — so a member could have been off the
+register in the database with the app cheerfully listing her. Both ends now
+read the same column.
+
+**The week arrows moved to the dates.** On a course, the back and forward
+arrows now sit at either end of the seven day cards rather than on a row of
+their own with the week written between them. The week is stated above them.
+
+**Edit and Delete moved onto the row.** On the course list, and on each member
+of a course, they ride the row they belong to instead of a separate strip
+underneath it — so a course card and a member card are each one line shorter,
+and Edit is beside the status it belongs next to.
+
+**Bulk Import is gone from a course's Members heading.** It was never the twin
+of Add Member: one opens a form already scoped to this course, the other opens
+a file flow with its own screen and its own per-row verdicts. It is unchanged
+on the Attendance tab, where you choose the course. **Add Member is now
+pinned** — scroll a long roster and it stays at the top of the list instead of
+disappearing upwards.
+
+## Unreleased — Her days start on, not off
+
+Add a member, choose her course, and the days that course runs are already
+ticked. Take off the ones she will not attend; leave them as they are and she
+simply follows the course — which is what an empty row meant before, so
+nothing about how she is expected has changed.
+
+Leaving them all on is not the same as ticking them all yourself. A member who
+follows the course keeps following it: change the course to run on Tuesday
+instead of Monday and she moves with it. Take even one day off and she has a
+schedule of her own from that day on, and the course's changes no longer reach
+her.
+
+Changing her course or her branch re-ticks the new days rather than clearing
+the row.
+
+The Edit form is unchanged.
+
 ## Unreleased — A form now opens over the screen you were on
 
 Open Add Member, Add Course, Upload attendance or any other form and the

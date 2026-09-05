@@ -113,6 +113,12 @@ export const MATCH_QUESTION: Record<MatchKind, string> = {
   unmatched: 'What should happen to this row?',
 };
 
+/**
+ * The three values `members.status` may hold (0006). The app writes only the
+ * two outer ones; 'paused' is read, never set -- see Member.status.
+ */
+export type MemberStatus = 'active' | 'paused' | 'inactive';
+
 export type Member = {
   id: string; name: string; course: string; branch: string;
   /**
@@ -129,6 +135,26 @@ export type Member = {
    *  list means no usable address -- she is still listed and still counted,
    *  never quietly dropped (C-76). */
   emails: { address: string; primary: boolean }[];
+  /**
+   * Whether she is ON the register right now -- `members.status` (0006), the
+   * column the app has never written and never read.
+   *
+   * It is NOT the same fact as `expected === 0`. Expected-at-nothing is what
+   * her OFFERING says this week -- a course with no weekdays set, a week she
+   * is enrolled at nothing. Status is what the ACADEMY says about her, set by
+   * hand and lasting until it is set back. A member on maternity leave is
+   * inactive in a week that expected her at four; a member of a course with
+   * no schedule yet is expected at nothing and still very much active.
+   *
+   * It decides follow-up: `follow_up_candidates()` (0009) has required
+   * `m.status = 'active'` since the day it was written, so honouring it here
+   * is what makes the app's derivation and the database's agree rather than a
+   * new rule (guardrail 1).
+   *
+   * 'paused' is in the column's CHECK and no screen sets it; it is read the
+   * same way as 'inactive' -- not active, therefore not followed up.
+   */
+  status: MemberStatus;
   expected: number; attended: number; missed: number;
   /** her CURRENT run of consecutive misses -- not the week's total */
   streak: number;
@@ -153,14 +179,14 @@ export type Member = {
  * follow-up, which is exactly how those numbers drift apart.
  */
 export const MEMBERS: Member[] = [
-  { id: '1', code: 'RF-000102', name: 'Divya Ramesh',       course: 'Prenatal Flow',            branch: 'Coimbatore', aliases: ['Divya', 'Divya R'], emails: [{ address: 'divya.r@gmail.com', primary: true }],   expected: 3, attended: 0, missed: 3, streak: 3, last: '14 Aug', joined: 'Mar 2026' },
-  { id: '2', code: 'RF-000118', name: 'Shazia Begum',       course: 'Postnatal Core',           branch: 'Madurai',    aliases: ['Shazia', 'Shazia F'], emails: [{ address: 'shazia.b@gmail.com', primary: true }], expected: 3, attended: 1, missed: 2, streak: 2, last: '20 Aug', joined: 'Jan 2026' },
-  { id: '3', code: 'RF-000151', name: 'Meenakshi Sundaram', course: 'Trimester 3 Gentle',       branch: 'Chennai',    aliases: ['Meena S'],          emails: [{ address: 'meena.s@yahoo.in', primary: true }],    expected: 4, attended: 0, missed: 4, streak: 6, last: '2 Aug', joined: 'Apr 2026' },
-  { id: '4', code: 'RF-000127', name: 'Aarthi Venkat',      course: 'Prenatal Flow',            branch: 'Coimbatore', aliases: [],                   emails: [{ address: 'aarthi.v@gmail.com', primary: true }],  expected: 3, attended: 3, missed: 0, streak: 0, last: '\u2014', joined: 'Feb 2026' },
-  { id: '5', code: 'RF-000133', name: 'Nithya Krishnan',    course: 'Pelvic Floor Foundations', branch: 'Madurai',    aliases: [],                   emails: [],                    expected: 0, attended: 0, missed: 0, streak: 0, last: '11 Aug', joined: 'May 2026' },
-  { id: '6', code: 'RF-000140', name: 'Fathima Rizwan',     course: 'Postnatal Core',           branch: 'Coimbatore', aliases: ['Fathima'],          emails: [],                    expected: 3, attended: 0, missed: 3, streak: 4, last: '9 Aug', joined: 'Dec 2025' },
-  { id: '7', code: 'RF-000131', name: 'Lakshmi Priya',      course: 'Prenatal Flow',            branch: 'Chennai',    aliases: ['Lakshmi P'],        emails: [{ address: 'lakshmi.p@gmail.com', primary: true }], expected: 4, attended: 2, missed: 2, streak: 1, last: '\u2014', joined: 'Nov 2025' },
-  { id: '8', code: 'RF-000146', name: 'Kavya Balaji',       course: 'Postnatal Core',           branch: 'Madurai',    aliases: [],                   emails: [],                    expected: 3, attended: 0, missed: 3, streak: 3, last: '6 Aug', joined: 'Jun 2026' },
+  { id: '1', code: 'RF-000102', name: 'Divya Ramesh',       course: 'Prenatal Flow',            branch: 'Coimbatore', aliases: ['Divya', 'Divya R'], emails: [{ address: 'divya.r@gmail.com', primary: true }],   status: 'active', expected: 3, attended: 0, missed: 3, streak: 3, last: '14 Aug', joined: 'Mar 2026' },
+  { id: '2', code: 'RF-000118', name: 'Shazia Begum',       course: 'Postnatal Core',           branch: 'Madurai',    aliases: ['Shazia', 'Shazia F'], emails: [{ address: 'shazia.b@gmail.com', primary: true }], status: 'active', expected: 3, attended: 1, missed: 2, streak: 2, last: '20 Aug', joined: 'Jan 2026' },
+  { id: '3', code: 'RF-000151', name: 'Meenakshi Sundaram', course: 'Trimester 3 Gentle',       branch: 'Chennai',    aliases: ['Meena S'],          emails: [{ address: 'meena.s@yahoo.in', primary: true }],    status: 'active', expected: 4, attended: 0, missed: 4, streak: 6, last: '2 Aug', joined: 'Apr 2026' },
+  { id: '4', code: 'RF-000127', name: 'Aarthi Venkat',      course: 'Prenatal Flow',            branch: 'Coimbatore', aliases: [],                   emails: [{ address: 'aarthi.v@gmail.com', primary: true }],  status: 'active', expected: 3, attended: 3, missed: 0, streak: 0, last: '\u2014', joined: 'Feb 2026' },
+  { id: '5', code: 'RF-000133', name: 'Nithya Krishnan',    course: 'Pelvic Floor Foundations', branch: 'Madurai',    aliases: [],                   emails: [],                    status: 'inactive', expected: 0, attended: 0, missed: 0, streak: 0, last: '11 Aug', joined: 'May 2026' },
+  { id: '6', code: 'RF-000140', name: 'Fathima Rizwan',     course: 'Postnatal Core',           branch: 'Coimbatore', aliases: ['Fathima'],          emails: [],                    status: 'active', expected: 3, attended: 0, missed: 3, streak: 4, last: '9 Aug', joined: 'Dec 2025' },
+  { id: '7', code: 'RF-000131', name: 'Lakshmi Priya',      course: 'Prenatal Flow',            branch: 'Chennai',    aliases: ['Lakshmi P'],        emails: [{ address: 'lakshmi.p@gmail.com', primary: true }], status: 'active', expected: 4, attended: 2, missed: 2, streak: 1, last: '\u2014', joined: 'Nov 2025' },
+  { id: '8', code: 'RF-000146', name: 'Kavya Balaji',       course: 'Postnatal Core',           branch: 'Madurai',    aliases: [],                   emails: [],                    status: 'active', expected: 3, attended: 0, missed: 3, streak: 3, last: '6 Aug', joined: 'Jun 2026' },
 ];
 
 export const WEEK = { from: '18 Aug', to: '24 Aug 2026', label: '18\u201324 Aug 2026' };

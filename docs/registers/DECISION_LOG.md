@@ -23,6 +23,8 @@
 | 014 | [The member code is retired; the column is kept](../decisions/006-member-code-retired.md) | Accepted | 04-Sep-2026 | |
 | 015 | [A rolled-back rehearsal against production, when the harness cannot run](../decisions/007-production-rollback-rehearsal.md) | Accepted | 04-Sep-2026 | |
 | 016 | [Continue validates the number, and the enumeration oracle is accepted](../decisions/008-continue-validates-the-number.md) | Accepted | 05-Sep-2026 | |
+| 017 | [The attendance upload and its match review are dialogs, not pages](../decisions/009-upload-and-match-are-dialogs.md) | Accepted | 05-Sep-2026 | |
+| 018 | [A member's Active/Inactive is STORED, and it is the engine's own `members.status`](../decisions/010-member-status-is-stored-not-derived.md) | Accepted | 05-Sep-2026 | |
 
 Status: `Proposed` · `Accepted` · `Superseded by NNN` · `Deprecated`
 

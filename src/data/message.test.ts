@@ -16,6 +16,7 @@ const member = (over: Partial<Member> = {}): Member => ({
   id: 'm', code: '', name: 'Divya Ramesh',
   course: 'Prenatal Flow', branch: 'Coimbatore',
   aliases: [], emails: [{ address: 'a@b.com', primary: true }],
+  status: 'active',
   expected: 6, attended: 3, missed: 3, streak: 2, last: '—', joined: 'Mar 2026', ...over,
 });
 const ctx = (over: Partial<Member> = {}) => ({

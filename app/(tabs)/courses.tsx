@@ -287,6 +287,31 @@ export default function Courses() {
                     </View>
                   ) : null}
                 </Pressable>
+                {/* EDIT AND DELETE RIDE THE ROW, as the reference app has
+                    them. They used to sit on a footer row of their own with
+                    their words beside them; the row is where a person's eye
+                    already is once she has found the course she means, and
+                    the footer cost every card another 34pt to reach.
+
+                    The words move to the accessibility label rather than
+                    disappearing — the pair is tinted apart AND shaped apart
+                    (a pencil, a bin), and delete stops at a confirmation that
+                    names the course and states what survives, so nothing
+                    irreversible turns on recognising a glyph. */}
+                <CardAction icon="edit" tint={theme.accentInk}
+                  testID={`courses-edit-${c.id}`}
+                  hint={`Edit ${c.name}`}
+                  onPress={() => router.push({ pathname: '/course/edit', params: { id: c.id } })} />
+                {/* Deleting a course is the super admin's, and only while the
+                    subscription is writable -- the predicate delete_course
+                    (0020) re-checks. Hiding it from staff beats offering a tap
+                    that answers with a refusal. */}
+                {identity?.isSuperAdmin ? (
+                  <CardAction icon="delete" tint={dangerInk}
+                    testID={`courses-delete-${c.id}`}
+                    hint={`Delete ${c.name}`}
+                    onPress={() => setConfirmDelete(c)} />
+                ) : null}
                 {/* The chevron is its OWN target, not decoration inside the
                     card button: the card opens the course, the chevron opens
                     that course's roster. Two destinations, so two controls --
@@ -299,7 +324,7 @@ export default function Courses() {
                   accessibilityLabel={`Members of ${c.name}`}
                   hitSlop={8}
                   style={({ pressed }) => ({
-                    width: 32, height: 42, alignItems: 'center', justifyContent: 'center',
+                    width: 24, height: 42, alignItems: 'center', justifyContent: 'center',
                     opacity: pressed ? 0.6 : 1,
                   })}>
                   <Icon name="chevron_right" size={21} color={theme.dim} />
@@ -323,41 +348,6 @@ export default function Courses() {
                   </Text>
                 </View>
               ) : null}
-
-              {/* Edit and Delete, LABELLED, where the canvas puts them: on
-                  their own row at the foot of the card. They were two bare
-                  icon buttons crowded against the card's own tap target, and
-                  a pencil is not a word -- guardrail 3 applies to controls as
-                  much as to statuses.
-
-                  WHAT ELSE THIS ROW REPLACED
-                  The card used to end with the course's offerings listed as
-                  tappable rows, plus "Set where and when" and "Members". That
-                  turned one card into three destinations and made most of its
-                  surface open the SCHEDULE editor rather than the course --
-                  which is what "tapping the card opens something else" was.
-                  Days and branch are edited in the course dialog now (its
-                  branch dropdown reaches every offering), so nothing here is
-                  the only way to anything. */}
-              <View style={{
-                flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end',
-                gap: SPACE.sm, marginTop: 10,
-              }}>
-                <CardAction icon="edit" label="Edit" tint={theme.accentInk}
-                  testID={`courses-edit-${c.id}`}
-                  hint={`Edit ${c.name}`}
-                  onPress={() => router.push({ pathname: '/course/edit', params: { id: c.id } })} />
-                {/* Deleting a course is the super admin's, and only while the
-                    subscription is writable -- the predicate delete_course
-                    (0020) re-checks. Hiding it from staff beats offering a tap
-                    that answers with a refusal. */}
-                {identity?.isSuperAdmin ? (
-                  <CardAction icon="delete" label="Delete" tint={dangerInk}
-                    testID={`courses-delete-${c.id}`}
-                    hint={`Delete ${c.name}`}
-                    onPress={() => setConfirmDelete(c)} />
-                ) : null}
-              </View>
 
             </View>
           );
@@ -387,27 +377,29 @@ export default function Courses() {
 }
 
 /**
- * A labelled action at the foot of a course card.
+ * Edit or Delete, on the course row itself.
  *
- * The word is the control; the icon repeats it and the tint only reinforces
- * both. It replaced a bare icon button, where "which one is delete" was a
- * question about a glyph -- on a control whose answer cannot be undone.
+ * It WAS a labelled control at the foot of the card, and the label is now the
+ * accessibility label instead. Guardrail 3 -- colour is never the only signal
+ * -- is still kept: the two are shaped apart as well as tinted apart, and the
+ * one that cannot be undone opens a confirmation that names the course in
+ * words before anything happens. What is gone is 34pt of card height per
+ * course spent restating two of the most conventional glyphs there are.
  */
-function CardAction({ icon, label, tint, hint, testID, onPress }:
-  { icon: string; label: string; tint: string; hint: string; testID: string;
-    onPress: () => void }) {
+function CardAction({ icon, tint, hint, testID, onPress }:
+  { icon: string; tint: string; hint: string; testID: string; onPress: () => void }) {
   return (
     <Pressable testID={testID} onPress={onPress}
       accessibilityRole="button" accessibilityLabel={hint}
+      hitSlop={6}
       style={({ pressed }) => ({
-        minHeight: 34, paddingHorizontal: 11, borderRadius: RADIUS.sm,
-        flexDirection: 'row', alignItems: 'center', gap: 5,
+        width: 34, height: 34, borderRadius: RADIUS.sm,
+        alignItems: 'center', justifyContent: 'center',
         backgroundColor: statusSurface(tint).bg,
         borderWidth: 1, borderColor: statusSurface(tint).border,
         opacity: pressed ? 0.7 : 1,
       })}>
-      <Icon name={icon} size={15} color={tint} />
-      <Text style={{ fontSize: 11.5, fontWeight: '800', color: tint }}>{label}</Text>
+      <Icon name={icon} size={16} color={tint} />
     </Pressable>
   );
 }

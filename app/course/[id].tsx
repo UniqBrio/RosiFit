@@ -8,10 +8,10 @@ import { DropdownRow, DropdownField, DropdownPanel, DropdownList } from '../../s
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, STATUS, statusSurface, type StatusKey } from '../../src/theme/tokens';
-import { DAY_NAMES, ruleSentence, AVATAR_TINTS, initials, type Member } from '../../src/data/mock';
+import { DAY_NAMES, ruleSentence, AVATAR_TINTS, initials, type Member, type MemberStatus } from '../../src/data/mock';
 import { useCourses, useFollowUp, useAttendance } from '../../src/data/hooks';
 import { weekStart, iso, label as periodLabel } from '../../src/data/period';
-import { deleteCourse, dataSource } from '../../src/data/repository';
+import { deleteCourse, setMemberStatus, dataSource } from '../../src/data/repository';
 import { useIdentity } from '../../src/data/session';
 import { ALL_BRANCHES } from '../../src/state/academy';
 import { ShellScreen } from '../../src/components/AppShell';
@@ -228,13 +228,18 @@ function CourseDetailBody() {
   const freqLine = course.offerings.length === 0
     ? 'No offering yet, so no schedule and nobody is expected'
     : course.offerings.map(o => `${o.branch}: ${o.weekdays.length
-        ? o.weekdays.map(d => DAY_NAMES[d]).join(' ') : 'no days set'}`).join(' · ');
+        ? o.weekdays.map(d => DAY_NAMES[d]).join(', ') : 'no days set'}`).join(' · ');
 
   const memberSplit = `${withEmail.length} with email · ${withoutEmail.length} without`;
 
   return (
     <>
+      {/* stickyHeaderIndices pins child [2] -- the Add Member row -- to the
+          top of the scroller once the page has scrolled past it. It is why
+          this content is FOUR children rather than a header and one padded
+          block: only a direct child of the scroller can be made sticky. */}
       <ScrollView style={{ flex: 1, backgroundColor: theme.bg }}
+        stickyHeaderIndices={[2]}
         contentContainerStyle={{ paddingBottom: 110 }}>
 
         {/* The deep header the canvas draws. It is the same dark plum in both
@@ -255,6 +260,23 @@ function CourseDetailBody() {
             <Text numberOfLines={1} style={{ flex: 1, fontSize: 12, color: theme.onDeep }}>
               {`Courses → ${course.name}`}
             </Text>
+            {/* The primary action rides the breadcrumb row. At the same 38pt as
+                the two icon buttons already on it, it costs the header no
+                height of its own — the full-width block it replaced cost 61. */}
+            <Pressable testID="course-send"
+              onPress={() => router.push({ pathname: '/send', params: { id } })}
+              accessibilityRole="button"
+              accessibilityLabel={`Send communication for ${course.name}`}
+              style={({ pressed }) => ({
+                height: 38, borderRadius: RADIUS.md, paddingHorizontal: 10,
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+                backgroundColor: theme.accent, opacity: pressed ? 0.85 : 1,
+              })}>
+              <Icon name="send" size={16} color={theme.onAccent} />
+              <Text numberOfLines={1} style={{ fontSize: 12.5, fontWeight: '800', color: theme.onAccent }}>
+                Send Communication
+              </Text>
+            </Pressable>
             {identity?.isSuperAdmin ? (
               <Pressable testID="course-delete" onPress={() => setConfirmDelete(true)}
                 accessibilityRole="button" accessibilityLabel={`Delete ${course.name}`}
@@ -282,24 +304,9 @@ function CourseDetailBody() {
           <Text style={{ fontSize: 12.5, color: theme.onDeep, marginTop: 2, fontVariant: ['tabular-nums'] }}>
             {freqLine}
           </Text>
-
-          <Pressable testID="course-send"
-            onPress={() => router.push({ pathname: '/send', params: { id } })}
-            accessibilityRole="button"
-            accessibilityLabel={`Send communication for ${course.name}`}
-            style={({ pressed }) => ({
-              marginTop: 15, minHeight: 46, borderRadius: 13,
-              flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
-              backgroundColor: theme.accent, opacity: pressed ? 0.85 : 1,
-            })}>
-            <Icon name="send" size={18} color={theme.onAccent} />
-            <Text style={{ fontSize: 13.5, fontWeight: '800', color: theme.onAccent }}>
-              Send Communication
-            </Text>
-          </Pressable>
         </DeepBackground>
 
-        <View style={{ padding: SPACE.lg }}>
+        <View style={{ paddingHorizontal: SPACE.lg, paddingTop: SPACE.lg }}>
           {rule ? <Muted style={{ marginBottom: SPACE.md }}>{ruleSentence(rule, course.name)}</Muted> : null}
 
           {/* ------------------------------------------------ branch filter */}
@@ -321,32 +328,89 @@ function CourseDetailBody() {
             </>
           ) : null}
 
-          {/* -------------------------------------------------- week strip */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, marginTop: SPACE.md }}>
+          {/* -------------------------------------------------- week strip
+              The arrows flank the CARDS, not a caption. They used to sit on a
+              row of their own with the week label centred between them, two
+              controls a finger's width from the edges of the screen and a
+              full row away from the thing they move. The week they are
+              stepping is stated above, left-aligned where a heading goes, and
+              the arrows are now the ends of the strip itself.
+
+              They are rendered OUTSIDE the loading branch on purpose: stepping
+              a week refetches, and arrows that blinked out for the duration
+              would be arrows you cannot press twice in a row. */}
+          <Text style={{
+            marginTop: SPACE.md, fontSize: 11.5, fontWeight: '700',
+            color: theme.muted, fontVariant: ['tabular-nums'],
+          }}>{weekOffset === 0 ? `${week.label} · this week` : week.label}</Text>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 }}>
             <Pressable testID="course-week-prev"
               onPress={() => { setWeekOffset(o => Math.max(o - 1, -WEEK_LIMIT)); setSelectedDay(null); }}
               disabled={weekOffset <= -WEEK_LIMIT}
               accessibilityRole="button" accessibilityLabel="Previous week"
               accessibilityState={{ disabled: weekOffset <= -WEEK_LIMIT }}
+              hitSlop={6}
               style={({ pressed }) => ({
-                width: 34, height: 34, borderRadius: 9,
+                width: 30, height: 30, borderRadius: 9,
                 alignItems: 'center', justifyContent: 'center',
                 backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
                 opacity: pressed ? 0.7 : weekOffset <= -WEEK_LIMIT ? 0.4 : 1,
               })}>
               <Icon name="chevron_left" size={17} color={theme.fg} />
             </Pressable>
-            <Text style={{
-              flex: 1, textAlign: 'center', fontSize: 11.5, fontWeight: '700',
-              color: theme.muted, fontVariant: ['tabular-nums'],
-            }}>{weekOffset === 0 ? `${week.label} · this week` : week.label}</Text>
+
+            <View style={{ flex: 1 }}>
+              {attendance.state === 'loading' ? (
+                <Skeleton lines={2} />
+              ) : attendance.state === 'error' ? null : (
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  {days.map(d => {
+                    const on = chosen?.iso === d.iso;
+                    const tone = STATUS[d.key];
+                    const ink = theme.isDark ? tone.fgDark : tone.fgLight;
+                    return (
+                      <Pressable key={d.iso} testID={`course-day-${d.iso}`}
+                        onPress={() => setSelectedDay(d.iso)}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: on }}
+                        // The word, not the colour. The cell shows an icon and a
+                        // number, so the STATUS has to reach a screen reader
+                        // some other way.
+                        accessibilityLabel={`${d.dow} ${d.dayNum} ${d.mon}, ${tone.word}`}
+                        style={{
+                          flex: 1, alignItems: 'center', gap: 2,
+                          paddingVertical: 9, paddingHorizontal: 2,
+                          borderRadius: 13,
+                          backgroundColor: on ? statusSurface(theme.accent).bg : theme.surface,
+                          borderWidth: 1, borderColor: on ? theme.accent : theme.line,
+                        }}>
+                        <Text style={{ fontSize: 8.5, fontWeight: '800', color: on ? theme.accentInk : theme.dim }}>
+                          {d.mon}
+                        </Text>
+                        <Text style={{
+                          fontSize: 15, fontWeight: '800', fontVariant: ['tabular-nums'],
+                          color: on ? theme.fgStrong : theme.fg,
+                        }}>{d.dayNum}</Text>
+                        <Text style={{ fontSize: 8.5, fontWeight: '700', color: on ? theme.accentInk : theme.dim }}>
+                          {d.dow}
+                        </Text>
+                        <Icon name={tone.icon} size={13} color={ink} />
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
+
             <Pressable testID="course-week-next"
               onPress={() => { setWeekOffset(o => Math.min(o + 1, WEEK_LIMIT)); setSelectedDay(null); }}
               disabled={weekOffset >= WEEK_LIMIT}
               accessibilityRole="button" accessibilityLabel="Next week"
               accessibilityState={{ disabled: weekOffset >= WEEK_LIMIT }}
+              hitSlop={6}
               style={({ pressed }) => ({
-                width: 34, height: 34, borderRadius: 9,
+                width: 30, height: 30, borderRadius: 9,
                 alignItems: 'center', justifyContent: 'center',
                 backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
                 opacity: pressed ? 0.7 : weekOffset >= WEEK_LIMIT ? 0.4 : 1,
@@ -355,52 +419,16 @@ function CourseDetailBody() {
             </Pressable>
           </View>
 
-          {attendance.state === 'loading' ? (
-            <View style={{ marginTop: SPACE.md }}><Skeleton lines={2} /></View>
-          ) : attendance.state === 'error' ? (
+          {/* A week that could not be loaded is stated under the strip
+              rather than in place of it: the arrows still work, so stepping
+              off the broken week is one tap and not a reload. */}
+          {attendance.state === 'error' ? (
             <View style={{ marginTop: SPACE.md }}>
               <ErrorState onRetry={attendance.retry}
                 message={attendance.error ?? 'This week could not be loaded. Nothing has been changed.'} />
             </View>
-          ) : (
+          ) : attendance.state === 'ready' ? (
             <>
-              <View style={{ flexDirection: 'row', gap: 6, marginTop: 10 }}>
-                {days.map(d => {
-                  const on = chosen?.iso === d.iso;
-                  const tone = STATUS[d.key];
-                  const ink = theme.isDark ? tone.fgDark : tone.fgLight;
-                  return (
-                    <Pressable key={d.iso} testID={`course-day-${d.iso}`}
-                      onPress={() => setSelectedDay(d.iso)}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: on }}
-                      // The word, not the colour. The cell shows an icon and a
-                      // number, so the STATUS has to reach a screen reader
-                      // some other way.
-                      accessibilityLabel={`${d.dow} ${d.dayNum} ${d.mon}, ${tone.word}`}
-                      style={{
-                        flex: 1, alignItems: 'center', gap: 2,
-                        paddingVertical: 9, paddingHorizontal: 2,
-                        borderRadius: 13,
-                        backgroundColor: on ? statusSurface(theme.accent).bg : theme.surface,
-                        borderWidth: 1, borderColor: on ? theme.accent : theme.line,
-                      }}>
-                      <Text style={{ fontSize: 8.5, fontWeight: '800', color: on ? theme.accentInk : theme.dim }}>
-                        {d.mon}
-                      </Text>
-                      <Text style={{
-                        fontSize: 15, fontWeight: '800', fontVariant: ['tabular-nums'],
-                        color: on ? theme.fgStrong : theme.fg,
-                      }}>{d.dayNum}</Text>
-                      <Text style={{ fontSize: 8.5, fontWeight: '700', color: on ? theme.accentInk : theme.dim }}>
-                        {d.dow}
-                      </Text>
-                      <Icon name={tone.icon} size={13} color={ink} />
-                    </Pressable>
-                  );
-                })}
-              </View>
-
               {/* the chosen day, in words */}
               {chosen ? (() => {
                 const tone = STATUS[chosen.key];
@@ -457,7 +485,7 @@ function CourseDetailBody() {
                 );
               })() : null}
             </>
-          )}
+          ) : null}
 
           {/* ----------------------------------------------------- members */}
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: SPACE.sm, marginTop: SPACE.xl }}>
@@ -466,41 +494,40 @@ function CourseDetailBody() {
               {memberSplit}
             </Text>
           </View>
+        </View>
 
-          <View style={{ flexDirection: 'row', gap: 9, marginTop: 11 }}>
-            <Pressable testID="course-add-member"
-              onPress={() => router.push({ pathname: '/member/edit', params: { courseId: course.id } })}
-              accessibilityRole="button" accessibilityLabel={`Add a member to ${course.name}`}
-              style={({ pressed }) => ({
-                flex: 1, minHeight: 46, borderRadius: RADIUS.md,
-                flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-                backgroundColor: statusSurface(theme.accent).bg,
-                borderWidth: 1, borderColor: statusSurface(theme.accent).border,
-                opacity: pressed ? 0.7 : 1,
-              })}>
-              <Icon name="person_add" size={18} color={theme.accentInk} />
-              <Text style={{ fontSize: 12.5, fontWeight: '800', color: theme.accentInk }}>Add Member</Text>
-            </Pressable>
-            {/* MEMBERS, not attendance. This opened `/upload` -- the Google
-                Meet register importer -- so Bulk Import under a Members
-                heading asked which session the file belonged to and then
-                wrote attendance. The plan names exactly this confusion
-                (§6.6): the member file "is NOT the attendance CSV", and
-                conflating the two is "the likeliest misreading". */}
-            <Pressable testID="course-bulk-import"
-              onPress={() => router.push(`/member/import?courseId=${id}`)}
-              accessibilityRole="button" accessibilityLabel="Bulk import members from a file"
-              style={({ pressed }) => ({
-                flex: 1, minHeight: 46, borderRadius: RADIUS.md,
-                flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-                backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
-                opacity: pressed ? 0.7 : 1,
-              })}>
-              <Icon name="upload_file" size={18} color={theme.fg} />
-              <Text style={{ fontSize: 12.5, fontWeight: '800', color: theme.fg }}>Bulk Import</Text>
-            </Pressable>
-          </View>
+        {/* ADD MEMBER, alone and PINNED.
+            Bulk Import is gone from this heading on request. It was never the
+            twin of the button beside it: Add Member opens a form already
+            scoped to this course, and Bulk Import opened a file flow that has
+            its own screen, its own preview and its own per-row verdicts. It
+            is still reachable from the Attendance tab, which is where the
+            requester kept it, and by its route -- nothing was deleted, one
+            duplicate entry point was.
 
+            Pinned because the roster is the long part of this screen: the way
+            to add somebody used to scroll off the top after four members, and
+            the answer to "where did the button go" was "back up". */}
+        <View style={{
+          paddingHorizontal: SPACE.lg, paddingTop: 11, paddingBottom: 11,
+          backgroundColor: theme.bg,
+        }}>
+          <Pressable testID="course-add-member"
+            onPress={() => router.push({ pathname: '/member/edit', params: { courseId: course.id } })}
+            accessibilityRole="button" accessibilityLabel={`Add a member to ${course.name}`}
+            style={({ pressed }) => ({
+              minHeight: 46, borderRadius: RADIUS.md,
+              flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+              backgroundColor: statusSurface(theme.accent).bg,
+              borderWidth: 1, borderColor: statusSurface(theme.accent).border,
+              opacity: pressed ? 0.7 : 1,
+            })}>
+            <Icon name="person_add" size={18} color={theme.accentInk} />
+            <Text style={{ fontSize: 12.5, fontWeight: '800', color: theme.accentInk }}>Add Member</Text>
+          </Pressable>
+        </View>
+
+        <View style={{ paddingHorizontal: SPACE.lg, paddingBottom: SPACE.lg }}>
           {followUp.state === 'loading' ? (
             <View style={{ marginTop: SPACE.md }}><Skeleton lines={3} /></View>
           ) : followUp.state === 'error' ? (
@@ -605,14 +632,22 @@ function CourseDetailBody() {
 function MemberCard({ member, tint, weekLabel, noEmail }:
   { member: Member; tint: string; weekLabel: string; noEmail: boolean }) {
   const { theme } = useTheme();
+  const { flash } = useToast();
   const router = useRouter();
 
   const dangerInk = theme.isDark ? STATUS.absent.fgDark : STATUS.absent.fgLight;
   const okInk = theme.isDark ? STATUS.present.fgDark : STATUS.present.fgLight;
 
-  // Expected at nothing is not "doing badly". It is not being on a running
-  // schedule, and the word says which.
-  const inactive = member.expected === 0;
+  /**
+   * ON the register, or off it -- `members.status`, not `expected === 0`.
+   *
+   * This pill used to read the WEEK: a member expected at nothing was drawn
+   * "Inactive". That was a fact about her schedule wearing the word for a
+   * fact about her membership, and nobody could change it, because nothing
+   * anywhere wrote the column it was pretending to show. Now it shows the
+   * column, and tapping it sets it (0031).
+   */
+  const inactive = member.status !== 'active';
   const statusInk = inactive ? theme.dim : okInk;
   const box = statusSurface(statusInk);
   // The threshold the canvas paints the miss line at. A READING aid, not the
@@ -620,80 +655,139 @@ function MemberCard({ member, tint, weekLabel, noEmail }:
   // line never decides anything.
   const heavy = member.missed >= 4 || member.streak >= 4;
 
+  // Taking somebody off the register stops the academy writing to her, so it
+  // is asked for rather than toggled -- and the question says which way it is
+  // going and what follows.
+  const [confirmStatus, setConfirmStatus] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const applyStatus = async () => {
+    if (saving) return;
+    setConfirmStatus(false);
+    setSaving(true);
+    const wanted: MemberStatus = inactive ? 'active' : 'inactive';
+    const first = member.name.split(' ')[0];
+    const said = wanted === 'active' ? 'active again' : 'inactive';
+    try {
+      await setMemberStatus(member.id, wanted);
+      flash(dataSource === 'live'
+        ? `${first} is ${said}`
+        : `${first} is ${said} on this device only. The academy database is not configured.`,
+        dataSource === 'live' ? 'ok' : 'warn');
+    } catch (err) {
+      flash(err instanceof Error ? err.message
+        : 'Her status could not be changed. Nothing has been saved.', 'warn');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <View style={{
       padding: 13, borderRadius: RADIUS.lg, backgroundColor: theme.surface,
       borderWidth: 1, borderColor: noEmail ? statusSurface(dangerInk).border : theme.line,
     }}>
-      <Pressable testID={`course-member-${member.id}`}
-        onPress={() => router.push({ pathname: '/member/[id]', params: { id: member.id } })}
-        accessibilityRole="button"
-        accessibilityLabel={`${member.name}, ${inactive ? 'inactive' : 'active'}. ${
-          noEmail ? 'No email on file, not in follow-up' : member.emails[0]?.address ?? ''
-        }. Missed ${member.missed}, consecutive ${member.streak}`}
-        style={({ pressed }) => ({
-          flexDirection: 'row', alignItems: 'center', gap: 11, opacity: pressed ? 0.7 : 1,
-        })}>
-        <View style={{
-          width: 38, height: 38, borderRadius: 19, backgroundColor: tint,
-          alignItems: 'center', justifyContent: 'center',
-        }}>
-          <Text style={{ fontSize: 13, fontWeight: '800', color: theme.onAccent }}>
-            {initials(member.name)}
-          </Text>
-        </View>
-        <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text numberOfLines={1} style={{
-              flex: 1, fontSize: 14.5, fontWeight: '700', color: theme.fgStrong,
-            }}>{member.name}</Text>
-            <View style={{
-              flexDirection: 'row', alignItems: 'center', gap: 4,
-              paddingHorizontal: 7, paddingVertical: 3, borderRadius: RADIUS.pill,
-              backgroundColor: box.bg, borderWidth: 1, borderColor: box.border,
-            }}>
-              <Icon name={inactive ? 'pause_circle' : 'check_circle'} size={12} color={statusInk} />
-              <Text style={{ fontSize: 9.5, fontWeight: '800', color: statusInk }}>
-                {inactive ? 'Inactive' : 'Active'}
-              </Text>
-            </View>
-          </View>
-          <Text numberOfLines={1} style={{
-            fontSize: 11.5, marginTop: 3,
-            color: noEmail ? dangerInk : theme.muted,
-          }}>
-            {noEmail ? 'No email on file · not in follow-up' : member.emails[0]?.address ?? ''}
-          </Text>
-          <Text numberOfLines={1} style={{
-            fontSize: 11, marginTop: 2, fontVariant: ['tabular-nums'],
-            color: heavy ? dangerInk : theme.dim,
-          }}>
-            {`Missed ${weekLabel}: ${member.missed} · consecutive ${member.streak}`}
-          </Text>
-        </View>
-      </Pressable>
+      {/* ONE row. The status and the Edit control sit together at its right
+          hand, where the reference app puts them; Edit used to hang on a
+          divided footer row of its own, three lines below the pill it belongs
+          beside, costing every card 43pt of height to say one word.
 
-      <View style={{
-        marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: theme.line,
-        flexDirection: 'row', justifyContent: 'flex-end',
-      }}>
+          The card's own tap target is a SIBLING of those two rather than
+          their parent: a pressable nested inside the card button is how "it
+          opened her profile instead of editing her" happens. */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
+        <Pressable testID={`course-member-${member.id}`}
+          onPress={() => router.push({ pathname: '/member/[id]', params: { id: member.id } })}
+          accessibilityRole="button"
+          accessibilityLabel={`${member.name}, ${inactive ? 'inactive' : 'active'}. ${
+            noEmail ? 'No email on file, not in follow-up' : member.emails[0]?.address ?? ''
+          }. Missed ${member.missed}, consecutive ${member.streak}`}
+          style={({ pressed }) => ({
+            flex: 1, flexDirection: 'row', alignItems: 'center', gap: 11,
+            opacity: pressed ? 0.7 : 1,
+          })}>
+          <View style={{
+            width: 38, height: 38, borderRadius: 19, backgroundColor: tint,
+            alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Text style={{ fontSize: 13, fontWeight: '800', color: theme.onAccent }}>
+              {initials(member.name)}
+            </Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text numberOfLines={1} style={{
+              fontSize: 14.5, fontWeight: '700', color: theme.fgStrong,
+            }}>{member.name}</Text>
+            <Text numberOfLines={1} style={{
+              fontSize: 11.5, marginTop: 3,
+              color: noEmail ? dangerInk : theme.muted,
+            }}>
+              {noEmail ? 'No email on file · not in follow-up' : member.emails[0]?.address ?? ''}
+            </Text>
+            <Text numberOfLines={1} style={{
+              fontSize: 11, marginTop: 2, fontVariant: ['tabular-nums'],
+              color: heavy ? dangerInk : theme.dim,
+            }}>
+              {`Missed ${weekLabel}: ${member.missed} · consecutive ${member.streak}`}
+            </Text>
+          </View>
+        </Pressable>
+
+        {/* The pill still STATES the status in a word and an icon (guardrail
+            3); it is now also how the status is changed. Its label spells out
+            what the tap does, because a pill reading "Active" that means
+            "make her inactive" is a control nobody can read. */}
+        <Pressable testID={`course-member-status-${member.id}`}
+          onPress={() => setConfirmStatus(true)}
+          disabled={saving}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: saving }}
+          accessibilityLabel={inactive
+            ? `${member.name} is inactive. Mark her active.`
+            : `${member.name} is active. Mark her inactive.`}
+          hitSlop={6}
+          style={({ pressed }) => ({
+            flexDirection: 'row', alignItems: 'center', gap: 4,
+            minHeight: 30, paddingHorizontal: 8, borderRadius: RADIUS.pill,
+            backgroundColor: box.bg, borderWidth: 1, borderColor: box.border,
+            opacity: pressed || saving ? 0.6 : 1,
+          })}>
+          <Icon name={inactive ? 'pause_circle' : 'check_circle'} size={13} color={statusInk} />
+          <Text style={{ fontSize: 9.5, fontWeight: '800', color: statusInk }}>
+            {inactive ? 'Inactive' : 'Active'}
+          </Text>
+        </Pressable>
+
         <Pressable testID={`course-member-edit-${member.id}`}
           onPress={() => router.push({ pathname: '/member/edit', params: { id: member.id } })}
           accessibilityRole="button"
           accessibilityLabel={noEmail ? `Add an email for ${member.name}` : `Edit ${member.name}`}
+          hitSlop={6}
           style={({ pressed }) => ({
-            flexDirection: 'row', alignItems: 'center', gap: 5,
-            minHeight: 32, paddingHorizontal: 11, borderRadius: RADIUS.sm,
+            width: 32, height: 30, borderRadius: RADIUS.sm,
+            alignItems: 'center', justifyContent: 'center',
             backgroundColor: statusSurface(noEmail ? dangerInk : theme.accent).bg,
             borderWidth: 1, borderColor: statusSurface(noEmail ? dangerInk : theme.accent).border,
             opacity: pressed ? 0.7 : 1,
           })}>
-          <Icon name="edit" size={15} color={noEmail ? dangerInk : theme.accentInk} />
-          <Text style={{ fontSize: 11, fontWeight: '800', color: noEmail ? dangerInk : theme.accentInk }}>
-            {noEmail ? 'Add email' : 'Edit'}
-          </Text>
+          <Icon name={noEmail ? 'mail_off' : 'edit'} size={15}
+            color={noEmail ? dangerInk : theme.accentInk} />
         </Pressable>
       </View>
+
+      {/* What the mark DOES, in both directions, because "inactive" on its own
+          could mean deleted, paused or unenrolled -- and which of those it is
+          decides whether anybody dares tap it. */}
+      <ConfirmDialog
+        open={confirmStatus}
+        onClose={() => setConfirmStatus(false)}
+        title={inactive ? `Mark ${member.name} active?` : `Mark ${member.name} inactive?`}
+        body={inactive
+          ? 'She goes back into the follow-up rule from now on, and is listed and written to again when she misses sessions. Her enrolment and her attendance history are unchanged — they never went anywhere.'
+          : 'She stays on the roster and her attendance goes on being recorded, but she is left out of the follow-up rule: she will not be listed for follow-up and nothing will be sent to her. Her enrolment and her history are untouched, and marking her active again puts her straight back. Recorded in the audit log.'}
+        cancelLabel="Cancel"
+        confirmLabel={saving ? 'Saving…' : inactive ? 'Mark active' : 'Mark inactive'}
+        onConfirm={() => { void applyStatus(); }} />
     </View>
   );
 }

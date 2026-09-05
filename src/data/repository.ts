@@ -25,7 +25,7 @@ import {
   MEMBERS, COURSE_LIST, GLOBAL_RULE, COURSE_RULES, TEMPLATES, STAFF, AUDIT,
   BRANCHES, COURSES, MONTH_DAYS, PENDING_SESSIONS, WEEK_ROWS, attendanceFixture,
   HOLIDAYS, HOLIDAY_PREVIEW, SENDERS, COURSE_MESSAGES,
-  type Member, type Course, type FollowUpRule, type Template, type Staff,
+  type Member, type MemberStatus, type Course, type FollowUpRule, type Template, type Staff,
   type StaffAccess, type AuditEntry, type SessionDay, type WeekRow,
   type AttendanceRow, type AttendanceStatus, type Holiday,
 } from './mock';
@@ -147,6 +147,13 @@ export async function fetchMembers(period: Period): Promise<Member[]> {
       branch: offering ? (branchName.get(offering.branch_id as string) ?? '—') : '—',
       aliases: aliasesByMember.get(m.id as string) ?? [],
       emails: emailsByMember.get(m.id as string) ?? [],
+      // The column was already in the SELECT above and was already being
+      // thrown away. Carrying it is what lets the app apply the same
+      // `status = 'active'` filter follow_up_candidates() has always applied.
+      // Anything the CHECK constraint does not know is read as inactive:
+      // "not on the register" is the safe answer for an unrecognised value,
+      // because it withholds mail rather than sending it.
+      status: (m.status === 'active' || m.status === 'paused' ? m.status : 'inactive') as MemberStatus,
       expected: metric?.expected ?? 0,
       attended: metric?.attended ?? 0,
       missed: metric?.missed ?? 0,
@@ -1625,6 +1632,8 @@ export async function createMember(input: MemberInput): Promise<{ id: string }> 
             { month: 'short', year: 'numeric' })
         : new Date().toLocaleDateString(undefined, { month: 'short', year: 'numeric' }),
       emails: input.emails.map((address, i) => ({ address, primary: i === 0 })),
+      // create_member (0016) inserts 'active' explicitly; offline says the same.
+      status: 'active',
       expected: 0, attended: 0, missed: 0, streak: 0, last: '\u2014',
     };
     MEMBERS.push(member);
@@ -1690,6 +1699,7 @@ export async function bulkImportMembers(input: {
       MEMBERS.push({
         id, code: '', name: r.full_name, course: course.name, branch: offering.branch,
         aliases: r.aliases, emails: r.email ? [{ address: r.email, primary: true }] : [],
+        status: 'active',
         expected: 0, attended: 0, missed: 0, streak: 0, last: '\u2014', joined: r.joined_on || 'today',
       });
       result.inserted++;
@@ -1779,4 +1789,53 @@ export async function updateMember(input: MemberUpdate): Promise<{ moved: boolea
   // notification is all of them.
   membersChanged();
   return { moved: Boolean((data as { moved_offering?: boolean }).moved_offering) };
+}
+
+/**
+ * MARKING a member active or inactive.
+ *
+ * WHY THIS IS A WRITE AT ALL
+ * `members.status` has existed since 0006 and nothing has ever set it, while
+ * `follow_up_candidates()` (0009) has always required it to be 'active'. So
+ * the column silently decided who the server would mail and no screen could
+ * see it, let alone change it. This is the control for it.
+ *
+ * WHY AN RPC when `members` carries an UPDATE policy
+ * The policy would let this be a direct `.update({ status })`, and a direct
+ * update cannot stamp `status_changed_at` and `updated_by` truthfully: the
+ * client does not know the actor's app_users row, only its auth uid. 0031
+ * resolves the actor server-side, the same way every other member write does,
+ * so the audit trigger records WHO took her off the register and when.
+ *
+ * It is not a toggle server-side. The caller states the status it wants, so
+ * two people tapping at once land on a value one of them chose rather than on
+ * whichever order the round-trips happened to arrive in.
+ */
+export async function setMemberStatus(id: string, status: MemberStatus):
+  Promise<{ changed: boolean }> {
+  if (!isConfigured) {
+    // Offline the fixture list IS the store -- a pill that flips and a list
+    // that did not change is the lie RC-008 was about.
+    const i = MEMBERS.findIndex(m => m.id === id);
+    if (i < 0) throw new Error('That member is not on the register. Nothing has been saved.');
+    const changed = MEMBERS[i].status !== status;
+    MEMBERS[i] = { ...MEMBERS[i], status };
+    membersChanged();
+    return { changed };
+  }
+
+  const { data, error } = await supabase.rpc('set_member_status', {
+    p_member_id: id,
+    p_status: status,
+  });
+  if (error || !data) {
+    console.error('setMemberStatus:', error?.message ?? 'no row returned');
+    throw new Error(`${(error?.message ?? '').trim() || 'Her status could not be changed'}. Nothing has been saved.`);
+  }
+
+  // Her eligibility for follow-up moves with it, and the flagged set is
+  // DERIVED from this one list (guardrail 1) -- so revalidating the roster is
+  // the dashboard count, the weekly list and the send draft, all of them.
+  membersChanged();
+  return { changed: Boolean((data as { changed?: boolean }).changed) };
 }

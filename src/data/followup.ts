@@ -52,7 +52,25 @@ export function ruleHits(m: Member, r: FollowUpRule) {
   };
 }
 
+/**
+ * A member who is not ACTIVE is never followed up, whatever her figures say.
+ *
+ * This is not a new condition. `public.follow_up_candidates()` (0009) has
+ * carried `m.status = 'active'` in its WHERE clause since it was written, so
+ * until now the app's derivation and the database's disagreed the moment
+ * anybody's status left 'active' -- the app would list her, count her on the
+ * dashboard and offer to mail her, and the server-side candidate query would
+ * not. Reading the same column here is what closes that, and it is why
+ * marking somebody inactive MEANS something rather than colouring a pill.
+ *
+ * Checked before the rule rather than folded into ruleHits, because ruleHits
+ * answers "did a condition fire" and the answer to that is unchanged by her
+ * being off the register. She is excluded; her figures are not rewritten.
+ */
+export const isFollowable = (m: Member): boolean => m.status === 'active';
+
 export function isEligible(m: Member, r: FollowUpRule): boolean {
+  if (!isFollowable(m)) return false;
   const h = ruleHits(m, r);
   return r.combination === 'AND' && r.weekly_enabled && r.consecutive_enabled
     ? h.weekly && h.consecutive

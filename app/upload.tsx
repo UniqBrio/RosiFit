@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Screen, H2, Body, Muted, Label, Button, Skeleton, ErrorState, EmptyState } from '../src/components/ui';
+import { H2, Body, Muted, Label, Button, Skeleton, ErrorState, EmptyState } from '../src/components/ui';
 import { Icon } from '../src/components/Icon';
 import { useTheme } from '../src/theme/ThemeProvider';
 import { useToast } from '../src/components/Toast';
@@ -18,7 +18,7 @@ import { sha256Hex, pickCsvFile } from '../src/data/csv';
 import { csvPreview, type PreviewResult } from '../src/data/api';
 import { setStagedImport } from '../src/data/pending';
 import { scopeSessions } from '../src/data/uploadScope';
-import { ShellScreen } from '../src/components/AppShell';
+import { FormDialog } from '../src/components/FormDialog';
 
 const STEPS = ['Course', 'File', 'Process', 'Summary'] as const;
 
@@ -273,7 +273,7 @@ function UploadBody() {
   };
 
   return (
-    <Screen>
+    <>
       <Muted>{`Step ${step} of 4 · ${STEPS[step - 1]}`}</Muted>
 
       {/* the four steps are always visible, so it is clear how much is left
@@ -667,14 +667,18 @@ function UploadBody() {
 
           <Button label={needDecision === 0 ? 'Review and import' : `Review ${needDecision} rows`}
             onPress={goReview} style={{ marginTop: SPACE.lg }} />
-          <Button label="Later" variant="secondary" onPress={() => router.push('/(tabs)')}
+          {/* Leaves the dialog on the screen it was opened from. It used to
+              push '/(tabs)': from under a modal that mounts a SECOND copy of
+              the whole shell over the first, the trap app/(tabs)/_layout.tsx
+              documents. Nothing was staged, so there is nothing to discard. */}
+          <Button label="Later" variant="secondary" onPress={() => router.back()}
             style={{ marginTop: SPACE.sm }} />
           <Muted style={{ marginTop: SPACE.md, textAlign: 'center' }}>
             {`${blocking} of those block the import. Nothing is written until they are decided.`}
           </Muted>
         </>
       )}
-    </Screen>
+    </>
   );
 }
 
@@ -689,15 +693,23 @@ function Count({ n, label, color }: { n: number; label: string; color: string })
 }
 
 /**
- * Under the shell, not instead of it. This screen is pushed on the root
- * stack, so it is not one of the tab navigator's own and wore no academy
- * header and no Home · Reports · More pill until ShellScreen drew them.
+ * A DIALOG over the screen that opened it, not a page you travel to.
+ *
+ * It used to be ShellScreen: the academy header, an "Upload attendance"
+ * header with a back arrow, and the Home · Reports · More pill, filling the
+ * window. The register being uploaded FOR was gone from view for the whole
+ * of the upload. FormDialog draws the scrim and the card and carries the
+ * same title and subtitle in its own bar; the × and a tap beside the card
+ * are the way out, in the place every other dialog puts them.
+ *
+ * The other half is `presentation: 'transparentModal'` in app/_layout.tsx,
+ * which keeps the screen underneath mounted and visible. The two only work
+ * together -- change one and this stops being a dialog.
  */
 export default function Upload() {
-  const router = useRouter();
   return (
-    <ShellScreen title="Upload attendance" subtitle="The register from Google Meet, matched before anything is written" onBack={() => router.back()}>
+    <FormDialog title="Upload attendance" subtitle="The register from Google Meet, matched before anything is written">
       <UploadBody />
-    </ShellScreen>
+    </FormDialog>
   );
 }
