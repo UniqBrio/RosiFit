@@ -12,6 +12,8 @@
  * calculation.
  */
 import { supabase, isConfigured } from '../lib/supabase';
+import { authLookup } from './api';
+import { phoneDigits } from './signin';
 import type { Period } from './period';
 import { currentSchedules, today } from './schedule';
 import {
@@ -45,6 +47,43 @@ function fail(context: string, error: { message?: string } | null): never {
       ? 'RosiFit could not reach the academy database. Check the connection and try again — nothing has been changed.'
       : `${context}. Nothing has been changed.`
   );
+}
+
+// -------------------------------------------------------------------- auth
+/**
+ * Whether a mobile number already has an account. Asked by Continue on the
+ * sign-in screen, before any PIN.
+ *
+ * It lives here rather than being called straight from the screen because it
+ * is the one question sign-in asks that has to be answered differently in the
+ * two data sources, and CP-001 puts that decision in exactly one module.
+ * Live, it goes to auth-lookup -- app_users is unreadable to `anon`, which is
+ * why this cannot be a `supabase.from()` read like everything else in this
+ * file. On fixtures, the STAFF rows ARE the accounts.
+ *
+ * It throws on failure and never answers `false` for a lookup that did not
+ * happen: "no account" sends somebody to registration, and doing that because
+ * the network dropped is how a staff member ends up creating a second
+ * academy. The caller turns the throw into `null` for continueDestination.
+ */
+export async function isRegisteredNumber(digits: string): Promise<boolean> {
+  if (!isConfigured) return STAFF.some(s => phoneDigits(s.phone) === digits);
+  try {
+    const { registered } = await authLookup(digits);
+    return registered;
+  } catch (err) {
+    // auth-lookup's own sentences are written for the person and are kept
+    // (CP-004 guarantees no raw engine string reaches here). What is NOT
+    // hers to read is supabase-js's transport wording, so an unreachable
+    // network is translated the way `fail` above translates it.
+    const detail = err instanceof Error ? err.message : '';
+    console.error(`Could not check whether that number is registered: ${detail || 'unknown error'}`);
+    throw new Error(
+      /fetch|network|timeout|Failed to send/i.test(detail)
+        ? 'RosiFit could not reach the academy database. Check the connection and try again.'
+        : detail || 'That number could not be checked. Try again.'
+    );
+  }
 }
 
 // ------------------------------------------------------------------ members

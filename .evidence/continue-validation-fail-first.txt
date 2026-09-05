@@ -1,0 +1,3 @@
+not ok 20 - a recognised number goes to the PIN screen, never straight in
+not ok 21 - an unrecognised number goes to registration
+not ok 22 - a lookup that did not answer STAYS on the number screen

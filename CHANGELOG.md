@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased — Continue checks the number
+
+Type your mobile number, press **Continue**, and RosiFit now checks it before
+asking for a PIN. A number it knows — the academy admin's, or a staff
+member's — opens the PIN screen as before. A number it does not know opens
+**Register your academy** instead, with the number already filled in, rather
+than sending you to a PIN screen no PIN could ever pass.
+
+You still type your PIN. Continue only decides which screen comes next; it
+never signs anyone in on a number alone. After the PIN, nothing has changed:
+the admin lands on the app, a staff member signing in for the first time is
+asked to pick her own PIN first, and a staff member who already has one lands
+on the app too.
+
+If the check cannot be made — no signal, or the server is unreachable — the
+screen stays where it is and says so. It does not guess.
+
+The registration form has gained a **Back** button on its first step, because
+a mistyped digit can now land you there.
+
 ## Unreleased — Appearance, rebuilt
 
 Three numbered steps, because two routes to one setting read as two unrelated

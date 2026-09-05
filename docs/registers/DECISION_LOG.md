@@ -22,6 +22,7 @@
 | 013 | [The DB harness is runnable, and CI is what keeps it runnable](../decisions/005-db-harness-runnable.md) | Accepted | 02-Sep-2026 | 012 |
 | 014 | [The member code is retired; the column is kept](../decisions/006-member-code-retired.md) | Accepted | 04-Sep-2026 | |
 | 015 | [A rolled-back rehearsal against production, when the harness cannot run](../decisions/007-production-rollback-rehearsal.md) | Accepted | 04-Sep-2026 | |
+| 016 | [Continue validates the number, and the enumeration oracle is accepted](../decisions/008-continue-validates-the-number.md) | Accepted | 05-Sep-2026 | |
 
 Status: `Proposed` · `Accepted` · `Superseded by NNN` · `Deprecated`
 

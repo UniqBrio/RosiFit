@@ -61,3 +61,21 @@ export function isCompletePhone(raw: string): boolean {
 export function needsRegistration(message: string): boolean {
   return /has not been registered yet/i.test(String(message ?? ''));
 }
+
+/**
+ * What Continue does with auth-lookup's answer.
+ *
+ * `null` means the lookup did not answer -- offline, a 400, a 503, anything.
+ * It is NOT "not registered", and the distinction is the whole point of this
+ * function: guessing `false` on a dropped connection walks a real staff
+ * member into registering a second academy, and guessing `true` strands a
+ * stranger on a PIN screen no PIN can pass. A lookup that failed leaves her
+ * exactly where she is, with a sentence saying so.
+ */
+export type ContinueDestination = 'pin' | 'register' | 'stay';
+
+export function continueDestination(registered: boolean | null): ContinueDestination {
+  if (registered === true) return 'pin';
+  if (registered === false) return 'register';
+  return 'stay';
+}

@@ -59,6 +59,72 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-015 — Continue accepted any ten digits, because a deliberate divergence from the canvas lived only in a code comment
+**Date:** 05-Sep-2026 · **Severity:** S3 · **Modules:** `app/index.tsx`, `src/data/signin.ts`, `supabase/functions/auth-login`, `app/register.tsx`
+
+**Symptom** — "On entering mobile number its not validating mobile number on continue for any
+random mobile number its leading us to pin screen." Reported against the live project, where
+`bootstrap_completed` is `true`.
+
+**Root cause** — Not a missing check. `toPin` never called the server *on purpose*: the canvas'
+`doContinue()` validates the number against the account list, and the app replaced that with
+"Continue always advances, the server decides on the PIN submission" to avoid shipping a public
+phone-lookup endpoint — a staff-enumeration oracle. **That decision was recorded in a comment in
+`src/data/signin.ts` and nowhere else** — no ADR, no register row — so from outside the file it
+was indistinguishable from an oversight. The behaviour also degrades exactly as reported once
+`bootstrap_completed` flips: pre-bootstrap an unknown number does reach registration, via
+`auth-login`'s 409 and `needsRegistration`; post-bootstrap `auth-login` deliberately answers the
+same generic sentence for an unknown number and a wrong PIN, so nothing ever reaches registration
+and every number stops at the PIN screen. The reporter was seeing the post-bootstrap half of a
+documented design, with the document invisible.
+
+**Fix** — Two halves, and the second is the one that matters.
+
+*The behaviour:* `supabase/functions/auth-lookup` answers one boolean, `registered`, for a phone
+number. Continue calls it and routes — registered to the PIN step (the PIN is still required),
+unregistered to registration, and a lookup that did not answer stays put with the reason.
+`continueDestination` is the pure decision, `isRegisteredNumber` is the one place that decides
+live-vs-fixtures (CP-001).
+
+*The cause:* the divergence is now **ADR 016** (`docs/decisions/008`) with the trade-off, who
+accepted it and what was rejected; the accepted enumeration risk is **TD-017**. The next person
+to read `auth-lookup` finds out in the file header why an endpoint that leaks staff numbers is
+there on purpose.
+
+**Files** — `supabase/functions/auth-lookup/index.ts` (new), `src/data/api.ts`,
+`src/data/repository.ts`, `src/data/signin.ts`, `src/data/signin.test.ts`, `app/index.tsx`,
+`app/register.tsx`, `docs/decisions/008-continue-validates-the-number.md`,
+`docs/registers/DECISION_LOG.md`, `docs/registers/TECH_DEBT.md`.
+
+**How to verify** — With the live project: enter a number that has no `app_users` row and press
+Continue — the registration screen opens, and its Back returns to sign-in. Enter the super
+admin's or a staff member's number — the PIN screen opens and still demands a PIN. Kill the
+network and press Continue — the number screen stays put and says the number could not be
+checked; it must NOT advance and must NOT go to registration. In JS:
+`npx tsx --test src/data/signin.test.ts` — 22 cases, three of which are `continueDestination`
+and one of which pins the `null` case.
+
+**Recurrence risk** — The defect class is *a deliberate divergence from the design source of
+truth recorded only in code*. Swept for the behavioural sibling — a screen advancing a person
+past an identity step without validating — by grepping `isCompletePhone|phoneDigits` across
+`app/` and `src/` and reading all four screens that handle a phone number.
+**One site found, `app/index.tsx`, and it is the one fixed.** `forgot-pin.tsx` receives the
+number from the PIN step and verifies it server-side (`recoveryQuestions`/`recoveryVerify`),
+`register.tsx` is validated by `auth-bootstrap`, and `change-mobile.tsx` reads the signed-in
+identity. The *documentation* class was not swept and is the larger risk: any other place where
+the app knowingly departs from `design/RosiFit App.dc.html` with only a comment to say so.
+
+**Prevention** — No rung, and a rung is not currently feasible: no check can tell a deliberate
+divergence from the canvas apart from an unimplemented one. Prose rule, in
+`checklists/DEFINITION_OF_DONE.md`: **a departure from the design source of truth gets an ADR,
+not a comment.** A comment is invisible to the person holding the canvas next to the app, which
+is exactly who reports it as a bug.
+
+**Process check** — **Yes.** The build that made this choice wrote a thorough comment and no
+record, and nothing asked it for one. See the framework-update note in the close-out.
+
+---
+
 ## RC-014 — a mistyped joining date was imported as a real one, because the cast did not raise
 **Date:** 05-Sep-2026 · **Severity:** S2 · **Modules:** `supabase/migrations/0028_bulk_import_members.sql`
 

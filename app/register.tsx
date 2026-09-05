@@ -192,9 +192,14 @@ export default function Register() {
       )}
 
       <View style={{ flexDirection: 'row', gap: SPACE.md, marginTop: SPACE.xl }}>
-        {step === 2 && (
-          <Button label="Back" variant="secondary" onPress={() => setStep(1)} style={{ flex: 1 }} />
-        )}
+        {/* Step 1's Back leaves the screen entirely, because Continue on
+            sign-in now sends every unrecognised number here -- a mistyped
+            digit lands on this form, and until this button existed the only
+            way out of it was the browser's own back. */}
+        <Button label="Back" variant="secondary"
+          testID={step === 1 ? 'register-back-to-signin' : 'register-back'}
+          onPress={() => (step === 1 ? router.replace('/') : setStep(1))}
+          style={{ flex: 1 }} />
         <Button label={step === 1 ? 'Next — security questions' : 'Register & issue PIN'}
           onPress={next} disabled={!valid} style={{ flex: 2 }} />
       </View>

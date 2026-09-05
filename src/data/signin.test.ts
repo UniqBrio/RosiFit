@@ -11,7 +11,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { groupPhone, phoneDigits, isCompletePhone, needsRegistration } from './signin';
+import { groupPhone, phoneDigits, isCompletePhone, needsRegistration, continueDestination } from './signin';
 
 // ------------------------------------------------------------ groupPhone
 test('ten digits are grouped five and five', () => {
@@ -109,4 +109,27 @@ test('a network failure does NOT route to registration', () => {
 
 test('the sentence is matched however it is cased', () => {
   assert.ok(needsRegistration('THIS ACADEMY HAS NOT BEEN REGISTERED YET.'));
+});
+
+// ---------------------------------------------------- continueDestination
+// Added 05-Sep-2026 for requests/2026-09-05-mobile-number-not-validated.md.
+// Continue now validates the number BEFORE the PIN step, so these cases pin
+// the decision that replaced "Continue always advances".
+test('a recognised number goes to the PIN screen, never straight in', () => {
+  // Recognised means "an account exists", not "signed in". The PIN is still
+  // required -- Continue only chooses which screen comes next.
+  assert.equal(continueDestination(true), 'pin');
+});
+
+test('an unrecognised number goes to registration', () => {
+  assert.equal(continueDestination(false), 'register');
+});
+
+test('a lookup that did not answer STAYS on the number screen', () => {
+  // The one case that must never guess. Treating a failed lookup as
+  // "not registered" would walk a real staff member into registering a
+  // second academy every time the network dropped; treating it as
+  // "registered" would send her to a PIN screen no PIN can pass.
+  assert.equal(continueDestination(null), 'stay');
+  assert.equal(continueDestination(undefined as unknown as null), 'stay');
 });

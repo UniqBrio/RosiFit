@@ -8,7 +8,8 @@ import { Icon } from '../src/components/Icon';
 import { RADIUS, SPACE, TAP_MIN, STATUS } from '../src/theme/tokens';
 import { isConfigured } from '../src/lib/supabase';
 import { authLogin, adoptSession } from '../src/data/api';
-import { groupPhone, phoneDigits, isCompletePhone, needsRegistration } from '../src/data/signin';
+import { groupPhone, phoneDigits, isCompletePhone, needsRegistration, continueDestination } from '../src/data/signin';
+import { isRegisteredNumber } from '../src/data/repository';
 
 /** '1'..'9', clear-entry, '0', backspace -- the canvas' 3-column layout */
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'ce', '0', 'del'] as const;
@@ -30,11 +31,47 @@ export default function SignIn() {
 
   /** Grouped as it is typed, so the number on the PIN screen reads back the
    *  way she would say it. Non-digits never enter state at all. */
-  const onPhone = (raw: string) => setPhone(groupPhone(raw));
+  const onPhone = (raw: string) => {
+    // A refusal from the last Continue is about the number that was typed
+    // then. Editing the number retracts it, the way the PIN step already
+    // clears its own error on every key.
+    setError(null);
+    setPhone(groupPhone(raw));
+  };
 
-  const toPin = () => {
+  /** Continue validates the number BEFORE the PIN step: a number with an
+   *  account goes on to the PIN, one without goes to registration. It never
+   *  signs anybody in -- the PIN is still required either way.
+   *
+   *  This asks a public endpoint whether a number is registered, which is an
+   *  enumeration oracle and is accepted as one (DECISION_LOG 016). What
+   *  it must not do is GUESS: a lookup that fails leaves her on this screen
+   *  with a sentence, because answering "not registered" on a dropped
+   *  connection walks a staff member into registering a second academy. */
+  const toPin = async () => {
     if (!phoneOk || busy) return;
     setError(null);
+    setBusy(true);
+    let registered: boolean | null = null;
+    try {
+      registered = await isRegisteredNumber(digits);
+    } catch (err) {
+      // null, deliberately -- not false. continueDestination stays put.
+      setError(err instanceof Error && err.message
+        ? err.message
+        : 'That number could not be checked. Try again.');
+    } finally {
+      setBusy(false);
+    }
+
+    const next = continueDestination(registered);
+    if (next === 'stay') return;
+    if (next === 'register') {
+      // Carried over rather than retyped -- the number she just entered is
+      // the one that becomes the super admin's sign-in ID.
+      router.push({ pathname: '/register', params: { phone: digits } });
+      return;
+    }
     setPin('');
     setStep('pin');
     // The keyboard follows the step, so four digits can be typed straight
@@ -100,6 +137,27 @@ export default function SignIn() {
 
   const badInk = theme.isDark ? STATUS.absent.fgDark : STATUS.absent.fgLight;
 
+  /* One status line for both steps. It used to live inside the PIN branch
+     only, so a Continue that failed had nowhere to say so -- and Continue can
+     now fail, because it calls the server. The word and the icon carry the
+     state; the colour only reinforces it (never the only signal). */
+  const statusBox = (busy || error) ? (
+    <View
+      accessibilityLiveRegion="polite"
+      style={{
+        flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
+        marginTop: SPACE.lg, paddingVertical: 10, paddingHorizontal: 12,
+        borderRadius: RADIUS.md, borderWidth: 1,
+        borderColor: error ? badInk : theme.line, backgroundColor: theme.surface,
+      }}>
+      <Icon name={busy ? 'hourglass_top' : 'error'} size={17}
+        color={error ? badInk : theme.muted} />
+      <Text style={{ flex: 1, fontSize: 12.5, fontWeight: '600', color: error ? badInk : theme.fg }}>
+        {busy ? (step === 'phone' ? 'Checking that number…' : 'Checking your PIN…') : error}
+      </Text>
+    </View>
+  ) : null;
+
   return (
     <DeepBackground>
       <SafeAreaView style={{ flex: 1 }}>
@@ -151,6 +209,9 @@ export default function SignIn() {
                     value={phone} onChangeText={onPhone} keyboardType="number-pad"
                     accessibilityLabel="Mobile number"
                     autoFocus
+                    // Frozen while the lookup is in flight, so the answer can
+                    // never belong to a different number than the one shown.
+                    editable={!busy}
                     // Enter advances rather than doing nothing, so the whole
                     // sign-in can be typed without leaving the keyboard.
                     returnKeyType="next" onSubmitEditing={toPin} submitBehavior="submit"
@@ -166,8 +227,9 @@ export default function SignIn() {
                     numbers" line are gone: the first told anybody looking at
                     the screen three real staff numbers, and the second
                     described a rule the server enforces anyway. */}
-                <Button testID="signin-continue" label="Continue" disabled={!phoneOk} onPress={toPin}
+                <Button testID="signin-continue" label="Continue" disabled={!phoneOk || busy} onPress={toPin}
                   style={{ marginTop: SPACE.xl }} />
+                {statusBox}
               </>
             ) : (
               <>
@@ -257,24 +319,7 @@ export default function SignIn() {
                   ))}
                 </View>
 
-                {/* The word and the icon carry the state; the colour only
-                    reinforces it (never the only signal). */}
-                {(busy || error) && (
-                  <View
-                    accessibilityLiveRegion="polite"
-                    style={{
-                      flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
-                      marginTop: SPACE.lg, paddingVertical: 10, paddingHorizontal: 12,
-                      borderRadius: RADIUS.md, borderWidth: 1,
-                      borderColor: error ? badInk : theme.line, backgroundColor: theme.surface,
-                    }}>
-                    <Icon name={busy ? 'hourglass_top' : 'error'} size={17}
-                      color={error ? badInk : theme.muted} />
-                    <Text style={{ flex: 1, fontSize: 12.5, fontWeight: '600', color: error ? badInk : theme.fg }}>
-                      {busy ? 'Checking your PIN…' : error}
-                    </Text>
-                  </View>
-                )}
+                {statusBox}
 
                 <Pressable testID="signin-forgot-pin"
                   onPress={() => router.push({ pathname: '/forgot-pin', params: { phone: digits } })}

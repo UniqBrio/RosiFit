@@ -15,6 +15,18 @@
 >   (`create_member`, `holidays_apply_effects` + its three triggers + the
 >   `holidays_delete` policy + the DELETE grant, `set_offering_schedule`), so
 >   the schema is complete; only the ledger is short. Do not re-run them.
+> - **`auth-lookup` IS WRITTEN AND NOT DEPLOYED** (05-Sep-2026). It is the one
+>   Edge Function in the tree that production does not have, and until it is
+>   deployed **Continue on the sign-in screen fails for everyone** — it calls
+>   this function and shows "could not be checked" rather than guessing. It
+>   must be deployed **public**:
+>   `supabase functions deploy auth-lookup --no-verify-jwt`.
+>   That makes **six** public functions, not five; `docs/RosiFit_Implementation_Plan_V2.2.md`
+>   says "public remains exactly five" and is superseded on this point by
+>   ADR 016 (`docs/decisions/008-continue-validates-the-number.md`), which
+>   also records why an endpoint that reveals which numbers are staff numbers
+>   is there deliberately. It needs no migration and no new secret: it reads
+>   `app_users.phone_e164`, a column `auth-login` already reads.
 > - **Edge Functions deployed**: all seven, 04-Sep-2026.
 >   `auth-login`, `auth-bootstrap`, `recovery-check` at **v5**, public
 >   (`verify_jwt=false` — nobody has a session when they call them);

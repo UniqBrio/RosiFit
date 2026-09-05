@@ -79,10 +79,11 @@ makes the whole product read-only rather than partially broken.
 | Change email templates | ✅ on | ➖ | 🔒 no | Template text is the academy's voice to its members. | 02-Sep-2026 |
 | Send follow-ups | ✅ on | ◻ | 🔒 no | Runs as `service_role` in `send-followups`, so RLS does not gate it — `requireCaller()` does. **◻ Which `kind` that function requires was not verified against deployed code in this pass.** | 02-Sep-2026 |
 | Issue / reset a staff PIN (`pin-issue`, `pin-reset`) | ✅ on | ➖ | 🔒 no | `requireSuperAdmin()` — "Only the academy admin can do this." | 02-Sep-2026 |
+| Ask whether a number is registered (`auth-lookup`) | 🌐 **anyone, signed in or not** | 🌐 **anyone, signed in or not** | 🔒 no | **The one deliberately unauthenticated capability that reveals something about accounts.** Continue on the sign-in screen must choose between the PIN screen and registration before anybody has proved anything, so the endpoint is public (`verify_jwt=false`) and answers one boolean for any number asked. It is therefore a staff-enumeration oracle, accepted knowingly — ADR 016 (`docs/decisions/008`), cost recorded as TD-017. It returns **no name, no `kind`, no `is_active`, no `pin_set_at`, no `bootstrap_completed`**, and nothing that narrows a PIN guess; `auth-login`'s five-attempt lockout is untouched. Runs as `service_role`, so RLS does not gate it and there is no caller to check — which is exactly why the answer is one bit. | 05-Sep-2026 |
 | Read own preferences (`0010`) | ✅ on | ✅ on | 🔒 no | Theme and accent are personal. | 02-Sep-2026 |
 | Read recovery answers / rate limits | ➖ | ➖ | 🔒 no | **No policy exists on these tables at all**, so RLS denies everyone. Only `service_role` reaches them. Guardrail 4: PINs and recovery answers are never stored readable. | 02-Sep-2026 |
 
-Legend: ✅ default enabled · ⬜ default disabled · ➖ not applicable / no such action · 🔒 always on, not configurable
+Legend: ✅ default enabled · ⬜ default disabled · ➖ not applicable / no such action · 🌐 unauthenticated · 🔒 always on, not configurable
 
 **Nothing in RosiFit is owner-configurable.** There is no permissions UI, and that is a design
 decision rather than an omission: with two roles and one admin, a toggle layer would be more

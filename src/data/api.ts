@@ -40,6 +40,21 @@ export function authLogin(phone: string, pin: string): Promise<SignedIn> {
   return callFn<SignedIn>('auth-login', { phone, pin });
 }
 
+/**
+ * Whether a mobile number already has an account -- asked by Continue on the
+ * sign-in screen, before any PIN is entered. One boolean, no identity.
+ *
+ * This is a public, unauthenticated lookup and therefore an enumeration
+ * oracle by construction; see the header of supabase/functions/auth-lookup
+ * and docs/decisions/008 for why it exists and who accepted it.
+ *
+ * A failure MUST NOT be read as "no account" -- callers pass null to
+ * continueDestination instead.
+ */
+export function authLookup(phone: string): Promise<{ registered: boolean }> {
+  return callFn<{ registered: boolean }>('auth-lookup', { phone });
+}
+
 export function authBootstrap(input: {
   name: string; phone: string; pin: string;
   answers: { question_id: number; answer: string }[];
