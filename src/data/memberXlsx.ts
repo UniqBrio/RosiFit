@@ -40,9 +40,17 @@ import {
  * real one.
  */
 let cached: typeof ExcelJS | null = null;
-async function excel(): Promise<typeof ExcelJS> {
+export async function excel(): Promise<typeof ExcelJS> {
   if (!cached) {
-    const mod = await import('exceljs');
+    // THE FILE, BY NAME. `import('exceljs')` leaves the choice of build to
+    // the bundler, and Metro picks `main` — the NODE half, which drags in
+    // archiver, unzipper and tmp and cannot resolve. metro.config.js redirects
+    // that, but a config file is read once at startup, so a dev server begun
+    // before it existed keeps failing and the fix looks like it did not work.
+    // Naming the path removes the question: this build has ZERO require()
+    // calls, so it is self-contained on web, on native and in the Node
+    // renderer that prerenders these routes alike.
+    const mod = await import('exceljs/dist/exceljs.min.js');
     const inner = (mod as { default?: unknown }).default;
     cached = (inner && (inner as { Workbook?: unknown }).Workbook
       ? inner : mod) as unknown as typeof ExcelJS;

@@ -24,6 +24,12 @@ const path = require('path');
 
 const config = getDefaultConfig(__dirname);
 
+// SECOND LINE OF DEFENCE, not the fix. src/data/memberXlsx.ts imports
+// `exceljs/dist/exceljs.min.js` by name, so nothing has to be configured for
+// the app to work — a config file is read ONCE at startup, and a dev server
+// begun before this file existed kept failing while the repo looked fixed.
+// This stays so that a future plain `import 'exceljs'` cannot quietly bring
+// the Node build back.
 const EXCELJS_BROWSER = path.resolve(__dirname, 'node_modules/exceljs/dist/exceljs.min.js');
 const previous = config.resolver.resolveRequest;
 

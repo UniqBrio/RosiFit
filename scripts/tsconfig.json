@@ -18,6 +18,9 @@
     "*.ts",
     "../src/theme/tokens.ts",
     "../src/components/iconAlias.ts",
-    "../src/**/*.test.ts"
+    "../src/**/*.test.ts",
+    // ambient, so it must be INCLUDED and not merely imported: the specs pull
+    // in memberXlsx.ts, which imports exceljs by its browser path
+    "../src/data/exceljs-browser.d.ts"
   ]
 }

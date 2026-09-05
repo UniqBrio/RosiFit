@@ -143,9 +143,25 @@ would change resolution for *every* dependency in the tree, `@supabase/supabase-
 fix one. And `memberXlsx.ts` makes exceljs a **type-only** import plus a lazy loader, so the
 ~950 KB browser build is fetched only when a workbook is actually built or read.
 
-**Guard** — measurement of the emitted bundle, recorded in `TEST_SUMMARY.md`: `archiver` 0
-files, `unzipper` 0, `tmp` 0, and `exceljs` split into its own 924 KB chunk. That is evidence,
-not a rung — nothing re-checks it on the next change.
+**AMENDED 05-Sep-2026 — the first fix did not reach the person reporting it.** The same error
+came back, and the log dated the dev server at ~8 hours old: `metro.config.js` had not existed
+when it started, and **Metro reads that file once, at startup**. So the repository looked fixed,
+`npm run export` passed, and the app in front of the owner was unchanged. A fix that depends on
+somebody restarting a long-running process is not a fix.
+
+The shape was wrong, not just the rollout. `import('exceljs')` leaves the CHOICE OF BUILD to the
+bundler, and a config file then has to take that choice back. `memberXlsx.ts` now imports
+**`exceljs/dist/exceljs.min.js` by path**, so there is no choice to take back — verified first
+that this build makes zero `require()` calls and loads under plain node, which is why it is safe
+on web, on native, and in the Node renderer that prerenders these routes (that renderer,
+`router-server/node/render.js`, was the half actually failing). `metro.config.js` stays, demoted
+to a second line of defence against a future plain `import 'exceljs'`.
+
+**Guard** — measurement of the emitted bundle, recorded in `TEST_SUMMARY.md`: across **all** of
+`dist/`, server-rendered HTML included, `archiver` 0 files, `unzipper` 0, `async/dist` 0,
+`lib/core.js` 0; `exceljs` its own chunk. The specs also build their fixtures through the same
+loader the app uses, so they exercise the build that ships. That is evidence plus one real
+coupling — still not a rung; nothing re-checks the bundle on the next change.
 
 **Recurrence risk** — moderate, and it applies to *any* dual-build dependency this app adds.
 The trap is that both halves typecheck and both may bundle; only one runs.

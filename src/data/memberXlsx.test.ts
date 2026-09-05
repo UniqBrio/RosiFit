@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import * as ExcelJS from 'exceljs';
+import type * as ExcelJS from 'exceljs';
 import {
-  buildMemberTemplate, parseMemberXlsx, buildErrorReport, templateFileName,
+  buildMemberTemplate, parseMemberXlsx, buildErrorReport, templateFileName, excel,
   SHEET_DATA, SHEET_INSTRUCTIONS, SHEET_COURSES, SAMPLE_ROWS,
 } from './memberXlsx';
 import { validateMemberRows, MEMBER_IMPORT_COLUMNS, MEMBER_IMPORT_MAX_ROWS, MemberImportError } from './memberImport';
@@ -12,7 +12,7 @@ const opts = { academy: 'RosiFit Academy', offerings, openedFrom: { course: 'Yog
 
 /** A workbook with the data sheet filled from the given rows, as a person would. */
 async function workbookWith(rows: string[][], sheet = SHEET_DATA): Promise<ArrayBuffer> {
-  const wb = new ExcelJS.Workbook();
+  const wb = new (await excel()).Workbook();
   const ws = wb.addWorksheet(sheet);
   ws.addRow([...MEMBER_IMPORT_COLUMNS]);
   for (const r of rows) ws.addRow(r);
@@ -23,7 +23,7 @@ async function workbookWith(rows: string[][], sheet = SHEET_DATA): Promise<Array
 
 test('the template has the reference’s three sheets, the lookup hidden', async () => {
   const bytes = await buildMemberTemplate(opts);
-  const wb = new ExcelJS.Workbook();
+  const wb = new (await excel()).Workbook();
   await wb.xlsx.load(bytes);
   assert.ok(wb.getWorksheet(SHEET_INSTRUCTIONS), 'instructions sheet');
   assert.ok(wb.getWorksheet(SHEET_DATA), 'data sheet');
@@ -34,7 +34,7 @@ test('the template has the reference’s three sheets, the lookup hidden', async
 
 test('the data sheet carries every column, in order, and dropdowns fed from the lookup', async () => {
   const bytes = await buildMemberTemplate(opts);
-  const wb = new ExcelJS.Workbook();
+  const wb = new (await excel()).Workbook();
   await wb.xlsx.load(bytes);
   const data = wb.getWorksheet(SHEET_DATA)!;
   const header = MEMBER_IMPORT_COLUMNS.map((_, i) => String(data.getRow(1).getCell(i + 1).value));
@@ -56,7 +56,7 @@ test('the sample rows live on the INSTRUCTIONS sheet, not the data sheet', async
   // strangers the first time somebody uploads it unedited.
   const bytes = await buildMemberTemplate(opts);
   await assert.rejects(() => parseMemberXlsx(bytes), MemberImportError);
-  const wb = new ExcelJS.Workbook();
+  const wb = new (await excel()).Workbook();
   await wb.xlsx.load(bytes);
   const info = wb.getWorksheet(SHEET_INSTRUCTIONS)!;
   let found = 0;
@@ -98,7 +98,7 @@ test('a filled data sheet parses into rows with their SPREADSHEET row numbers', 
 });
 
 test('a real date cell comes back as YYYY-MM-DD', async () => {
-  const wb = new ExcelJS.Workbook();
+  const wb = new (await excel()).Workbook();
   const ws = wb.addWorksheet(SHEET_DATA);
   ws.addRow([...MEMBER_IMPORT_COLUMNS]);
   ws.addRow(['Anitha', '', '', '', '', new Date(Date.UTC(2026, 7, 1))]);
@@ -113,7 +113,7 @@ test('a renamed data tab still parses — the header names the sheet, not the ta
 });
 
 test('columns may be in any order — the header names them, not their position', async () => {
-  const wb = new ExcelJS.Workbook();
+  const wb = new (await excel()).Workbook();
   const ws = wb.addWorksheet(SHEET_DATA);
   ws.addRow(['Email', 'Full Name']);
   ws.addRow(['a@b.com', 'Anitha Rajesh']);
@@ -123,7 +123,7 @@ test('columns may be in any order — the header names them, not their position'
 });
 
 test('a workbook with no Full Name column is refused, not half-read', async () => {
-  const wb = new ExcelJS.Workbook();
+  const wb = new (await excel()).Workbook();
   wb.addWorksheet('Sheet1').addRow(['Name', 'Phone']);
   const bytes = (await wb.xlsx.writeBuffer()) as unknown as ArrayBuffer;
   await assert.rejects(() => parseMemberXlsx(bytes), MemberImportError);
@@ -154,7 +154,7 @@ test('the error report carries Row, Status, Reason, then every column as it was'
            aliases: ['Divya', 'Divya R'], joined_on: '2026-08-01' },
     status: 'skipped', reason: 'already on the register',
   }]);
-  const wb = new ExcelJS.Workbook();
+  const wb = new (await excel()).Workbook();
   await wb.xlsx.load(bytes);
   const ws = wb.worksheets[0];
   const header = Array.from({ length: 9 }, (_, i) => String(ws.getRow(1).getCell(i + 1).value));

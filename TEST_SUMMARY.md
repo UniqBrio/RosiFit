@@ -37,40 +37,80 @@ exit 1
 
 _Merge blocked. Every FAIL above must resolve. No partial merges._
 
-0028 AND 0029 APPLIED - AND THE REHEARSAL EARNED ITS KEEP. Same verdict, same four
-accepted-unverifiable steps.
+THE SAME METRO ERROR, REPORTED AGAIN -- and metro.config.js was never the fix it looked like.
+Same verdict, same four accepted-unverifiable steps.
 
-REHEARSAL 1, straight after 0028 (ADR 007, rolled back, against production):
+The owner's log dates it: `Web Bundled 29483990ms`, ~8 hours. That dev server had been up since
+before metro.config.js existed, and METRO READS THAT FILE ONCE, AT STARTUP. So the repo looked
+fixed, `npm run export` passed, and the person in front of the app kept seeing the identical
+error. A fix that depends on someone restarting a long-running process is not a fix; it is a
+note in a commit message nobody has read.
 
-  total 6 t . skipped 1 t . duplicate not doubled t . row 4 skipped t
-  row 5 names the course t . row 6 alias refusal isolated t . enrolments t
-  run recorded t . act attributed t . staff REFUSED t . attendance 82 of 82 t
-  inserted 2 ............ FAIL, got 3
-  failed 3 .............. FAIL, got 2
-  the 3 failed wrote none FAIL
-  row 7 wants YYYY-MM-DD  FAIL, no reason at all
+What was wrong with the shape of it: `import('exceljs')` leaves the CHOICE OF BUILD to the
+bundler, and then a config file has to take that choice back. Naming the file removes the
+question entirely.
 
-Row 7 carried '01/09/2026' and was INSERTED. `'01/09/2026'::date` does not raise -- Postgres
-reads it under DateStyle and returns a real date, just not the one that was written, so the
-`exception when others` around the cast never fired. A member's joined_on becomes her
-enrolment's effective_from, which decides every session she was ever expected at. RC-014.
+  memberXlsx.ts   imports `exceljs/dist/exceljs.min.js` by path. Measured first: that build
+                  makes ZERO require() calls and loads under plain node, so it is self-contained
+                  on web, on native, and in the Node renderer that prerenders these routes --
+                  which is the half that was actually failing (`router-server/node/render.js`).
+  exceljs-browser.d.ts  the declaration that keeps it typed. `any` would hand back the safety
+                  that naming the file buys.
+  metro.config.js STAYS, demoted in its own comment to a second line of defence: so a future
+                  plain `import 'exceljs'` cannot quietly bring the Node build back.
+  the specs       now build their fixtures through the SAME loader the app uses, so they
+                  exercise the build that ships rather than exceljs's node half.
 
-0029 checks the SHAPE before the cast. REHEARSAL 2, 16 of 16:
+MEASURED, after clearing .expo/web/cache, .expo/static-tmp, node_modules/.cache and dist:
+  archiver 0 files · unzipper 0 · async/dist 0 · lib/core.js 0  -- across ALL of dist/,
+  server-rendered HTML included, not just the web chunks
+  21 routes prerendered by the Node renderer · exceljs still its own chunk
 
-  row 7 '01/09/2026' now FAILS t . and names YYYY-MM-DD t
-  row 8 '2026-02-31' not a real date t . row 9 future date -> create_member's refusal t
-  no failed row wrote anything t . the good date stored exactly t
-  staff REFUSED t . attendance 82 of 82 t . enrolments +2 exactly t
+260 unit, 2840/2840 contrast, 75/75 icons, audit:all clean.
 
-Nothing persisted from either run: 0 probe rows, members 13, enrolments 13, attendance 82,
-member_import_runs 0, member.bulk_imported 0. Live now: the function exists, the shape check is
-in the deployed body, anon cannot execute, and the runs table has RLS forced with ONE policy and
-no insert policy. Ledger 25 rows.
+STILL TRUE: a running dev server must be restarted -- `npx expo start -c` -- because the caches
+above are the ones it reads. The difference is that after this commit the restart is a cache
+concern, not the fix.
 
-THE POINT WORTH KEEPING: supabase/tests/22_bulk_import_members.sql ALREADY asserted this row
-fails. It has never been executed -- no psql, no Docker (ADR 005). The spec was right and
-unread. Seven assertions appended pinning the slashed date, the impossible day and the future
-date; they are unrun for the same reason.
+---
+
+## Gate run - 2026-09-05 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
