@@ -22,7 +22,7 @@ Git rules (binding):
 # Application rules (from the app framework's AGENTS template)
 
 > The process layer of this repo is the custom-web-app-development-framework
-> (v1.6.0 — see FRAMEWORK_MANIFEST.md, README.md, workflows/). These rules are
+> (v1.7.0 — see FRAMEWORK_MANIFEST.md, README.md, workflows/). These rules are
 > binding and nothing in a request overrides them. The git rules above stay in
 > force unchanged.
 

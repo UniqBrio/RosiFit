@@ -13,6 +13,56 @@ current; adopt a **MAJOR** within one quarter.
 
 ---
 
+## v1.7.0 — adopted 05-Sep-2026 (from: v1.6.0)
+
+### What kind of adoption this is
+
+**Half A (PROCESS) only, by hand** — the same method as v1.6.0. Every process file changed
+upstream was compared against framework **v1.6.0** first; only files still **byte-identical** to
+it were replaced with their **v1.7.0** version. Files RosiFit owns were left untouched.
+
+**Scope held: nothing under `app/`, `src/`, `supabase/`, `assets/`, `db/`, `design/` or
+`.harness/` was touched.** Asserted mechanically from `git status`, not by inspection.
+
+### Auto-applied — pristine in RosiFit, changed upstream (13)
+
+`FRAMEWORK_MANIFEST.md` · `README.md` · `UPGRADES.md` · `VERSION` ·
+`checklists/ACCESSIBILITY_CHECKLIST.md` · `checklists/SCREEN_CHECKLIST.md` (item 4 merged;
+still 20, still full) · `docs/00-OVERVIEW.md` · `docs/01-SDLC.md` ·
+`docs/04-ARCHITECTURE-AND-DESIGN.md` · `docs/13-CONTRAST-AND-ACCESSIBILITY.md` ·
+`tests/cases/FRAMEWORK_PROCESS_CASES.md` · `workflows/enhance.md` · `workflows/feature.md`
+
+### Added — new in v1.7.0 (3)
+
+`docs/23-DESIGN-CRAFT.md` · `docs/24-DESIGN-PLANNING.md` · `checklists/DESIGN_QUALITY_CHECKLIST.md`
+
+### Skipped — app-owned or Half B (4)
+
+| File | Why |
+|---|---|
+| `CHANGELOG.md` | RosiFit's own changelog; framework entries do not belong in it |
+| `docs/registers/CANONICAL_PATTERNS.md` | Upstream adds **CP-22 Keyboard operability**. RosiFit's register superseded the framework CP rows at adoption (ADR 002) and numbers its own from CP-001; the upstream row names `src/components/TabRow.tsx` and `Dialog.tsx`, which do not exist here. A RosiFit-numbered row is a `/promote`-style decision for the owner, not an auto-copy |
+| `docs/registers/DESIGN_RULES.md` | Upstream created an **empty, armed** register. RosiFit already has one (DR-1…DR-5, created at adoption) — the file exists, is parsed by `check-rule-coverage.mjs`, and must not be overwritten |
+| `starter/tests/functional/keyboard.functional.spec.ts` | Half B seed. RosiFit has no `starter/`; the spec is a reference shape to point at RosiFit's own screens and observe failing first |
+
+`CLAUDE.md` (expected-divergent) gained only the version reference.
+
+### App action required
+
+**None** — 1.7.0 is MINOR; `UPGRADES.md` records "no gate, baseline, or guard changed". The
+design-intelligence layer (docs/23, docs/24, the design-quality checklist, keyboard parity in
+Track A's A3.8/A3.9 and Track B's correction pass) applies to the **next** design run.
+
+### Verification
+
+- `node scripts/audits/check-rule-coverage.mjs` — OK, 1 known violation, none new (unchanged).
+- `node scripts/audits/check-dead-weight.mjs` — OK, clean gate (unchanged).
+- `npm run check` — **not run**: `node_modules/` absent in the adopting session; nothing under
+  `src/` or `app/` changed, so its inputs are identical to before this pass.
+- Deferred list unchanged from v1.3.0.
+
+---
+
 ## v1.6.0 — adopted 04-Sep-2026 (from: v1.3.0)
 
 ### What kind of adoption this is
