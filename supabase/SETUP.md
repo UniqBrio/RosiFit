@@ -133,6 +133,26 @@
 > 1. **AWS SES secrets** — `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
 >    `AWS_REGION` *(or `AWS_SES_REGION`)`, `SES_FROM_ADDRESS` *(or `SES_FROM`)*,
 >    and optionally `SES_CONFIG_SET`. Only `send-followups` needs them.
+>    **THE SES SANDBOX IS A HARD PREREQUISITE, and it is not a RosiFit
+>    setting.** A new AWS account starts in the SES *sandbox*, where every
+>    RECIPIENT must itself be a verified identity. In that state the academy
+>    cannot mail its members at all: `send-followups` reaches SES, SES
+>    refuses each recipient with `400 Email address is not verified. The
+>    following identities failed the check in region <region>: <address>`,
+>    and the Result screen shows every member FAILED. Nothing in this repo
+>    can fix it — the from-address, the credentials and the region were all
+>    already correct when this was hit on 05-Sep-2026 (ap-south-1); the
+>    recipient check is the last thing SES does.
+>    - **To test**, verify the one recipient: SES -> Identities -> Create
+>      identity -> Email address, in the SAME region as `AWS_SES_REGION`.
+>      AWS mails a confirmation link that has to be clicked.
+>    - **To ship**, request production access: SES -> Account dashboard ->
+>      Request production access. Verifying recipients does not scale past a
+>      test, because the whole point is mailing members whose addresses the
+>      academy does not control.
+>    An error naming ONLY the recipient is also the proof that the sender is
+>    already verified — SES checks both.
+>
 >    **`SES_CONFIG_SET` is genuinely optional and is currently UNSET**
 >    (removed 05-Sep-2026). It had held `uniqbrio-transactional`, which does
 >    not exist in this account's SES region, and SES answers a name it cannot
