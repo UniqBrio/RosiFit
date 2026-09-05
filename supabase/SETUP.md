@@ -15,11 +15,16 @@
 >   (`create_member`, `holidays_apply_effects` + its three triggers + the
 >   `holidays_delete` policy + the DELETE grant, `set_offering_schedule`), so
 >   the schema is complete; only the ledger is short. Do not re-run them.
-> - **`auth-lookup` IS WRITTEN AND NOT DEPLOYED** (05-Sep-2026). It is the one
->   Edge Function in the tree that production does not have, and until it is
->   deployed **Continue on the sign-in screen fails for everyone** — it calls
->   this function and shows "could not be checked" rather than guessing. It
->   must be deployed **public**:
+> - **`auth-lookup` IS NOW DEPLOYED** (v1, 05-Sep-2026, `verify_jwt=false`).
+>   While it was written-but-not-deployed, **Continue on the sign-in screen
+>   failed for everyone**: the call 404'd, and supabase-js reports a 404 from
+>   `functions.invoke` as "Failed to send a request to the Edge Function",
+>   which `src/data/repository.ts` matches as a network fault and renders as
+>   *"RosiFit could not reach the academy database."* **That sentence is
+>   misleading for a missing function** and the regex cannot tell the two
+>   apart — noted in TECH_DEBT, not fixed here. It must stay **public**; a
+>   redeploy that forgets `--no-verify-jwt` turns the 404 into a 401 and the
+>   screen looks identical:
 >   `supabase functions deploy auth-lookup --no-verify-jwt`.
 >   That makes **six** public functions, not five; `docs/RosiFit_Implementation_Plan_V2.2.md`
 >   says "public remains exactly five" and is superseded on this point by
@@ -31,8 +36,16 @@
 >   `auth-login`, `auth-bootstrap`, `recovery-check` at **v5**, public
 >   (`verify_jwt=false` — nobody has a session when they call them);
 >   `pin-issue` and `pin-reset` at **v5**, `csv-import` at **v6** and
->   `send-followups` at **v5**, all JWT-required. The last two were
->   redeployed for `0026` — see below.
+>   `send-followups` at **v11**, all JWT-required. `csv-import` and
+>   `send-followups` were redeployed for `0026` — see below; `send-followups`
+>   went to **v11 on 05-Sep-2026** for the third RC-017 fix (`unquoteSecret`).
+> - **A secret set through a shell may carry its quotes.** `SES_FROM_ADDRESS`
+>   was stored on this project as `"UniqBrio <uniqbotzinfo@gmail.com>"`, quote
+>   characters and all — `supabase secrets set X="..."` in PowerShell keeps
+>   them. Since v11 the function strips wrapping quotes from every secret it
+>   reads, so this no longer breaks a send; setting them **without** quotes is
+>   still the right thing, because a quoted value that some other consumer
+>   reads directly will still be wrong.
 > - **`bootstrap_completed` is `true`.** The academy admin has registered.
 >   There are 3 `app_users` (1 super admin), 3 `auth.users` and 2 recovery
 >   answers on file.

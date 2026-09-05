@@ -3,6 +3,8 @@
 // this interface, never on SES or console.log directly, so a third provider
 // is a third class, not a rewrite of the send flow.
 
+import { unquoteSecret, isFromAddress } from '../_shared/from-address.ts';
+
 export type EmailMessage = { to: string; subject: string; text: string };
 export type EmailResult = { ok: boolean; providerMessageId?: string; error?: string };
 
@@ -133,27 +135,16 @@ export class SesEmailProvider implements EmailProvider {
  * project before anyone noticed the mismatch. Accepting both costs one
  * `??` and removes a class of silent misconfiguration.
  */
-/**
- * A from-address SES will accept: either a bare `name@example.com` or the
- * display form `Academy <name@example.com>`.
- *
- * Checked HERE because SES's own refusal is `400 Missing final '@domain'`,
- * which names neither the field nor the value — it arrived on this project as
- * a per-member failure on a send where the RECIPIENT was demonstrably fine,
- * and the only way to know it meant the sender was to reason it out.
- */
-// `=` and `,` are excluded from the address deliberately. Both are legal in an
-// email local part and neither is ever used in one, and their absence catches
-// the two mistakes people actually make in a secrets field: pasting the whole
-// `SES_FROM=someone@example.com` line, and putting two addresses in one value.
-const ADDR = String.raw`[^<>@\s=,]+@[^<>@\s=,]+\.[^<>@\s=,]+`;
-const FROM_SHAPE = new RegExp(`^(?:${ADDR}|[^<>=]*<\s*${ADDR}\s*>)$`);
-
 export function resolveEmailProvider(): { provider: EmailProvider; problems: string[] } {
+  // unquoteSecret, not just trim: a value set through a shell keeps its
+  // wrapping quote characters, and every consumer below sees them as content.
   const env = (...names: string[]): string | undefined => {
     for (const n of names) {
       const v = Deno.env.get(n);
-      if (v && v.trim()) return v.trim();
+      if (v) {
+        const clean = unquoteSecret(v);
+        if (clean) return clean;
+      }
     }
     return undefined;
   };
@@ -174,7 +165,7 @@ export function resolveEmailProvider(): { provider: EmailProvider; problems: str
   if (!secretAccessKey) problems.push('AWS_SECRET_ACCESS_KEY is not set');
   if (!from) {
     problems.push('SES_FROM_ADDRESS (or SES_FROM) is not set');
-  } else if (!FROM_SHAPE.test(from)) {
+  } else if (!isFromAddress(from)) {
     // The VALUE, quoted back. It is a from-address -- it appears on every
     // email this academy sends -- so showing it leaks nothing and is the only
     // thing that makes the error actionable.

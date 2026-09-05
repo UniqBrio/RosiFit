@@ -110,14 +110,42 @@ mistakes people actually make in a secrets field — pasting the whole `SES_FROM
 line, and putting two addresses in one value. My first version of that regex accepted the pasted
 line; it was caught by running the pattern against real inputs rather than reading it.
 
+**AMENDED AGAIN 05-Sep-2026, the third link in the same chain.** The shape check from the last
+amendment fired on the next send, and it was right: `SES_FROM_ADDRESS` held
+`"UniqBrio <uniqbotzinfo@gmail.com>"` -- **with the quote characters stored as part of the value**.
+`supabase secrets set FROM="X <a@b>"` in PowerShell keeps the quotes, and so does pasting a quoted
+value into the dashboard field. The value reads correctly to a person and is wrong to every
+consumer. `unquoteSecret()` now strips one or more matching wrapping pairs from **every** secret
+this function reads, not just the from-address, because a quoted `AWS_SECRET_ACCESS_KEY` fails far
+worse: the signature simply does not match and SES answers 403 with nothing pointing at the quotes.
+Stripping is safe here because none of these secrets may legitimately begin AND end with a quote --
+and `"UniqBrio" <a@b.com>`, where the quotes correctly wrap only the display name, ends `>` and is
+left untouched.
+
+**A latent defect in the guard itself, found while fixing the above.** `FROM_SHAPE` was built with a
+plain template literal, and a plain literal eats an unrecognised escape: `\s` became the letter
+`s`, so `<\s*...\s*>` compiled to `<s*...s*>` and matched a run of *s* where it meant whitespace.
+It still accepted the ordinary `Academy <me@example.com>` -- zero s's, zero spaces -- which is
+exactly why nothing caught it; `Academy < me@example.com >` was refused for no stated reason. Both
+halves are now `String.raw`. This one never reached a user and gets no entry of its own; it is
+recorded here because it shows the shape of the mistake: the half of the pattern that was correct
+(`ADDR`) was already `String.raw`, so the file looked consistent at a glance.
+
 **Recurrence risk** — the class is "a degraded fallback that returns the success shape". It is
 worth grepping for on any provider abstraction added later: a stub that satisfies the interface
 will satisfy the caller too.
 
-**Prevention** — prose, and one honest gap. The refusal is the guard, and it has no test: the
-send path has no spec at all, because exercising it means either mocking Deno's env inside an Edge
-Function or sending real mail. The nearest cheap rung would assert that `resolveEmailProvider()`
-reports every missing name — pure, and it would have caught the name mismatch.
+**Prevention** — `src/data/fromAddress.test.ts` (14 assertions), which imports
+`supabase/functions/_shared/from-address.ts` — **the module the Edge Function imports**, not a copy
+of the rule kept in step by hand. A copied regex would have passed here while production failed,
+which is the failure this whole entry is about. It runs in `npm run check` via `test:unit`, and it
+covers the quoted value from the live failure end to end.
+
+**The gap that remains, narrowed but not closed.** `resolveEmailProvider()` itself still has no
+spec — reaching it means mocking `Deno.env` inside an Edge Function — so the *name mismatch* half
+of this entry is still guarded by prose alone. What is now tested is the part that was extractable:
+unquoting and the from-address shape, the two rules that decide whether a secrets field is usable.
+Pulling the env lookup behind an injectable reader would close the rest and was not done here.
 
 **Left standing:** the one `provider='dev'` row from 05-Sep. It is the evidence, and deleting the
 record of a message the academy believes it sent would be the same lie one layer down.
