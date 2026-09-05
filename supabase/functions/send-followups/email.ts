@@ -133,7 +133,23 @@ export class SesEmailProvider implements EmailProvider {
  * project before anyone noticed the mismatch. Accepting both costs one
  * `??` and removes a class of silent misconfiguration.
  */
-export function resolveEmailProvider(): { provider: EmailProvider; missing: string[] } {
+/**
+ * A from-address SES will accept: either a bare `name@example.com` or the
+ * display form `Academy <name@example.com>`.
+ *
+ * Checked HERE because SES's own refusal is `400 Missing final '@domain'`,
+ * which names neither the field nor the value — it arrived on this project as
+ * a per-member failure on a send where the RECIPIENT was demonstrably fine,
+ * and the only way to know it meant the sender was to reason it out.
+ */
+// `=` and `,` are excluded from the address deliberately. Both are legal in an
+// email local part and neither is ever used in one, and their absence catches
+// the two mistakes people actually make in a secrets field: pasting the whole
+// `SES_FROM=someone@example.com` line, and putting two addresses in one value.
+const ADDR = String.raw`[^<>@\s=,]+@[^<>@\s=,]+\.[^<>@\s=,]+`;
+const FROM_SHAPE = new RegExp(`^(?:${ADDR}|[^<>=]*<\s*${ADDR}\s*>)$`);
+
+export function resolveEmailProvider(): { provider: EmailProvider; problems: string[] } {
   const env = (...names: string[]): string | undefined => {
     for (const n of names) {
       const v = Deno.env.get(n);
@@ -144,7 +160,7 @@ export function resolveEmailProvider(): { provider: EmailProvider; missing: stri
 
   // Explicitly asking for the dev provider is a real answer, and the only one
   // that lets a deployment log mail instead of sending it on purpose.
-  if (env('EMAIL_PROVIDER') === 'dev') return { provider: new DevEmailProvider(), missing: [] };
+  if (env('EMAIL_PROVIDER') === 'dev') return { provider: new DevEmailProvider(), problems: [] };
 
   const region = env('AWS_REGION', 'AWS_SES_REGION');
   const accessKeyId = env('AWS_ACCESS_KEY_ID');
@@ -152,23 +168,32 @@ export function resolveEmailProvider(): { provider: EmailProvider; missing: stri
   const from = env('SES_FROM_ADDRESS', 'SES_FROM');
   const configSet = env('SES_CONFIG_SET');
 
-  const missing: string[] = [];
-  if (!region) missing.push('AWS_REGION (or AWS_SES_REGION)');
-  if (!accessKeyId) missing.push('AWS_ACCESS_KEY_ID');
-  if (!secretAccessKey) missing.push('AWS_SECRET_ACCESS_KEY');
-  if (!from) missing.push('SES_FROM_ADDRESS (or SES_FROM)');
+  const problems: string[] = [];
+  if (!region) problems.push('AWS_REGION (or AWS_SES_REGION) is not set');
+  if (!accessKeyId) problems.push('AWS_ACCESS_KEY_ID is not set');
+  if (!secretAccessKey) problems.push('AWS_SECRET_ACCESS_KEY is not set');
+  if (!from) {
+    problems.push('SES_FROM_ADDRESS (or SES_FROM) is not set');
+  } else if (!FROM_SHAPE.test(from)) {
+    // The VALUE, quoted back. It is a from-address -- it appears on every
+    // email this academy sends -- so showing it leaks nothing and is the only
+    // thing that makes the error actionable.
+    problems.push(
+      `SES_FROM_ADDRESS (or SES_FROM) is "${from}", which is not an email address. `
+      + 'Use name@example.com, or "Academy <name@example.com>" with the angle brackets');
+  }
 
-  if (missing.length === 0) {
+  if (problems.length === 0) {
     return {
       provider: new SesEmailProvider(region!, accessKeyId!, secretAccessKey!, from!, configSet),
-      missing: [],
+      problems: [],
     };
   }
   // EMAIL_PROVIDER is no longer the switch. Four complete AWS values ARE the
   // switch: a deployment that has them means to send, and one that does not
   // cannot. A separate flag was one more thing to forget, and forgetting it
   // looked exactly like success.
-  return { provider: new DevEmailProvider(), missing };
+  return { provider: new DevEmailProvider(), problems };
 }
 
 /** Kept for callers that only want the provider. */

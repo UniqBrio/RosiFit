@@ -217,6 +217,20 @@ Both spellings of the region and the from-address are accepted, and `SES_CONFIG_
 SES when present. Setting `EMAIL_PROVIDER=dev` explicitly still logs instead of sending — that is a
 real answer, and now the only way to reach the dev provider on a deployment.
 
+**AMENDED 05-Sep-2026, after the next send.** With the refusal in place the send reached SES and
+failed honestly — `provider='ses'`, `SES 400: {"message":"Missing final '@domain'"}` — which is
+progress and still not good enough. That message names neither the field nor the value, and the
+RECIPIENT was demonstrably fine (25 characters, trimmed, in `to_email`), so the only way to know it
+meant the SENDER was to reason it out. `resolveEmailProvider()` now checks the from-address SHAPE
+before any SES call and quotes the value back: *"SES_FROM_ADDRESS is \"x\", which is not an email
+address. Use name@example.com, or \"Academy <name@example.com>\" with the angle brackets."*
+Showing the value leaks nothing — a from-address is on every email the academy sends — and it is
+the only thing that makes the error actionable. The check excludes `=` and `,` from the address on
+purpose: both are legal in a local part, neither is ever used, and their absence catches the two
+mistakes people actually make in a secrets field — pasting the whole `SES_FROM=someone@example.com`
+line, and putting two addresses in one value. My first version of that regex accepted the pasted
+line; it was caught by running the pattern against real inputs rather than reading it.
+
 **Recurrence risk** — the class is "a degraded fallback that returns the success shape". It is
 worth grepping for on any provider abstraction added later: a stub that satisfies the interface
 will satisfy the caller too.

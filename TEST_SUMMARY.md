@@ -37,45 +37,79 @@ exit 1
 
 _Merge blocked. Every FAIL above must resolve. No partial merges._
 
-THE APP SAID SENT FOR AN EMAIL IT NEVER SENT (RC-015). Same verdict, same four accepted-
-unverifiable steps.
+THE FROM-ADDRESS IS CHECKED BEFORE SES SEES IT. Same verdict, same four accepted-unverifiable
+steps.
 
-Reported by the owner after the first live send: the Result screen showed 1 sent / 0 failed /
-0 excluded, and no email arrived. email_messages agreed and gave it away:
+The refusal from the previous commit worked: the next send reached SES and failed honestly --
+provider='ses', SES 400 {"message":"Missing final '@domain'"}. Progress, and still not good
+enough. That message names neither the field nor the value, and the RECIPIENT was demonstrably
+fine -- 25 characters, trimmed, in to_email -- so the only way to know it meant the SENDER was
+to reason it out from the one address SES could not see.
 
-  status 'sent' · provider 'dev' · provider_message_id 'dev-869384b3-...'
+  resolveEmailProvider()  checks the from-address shape and quotes the value back:
+                          'SES_FROM_ADDRESS is "x", which is not an email address. Use
+                          name@example.com, or "Academy <name@example.com>" with the angle
+                          brackets.' A from-address is on every email the academy sends, so
+                          showing it leaks nothing and is the only thing that makes the error
+                          actionable.
+  `missing` -> `problems` because a malformed value is not a missing one, and "Missing:
+                          SES_FROM is 'x'" reads as nonsense.
 
-Two faults, and the second hid the first.
+THE REGEX WAS WRONG FIRST TIME, and running it against real inputs is what caught it:
 
-  the names   the account had AWS_SES_REGION and SES_FROM; the function read AWS_REGION and
-              SES_FROM_ADDRESS. EMAIL_PROVIDER was absent, and it was checked FIRST -- so the
-              dev provider was chosen before the AWS values were ever looked at.
-  the shape   the dev provider returns {ok:true, providerMessageId:'dev-...'}. send-followups
-              cannot tell that from a delivery, so it wrote 'sent', bumped last_emailed_at and
-              reported success.
+  accept  "uniqbotzinfo@gmail.com"                     REFUSE  "uniqbotzinfo"
+  accept  "RosiFit Academy <uniqbotzinfo@gmail.com>"   REFUSE  "RosiFit Academy uniqbotzinfo@gmail.com"
+  accept  "<uniqbotzinfo@gmail.com>"                   REFUSE  "uniqbotzinfo@gmail"
+                                                       REFUSE  "SES_FROM=uniqbotzinfo@gmail.com"
+                                                       REFUSE  "a@b.com,c@d.com"
 
-SETUP.md predicted this exactly -- "a send that looks successful and sent nothing is worse than
-one that fails" -- and it shipped anyway, because nothing enforced the sentence.
+That second-to-last one passed the first version. `=` and `,` are now excluded from the address:
+both are legal in a local part, neither is ever used, and their absence catches the two mistakes
+people actually make in a secrets field -- pasting the whole KEY=value line, and putting two
+addresses in one value.
 
-  resolveEmailProvider()  returns the provider AND what is missing
-  send-followups          refuses with a 503 naming the absent secrets, BEFORE the batch row is
-                          written, so a refused send leaves nothing behind to explain
-  the switch              is now the four AWS values, not EMAIL_PROVIDER. Setting
-                          EMAIL_PROVIDER=dev explicitly still logs instead of sending.
-  both spellings          AWS_REGION / AWS_SES_REGION and SES_FROM_ADDRESS / SES_FROM accepted,
-                          and SES_CONFIG_SET passed to SES when present
+Deployed as send-followups v8. Still no spec on the send path (RC-015 names the rung); the
+verification here is the pattern run against those nine inputs.
 
-Deployed: send-followups v6. With the owner's existing secrets the four required values now all
-resolve, so the next send either delivers or fails loudly with SES's own words in
-failure_reason.
+---
 
-NOT TESTED, and said plainly: the send path has no spec at all. Exercising it means mocking
-Deno's env inside an Edge Function or sending real mail. The cheap rung named in RC-015 is a
-pure assertion that resolveEmailProvider() reports every missing name -- it would have caught
-this -- and it is not written.
+## Gate run - 2026-09-05 - VERDICT: FAIL
 
-The one provider='dev' row from 05-Sep is LEFT STANDING. It is the evidence, and deleting the
-record of a message the academy believes it sent would be the same lie one layer down.
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

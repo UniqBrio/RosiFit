@@ -43,11 +43,11 @@ Deno.serve(async (req) => {
     // fails. This is the same 503-naming-the-fix shape PIN_PEPPER already
     // uses (CP-006), and doing it here means a refused send leaves nothing
     // behind to explain.
-    const { provider, missing } = resolveEmailProvider();
-    if (missing.length > 0) {
+    const { provider, problems } = resolveEmailProvider();
+    if (problems.length > 0) {
       throw new HttpError(503,
-        `Email is not configured, so nothing was sent. Missing: ${missing.join(', ')}. `
-        + 'Set them as Edge Function secrets, then try again — no message was recorded.');
+        `Email is not configured, so nothing was sent. ${problems.join('; ')}. `
+        + 'Fix the Edge Function secrets and try again — no message was recorded.');
     }
 
     const { data: template, error: tplErr } = await admin.from('email_templates')
