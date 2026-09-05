@@ -133,6 +133,15 @@
 > 1. **AWS SES secrets** — `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
 >    `AWS_REGION` *(or `AWS_SES_REGION`)`, `SES_FROM_ADDRESS` *(or `SES_FROM`)*,
 >    and optionally `SES_CONFIG_SET`. Only `send-followups` needs them.
+>    **`SES_CONFIG_SET` is genuinely optional and is currently UNSET**
+>    (removed 05-Sep-2026). It had held `uniqbrio-transactional`, which does
+>    not exist in this account's SES region, and SES answers a name it cannot
+>    find with `404 Configuration set <name> does not exist` — a hard failure
+>    of the whole send, not a skipped feature. Configuration sets are
+>    **region-scoped**, so one created in a different region reads as missing
+>    here. Set it only after confirming the name in SES under the same region
+>    as `AWS_SES_REGION`; leaving it unset omits `ConfigurationSetName` from
+>    the call entirely, which is what the function does now.
 >    **`EMAIL_PROVIDER` is NO LONGER the switch** (05-Sep-2026, RC-017): the
 >    four AWS values are. It was one more thing to forget, and forgetting it
 >    looked exactly like success — the send recorded `status='sent'` with
