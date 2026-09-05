@@ -17,3 +17,10 @@ dist/
 
 expo-env.d.ts
 # @end expo-cli
+
+# Supabase CLI scratch state — the linked ref, the pooler URL and the version
+# stamps it caches. Per-machine and rewritten on every CLI call, so tracking it
+# means a diff every time anyone runs `supabase`. It carries no credentials
+# (the pooler URL has no password), which is the only reason committing it was
+# untidy rather than a leak.
+supabase/.temp/
