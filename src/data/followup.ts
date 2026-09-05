@@ -14,6 +14,36 @@
  */
 import type { Member, FollowUpRule, FollowUpCandidate } from './mock';
 
+/**
+ * The follow-up threshold's bounds: 1..7.
+ *
+ * The count was hard-coded 4 in save_course (0022), in the values list,
+ * twice. A course running once or twice a week could therefore never reach
+ * it: the trigger read as switched ON in the form and was unreachable by
+ * arithmetic, so the course had no follow-up at all. 0030 makes the count the
+ * academy's, and this is the range it may take.
+ *
+ * SEVEN because a week has seven days -- a weekly threshold above that can
+ * never fire, which is the same defect as zero the other way up. The same
+ * bound is applied to the consecutive count deliberately: a run longer than a
+ * week is a member who has left, and the academy asked for one control, not
+ * two with different limits.
+ *
+ * Here rather than in the form because the form imports react-native, which
+ * cannot be transformed under node -- so anything a spec needs to reach lives
+ * in this layer. It is also the layer that already owns what a rule MEANS.
+ */
+export const MIN_THRESHOLD = 1;
+export const MAX_THRESHOLD = 7;
+
+/** Pulls any number into range. Used on the way in from the database too:
+ *  0009 put no CHECK on these columns, so a row written before 0030 -- or by
+ *  hand -- can say anything, and the stepper must not start outside itself. */
+export function clampThreshold(n: number): number {
+  if (!Number.isFinite(n)) return 4;
+  return Math.min(MAX_THRESHOLD, Math.max(MIN_THRESHOLD, Math.round(n)));
+}
+
 export function ruleHits(m: Member, r: FollowUpRule) {
   return {
     // a member with nothing scheduled cannot have "missed" anything

@@ -37,34 +37,103 @@ exit 1
 
 _Merge blocked. Every FAIL above must resolve. No partial merges._
 
-THE COURSE IS PER ROW, AND THE DROPDOWN NOW REFUSES. Same verdict, same four
-accepted-unverifiable steps.
+THE FOLLOW-UP THRESHOLD IS THE ACADEMY'S NOW, 1..7. Same verdict, same four accepted-
+unverifiable steps.
 
-The screen asked for a course before it would take a file. That is one upload per course for an
-academy that runs three, and the file already has a Course column -- so the question was being
-asked twice and answered once. The picker is gone; one spreadsheet covers every course.
+Asked to seed a member who satisfies the missed-session rule so a live SES send could be
+tested. Seeding her was easy; getting her PAST the rule was not, and the reason is a defect:
 
-  no picker        the screen goes straight to the file. Opened from a course detail, that
-                   course is STATED as what a blank Course cell falls back to -- a default for
-                   the file, never a filter: a row naming another course still joins that one.
-  errorStyle stop  Excel's default for a list rule is an "information" prompt with a Continue
-                   button, so a hand-typed course landed in the cell and the file only failed
-                   once it reached RosiFit. 'stop' makes the dropdown the ONLY way in, and the
-                   message says where a new course actually comes from -- add it in RosiFit,
-                   download the template again.
-  no courses       the template is not offered AT ALL. It would list an empty dropdown and
-                   every row would fail on upload, so the screen says to add a course first.
+  save_course hard-coded the count at FOUR (0022, in the values list, twice). Postnatal runs
+  four days a week and its schedule only starts 04-Sep, so this week holds ONE session --
+  four was unreachable without inventing sessions the course never ran. And a course running
+  once or twice a week could never reach four in a week AT ALL: its trigger reads as switched
+  on in the form and is unreachable by arithmetic. Prenatal here runs three days; its weekly
+  rule could never have fired.
 
-Three specs added (31 -> 34): the stop style on both dropdowns and the message that names the
-remedy; the lookup listing every course once; and a file carrying rows for DIFFERENT courses
-validating with no course chosen up front.
+course_follow_up_config has carried weekly_threshold and consecutive_threshold since 0009. The
+columns were always there. Only the form and save_course insisted on four.
 
-266 unit, 2840/2840 contrast, 75/75 icons.
+  0030          p_threshold smallint default 4, range 1..7, checked in SQL. The old 9-arg
+                signature is DROPPED, not left beside it -- two save_course functions differing
+                only in a defaulted trailing argument is an ambiguous call for PostgREST.
+  followup.ts   MIN/MAX_THRESHOLD and clampThreshold, in the PURE layer: the form imports
+                react-native, which cannot be transformed under node, so anything a spec needs
+                to reach lives there. It is also the layer that already owns what a rule means.
+  course/edit   a - N + stepper. Both radio labels now say the real number, and when the
+                threshold exceeds the days the course runs it says so in place: "This course
+                runs 2 days a week, so 4 can never be reached -- nobody will ever be followed
+                up." That sentence is the defect, made visible where it is caused.
 
-AUDIT NOTE, not mine to fix: audit:testids BLOCKS on app/register.tsx (coverage 3 -> 2, and the
-baseline still says 3). That file is modified and UNSTAGED in this shared worktree by another
-session; the improvement and its baseline rewrite belong to their commit. No file in this change
-introduced a violation.
+FAIL-FIRST: src/data/threshold.test.ts -- observed failing against a tree where clampThreshold
+trusts the stored value as-is (`return n`), which is exactly what the form would do if it
+believed whatever the database handed it. 0009 put no CHECK on these columns, so a row written
+before 0030 or by hand can say anything.
+
+  with the defect: 7 tests, 2 pass, 5 FAIL
+    not ok 2  the stepper cannot go below one
+    not ok 3  the stepper cannot go above seven
+    not ok 5  a stored value outside the range is pulled back in, not trusted
+    not ok 6  a fraction rounds rather than sneaking through
+    not ok 7  a nonsense value falls back to four, the number this always used to be
+  reverted:        7 tests, 7 pass, 0 fail
+
+Seven unit specs (266 -> 273) pin the bounds, the rounding and the NaN fallback.
+supabase/tests/23_course_threshold.sql adds 14 assertions -- unrun, no psql (ADR 005).
+
+REHEARSED against production by the ADR 007 rolled-back method, 10 of 10:
+
+  01 exactly one save_course (no overload)      06 eight REFUSED
+  02 an omitted argument still means 4          07 neither refused call wrote a course
+  03 threshold 1 accepted, returned             08 Postnatal edits to 1
+  04 the disabled trigger keeps the count       09 Shazia IS FLAGGED -- "Missed 1 of 1
+  05 zero REFUSED                                  sessions this week", email true
+                                                10 nobody else pulled in (1 on the list)
+
+That tenth one mattered: Anita is also in Postnatal and has a REAL third-party address on
+file. She has no absences, so she stays off the list and cannot receive a test email.
+
+Rolled back clean: 0 probe courses, Postnatal still at 4. Live: one save_course, it takes
+p_threshold, ledger 26.
+
+---
+
+## Gate run - 2026-09-05 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

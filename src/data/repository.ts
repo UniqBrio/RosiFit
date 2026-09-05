@@ -890,6 +890,10 @@ export type SaveCourseInput = {
   /** 1 = Monday .. 7 = Sunday. At least one, or nothing is expected of anyone. */
   weekdays: number[];
   rule: 'week' | 'consec';
+  /** how many missed sessions trigger the follow-up. 1..7 (0030) — a week has
+   *  seven days, so a weekly threshold above seven can never fire, and one
+   *  below one would flag a member who has missed nothing. */
+  threshold: number;
   from_email: string;
   template_id: string;
   /** empty means "use the template's" -- stored as NULL, which is what lets
@@ -949,6 +953,7 @@ export async function saveCourse(input: SaveCourseInput): Promise<{ id: string; 
 
   const { data, error } = await supabase.rpc('save_course', {
     p_name: input.name.trim(),
+    p_threshold: input.threshold,
     p_branch_id: input.branch_id,
     p_weekdays: [...new Set(input.weekdays)].sort((a, b) => a - b),
     p_rule: input.rule,
