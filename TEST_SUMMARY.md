@@ -37,42 +37,80 @@ exit 1
 
 _Merge blocked. Every FAIL above must resolve. No partial merges._
 
-EVERYTHING FROM EVERY SESSION, ONTO main. Same verdict, same four accepted-unverifiable steps.
+THE QUOTED SECRET, and the guard bug found underneath it. Same verdict as every run on this
+repo, and the same five accepted-unverifiable classes -- none of them touched by this change:
 
-Pushing main was rejected non-fast-forward. The cause was not a conflict: the LOCAL main ref was
-86 commits stale and had never been updated, and that stale ref is what was pushed. The work
-itself sits on chore/framework-adoption, which contains origin/main as an ancestor and
-fast-forwards cleanly. Local main is reset to match afterwards, so the same command works next
-time.
+  G1/G2/G3 FAIL  design/tokens.json does not exist and will not; colour lives in
+                 src/theme/tokens.ts by ADR 001. TD-001/002/003. The SUBSTITUTE rung ran
+                 green in this session: 2840/2840 pairs, all 360 custom hues, both themes.
+  G6  BLOCKED    no local eslint. TD-004. The largest genuine gap of the five.
+  G8  FAIL       exit 1 with an EMPTY log -- there is no test:functional script to run.
+                 TD-006. Verified the log is empty rather than assuming it: this is the
+                 known shape, not a new failure hiding in a familiar-looking one.
 
-TWO OLD REMOTE BRANCHES carry commits not on main, and BOTH ARE SUPERSEDED -- checked, not
-assumed:
-  claude/design-canvas-import (01-Sep) would add design/RosiFit App.dc.html, design/assets and
-  design/support.js. main already has all three.
-  claude/rosifit-app-implementation-rww216 (02-Sep) would add vercel.json and a build:web
-  script. main already has vercel.json, and that branch's package.json predates test:unit
-  joining `check` -- merging it would REGRESS the check script.
-Neither is merged, and neither is deleted: deleting a branch is the owner's call.
+What DID run, and passed: G5 types, G7 300 unit specs (286 + the 14 added here), G4, G9,
+G10, G11, plus audit:all clean and 75/75 icons.
 
-supabase/.temp/ had been committed. It carries no credentials -- the pooler URL has no password
-and the project ref is already public in SETUP.md -- so it was untidy, not a leak. Untracked and
-added to .gitignore; it is per-machine CLI state rewritten on every `supabase` call.
+WHAT THIS CHANGE IS NOT COVERED BY, said plainly. resolveEmailProvider() still has no spec.
+Reaching it means mocking Deno.env inside an Edge Function, so the SECRET-NAME half of
+RC-017 remains guarded by prose alone. What is now tested is the half that was extractable:
+unquoting, and the from-address shape. The test imports the module the Edge Function
+imports -- a copy of the regex kept in this repo would have passed while production failed,
+which is the exact failure RC-017 is about.
 
-DUPLICATE RC-015, caught by audit:rules and by nobody reading. Two sessions wrote a different
-RC-015 in the same worktree, and one had also taken RC-016. The email entry -- the one that
-arrived second -- is renumbered RC-017 and moved to the top, because the register is
-newest-first. The entry carries the reason in its own header: the register forbids renumbering
-and is right to, but two entries cannot share an id.
+THE LATENT BUG IS THE INTERESTING ONE. FROM_SHAPE was built with a plain template literal,
+which eats an unrecognised escape: \s became the letter s, so <\s*...\s*> compiled to
+<s*...s*>. It still matched the ordinary `Academy <me@example.com>` -- zero s's, zero
+spaces -- so nothing caught it, and the half of the pattern that was CORRECT (ADDR) was
+already String.raw, which made the file read as consistent at a glance. It reached
+production and never fired. No gate here would have caught it; running the pattern against
+real inputs did, which is also how the previous FROM_SHAPE defect was found.
 
-A NOTE ON THE GUARD, since it cost a cycle: the pre-commit adapter matches the literal strings
-`git commit` and `git push` anywhere in the command it is inspecting -- including inside the
-prose of a heredoc that is only WRITING this file. Describing a push in a summary made the guard
-evaluate the command as one. Worked around by writing the annotation from a script file rather
-than inline. Not fixed here; it belongs to the framework, and it is recorded so the next person
-does not spend the same twenty minutes.
+TD-017 WAS DUPLICATED and is settled here -- eb5315b 11:33 (auth-lookup oracle) against
+c5620a0 12:34 (cold-dialog collapse), two sessions in one worktree. The later row moves to
+TD-021; it is also the row nothing references, so both criteria agree. Note that
+audit:rules did NOT catch this: it checks RC ids, not TD ids. Found by reading. That is a
+gap in the audit, not a success of it.
 
-The combined tree: 286 unit (mine plus the parallel session's), 2840/2840 contrast, 75/75 icons,
-audit:all clean.
+---
+
+## Gate run - 2026-09-05 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
