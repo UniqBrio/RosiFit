@@ -1,19 +1,24 @@
 import { useState } from 'react';
 import { View, Text } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Screen, Muted, Button } from '../../src/components/ui';
+import { Muted, Button } from '../../src/components/ui';
+import { FormDialog } from '../../src/components/FormDialog';
 import { Icon } from '../../src/components/Icon';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, STATUS, statusSurface } from '../../src/theme/tokens';
 import { flaggedMembers, hasEmail } from '../../src/data/mock';
 import { peekSendResult } from '../../src/data/pending';
-import { ShellScreen } from '../../src/components/AppShell';
 
 /**
- * Step 3 of 3: RESULT, per member. "Sent" is claimed per address, never for
+ * The last step: RESULT, per member. "Sent" is claimed per address, never for
  * the batch -- a failed send names the member, the reason, and what to do,
  * because a silent failure here is a member nobody follows up.
+ *
+ * A DIALOG, over the same screen the draft was over (05-Sep-2026, on
+ * request). The draft REPLACES itself with this rather than pushing, so
+ * closing the result returns to the register or the course that started it
+ * and never steps back through a draft that has already been sent.
  */
 function SendResultBody() {
   const { theme } = useTheme();
@@ -41,9 +46,25 @@ function SendResultBody() {
 
   const ink = (k: keyof typeof STATUS) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
   const okInk = ink('present'); const badInk = ink('absent');
+  const close = () => router.back();
 
   return (
-    <Screen>
+    <FormDialog
+      title="Result"
+      subtitle="Per member, per address — never claimed for the batch"
+      onClose={close}
+      /* One way out, not a Cancel/Save pair: nothing here is being decided.
+         Closing returns to the screen the send was started from, which is
+         still mounted underneath. */
+      footer={(
+        <View style={{
+          padding: SPACE.lg, borderTopWidth: 1, borderTopColor: theme.line,
+          backgroundColor: theme.shell,
+        }}>
+          <Button testID="result-done" label="Done" onPress={close} />
+        </View>
+      )}
+    >
       <Muted>{result ? `Sent ${new Date().toLocaleString()}` : 'Sent 8:42 pm · 22 Aug'}</Muted>
 
       <View style={{ flexDirection: 'row', marginTop: SPACE.lg, gap: SPACE.md }}>
@@ -80,7 +101,8 @@ function SendResultBody() {
             <Text style={{ fontSize: 12, color: theme.fg, marginTop: SPACE.sm, lineHeight: 18 }}>
               {m.reason ?? 'Her provider refused the message. Retry, or call her.'}
             </Text>
-            <Button label="Retry this one" variant="secondary" style={{ marginTop: SPACE.md }}
+            <Button testID={`result-retry-${m.id}`}
+              label="Retry this one" variant="secondary" style={{ marginTop: SPACE.md }}
               onPress={() => flash(`Retrying ${m.name.split(' ')[0]} — result will replace this row`)} />
           </View>
         ))}
@@ -102,10 +124,7 @@ function SendResultBody() {
           </View>
         ))}
       </View>
-
-      <Button label="Back to home" variant="secondary" style={{ marginTop: SPACE.xl }}
-        onPress={() => router.replace('/(tabs)')} />
-    </Screen>
+    </FormDialog>
   );
 }
 
@@ -123,15 +142,10 @@ function Count({ n, label, color }: { n: number; label: string; color: string })
 }
 
 /**
- * Under the shell, not instead of it. This screen is pushed on the root
- * stack, so it is not one of the tab navigator's own and wore no academy
- * header and no Home · Reports · More pill until ShellScreen drew them.
+ * The dialog IS the screen -- no ShellScreen. The screen underneath stays
+ * mounted (DIALOG_SCREEN, app/_layout.tsx), so drawing the academy header
+ * and the tab pill here would render a second copy of both over the first.
  */
 export default function SendResult() {
-  const router = useRouter();
-  return (
-    <ShellScreen title="Result" subtitle="Per member, per address — never claimed for the batch" onBack={() => router.back()}>
-      <SendResultBody />
-    </ShellScreen>
-  );
+  return <SendResultBody />;
 }

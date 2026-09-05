@@ -37,40 +37,86 @@ exit 1
 
 _Merge blocked. Every FAIL above must resolve. No partial merges._
 
-THE QUOTED SECRET, and the guard bug found underneath it. Same verdict as every run on this
-repo, and the same five accepted-unverifiable classes -- none of them touched by this change:
+SEND AS A DIALOG, THE SCRIM VALUE (RC-018), AND HOLIDAYS OFF THE MORE LIST. Same five
+accepted-unverifiable classes as every run here -- G1/G2/G3 (no design/tokens.json, ADR 001,
+TD-001/002/003), G6 BLOCKED (no eslint, TD-004), G8 FAIL on an empty log (no test:functional,
+TD-006). None is touched by this change.
 
-  G1/G2/G3 FAIL  design/tokens.json does not exist and will not; colour lives in
-                 src/theme/tokens.ts by ADR 001. TD-001/002/003. The SUBSTITUTE rung ran
-                 green in this session: 2840/2840 pairs, all 360 custom hues, both themes.
-  G6  BLOCKED    no local eslint. TD-004. The largest genuine gap of the five.
-  G8  FAIL       exit 1 with an EMPTY log -- there is no test:functional script to run.
-                 TD-006. Verified the log is empty rather than assuming it: this is the
-                 known shape, not a new failure hiding in a familiar-looking one.
+FAIL-FIRST: src/theme/scrim.test.ts - "DARK.scrim alpha 0.7 hides the screen behind it; must
+be <= 0.55", against the pre-fix tree. Observed, not asserted. The LIGHT assertion PASSED
+before the fix, which is the test agreeing with the reported selectivity (the screenshot was
+dark theme) rather than being written around the change.
 
-What DID run, and passed: G5 types, G7 300 unit specs (286 + the 14 added here), G4, G9,
-G10, G11, plus audit:all clean and 75/75 icons.
+305 unit (300 + 5 scrim), 2840/2840 contrast, 75/75 icons, audit:all clean.
 
-WHAT THIS CHANGE IS NOT COVERED BY, said plainly. resolveEmailProvider() still has no spec.
-Reaching it means mocking Deno.env inside an Edge Function, so the SECRET-NAME half of
-RC-017 remains guarded by prose alone. What is now tested is the half that was extractable:
-unquoting, and the from-address shape. The test imports the module the Edge Function
-imports -- a copy of the regex kept in this repo would have passed while production failed,
-which is the exact failure RC-017 is about.
+THE HONEST LIMIT ON THIS ONE, and it is the whole reason RC-018 exists. Round 1 (c5620a0)
+verified its backdrop fix with screenshots taken by the agent that wrote it, against a
+criterion -- "the screen behind is visible" -- that the same agent chose. Both were true and
+the requester saw a black screen anyway, because VISIBLE and LEGIBLE are different claims and
+nothing in the repo forced the distinction. scrim.test.ts is the first rung that can disagree
+with an author: it states the criterion as a bounded number, ahead of the judgement.
 
-THE LATENT BUG IS THE INTERESTING ONE. FROM_SHAPE was built with a plain template literal,
-which eats an unrecognised escape: \s became the letter s, so <\s*...\s*> compiled to
-<s*...s*>. It still matched the ordinary `Academy <me@example.com>` -- zero s's, zero
-spaces -- so nothing caught it, and the half of the pattern that was CORRECT (ADDR) was
-already String.raw, which made the file read as consistent at a glance. It reached
-production and never fired. No gate here would have caught it; running the pattern against
-real inputs did, which is also how the previous FROM_SHAPE defect was found.
+It is still NARROW. It bounds an alpha; it cannot see a pixel. A scrim inside the bound with a
+40px blur over it would pass here and fail a person. The rung that would catch THAT is a render
+check and this repo has none -- .harness/allroutes.mjs cannot run on this machine at all: it
+hardcodes /opt/node22 and /opt/pw-browsers paths from a Linux box and needs a dev server on
+8100. So the visual verification for this change is the requester's own eyes, and that is
+recorded here rather than implied.
 
-TD-017 WAS DUPLICATED and is settled here -- eb5315b 11:33 (auth-lookup oracle) against
-c5620a0 12:34 (cold-dialog collapse), two sessions in one worktree. The later row moves to
-TD-021; it is also the row nothing references, so both criteria agree. Note that
-audit:rules did NOT catch this: it checks RC ids, not TD ids. Found by reading. That is a
-gap in the audit, not a success of it.
+BASELINE PAID DOWN, not regenerated around: .baselines/testid-app-baseline.txt loses
+app/send/result.tsx|2 and gains nothing -- 14 entries to 13. The two untestidded controls on
+that screen were given ids (result-done, result-retry-<memberId>, the database id and never
+the index) as part of converting it, so the entry is gone rather than rewritten at a new count.
+
+A SMALL TRAP WORTH RECORDING: the hardcoded-colour audit counts hex literals in COMMENTS.
+Explaining the scrim maths with the actual background values in prose pushed
+src/theme/tokens.ts from 97 to 99 and BLOCKED. The audit is right to count them -- a hex in a
+comment is how a real one gets pasted in later -- so the comments were reworded rather than the
+baseline raised.
+
+HOLIDAYS: removing the More row leaves /holiday reachable only by URL. That is recorded as
+TD-023 and NOT resolved: the row's removal was asked for, deleting a migrated feature with
+0017's triggers behind it was not.
+
+---
+
+## Gate run - 2026-09-05 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

@@ -59,6 +59,65 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-018 — the backdrop was composited and still black, because the dimming was tuned for the bug
+**Date:** 05-Sep-2026 · **Severity:** S3 · **Modules:** `src/theme/tokens.ts`, `src/components/FormDialog.tsx`, `src/components/Sheet.tsx`
+
+**Symptom** — reported by the owner, for the SECOND time on the same surface: *"on click of any
+button which opens a form dialog is appear but the background is black but it should not it
+should show the screen in background."* Supplied a reference image of another application's
+dialog over its own list, with the list behind clearly readable. Dark theme.
+
+**Root cause** — `DARK.scrim` was `rgba(6,2,7,0.7)`, and that value was chosen while a dialog
+route still painted an opaque `theme.bg` panel over the screen behind it. With nothing visible
+underneath, the scrim's whole job was to say "this is over something" and 0.7 was reasonable —
+it was hiding nothing, because nothing was showing. RC-016 removed the panel and did not
+revisit the number. 0.7 of near-black over a `#08040A` background leaves 30% of the screen
+behind, which composites to imperceptible. **The composition was fixed and the value tuned for
+the broken composition was left in place.**
+
+**Fix** — `DARK.scrim` to `rgba(6,2,7,0.5)`: half the screen behind survives instead of under a
+third, and FormDialog's existing 14px blur keeps it a backdrop rather than competing content.
+`LIGHT.scrim` is deliberately UNCHANGED at 0.42 — the report is the dark theme's, the light
+value already satisfied the bound, and lowering it is the riskier direction because the dialog
+card is itself light and would lose separation the dark theme gets for free.
+
+**One token, three backdrops.** `theme.scrim` is read at exactly three sites — `FormDialog.tsx`
+(every form dialog), `Sheet.tsx:45` (the bottom sheet) and `Sheet.tsx:194` (ConfirmDialog) —
+found by grepping `theme.scrim` across `src/` and `app/`. Two further mentions are prose only:
+`set-pin.tsx` names the token in a comment but uses `deepControl`, and `Dropdown.tsx` describes
+a sheet it no longer opens. So the requester's "across all forms" is satisfied by the token,
+not by three edits.
+
+**How to verify** — `src/theme/scrim.test.ts`, in `npm run check`. It bounds both scrims in
+BOTH directions: at most 0.55, or the screen behind stops being legible as a place; at least
+0.2, or the scrim stops reading as a backdrop at all and the card floats on live content.
+**Observed failing against the pre-fix tree**: `DARK.scrim alpha 0.7 hides the screen behind
+it; must be <= 0.55`. The light assertion PASSED before the fix, which is the test agreeing
+with the reported selectivity rather than being written around it.
+
+**Recurrence risk** — the class is "a constant tuned around a defect, left behind when the
+defect is fixed". It is not specific to colour: any value chosen to compensate for something —
+a timeout sized for a slow query, a retry count sized for a flaky call, a z-index sized for a
+stacking bug — becomes wrong the moment the thing it compensated for is repaired, and nothing
+about the compensating value looks wrong on its own afterwards. Worth asking, at every root-fix:
+what was tuned around this?
+
+**Prevention** — `src/theme/scrim.test.ts` (5 assertions). It is a real rung and it is a
+NARROW one: it bounds a number, and it cannot see a rendered pixel. A scrim inside the bound
+with, say, a 40px blur over it would pass here and fail a person. The rung that would catch
+that is a render check, and this repo has none (TD-006, G8 FAILs on an empty log).
+
+**Process check — YES, and this is the more important half.** Round 1 (`c5620a0`) verified
+itself with screenshots taken by the agent that wrote the change, against a criterion
+("the screen behind is visible") that the same agent chose. Both halves were true and the
+requester still saw a black screen, because "visible" and "legible" are different claims and
+nothing forced the distinction. **No rung existed that could disagree with the author.** The
+test above is the first one that can: it states the criterion as a number, in the repo, ahead
+of the judgement. Flagged for `/framework-update` — a correction round that reaches the
+requester twice is a gate finding, not a coding mistake.
+
+---
+
 ## RC-017 — the app said SENT for an email it never sent
 **Date:** 05-Sep-2026 · **Severity:** S1 · **Modules:** `supabase/functions/send-followups/`
 

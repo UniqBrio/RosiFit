@@ -83,16 +83,18 @@ export default function More() {
    * sender and follow-up rule are edited in the course form itself -- there
    * is no separate Message Templates or Follow-up Rules screen in settings."
    *
-   * HOLIDAYS is kept although the canvas drops it. The holiday feature stays
-   * by an explicit decision of the repo owner, and with the shell's add sheet
-   * gone this row is now its ONLY route -- removing it would leave a
-   * migrated, tested feature unreachable rather than merely unlisted.
+   * HOLIDAYS IS GONE FROM THIS LIST (05-Sep-2026, on the owner's instruction),
+   * which reverses the decision the previous version of this comment recorded.
+   * It was kept here because this row had become the feature's ONLY route, and
+   * that has not changed: `/holiday` still exists, still writes through 0017,
+   * and is now reachable only by typing the URL. Removing the row was asked
+   * for; deleting a migrated, tested feature was not, so the screen stays and
+   * the orphaning is recorded as TD-023 rather than resolved either way here.
    */
   const groups: { title: string; items: Item[] }[] = [
     {
       title: 'Configuration', items: [
         { icon: 'apartment',   label: 'Branches',  meta: branchCount, to: '/branches' },
-        { icon: 'event_busy',  label: 'Holidays',  meta: 'add',                       to: '/holiday' },
       ],
     },
     {

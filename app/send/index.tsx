@@ -1,12 +1,11 @@
 import { useState } from 'react';
 import { View, Text } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Screen, Muted, Label, Body, Button, Skeleton, ErrorState, EmptyState } from '../../src/components/ui';
-import { ScreenHeader, ShellScreen } from '../../src/components/AppShell';
+import { Muted, Label, Body, Button, Skeleton, ErrorState, EmptyState } from '../../src/components/ui';
+import { FormDialog } from '../../src/components/FormDialog';
 import { ConfirmDialog } from '../../src/components/Sheet';
 import { Icon } from '../../src/components/Icon';
 import { useTheme } from '../../src/theme/ThemeProvider';
-import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, STATUS, statusSurface } from '../../src/theme/tokens';
 import { primaryEmail, initials, AVATAR_TINTS } from '../../src/data/mock';
 import { recipientSplit } from '../../src/data/followup';
@@ -35,10 +34,16 @@ import { setSendResult } from '../../src/data/pending';
  * The wording is shown READ-ONLY. There is no compose field here and no
  * template picker: C-68 and guardrail 5 hold, and 0021 moved the authoring to
  * the course where it belongs.
+ *
+ * A DIALOG OVER THE SCREEN THAT OPENED IT, not a page (05-Sep-2026, on
+ * request). Send is a decision taken ABOUT the register, the course or the
+ * member you are looking at — as a pushed page it replaced that screen, so
+ * the roster you were sending FOR was gone while you decided whether to send
+ * to it. The three halves that make it a dialog are in `DIALOG_SCREEN`
+ * (app/_layout.tsx); this file supplies the second, the card itself.
  */
 function SendDraftBody() {
   const { theme } = useTheme();
-  const { flash } = useToast();
   const router = useRouter();
   const { id, state: forced } = useLocalSearchParams<{ id?: string; state?: string }>();
   const courseId = typeof id === 'string' && id ? id : null;
@@ -55,6 +60,7 @@ function SendDraftBody() {
 
   const ink = (k: keyof typeof STATUS) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
   const course = (courses.data ?? []).find(c => c.id === courseId) ?? null;
+  const close = () => router.back();
 
   // The same derived list the dashboard and the weekly screen read -- one
   // member source, one rule, so these counts cannot disagree with theirs.
@@ -80,6 +86,9 @@ function SendDraftBody() {
         period_from: week.from, period_to: week.to,
       });
       setSendResult(result);
+      // REPLACE, not push: the result takes this dialog's place over the SAME
+      // screen underneath, so closing it returns to the register or the
+      // course rather than stepping back through a draft that has been sent.
       router.replace('/send/result');
     } catch (err) {
       setFailure(err instanceof Error ? err.message : 'Nothing has been sent.');
@@ -88,14 +97,23 @@ function SendDraftBody() {
     }
   };
 
-  if (loading) return <Screen><Skeleton lines={6} /></Screen>;
+  // Loading and failure are drawn INSIDE the card, never instead of it. As
+  // bare screens they were a dialog that vanished and left the caller looking
+  // at a full-window skeleton it had not asked for.
+  if (loading) {
+    return (
+      <FormDialog title="Send communication" onClose={close}>
+        <Skeleton lines={6} />
+      </FormDialog>
+    );
+  }
   if (failed || !message.data) {
     return (
-      <Screen>
+      <FormDialog title="Send communication" onClose={close}>
         <ErrorState onRetry={() => { courses.retry(); followUp.retry(); message.retry(); }}
           message={courses.error ?? followUp.error ?? message.error
             ?? 'The draft could not be loaded. Nothing has been sent.'} />
-      </Screen>
+      </FormDialog>
     );
   }
 
@@ -109,13 +127,49 @@ function SendDraftBody() {
     periodFrom: week.from, periodTo: week.to,
   } : null;
 
-  return (
-    <Screen>
-      <ScreenHeader title="Send communication"
-        subtitle={`${message.data.template_name} · ${course?.name ?? 'every course'}`}
-        onBack={() => router.back()} />
+  const nothingToSend = recipients.length === 0;
 
-      {recipients.length === 0 ? (
+  return (
+    <FormDialog
+      title="Send communication"
+      subtitle={`${message.data.template_name} · ${course?.name ?? 'every course'}`}
+      onClose={close}
+      cancelLabel="Not now"
+      cancelTestID="send-cancel"
+      confirmLabel={sending ? 'Sending…' : `Send to ${recipients.length}`}
+      confirmDisabled={sending}
+      confirmTestID="send-now"
+      onConfirm={nothingToSend ? undefined : () => setConfirming(true)}
+      hint={nothingToSend ? undefined : 'This cannot be recalled.'}
+      /* Nothing to send is still a dialog, and it still needs a way out --
+         with no confirm action the shared footer draws nothing, so the close
+         is supplied here rather than left to the X alone. */
+      footer={nothingToSend ? (
+        <View style={{
+          padding: SPACE.lg, borderTopWidth: 1, borderTopColor: theme.line,
+          backgroundColor: theme.shell,
+        }}>
+          <Button testID="send-cancel" label="Close" variant="secondary" onPress={close} />
+        </View>
+      ) : undefined}
+      /* The confirmation renders OUTSIDE the card: it is a decision about
+         this dialog, not a section of the draft that scrolls with it. */
+      overlays={(
+        <ConfirmDialog
+          open={confirming}
+          onClose={() => setConfirming(false)}
+          title={`Send to ${recipients.length} ${recipients.length === 1 ? 'member' : 'members'}?`}
+          body={`${recipients.map(m => m.name.split(' ')[0]).join(', ')} will receive the ${message.data.template_name} wording for ${course?.name ?? 'this academy'}.`
+            + (excluded.length
+              ? ` ${excluded.length} ${excluded.length === 1 ? 'member is' : 'members are'} excluded for having no address; they stay counted.`
+              : '')
+            + ' This cannot be recalled.'}
+          cancelLabel="Not yet"
+          confirmLabel="Send"
+          onConfirm={() => { void send(); }} />
+      )}
+    >
+      {nothingToSend ? (
         <EmptyState
           title={excluded.length ? 'Nobody here can be emailed' : 'Nobody needs following up'}
           body={excluded.length
@@ -123,7 +177,7 @@ function SendDraftBody() {
             : `No member of ${course?.name ?? 'this academy'} is over the follow-up threshold for ${week.label}. Nothing to send.`} />
       ) : (
         <>
-          <Label style={{ marginTop: SPACE.lg }}>{`Will receive · ${recipients.length}`}</Label>
+          <Label>{`Will receive · ${recipients.length}`}</Label>
           <View style={{ gap: SPACE.sm, marginTop: SPACE.sm }}>
             {recipients.map((m, i) => (
               <View key={m.id} style={{
@@ -213,14 +267,8 @@ function SendDraftBody() {
             </View>
           ) : null}
 
-          <Button testID="send-now"
-            label={sending ? 'Sending…' : `Send to ${recipients.length}`}
-            disabled={sending}
-            style={{ marginTop: SPACE.xl }}
-            onPress={() => setConfirming(true)} />
-
           <Body style={{
-            marginTop: SPACE.md, padding: SPACE.lg, borderRadius: RADIUS.md,
+            marginTop: SPACE.lg, padding: SPACE.lg, borderRadius: RADIUS.md,
             backgroundColor: statusSurface(ink('awaiting')).bg,
             borderWidth: 1, borderColor: statusSurface(ink('awaiting')).border,
             fontSize: 12.5, lineHeight: 19,
@@ -230,31 +278,16 @@ function SendDraftBody() {
           </Body>
         </>
       )}
-
-      {/* A send reaches real people and cannot be recalled, so the confirmation
-          restates the COUNT and who is not in it, rather than asking "are you
-          sure?" about a template name. */}
-      <ConfirmDialog
-        open={confirming}
-        onClose={() => setConfirming(false)}
-        title={`Send to ${recipients.length} ${recipients.length === 1 ? 'member' : 'members'}?`}
-        body={`${recipients.map(m => m.name.split(' ')[0]).join(', ')} will receive the ${message.data.template_name} wording for ${course?.name ?? 'this academy'}.`
-          + (excluded.length
-            ? ` ${excluded.length} ${excluded.length === 1 ? 'member is' : 'members are'} excluded for having no address; they stay counted.`
-            : '')
-          + ' This cannot be recalled.'}
-        cancelLabel="Not yet"
-        confirmLabel="Send"
-        onConfirm={() => { void send(); }} />
-    </Screen>
+    </FormDialog>
   );
 }
 
 /**
- * Under the shell, not instead of it. This screen is pushed on the root
- * stack, so it is not one of the tab navigator's own and wore no academy
- * header and no Home · Reports · More pill until ShellScreen drew them.
+ * The dialog IS the screen here -- no ShellScreen. It is presented over the
+ * screen that opened it (DIALOG_SCREEN in app/_layout.tsx keeps that one
+ * mounted and visible), so drawing the academy header and the tab pill again
+ * would put a second copy of both on top of the first.
  */
 export default function SendDraft() {
-  return <ShellScreen><SendDraftBody /></ShellScreen>;
+  return <SendDraftBody />;
 }

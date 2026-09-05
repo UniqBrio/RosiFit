@@ -56,7 +56,15 @@ export const DARK = {
   // accent's deep stops.
   deepControl: 'rgba(12,4,9,0.4)', deepControlLine: 'rgba(255,255,255,0.16)', // allow-literal-color: this file IS the token source, and the pair is measured in check-contrast.ts
   success: '#2FBE8C', warning: '#E8B93B', danger: '#F2683C', possible: '#B487EA',
-  scrim: 'rgba(6,2,7,0.7)',
+  // 0.5, not the 0.7 this was until 05-Sep-2026. The value was chosen while a
+  // dialog route still painted an opaque panel over the screen behind it, so
+  // the scrim alone had to carry "this is over something" and there was
+  // nothing underneath for it to hide. RC-016 removed the panel and left the
+  // number; at 0.7 over the near-black app background only 30% of the screen
+  // behind survives -- the black backdrop reported twice. At 0.5 half of it
+  // does, and the 14px blur in FormDialog keeps it a backdrop rather than
+  // competing content. Bounded by src/theme/scrim.test.ts.
+  scrim: 'rgba(6,2,7,0.5)',
 };
 
 export const LIGHT = {
@@ -71,6 +79,13 @@ export const LIGHT = {
   // accent's deep stops.
   deepControl: 'rgba(12,4,9,0.4)', deepControlLine: 'rgba(255,255,255,0.16)', // allow-literal-color: this file IS the token source, and the pair is measured in check-contrast.ts
   success: '#0F7551', warning: '#7A5300', danger: '#B3261E', possible: '#6B3FA0',
+  // UNCHANGED at 0.42, deliberately. The reported defect is the dark theme's
+  // (the screenshot was dark), and 0.42 of a dark plum over this theme's own
+  // pale ground already leaves it legible -- scrim.test.ts passed on this
+  // value before the dark one was touched. Lowering it is the riskier
+  // direction here: the dialog card is itself light, so less dimming costs
+  // the separation between card and backdrop that the dark theme gets for
+  // free.
   scrim: 'rgba(28,10,23,0.42)',
 };
 

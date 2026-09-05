@@ -109,8 +109,16 @@ function Nav() {
         <Stack.Screen name="staff/pin"     options={{ headerShown: false }} />
         <Stack.Screen name="audit"         options={{ headerShown: false }} />
         <Stack.Screen name="change-mobile" options={DIALOG_SCREEN} />
-        <Stack.Screen name="send/index"    options={{ headerShown: false }} />
-        <Stack.Screen name="send/result"   options={{ headerShown: false }} />
+        {/* SEND is a DIALOG over the screen that opened it (05-Sep-2026, on
+            request), not a page. Send communication is a decision taken ABOUT
+            the register, the course or the member being looked at -- pushed
+            as a page it replaced that screen, so the roster you were sending
+            FOR was gone while you decided whether to send to it. The result
+            takes the draft's place over the SAME screen (router.replace), so
+            closing it returns where the send started rather than stepping
+            back through a draft that has already gone out. */}
+        <Stack.Screen name="send/index"    options={DIALOG_SCREEN} />
+        <Stack.Screen name="send/result"   options={DIALOG_SCREEN} />
         <Stack.Screen name="match"         options={DIALOG_SCREEN} />
         <Stack.Screen name="appearance"    options={{ headerShown: false }} />
         <Stack.Screen name="profile"       options={{ headerShown: false }} />
