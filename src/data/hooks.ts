@@ -13,21 +13,25 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import type { ScreenState } from './useScreenState';
-import { currentWeek, type Period } from './period';
+import { currentWeek, periodBuckets, type Period } from './period';
 import {
   fetchMembers, fetchRules, fetchCourses, fetchTemplates, fetchStaff, fetchAudit,
   fetchFilterOptions, fetchMonthSessions, fetchPendingSessions, fetchWeekRows,
+  fetchBucketMetrics,
   fetchAcademy, fetchBranches, fetchOfferings,
   fetchBranchUsage, onBranchesChanged, fetchCourseMessage, fetchSenders,
   type CourseMessage,
   fetchNotifications, type Notification,
+  fetchSentForPeriod,
   type Branch, type BranchUsage, type OfferingDetail,
   fetchAttendance, onCoursesChanged, onMembersChanged,
   fetchHolidays, onHolidaysChanged,
   type Rules, type PendingSession, type Holiday,
 } from './repository';
 import { flagged } from './followup';
+import type { BucketMetrics } from './buckets';
 import type { Member, Course, Template, Staff, AuditEntry, SessionDay, WeekRow, AttendanceRow } from './mock';
+import type { SentMap } from './sent';
 
 export type Async<T> = {
   state: ScreenState;
@@ -223,6 +227,16 @@ export function useCourseMessage(courseId: string | null, forced?: string): Asyn
     [courseId], forced);
 }
 
+/**
+ * Who has already had this period's follow-up, so the send draft can say so
+ * on her row rather than leaving a second identical email to somebody's
+ * memory. Empty on fixtures and whenever the read fails -- the mark is an
+ * addition to the draft, never a precondition for it.
+ */
+export function useSentForPeriod(period: Period, forced?: string): Async<SentMap> {
+  return useAsync(() => fetchSentForPeriod(period), [period.from, period.to], forced);
+}
+
 /** The addresses this deployment may send as. */
 export function useSenders(forced?: string): Async<string[]> {
   return useAsync(() => fetchSenders(), [], forced);
@@ -232,6 +246,19 @@ export function useBranchUsage(forced?: string): Async<BranchUsage[]> {
   const [version, setVersion] = useState(0);
   useEffect(() => onBranchesChanged(() => setVersion(v => v + 1)), []);
   return useAsync(() => fetchBranchUsage(), [version], forced);
+}
+
+/**
+ * The "based on period" bars: the SAME metric as the ring, per sub-range.
+ *
+ * Keyed on the buckets themselves rather than on the period's label, so a
+ * custom range that resolves to the same days does not refetch, and a change
+ * of grain always does.
+ */
+export function useBucketMetrics(period: Period, forced?: string): Async<BucketMetrics[]> {
+  const buckets = periodBuckets(period);
+  const key = buckets.map(b => `${b.from}/${b.to}`).join(',');
+  return useAsync(() => fetchBucketMetrics(buckets), [key], forced);
 }
 
 /** The last four weeks, most recent first. Mon–Sun, per week_start_day. */

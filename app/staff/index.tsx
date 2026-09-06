@@ -36,9 +36,16 @@ function StaffListBody() {
 
   const staff = useMemo(() => data ?? [], [data]);
   const people = useMemo(
-    () => [...staff].sort((a, b) => STAFF_ACCESS[a.access].rank - STAFF_ACCESS[b.access].rank),
+    // An open PIN request outranks every access state: she is locked out and
+    // waiting on this screen. Within the asked and the not-asked, the existing
+    // "what still needs doing" order is untouched.
+    () => [...staff].sort((a, b) =>
+      Number(!!b.pinResetRequested) - Number(!!a.pinResetRequested)
+      || STAFF_ACCESS[a.access].rank - STAFF_ACCESS[b.access].rank),
     [staff]);
   const needAccess = staff.filter(s => s.access !== 'active').length;
+  const asked = staff.filter(s => s.pinResetRequested).length;
+  const askedInk = theme.isDark ? STATUS.awaiting.fgDark : STATUS.awaiting.fgLight;
 
   const act = async (s: Staff) => {
     if (s.access === 'disabled') {
@@ -106,6 +113,7 @@ function StaffListBody() {
     <Screen>
       <Muted style={{ marginBottom: SPACE.lg }}>
         {`${staff.length} people · ${needAccess} still need access`}
+        {asked > 0 ? ` · ${asked} asked for a new PIN` : ''}
       </Muted>
 
       {staff.length === 0 && (
@@ -151,6 +159,23 @@ function StaffListBody() {
               <Icon name={meta.icon} size={14} color={ink} />
               <Text style={{ fontSize: 11, fontWeight: '800', color: ink, letterSpacing: 0.3 }}>{meta.word}</Text>
             </View>
+
+            {/* Its own word AND its own icon, like every other state here --
+                the tint reinforces it and never carries it alone. */}
+            {s.pinResetRequested ? (
+              <View testID={`staff-pin-requested-${s.id}`} style={{
+                alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6,
+                marginTop: SPACE.sm, paddingHorizontal: 10, paddingVertical: 5,
+                borderRadius: RADIUS.pill,
+                backgroundColor: statusSurface(askedInk).bg,
+                borderWidth: 1, borderColor: statusSurface(askedInk).border,
+              }}>
+                <Icon name="lock_reset" size={14} color={askedInk} />
+                <Text style={{ fontSize: 11, fontWeight: '800', color: askedInk, letterSpacing: 0.3 }}>
+                  Requested a PIN reset
+                </Text>
+              </View>
+            ) : null}
 
             <Muted style={{ marginTop: SPACE.sm }}>{s.meta}</Muted>
 

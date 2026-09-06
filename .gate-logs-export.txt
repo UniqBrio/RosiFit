@@ -1,0 +1,57 @@
+
+> rosifit@1.0.0 export
+> expo export --platform web
+
+env: load .env
+env: export EXPO_PUBLIC_SUPABASE_ANON_KEY EXPO_PUBLIC_SUPABASE_URL
+Starting Metro Bundler
+
+Static rendering is enabled. Learn more: https://docs.expo.dev/router/web/static-rendering/
+λ Bundled 3535ms node_modules\expo\node_modules\@expo\cli\node_modules\@expo\router-server\node\render.js (1084 modules)
+Web Bundled 4864ms node_modules\expo-router\entry.js (1055 modules)
+
+› web bundles (2):
+_expo/static/js/web/entry-42cd576636b112836c79f59f11ee4092.js (2.4MB)
+_expo/static/js/web/exceljs-97a7fc3e95829179a33259dce2b3ca40.js (944KB)
+
+› Static routes (38):
+/help (28KB)
+/more (36KB)
+/audit (33KB)
+/ (index) (22KB)
+/upload (25KB)
+/weekly (33KB)
+/holiday (35KB)
+/profile (33KB)
+/set-pin (35KB)
+/courses (30KB)
+/members (36KB)
+/reports (36KB)
+/branches (33KB)
+/register (32KB)
+/_sitemap (17KB)
+/staff/add (28KB)
+/staff/pin (25KB)
+/appearance (50KB)
+/forgot-pin (25KB)
+/+not-found (17KB)
+/attendance (39KB)
+/send (28KB)
+/(tabs)/more (36KB)
+/course/[id] (32KB)
+/course/edit (29KB)
+/member/[id] (33KB)
+/member/edit (38KB)
+/send/result (29KB)
+/staff (31KB)
+/(tabs) (37KB)
+/change-mobile (24KB)
+/(tabs)/weekly (33KB)
+/member/import (28KB)
+/offering/edit (26KB)
+/(tabs)/courses (30KB)
+/(tabs)/members (36KB)
+/(tabs)/reports (36KB)
+/(tabs)/attendance (39KB)
+
+Exported: dist

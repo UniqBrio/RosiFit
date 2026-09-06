@@ -59,6 +59,196 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-021 — "not loaded yet" and "not on the register" both rendered as the ADD form
+**Date:** 06-Sep-2026 · **Severity:** S1 · **Modules:** `app/member/edit.tsx`, `app/course/edit.tsx`, `app/offering/edit.tsx`
+
+**Symptom** — reported as *"on click of edit button it is opening add member form instead of edit
+member"*, with a screenshot of a course roster. Tapping the pencil on a member opened
+**"Welcome a new member"** with her name blank and an **Add Member** button.
+
+Word for word what RC-012 was reported as, twelve days apart, by a different mechanism.
+
+**Root cause** — the form decided WHICH form it was from the RESULT of its own lookup rather
+than from the route:
+
+```ts
+const existing = id ? (roster.data ?? []).find(m => m.id === id) ?? null : null;
+const title = existing ? 'Edit member' : 'Welcome a new member';
+```
+
+One `null` stood for three different things — no id was passed (Add), her record has not
+arrived yet, and her id is not on the register — and the dialog answered all three with the Add
+form. The dialog runs its own `useMembers` fetch (nine queries and an RPC) rather than reading
+the list already on screen, so the second of those three is not a corner case: it is **every**
+tap on Edit, for as long as that fetch takes. If the fetch failed or timed out, the Add form is
+where it stayed — over a Save that would have created a SECOND record for somebody already on
+the register.
+
+**What the previous attempt missed** (correction round 2) — RC-012 fixed **where** the record is
+read from: the fixture array became `useMembers`. It did not touch the three-way conflation,
+because with the fixture the lookup answered instantly and the loading window was invisible.
+The same commit gave `app/member/[id].tsx` separate `loading` and `missing` answers and left the
+form beside it deciding its identity from a value that is `null` while a network call is in
+flight. CP-002 has required all three states since adoption; this dialog rendered one.
+
+**Fix** — Add-vs-Edit is now decided by the ROUTE (`const editing = typeof id === 'string' && …`,
+the idiom `app/course/edit.tsx` already used), and `loading` / `failed` / `missing` are three
+named answers with their own copy, no footer under any of them, and a Save that returns early if
+a record was asked for and is not in hand.
+
+**Sweep** — every form reachable with a record id in the route, found by
+`grep -rn ".data ?? []).find|data?.find|const existing" app/ src/` (7 hits, 5 files):
+`app/member/edit.tsx` (the report), `app/course/edit.tsx` (title already came from the route,
+but its readiness gate omitted `courses` and `followUp` — the two queries that carry the course
+and its saved rule — so an Edit whose course arrived last seeded itself blank and, because
+`seeded` is never reset, stayed blank), and `app/offering/edit.tsx` (title came from the lookup;
+an offering deleted while the list was on screen became "Add an offering" over a Save that
+creates). `app/member/[id].tsx` and `app/course/[id].tsx` already answered all three states and
+were not changed.
+
+**Files** — `app/member/edit.tsx`, `app/course/edit.tsx`, `app/offering/edit.tsx`,
+`src/components/editDialog.test.ts` (new spec), `.evidence/edit-opens-add-fail-first.txt`.
+
+**How to verify** — `npx tsx --test src/components/editDialog.test.ts` (6 tests). In the app:
+`/member/edit?id=<a real id>&state=loading` must read **Edit member · Fetching her record** over
+a skeleton with no Save; `?id=<any id>&state=error` must offer **Try again**; `?id=<an id that is
+not on the register>` must say **"That member is not on the register"**; `/member/edit` with no
+id must still read **Welcome a new member** with **Add Member**. All four were walked in both
+themes against an `expo export` build on 06-Sep-2026.
+
+**Recurrence risk** — high, and not from carelessness: the shape is natural. `find()` returns
+`undefined` for "still loading" and for "not there", and every form that opens on a record has
+to resist writing `record ? edit : add`. The spec above holds all five sites shut by name.
+
+**Prevention rule** — a form that can be opened on an existing record decides Add-vs-Edit from
+the ROUTE, and answers loading, failed and missing before it renders. Rung:
+`src/components/editDialog.test.ts`, in `npm run test:unit`.
+
+---
+
+## RC-020 — a day row that a picker cleared and only a CHANGED value refilled
+**Date:** 06-Sep-2026 · **Severity:** S2 · **Modules:** `app/member/edit.tsx`, `src/data/repository.ts`, `src/data/mock.ts`, `src/data/memberDays.ts`, `app/course/edit.tsx`
+
+**Symptom** — reported as *"when user selects a course make sure the frequency days are selected
+based on course … dont allow user to reselect each time as its set already in course"*, and then
+*"in edit form also no color for selected days"*. The member form's day chips showed nothing
+selected while the line above them named the days: **"Leave blank and she follows the days
+Postnatal offerings run — Mon, Tue, Thu, Fri"**, seven grey chips underneath.
+
+**Root cause** — two of them, one per form, and neither was the colour.
+
+*Add* — the row was maintained by **two mechanisms that only agree while the value changes**: each
+picker's `onSelect` cleared it imperatively (`setDays([])`), and an effect refilled it, guarded on
+the `course|branch` identity. Pick the course or branch **already showing** and the clear runs, the
+key does not change, the re-seed does not run, and the row stays blank with nothing left to refill
+it. The same unchanged pick also silently dropped her branch.
+
+*Edit* — `Member` carried no `weekdays` at all, so the form had nothing to open her chips from.
+That was not only a blank row: `memberWeekdays` reads a blank row as *she follows the course*, and
+`update_member` (0027) reads that as **end her override**. Opening Edit on a member with days of her
+own and pressing Save — changing nothing — closed her `member_schedules` row.
+
+**Fix** — one mechanism, and a record that knows her days. The pickers no longer touch the day row;
+the seed effect owns it and is the only writer, so a pick that changes nothing changes nothing.
+`fetchMembers` now reads `member_schedules` through the same tested effective-dating resolver the
+offering schedules use (`src/data/schedule.ts`), and `Member.weekdays` is `number[] | null` — null
+being *she follows the offering*, which is not the same fact as an empty list. `openingDays`
+(`src/data/memberDays.ts`) is the opening half of the rule `memberWeekdays` already stated for
+saving: her own days when she has them, the course's when she does not, and a day the course has
+since stopped running dropped because that chip is disabled and the form could not save it. A failed
+read of `member_schedules` now fails loudly — its silent empty is the one here that ends with a
+destructive write.
+
+**Files** — `app/member/edit.tsx` · `app/course/edit.tsx` · `src/data/repository.ts` ·
+`src/data/mock.ts` · `src/data/memberDays.ts` · `src/data/memberDays.test.ts` · the six
+`Partial<Member>` builders in `src/data/*.test.ts` (one line each, no spec touched)
+
+**How to verify** — `npm run test:unit` covers the rule (`src/data/memberDays.test.ts`, 11 cases).
+In the app: Add member → pick a course → every day it runs is on; open the course picker again and
+pick **the same course** → the days and the branch are still there. Edit a member who has days of
+her own (fixture id `2`, Shazia Begum, Tue + Sat of a Tue/Thu/Sat course) → Tue and Sat open filled,
+Thu open and unfilled, the rest disabled; Save without touching anything → her override is
+unchanged.
+
+**Recurrence risk** — the class is *a picker that runs the consequences of a change on a selection
+that changed nothing*. Searched `app/**` for `onSelect` handlers that clear adjacent state
+(`grep -rn "onSelect={" -A 8 --include=*.tsx app` filtered for `set…([])`, `set…('')`, `set…(null)`
+excluding picker chrome): **3 sites, all fixed in this change** — the member course picker (branch),
+the member branch picker (days), and the course form's template picker, where re-picking the
+template already showing threw away the wording written for that course. `app/register.tsx`'s hit
+was picker chrome, not state.
+
+**Prevention** — no rung — prose only. There is no audit that can see "this clear and that re-seed
+are the same field owned twice"; it is a shape a reviewer recognises, not one a script does. The
+rule stated for the next reader: **a row that an effect seeds has exactly one writer, and a picker's
+consequences are guarded on the value actually changing.**
+
+**Process check** — Yes, partly. The add-form seeding shipped with its own comment describing
+behaviour nobody had exercised on an unchanged pick, and the edit form's blank row was documented as
+deliberate ("her saved override is not on the Member record") without following that sentence to
+what Save then does with a blank row. A design note that records a limitation is not the same as
+one that records its consequence. Not raised to `/framework-update`: the gap is this app's habit of
+writing the rationale and not the failure mode, not a missing step in the track.
+
+---
+
+## RC-019 — a routing decision with one input sent every unknown number into a form that answered 409
+
+**Date:** 06-Sep-2026 · **Severity:** S2 · **Modules:** sign-in, registration, auth-lookup
+
+**Symptom** — In the owner's words: *"I entered a number completed registration process and set
+new pin and it did not move further screen to dashboard and but that when i login with same
+number again it brough me back to registration page."* The registration form also carried
+*"This academy is already registered. Sign in with your mobile number and PIN instead."* at the
+top of a form it was still inviting her to fill in.
+
+**Root cause** — `continueDestination` decided the destination from ONE input, whether the
+number had an account, and mapped `false` straight to `register`. That mapping encodes an
+assumption nobody ever checked: that an unregistered number MAY register. It may not.
+Registration is the one-time creation of the academy admin, latched by
+`app_settings.bootstrap_completed` (0002, one-way), and `auth-bootstrap` answers 409 to every
+call after the first — and per the owner on 06-Sep-2026 there is no self-registration at all:
+*"there is no registration page for staff — super admin inside app creates pin and shares with
+staff."* The decision was missing an input, and the missing input surfaced as a CYCLE rather
+than as an error: form → 409 → no account created → the lookup truthfully says "not
+registered" → the same form.
+
+**Fix** — **NOT YET FIXED. The client-side fix was built and reverted the same day, and this
+entry is kept so the next attempt does not repeat it.** The attempt gave `continueDestination`
+a second input (`auth-lookup` returning `registration_open`) and kept an unknown number on the
+sign-in screen with "ask your academy admin". The owner rejected it within the hour: the
+registration screen is exactly where an unrecognised number belongs — *"if doesnt exist user
+goes to registration know why restricting"* — and the earlier answer it was inferred from
+("there is no registration page for staff") was about who creates STAFF accounts, not a rule
+about this screen. Reverted in full: `signin.ts`, `repository.ts`, `api.ts`, `app/index.tsx`,
+`auth-lookup/index.ts` and the amended spec are all back to their prior behaviour.
+
+**Where the fix actually belongs** — on the SERVER, not the client. The loop exists because
+`auth-bootstrap` refuses every call after the first (`app_settings.bootstrap_completed`, a
+one-way latch) while the client keeps offering the form. Making the form succeed for a new
+number is the fix; refusing to show the form was treating the symptom, and treating it in the
+place the owner could see it. Requires a decision about what a self-registered number becomes,
+since `one_super_admin` allows exactly one super admin.
+
+**Recurrence risk** — Every routing decision computed from a subset of the facts that govern it.
+The tell is a mapping that reads as total (`false → register`) over a domain that has a second
+axis nobody wrote down. **The sibling sweep found the other call site and it is correct:**
+`app/index.tsx:119` also opens `/register`, but only on `auth-login`'s "has not been registered
+yet" sentence, which the server sends only when `!bootstrap_completed` — the same guard,
+enforced server-side.
+
+**Prevention** — The destination now carries the reason in its own name: `ask-admin` cannot be
+returned by accident the way `register` was, because nothing else in the app produces it.
+
+**Process check** — **YES, and it is worth naming.** This exact destination was approved by the
+owner at a Track C gate on 05-Sep-2026 (`requests/2026-09-05-mobile-number-not-validated.md`),
+having been shown that registration is a one-time bootstrap and that the form would say so. The
+gate presented a true fact and the wrong conclusion from it: that a sentence above a form is a
+sufficient substitute for not offering the form. No gate in the process asks *"can the
+destination this routes to actually succeed?"* — a reachability question about outcomes rather
+than routes, which is what would have caught it. Flagged for `/framework-update`.
+
+---
 ## RC-018 — the backdrop was composited and still black, because the dimming was tuned for the bug
 **Date:** 05-Sep-2026 · **Severity:** S3 · **Modules:** `src/theme/tokens.ts`, `src/components/FormDialog.tsx`, `src/components/Sheet.tsx`
 

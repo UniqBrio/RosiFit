@@ -9,9 +9,24 @@ import { Icon } from './Icon';
  * tapping the scrim is a real control, so it carries a label rather than
  * being an unnamed hit area.
  */
-export function Sheet({ open, onClose, title, children }:
-  { open: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
+export function Sheet({ open, onClose, title, children, placement = 'bottom' }:
+  {
+    open: boolean; onClose: () => void; title: string; children: React.ReactNode;
+    /**
+     * WHERE the card sits. 'bottom' is the canvas' sheet and the default, so
+     * the five callers that had no opinion keep exactly what they shipped.
+     *
+     * 'top' exists for ONE caller: the No email group's "add this name to an
+     * existing member", which the requester asked to open "as pop up dialog
+     * on top of screen". It is opt-in rather than a change of the default
+     * because requests/2026-09-05-dialog-opens-at-top.md deliberately scoped
+     * sheets and pickers OUT of the dialog-placement change -- moving them
+     * all would be reversing a decision nobody asked to reverse.
+     */
+    placement?: 'bottom' | 'top';
+  }) {
   const { theme } = useTheme();
+  const top = placement === 'top';
 
   /**
    * Two halves of the same accessibility bug, both from react-native-web's
@@ -36,8 +51,8 @@ export function Sheet({ open, onClose, title, children }:
   if (!open) return null;
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+    <Modal visible transparent animationType={top ? 'fade' : 'slide'} onRequestClose={onClose}>
+      <View style={{ flex: 1, justifyContent: top ? 'flex-start' : 'flex-end' }}>
         <Pressable
           onPress={onClose}
           accessibilityRole="button"
@@ -47,11 +62,24 @@ export function Sheet({ open, onClose, title, children }:
           accessibilityViewIsModal
           style={{
             maxHeight: '76%', backgroundColor: theme.surface,
-            borderTopLeftRadius: 28, borderTopRightRadius: 28,
-            borderTopWidth: 1, borderColor: theme.line,
-            paddingTop: SPACE.md, paddingHorizontal: SPACE.xl, paddingBottom: SPACE.xxl,
+            // A card at the top is a card: it is bordered and rounded on every
+            // side, and it clears the status bar. A sheet is anchored to the
+            // bottom edge, so only its top corners are its own.
+            ...(top ? {
+              marginTop: SPACE.xxl, marginHorizontal: SPACE.lg,
+              borderRadius: 24, borderWidth: 1,
+              paddingTop: SPACE.xl, paddingBottom: SPACE.xl,
+            } : {
+              borderTopLeftRadius: 28, borderTopRightRadius: 28,
+              borderTopWidth: 1,
+              paddingTop: SPACE.md, paddingBottom: SPACE.xxl,
+            }),
+            borderColor: theme.line,
+            paddingHorizontal: SPACE.xl,
           }}>
-          <View style={{ width: 42, height: 4, borderRadius: 99, backgroundColor: theme.lineStrong, alignSelf: 'center', marginBottom: SPACE.lg }} />
+          {top ? null : (
+            <View style={{ width: 42, height: 4, borderRadius: 99, backgroundColor: theme.lineStrong, alignSelf: 'center', marginBottom: SPACE.lg }} />
+          )}
           <Text style={{ fontSize: 19, fontWeight: '800', color: theme.fgStrong }}>{title}</Text>
           {children}
         </View>
@@ -77,7 +105,7 @@ export type PickerOption = { label: string; meta?: string; value?: string };
  * new label -- the canvas' behaviour, and the reason the empty state says
  * what to do rather than just "no results".
  */
-export function SearchPicker({ open, onClose, title, placeholder, options, value, onSelect, onAdd, addMeta, emptyNote }:
+export function SearchPicker({ open, onClose, title, placeholder, options, value, onSelect, onAdd, addMeta, emptyNote, placement, confirmLabel, confirmNote, busy }:
   {
     open: boolean; onClose: () => void; title: string; placeholder: string;
     options: PickerOption[]; value?: string;
@@ -86,9 +114,32 @@ export function SearchPicker({ open, onClose, title, placeholder, options, value
     onAdd?: (label: string) => void;
     addMeta?: string;
     emptyNote?: string;
+    /** passed through to `Sheet` — see the note there. Default 'bottom'. */
+    placement?: 'bottom' | 'top';
+    /**
+     * TWO STEPS instead of one: tapping a name only SELECTS it, and this
+     * button is what commits.
+     *
+     * Given only where the act is worth a second look. A course or a branch
+     * picker is a field you are filling in and tap-to-pick is right for it;
+     * merging one member into another moves her attendance and retires a
+     * record, and "I tapped the wrong row" is not a recoverable mistake there.
+     * Omitted, the picker behaves exactly as it always has.
+     */
+    confirmLabel?: string;
+    /** what the confirm will DO, in a sentence, once there is something to do it to */
+    confirmNote?: (chosen: PickerOption) => string;
+    /** the confirm is in flight — the label says so and the button is inert */
+    busy?: boolean;
   }) {
   const { theme } = useTheme();
   const [query, setQuery] = useState('');
+  const [staged, setStaged] = useState<string | null>(null);
+  const twoStep = confirmLabel !== undefined;
+
+  // A picker reopened must not still be holding the last answer, and the
+  // options themselves change under it once a merge removes a member.
+  useEffect(() => { if (!open) setStaged(null); }, [open]);
 
   const q = query.trim().toLowerCase();
   const results = useMemo(
@@ -98,10 +149,13 @@ export function SearchPicker({ open, onClose, title, placeholder, options, value
   const canAdd = !!onAdd && q.length >= 2 && !options.some(o => o.label.toLowerCase() === q);
   const empty = q.length > 0 && results.length === 0 && !canAdd;
 
-  const close = () => { setQuery(''); onClose(); };
+  const stagedOption = staged === null ? null
+    : options.find(o => (o.value ?? o.label) === staged) ?? null;
+
+  const close = () => { setQuery(''); setStaged(null); onClose(); };
 
   return (
-    <Sheet open={open} onClose={close} title={title}>
+    <Sheet open={open} onClose={close} title={title} placement={placement}>
       <View style={{
         flexDirection: 'row', alignItems: 'center', gap: SPACE.md, marginTop: SPACE.md,
         height: 50, borderRadius: RADIUS.md, backgroundColor: theme.shell,
@@ -114,12 +168,17 @@ export function SearchPicker({ open, onClose, title, placeholder, options, value
           style={{ flex: 1, color: theme.fgStrong, fontSize: 14.5, fontWeight: '600' }} />
       </View>
 
-      <ScrollView style={{ marginTop: SPACE.md }} contentContainerStyle={{ gap: 7 }} keyboardShouldPersistTaps="handled">
+      {/* flexShrink so a pinned footer below cannot be pushed off the card's
+          own maxHeight -- the list gives way, the confirm stays reachable. */}
+      <ScrollView style={{ marginTop: SPACE.md, flexShrink: 1 }} contentContainerStyle={{ gap: 7 }} keyboardShouldPersistTaps="handled">
         {results.map(o => {
-          const on = o.label === value;
+          const on = twoStep ? staged === (o.value ?? o.label) : o.label === value;
           return (
             <Pressable key={o.label}
-              onPress={() => { setQuery(''); onSelect(o.value ?? o.label); }}
+              onPress={() => {
+                if (twoStep) { setStaged(o.value ?? o.label); return; }
+                setQuery(''); onSelect(o.value ?? o.label);
+              }}
               accessibilityRole="radio" accessibilityState={{ selected: on }}
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
@@ -162,6 +221,46 @@ export function SearchPicker({ open, onClose, title, placeholder, options, value
           </Text>
         ) : null}
       </ScrollView>
+
+      {/* WHAT IT WILL DO, before it is done -- and only once there is
+          something to say it about. A sentence describing a merge with no
+          member picked would have to say "her", which is the ambiguity this
+          two-step exists to remove. */}
+      {twoStep ? (
+        <View style={{ marginTop: SPACE.md, borderTopWidth: 1, borderTopColor: theme.line, paddingTop: SPACE.md }}>
+          <Text style={{ fontSize: 12, color: theme.muted, lineHeight: 19, minHeight: 38 }}>
+            {stagedOption && confirmNote ? confirmNote(stagedOption) : 'Pick the member she is, then confirm.'}
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: SPACE.md }}>
+            <Pressable testID="picker-cancel" onPress={close} accessibilityRole="button"
+              style={({ pressed }) => ({
+                flex: 1, minHeight: TAP_MIN + 6, borderRadius: RADIUS.md,
+                alignItems: 'center', justifyContent: 'center',
+                borderWidth: 1, borderColor: theme.lineStrong, opacity: pressed ? 0.7 : 1,
+              })}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: theme.fgStrong }}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              testID="picker-confirm"
+              onPress={() => { if (stagedOption && !busy) onSelect(stagedOption.value ?? stagedOption.label); }}
+              disabled={!stagedOption || busy}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !stagedOption || !!busy }}
+              style={({ pressed }) => ({
+                flex: 1, minHeight: TAP_MIN + 6, borderRadius: RADIUS.md,
+                alignItems: 'center', justifyContent: 'center',
+                backgroundColor: stagedOption && !busy ? theme.accent : theme.surface2,
+                borderWidth: 1, borderColor: stagedOption && !busy ? theme.accent : theme.line,
+                opacity: pressed ? 0.85 : 1,
+              })}>
+              <Text style={{
+                fontSize: 14, fontWeight: '800',
+                color: stagedOption && !busy ? theme.onAccent : theme.muted,
+              }}>{busy ? 'Saving…' : confirmLabel}</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
     </Sheet>
   );
 }

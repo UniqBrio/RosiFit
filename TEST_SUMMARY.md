@@ -1,4 +1,596 @@
 
+## Gate run - 2026-09-05 - VERDICT: FAIL
+
+Steps: 5 pass, 5 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - FAIL
+
+```
+BLOCKED [TEST ID COVERAGE] - 1 new violation(s):
+BLOCKED [TEST ID COVERAGE] - 1 baselined item(s) now pass but are still listed:
+```
+
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+SUPERSEDED SAME DAY -- READ THIS FIRST. Everything in the note below describes a change the
+owner rejected within the hour and that is now fully reverted: an unrecognised number goes to
+the registration screen, unconditionally, as it did before. The fail-first evidence and the
+amended spec recorded below are therefore evidence about code that is no longer in the tree.
+The note is kept rather than deleted because the gate run it describes is real, and because
+RC-019 points at it. What SHIPPED from that run instead: the "This academy is already
+registered" notice removed from the registration form, and a staff member tapping Forgot PIN
+now gets her own screen instead of the super admin's security questions. 405 unit cases pass.
+
+UNKNOWN NUMBER NO LONGER REACHES REGISTRATION (Track C, RC-019,
+requests/2026-09-06-unknown-number-sent-to-registration.md).
+
+G9 IS A NEW FAILURE AND IT IS NOT MINE. The verdict moved from 6 pass / 4 fail / 1 blocked to
+5 / 5 / 1, and the whole delta is G9 Automation addressability, blocked two-sidedly on
+`src/components/Sheet.tsx` (6 known gaps in the baseline, 8 now). That file is a PEER SESSION'S
+STAGED, UNCOMMITTED work -- `M ` in the index, 112 insertions, and I have not touched it. I did
+not regenerate the baseline: doing so would bless another session's debt under my name and
+close the two-sided check that is the point of the ratchet. It clears when that session tags
+its two new interactive elements, or when it regenerates the baseline itself. My own files add
+no testid gap; the hardcoded-colour ratchet is "none new" on both directories.
+
+The other four are the same accepted-unverifiable classes as every run on this repo -- G1/G2/G3
+no design/tokens.json (TD-001/002/003), G6 BLOCKED no eslint (TD-004), G8 FAIL on an empty log,
+no test:functional (TD-006). None is touched by this change.
+
+363 unit cases pass (26 in signin.test.ts), 2840/2840 contrast pairs, 75/75 icons, G5 types
+PASS. The 363 is a verdict on the COMBINATION -- several sessions' uncommitted work is in this
+tree -- not on this change alone.
+
+FAIL-FIRST: src/data/signin.test.ts -- 'an unrecognised number is sent to the ADMIN once the
+academy exists' and 'an auth-lookup that does not send the field is treated as CLOSED' were both
+observed FAILING (24/26) against the one-input `continueDestination`, which returned 'register'
+for both. Reconstructed WITHOUT git: signin.ts copied to the scratchpad, the mapping reverted in
+place, the specs run, the file copied back, and `diff` run against the copy to prove the restore
+was byte-identical -- the shared worktree makes `git checkout --` unsafe for a baseline.
+
+AMENDED, NOT APPENDED: 'an unrecognised number goes to registration' is the one existing spec
+this change rewrites, because the owner reversed the behaviour it asserted. It now reads 'WHILE
+SETUP IS STILL OPEN' and asserts `continueDestination(false, true) === 'register'`. Stated
+plainly because test files here are append-only by rule, and this is the exception being taken.
+
+NOT VERIFIED VISUALLY. The new sentence on the sign-in screen was not looked at in either theme:
+every .harness script hard-codes Linux paths and playwright is not installed on this machine. It
+uses no new colour -- the existing error branch of the status box, whose ink is measured in both
+themes -- so contrast is proven by measurement, not by eye. Weaker than looking, and honest.
+
+
+---
+
+## Gate run - 2026-09-06 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-06 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-06 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-06 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-06 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-06 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-06 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-05 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+MEMBER DAY CHIPS SHOW THE DAYS IN FORCE (Track C, RC-020,
+requests/2026-09-06-member-day-chips-not-selected.md).
+
+This report is the 6/4/1 run above it, NOT the 5/5/1 report at the top of this file. Two
+sessions prepended to TEST_SUMMARY.md within a minute of each other in the shared worktree and
+the newer of the two ended up underneath; the file is out of chronological order at the top and
+the runs are told apart by their step counts. Nothing was lost.
+
+The four FAILs are the accepted-unverifiable classes every run on this repo carries -- G1/G2/G3
+no design/tokens.json (TD-001/002/003), G6 BLOCKED no eslint (TD-004), G8 FAIL on an empty log,
+no test:functional (TD-006). None is touched by this change. G9 is back to PASS.
+
+373 unit cases pass (11 in memberDays.test.ts, 5 of them new), 2840/2840 contrast pairs,
+75/75 icons, G5 types PASS, npm run audit:all clean -- six audits, no new violations. The 373 is
+a verdict on the COMBINATION: several sessions' uncommitted work is in this tree, not this
+change alone.
+
+FAIL-FIRST: src/data/memberDays.test.ts -- the five `openingDays` cases were written and run
+BEFORE the function existed and were observed failing 5/11 against the tree, with
+`'(0 , import_memberDays2.openingDays) is not a function'`. That is a thin fail-first and it is
+worth saying why rather than dressing it up: the defect did not live in a pure module at all. It
+lived in the wiring -- a row cleared by a picker and refilled only by a CHANGED key, and a
+`Member` record that carried no `weekdays` for the edit form to open from. This repo has no
+component renderer (`npm run test:unit` is `tsx --test src/**/*.test.ts`, pure modules only), so
+neither half of the root cause is reachable by a unit test. What the new cases DO pin is the rule
+the wiring now delegates to, which is why the rule was extracted rather than written inline again.
+
+NOT OBSERVED FAILING, and unverified here: both halves in the running app. The add-form path
+(re-pick the course already showing -> the row goes blank and stays blank) and the edit-form path
+(open a member with days of her own -> her chips fill; Save without touching anything -> her
+member_schedules row survives) were reasoned from the code and the migrations (0006, 0027), not
+executed. `.harness/*.mjs` drives Playwright from a Linux sandbox path (`/opt/pw-browsers/...`)
+and neither Playwright nor Puppeteer is installed on this machine. The edit-form half is the one
+that mattered most and is the one least proven: the claim that Save on an untouched Edit form
+used to end her override is read off `update_member` (0027, `if p_weekdays is null then ... end
+the override`) plus `memberWeekdays([], ...) === null`, and it deserves a run against a real
+member before anyone relies on it.
+
+Also unverified: `member_schedules` now joins `fetchMembers`. Its RLS read policy is the same
+`is_active_app_user()` the members table already passes (0006), so no new grant is needed, and
+the query was not run against the live project -- no automated target, per CLAUDE.md.
+
+---
+
+
+---
+
+## Gate run - 2026-09-05 - VERDICT: FAIL
+
+Steps: 4 pass, 4 fail, 3 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - FAIL
+
+```
+src/data/repository.ts(1699,11): error TS2741: Property 'weekdays' is missing in type '{ id: string; code: string; name: string; course: string; branch: string; aliases: string[]; joined: string; emails: { address: string; primary: boolean; }[]; status: "active"; expected: number; attended: number; missed: number; streak: number; last: string; }' but required in type 'Member'.
+src/data/repository.ts(1776,20): error TS2345: Argument of type '{ id: string; code: string; name: string; course: string; branch: string; aliases: string[]; emails: { address: string; primary: true; }[]; status: "active"; expected: number; attended: number; missed: number; streak: number; last: string; joined: string; }' is not assignable to parameter of type 'Member'.
+  Property 'weekdays' is missing in type '{ id: string; code: string; name: string; course: string; branch: string; aliases: string[]; emails: { address: string; primary: true; }[]; status: "active"; expected: number; attended: number; missed: number; streak: number; last: string; joined: string; }' but required in type 'Member'.
+```
+
+- **G6 Lint** - BLOCKED - prerequisite G5 did not pass
+- **G7 Unit + pure specs** - BLOCKED - prerequisite G5 did not pass
+- **G8 Functional / integration** - BLOCKED - prerequisite G5 did not pass
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-05 - VERDICT: FAIL
+
+Steps: 5 pass, 5 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - FAIL
+
+```
+BLOCKED [TEST ID COVERAGE] - 1 new violation(s):
+BLOCKED [TEST ID COVERAGE] - 1 baselined item(s) now pass but are still listed:
+```
+
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-05 - VERDICT: FAIL
+
+Steps: 5 pass, 5 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - FAIL
+
+```
+BLOCKED [TEST ID COVERAGE] - 1 new violation(s):
+BLOCKED [TEST ID COVERAGE] - 1 baselined item(s) now pass but are still listed:
+```
+
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
 ## Gate run - 2026-09-04 - VERDICT: FAIL
 
 Steps: 6 pass, 4 fail, 1 blocked.
@@ -556,6 +1148,124 @@ exit 1
 - **G11 Wide tables are configurable** - PASS
 
 _Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-05 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-05 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+
+REGISTRATION IS ONE FORM (Track B, requests/2026-09-06-register-form-single-page.md).
+Same five accepted-unverifiable classes as every run on this repo -- G1/G2/G3 no
+design/tokens.json (ADR 001, TD-001/002/003), G6 BLOCKED no eslint (TD-004), G8
+FAIL on an empty log, no test:functional (TD-006). None is touched by this change,
+and the counts are identical to the last committed run: 6 pass, 4 fail, 1 blocked.
+
+328 unit cases pass, 2840/2840 contrast pairs, 75/75 icons, audit:all clean
+(testid and hardcoded-colour ratchets both "none new"), G5 types PASS.
+
+READ THIS BEFORE TRUSTING THE NUMBER. The working tree at gate time ALSO CONTAINED
+ANOTHER SESSION'S UNCOMMITTED WORK -- app/course/[id].tsx, app/member/edit.tsx,
+src/data/alias.ts, src/data/alias.test.ts, src/data/repository.ts and
+requests/2026-09-05-park-unresolved-upload-rows.md, none of them mine and none of
+them in my commit. The shared worktree behaving as it does. So 328 is a verdict on
+the COMBINATION, not on this change alone -- the previous run recorded 316 and the
+12 new cases are that session's, not this one's. This file itself carries TWO gate
+reports added since the last commit; only one of them is mine, and they are
+byte-identical, so I cannot say which. The files I DID commit were diff-reviewed
+line by line (B6) and carry only lines that trace to the request file.
+
+TESTS ADDED: NONE, and that is a real gap stated rather than papered over. The
+form's validity predicate is computed inside the render body of app/register.tsx,
+where -- in this repo's own words about signin.ts -- "a claim computed inside a
+render body is one nobody can test". It was inline before this change and it is
+inline after; merging three step-predicates into one did not make it reachable.
+Extracting it to src/data/ with specs is the right fix and is NOT in the request,
+so it is flagged for the requester rather than done unasked.
+
+NOT VERIFIED VISUALLY. The Definition of Done asks for both themes looked at, and
+.harness/allroutes.mjs is the tool for it -- but every .harness script hard-codes
+Linux paths (/opt/node22, /opt/pw-browsers) and playwright is not installed here,
+so none of them runs on this Windows machine. What stands in for the eye is
+measurement, not assumption: the one new colour is theme.danger, which
+check-contrast.ts measures against every surface in BOTH themes (2840/2840), and
+the hardcoded-colour ratchet confirms no literal was introduced. That is a weaker
+claim than looking, and it is the honest one.
 
 ---
 
@@ -2597,3 +3307,50 @@ prove what the screen does with an answer, not that the answer is right.
 
 **DB harness — N/A.** No migration. `auth-lookup` reads `app_users.phone_e164`,
 a column `auth-login` already reads; nothing about the schema changes.
+
+---
+
+## Edit opened the Add form — RC-021 (06-Sep-2026)
+
+Request: `requests/2026-09-06-edit-member-opens-add-form.md` (BUG, correction round 2 —
+RC-012 was the same words, twelve days earlier).
+
+**FAIL-FIRST** — `src/components/editDialog.test.ts`, the final spec replayed against the
+pre-fix tree (`git archive HEAD` = 8b16230, unpatched), captured in
+`.evidence/edit-opens-add-fail-first.txt`:
+
+```
+not ok 2 - Add-vs-Edit is decided by the route, never by the lookup result
+not ok 3 - a form asked for a record answers loading before it renders
+not ok 4 - a form asked for a record answers a failed read
+not ok 5 - a record asked for and not found is said, not treated as Add
+not ok 6 - the create path is unreachable once a record id was asked for
+# tests 6 · pass 1 · fail 5
+```
+
+Each failure names `app/member/edit.tsx` — the assertions stop at the first file in the sweep
+list, so the two sibling forms are behind it rather than clean.
+
+**PASS after the fix** — 6/6 in that file; `npm run check` green end to end: typecheck ·
+428 unit cases (422 before, +6) · 2,840/2,840 contrast pairs · 75/75 icons.
+
+**WALKED IN THE RUNNING APP** — `expo export --platform web`, served static, driven in
+Chromium at 420×900 in **both themes**, asserting on the DOM rather than pixels:
+
+```
+[dark|light] /member/edit?id=…&state=loading  -> "Edit member · Fetching her record", no Save
+[dark|light] /member/edit?id=…&state=error    -> "Edit member", Try again offered
+[dark|light] /member/edit?id=not-a-member     -> "That member is not on the register…"
+[dark|light] /member/edit                     -> "Welcome a new member" · "Add Member"
+[dark|light] /course/edit?id=…&state=loading  -> "Edit course" over a skeleton
+[dark|light] /course/edit                     -> "Add a course"
+[dark|light] /offering/edit?offeringId=gone   -> not "Add an offering"
+```
+
+**FOUND WHILE VERIFYING, NOT FIXED HERE** — every route in the export raises React #418
+(hydration text mismatch) on load, including `/(tabs)` and other screens this change never
+touched. Measured 3/3 loads on the **pre-fix** build in `dist/` (07:28) and 3/3 on the fixed
+build, on identical URLs — pre-existing and app-wide, not introduced here. It contradicts
+CP-015, so it is logged as TD-027 rather than folded into a bug fix that did not cause it.
+
+**DB harness — N/A.** No migration; no schema surface. Three screens and one spec.

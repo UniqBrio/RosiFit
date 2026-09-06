@@ -2,7 +2,7 @@ import { chromium } from '/opt/node22/lib/node_modules/playwright/index.mjs';
 const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
 // spot-check the reworked screens in LIGHT mode too: the theme toggle drives
 // every screen, so a light-only regression is easy to ship blind
-const routes = ['/(tabs)','/(tabs)/weekly','/member/1','/match','/course/rules','/forgot-pin','/set-pin','/appearance'];
+const routes = ['/(tabs)','/(tabs)/weekly','/member/1','/course/rules','/forgot-pin','/set-pin','/appearance'];
 let bad = 0;
 for (const path of routes) {
   const p = await b.newPage({ viewport:{width:420,height:900}, colorScheme:'light' });

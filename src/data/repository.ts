@@ -14,11 +14,14 @@
 import { supabase, isConfigured } from '../lib/supabase';
 import { authLookup } from './api';
 import { phoneDigits } from './signin';
+import { cleanAlias, aliasProblem, aliasSaveError, MERGE_FAILED } from './alias';
 import type { Period } from './period';
+import { bucketFixture, type BucketMetrics } from './buckets';
+import type { SentMap } from './sent';
 import { currentSchedules, today } from './schedule';
 import {
   NOTIFICATION_LIMIT, orderNotifications,
-  awaitingNotification, sentNotification, excludedNotification,
+  awaitingNotification, sentNotification, excludedNotification, pinResetNotification,
   type Notification,
 } from './notifications';
 import {
@@ -92,15 +95,21 @@ type MetricRow = { member_id: string; expected: number; attended: number; missed
 export async function fetchMembers(period: Period): Promise<Member[]> {
   if (!isConfigured) return MEMBERS;
 
-  const [membersRes, emailsRes, aliasesRes, statsRes, enrolRes, metricsRes] = await Promise.all([
+  const [membersRes, emailsRes, aliasesRes, statsRes, enrolRes, schedRes, metricsRes] = await Promise.all([
     supabase.from('members').select('id, member_code, full_name, status, joined_on').is('deleted_at', null).order('full_name'),
     supabase.from('member_emails').select('member_id, email, is_primary, status').is('deleted_at', null),
     supabase.from('member_aliases').select('member_id, alias_display').eq('alias_type', 'name'),
     supabase.from('member_stats').select('member_id, current_streak, last_emailed_at'),
     supabase.from('member_enrollments').select('member_id, offering_id').eq('status', 'active'),
+    supabase.from('member_schedules').select('member_id, weekdays, effective_from, effective_to'),
     supabase.rpc('member_period_metrics', { p_from: period.from, p_to: period.to }),
   ]);
   if (membersRes.error) fail('Could not load members', membersRes.error);
+  // Her own days are the one read here whose SILENT failure is destructive:
+  // an empty result reads as "nobody has days of her own", the edit form
+  // opens her row on the course's days instead of hers, and Save then ends
+  // an override nobody asked to end. A failed read says so (RC-020).
+  if (schedRes.error) fail('Could not load the days members have of their own', schedRes.error);
 
   const offeringIds = [...new Set((enrolRes.data ?? []).map(e => e.offering_id as string))];
   const offerings = offeringIds.length
@@ -117,6 +126,18 @@ export async function fetchMembers(period: Period): Promise<Member[]> {
   const courseName = new Map((coursesRes.data ?? []).map(c => [c.id, c.name]));
   const branchName = new Map((branchesRes.data ?? []).map(b => [b.id, b.name]));
   const enrolByMember = new Map((enrolRes.data ?? []).map(e => [e.member_id as string, e.offering_id as string]));
+  // Her OWN days, when she has any. member_schedules is effective-dated the
+  // same way offering_schedules is, so it is answered by the same tested
+  // resolver -- a second copy of the window arithmetic is exactly how two
+  // answers to "which version is in force" drift apart (src/data/schedule.ts).
+  // The resolver keys on `offering_id`, so the member id goes in that slot.
+  const ownDaysByMember = currentSchedules(
+    (schedRes.data ?? []).map(sc => ({
+      offering_id: sc.member_id as string,
+      weekdays: (sc.weekdays as number[]) ?? [],
+      effective_from: sc.effective_from as string,
+      effective_to: (sc.effective_to as string | null) ?? null,
+    })), today());
   const metricByMember = new Map(((metricsRes.data ?? []) as MetricRow[]).map(m => [m.member_id, m]));
   const statByMember = new Map((statsRes.data ?? []).map(s => [s.member_id as string, s]));
 
@@ -147,6 +168,11 @@ export async function fetchMembers(period: Period): Promise<Member[]> {
       branch: offering ? (branchName.get(offering.branch_id as string) ?? '—') : '—',
       aliases: aliasesByMember.get(m.id as string) ?? [],
       emails: emailsByMember.get(m.id as string) ?? [],
+      // null, not [], for a member who has no override: the schema cannot
+      // hold an empty set of own days, and the two mean opposite things to
+      // update_member (src/data/memberDays.ts). Carrying it is what lets the
+      // form open her day chips on the days actually in force for her.
+      weekdays: ownDaysByMember.get(m.id as string)?.weekdays ?? null,
       // The column was already in the SELECT above and was already being
       // thrown away. Carrying it is what lets the app apply the same
       // `status = 'active'` filter follow_up_candidates() has always applied.
@@ -1010,6 +1036,16 @@ export async function fetchStaff(): Promise<Staff[]> {
     .is('deleted_at', null).order('name');
   if (error) fail('Could not load staff', error);
 
+  // Open PIN-reset asks, so the list can say who is waiting on the academy.
+  // RLS (0034) hands these to the academy admin only; for anyone else the
+  // result is empty and every row simply reads as it did before. A failure
+  // here loses the highlight and nothing else -- the staff list is not worth
+  // failing over a flag.
+  const asks = await supabase.from('pin_reset_requests')
+    .select('app_user_id').is('resolved_at', null);
+  if (asks.error) console.error('fetchStaff pin reset requests:', asks.error.message);
+  const asked = new Set((asks.data ?? []).map(r => r.app_user_id as string));
+
   return (data ?? []).map(u => {
     const access = accessOf(u as never);
     const when = (v: string | null) => (v ? new Date(v).toLocaleDateString() : '');
@@ -1021,6 +1057,7 @@ export async function fetchStaff(): Promise<Staff[]> {
     return {
       id: u.id as string, name: u.name as string, phone: u.phone_e164 as string,
       role: u.role_label as string, access, meta,
+      pinResetRequested: asked.has(u.id as string),
     };
   });
 }
@@ -1120,6 +1157,38 @@ export async function fetchMonthSessions(year: number, month: number): Promise<S
       present: s.present_count as number,
     };
   });
+}
+
+// ---------------------------------------------- period-wise attendance
+/**
+ * Expected and attended per BUCKET, keeping the member id.
+ *
+ * Same RPC as the donut, the member report and the course bars -- run once
+ * per sub-range -- so the "based on period" bars on Overview sum back to the
+ * ring above them rather than answering a second query with its own idea of
+ * the period (C-84/C-87). The member id travels with the figures because the
+ * branch and course filters have to reach the trend too; the week table this
+ * replaces had to admit in its own caption that they did not.
+ *
+ * One call per bucket, and src/data/period.ts caps the count: a day-grain
+ * week is seven, a month is five or six, a long custom range is twelve.
+ */
+export async function fetchBucketMetrics(buckets: Period[]): Promise<BucketMetrics[]> {
+  if (!isConfigured) return bucketFixture(buckets, MEMBERS);
+
+  return Promise.all(buckets.map(async b => {
+    const { data, error } = await supabase.rpc('member_period_metrics', { p_from: b.from, p_to: b.to });
+    // A bucket that failed silently would draw as a zero bar -- an academy
+    // that attended nothing that week, which is a different fact from a
+    // query that did not answer.
+    if (error) fail('Could not load the period breakdown', error);
+    return {
+      label: b.label, from: b.from, to: b.to,
+      metrics: ((data ?? []) as MetricRow[]).map(m => ({
+        member_id: m.member_id, expected: m.expected ?? 0, attended: m.attended ?? 0,
+      })),
+    };
+  }));
 }
 
 // ------------------------------------------------- week-wise attendance
@@ -1249,13 +1318,21 @@ export async function fetchNotifications(): Promise<Notification[]> {
     return orderNotifications(awaiting);
   }
 
-  const [batches, excluded] = await Promise.all([
+  const [batches, excluded, pinReqs] = await Promise.all([
     supabase.from('email_batches')
       .select('id, sent_count, failed_count, subject_snapshot, created_at, completed_at')
       .order('created_at', { ascending: false }).limit(NOTIFICATION_LIMIT),
     supabase.from('email_messages')
       .select('id, member_id, status, exclusion_reason, failure_reason')
       .in('status', ['excluded', 'failed']).limit(NOTIFICATION_LIMIT),
+    // Open PIN-reset asks. RLS (0034) returns rows to the academy admin only,
+    // so for a staff member this is simply empty rather than forbidden -- no
+    // branch on role is needed here, and none should be: the database is the
+    // one place that decision belongs.
+    supabase.from('pin_reset_requests')
+      .select('id, requested_at, app_users!inner(name)')
+      .is('resolved_at', null)
+      .order('requested_at', { ascending: false }).limit(NOTIFICATION_LIMIT),
   ]);
 
   // A tray that fails is not worth failing a screen over: the awaiting half is
@@ -1263,6 +1340,7 @@ export async function fetchNotifications(): Promise<Notification[]> {
   // The console keeps the reason.
   if (batches.error) console.error('fetchNotifications batches:', batches.error.message);
   if (excluded.error) console.error('fetchNotifications excluded:', excluded.error.message);
+  if (pinReqs.error) console.error('fetchNotifications pinResets:', pinReqs.error.message);
 
   const sent = (batches.data ?? [])
     .filter(b => Number(b.sent_count) > 0)
@@ -1288,7 +1366,71 @@ export async function fetchNotifications(): Promise<Notification[]> {
     failureReason: (m.failure_reason as string | null) ?? null,
   }));
 
-  return orderNotifications([...awaiting, ...notSent, ...sent]);
+  // The joined row comes back as app_users: {name} or [{name}] depending on
+  // how PostgREST resolves the embed, so both shapes are handled rather than
+  // guessed at. A request whose name cannot be read is still shown -- the
+  // admin needs to know somebody is locked out even if the join disappoints.
+  const resets = (pinReqs.data ?? []).map(r => {
+    const joined = (r as { app_users?: { name?: string } | { name?: string }[] }).app_users;
+    const named = Array.isArray(joined) ? joined[0] : joined;
+    return pinResetNotification({
+      id: r.id as string,
+      name: named?.name ?? 'A staff member',
+      when: new Date(r.requested_at as string).toLocaleString(),
+    });
+  });
+
+  return orderNotifications([...resets, ...awaiting, ...notSent, ...sent]);
+}
+
+
+/* -------------------------------------------------- who has already been sent to
+ *
+ * The mark the send draft puts on a member who has already had THIS period's
+ * follow-up. It is a read of what the send itself recorded, never a second
+ * record of it: email_batches carries the period in its context (0009, the
+ * same object send-followups writes), and email_messages carries the
+ * per-member outcome under it.
+ *
+ * The BATCH's period is what is matched, not the message's timestamp. A week
+ * is usually mailed on the Monday after it ends, so "sent during the week"
+ * would miss every ordinary send and mark nobody.
+ *
+ * A failure here costs the mark and nothing else. The draft is still correct
+ * without it -- every member still shows, the send still works -- so a broken
+ * read must not take the dialog down with it. The console keeps the reason.
+ */
+export async function fetchSentForPeriod(period: Period): Promise<SentMap> {
+  if (!isConfigured) return {};
+
+  const batches = await supabase.from('email_batches').select('id')
+    .eq('context->>period_from', period.from)
+    .eq('context->>period_to', period.to);
+  if (batches.error) {
+    console.error('fetchSentForPeriod batches:', batches.error.message);
+    return {};
+  }
+  const ids = (batches.data ?? []).map(b => b.id as string);
+  if (ids.length === 0) return {};
+
+  const messages = await supabase.from('email_messages')
+    .select('member_id, sent_at').in('batch_id', ids).eq('status', 'sent');
+  if (messages.error) {
+    console.error('fetchSentForPeriod messages:', messages.error.message);
+    return {};
+  }
+
+  const out: SentMap = {};
+  for (const m of messages.data ?? []) {
+    // A row can be 'sent' with no timestamp only if the update that stamped
+    // it half-failed; the batch's period is still the honest answer to WHEN,
+    // and claiming "sent" with no date at all is the one thing the row must
+    // not do.
+    const at = (m.sent_at as string | null) ?? `${period.to}T00:00:00.000Z`;
+    const id = m.member_id as string;
+    if (!out[id] || out[id] < at) out[id] = at;
+  }
+  return out;
 }
 
 export type Preferences = { theme_mode: 'light' | 'dark' | 'system'; accent_key: string; accent_hue: number };
@@ -1626,6 +1768,9 @@ export async function createMember(input: MemberInput): Promise<{ id: string }> 
       name: input.full_name,
       course: course?.name ?? '—',
       branch: offering?.branch ?? '—',
+      // what the form decided, kept the same way live does: null is "she
+      // follows the offering", not "no days"
+      weekdays: input.weekdays,
       aliases: input.aliases,
       joined: input.joined_on
         ? new Date(`${input.joined_on}T00:00:00`).toLocaleDateString(undefined,
@@ -1699,8 +1844,10 @@ export async function bulkImportMembers(input: {
       MEMBERS.push({
         id, code: '', name: r.full_name, course: course.name, branch: offering.branch,
         aliases: r.aliases, emails: r.email ? [{ address: r.email, primary: true }] : [],
+        // the import gives nobody days of her own; every row follows its course
+        weekdays: null,
         status: 'active',
-        expected: 0, attended: 0, missed: 0, streak: 0, last: '\u2014', joined: r.joined_on || 'today',
+        expected: 0, attended: 0, missed: 0, streak: 0, last: '\u2014', joined: 'today',
       });
       result.inserted++;
       result.rows.push({ row: r.row, full_name: r.full_name, status: 'inserted', member_id: id });
@@ -1713,7 +1860,11 @@ export async function bulkImportMembers(input: {
     p_members: input.rows.map(r => ({
       row: r.row, full_name: r.full_name, email: r.email || null,
       course: r.course || null, branch: r.branch || null,
-      aliases: r.aliases, joined_on: r.joined_on || null,
+      // No joining date is SENT, and none is asked for: the file has no
+      // Joined On column any more. bulk_import_members reads a missing key as
+      // null and create_member coalesces null to current_date, so a
+      // bulk-imported member joins the day she was imported.
+      aliases: r.aliases,
     })),
     p_default_offering_id: input.default_offering_id,
     p_file_name: input.file_name,
@@ -1789,6 +1940,125 @@ export async function updateMember(input: MemberUpdate): Promise<{ moved: boolea
   // notification is all of them.
   membersChanged();
   return { moved: Boolean((data as { moved_offering?: boolean }).moved_offering) };
+}
+
+/**
+ * ADD ONE Google Meet display name to a member, additively.
+ *
+ * DELIBERATELY NOT `updateMember`. That RPC REPLACES the whole member --
+ * aliases, emails, offering and weekdays -- and the course screen's `Member`
+ * carries no `offering_id` and no weekdays to hand back, so routing a
+ * nickname through it would silently wipe her enrolment to save a name.
+ *
+ * The alias index is unique across the WHOLE register (`member_aliases_unique`
+ * on alias_type + alias_normalized, 0006), which is what stops one display
+ * name pointing at two people. A name already claimed is therefore refused
+ * with that fact, never swallowed -- the import matches on these, so a
+ * silently dropped alias would look like a working link and match nobody.
+ *
+ * `alias_normalized` is not supplied: the `member_aliases_normalize` trigger
+ * computes it, and duplicating that here is how the two would drift.
+ */
+export async function addMemberAlias(memberId: string, alias: string): Promise<void> {
+  const display = cleanAlias(alias);
+
+  if (!isConfigured) {
+    const i = MEMBERS.findIndex(m => m.id === memberId);
+    if (i < 0) throw new Error('That member is not on the register. Nothing has been saved.');
+    // The same rule the unique index applies live, run against the fixture
+    // register -- one module, so the two paths cannot tell different stories.
+    const problem = aliasProblem(display, MEMBERS.flatMap(m => m.aliases));
+    if (problem) throw new Error(problem);
+    MEMBERS[i] = { ...MEMBERS[i], aliases: [...MEMBERS[i].aliases, display] };
+    membersChanged();
+    return;
+  }
+
+  // Live, the register is the database's to know; only the empty name can be
+  // ruled out from here, and 23505 answers the rest.
+  const empty = aliasProblem(display, []);
+  if (empty) throw new Error(empty);
+
+  const { error } = await supabase.from('member_aliases').insert({
+    member_id: memberId, alias_type: 'name', alias_display: display, source: 'manual',
+  });
+  if (error) {
+    console.error('addMemberAlias:', error.message);
+    throw new Error(aliasSaveError(error.code, display));
+  }
+  membersChanged();
+}
+
+/**
+ * FOLD a member created in error into the member she actually is.
+ *
+ * WHY THIS IS NOT `addMemberAlias`
+ * The alias is the visible half of the act. The other half is the attendance.
+ * The importer now auto-creates a member for a Meet display name it cannot
+ * resolve, and marks HER present -- so the record that says somebody came to
+ * class is on "Rani Sham", while Rani is still expected and therefore still
+ * absent. Teaching the matcher the spelling fixes every FUTURE file and
+ * leaves THIS one saying a woman who attended did not.
+ *
+ * So the alias write stayed where it was, for the case it is still right for
+ * (a nickname on a member who is genuinely herself), and the merge is its own
+ * act with its own name. `merge_member_into` (0032) does both halves in one
+ * transaction; the rules that decide which record survives a clash live there
+ * and are asserted in `supabase/tests/25_merge_member.sql`.
+ */
+export async function mergeMemberInto(strayId: string, targetId: string):
+  Promise<{ display_name: string; attendance_moved: number }> {
+  if (!isConfigured) {
+    const si = MEMBERS.findIndex(m => m.id === strayId);
+    const ti = MEMBERS.findIndex(m => m.id === targetId);
+    if (si < 0 || ti < 0) throw new Error('That member is not on the register. Nothing has been saved.');
+    if (strayId === targetId) {
+      throw new Error('That is the same member — a member cannot be merged into herself.');
+    }
+    const stray = MEMBERS[si];
+    if (stray.emails.length > 0) {
+      throw new Error(
+        `${stray.name} has an email address of her own, so merging her would have to choose which address wins. Add the display name by hand instead.`);
+    }
+    // The same rule the unique index applies live, run against the fixture
+    // register -- one module, so the two paths cannot tell different stories.
+    const problem = aliasProblem(cleanAlias(stray.name), MEMBERS.flatMap(m => m.aliases));
+    if (problem) throw new Error(problem);
+
+    // The fixture register keeps COUNTS, not per-session records, so the move
+    // is expressed in the counts: what she was marked present for stops being
+    // one of the target's absences. The per-session rules -- which record
+    // survives when both were in one class -- are the migration's, and 0032's
+    // specs are what hold them.
+    const target = MEMBERS[ti];
+    const moved = stray.attended;
+    MEMBERS[ti] = {
+      ...target,
+      aliases: [...target.aliases, cleanAlias(stray.name), ...stray.aliases],
+      attended: target.attended + moved,
+      missed: Math.max(0, target.missed - moved),
+    };
+    MEMBERS.splice(si, 1);
+    membersChanged();
+    return { display_name: stray.name, attendance_moved: moved };
+  }
+
+  const { data, error } = await supabase.rpc('merge_member_into', {
+    p_stray: strayId, p_target: targetId,
+  });
+  if (error) {
+    console.error('mergeMemberInto:', error.message);
+    // merge_member_into's own RAISE messages are written for an operator --
+    // "she has an email address of her own", "not on the register" -- so they
+    // are passed through rather than replaced by a generic failure.
+    throw new Error(error.message || MERGE_FAILED);
+  }
+  membersChanged();
+  const result = (data ?? {}) as { display_name?: string; attendance_moved?: number };
+  return {
+    display_name: result.display_name ?? '',
+    attendance_moved: result.attendance_moved ?? 0,
+  };
 }
 
 /**

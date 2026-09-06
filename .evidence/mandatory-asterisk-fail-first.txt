@@ -1,0 +1,31 @@
+Fail-first evidence - src/components/required.test.ts (CP-017)
+Recorded 06-Sep-2026 for requests/2026-09-06-mandatory-field-asterisk.md
+
+The spec was run against the PRE-CHANGE tree: app/ and src/ exported from
+commit 8b16230 into a scratch directory, pointed at by REQUIRED_SPEC_ROOT.
+3 of its 5 assertions fail there. The two that pass are the tree check (the
+scratch copy is a real tree) and the drift guard, which has nothing to catch
+yet - no second asterisk had been written, because no first one had.
+
+$ REQUIRED_SPEC_ROOT=<HEAD tree> npx tsx --test src/components/required.test.ts
+ok 1 - the spec is looking at a real tree
+not ok 2 - every label renderer draws the ONE shared mark
+  error: 'src/components/Field.tsx takes `required` but does not render RequiredMark'
+ok 3 - nothing draws a second asterisk of its own
+not ok 4 - the mark is a shape and a word before it is a colour
+not ok 5 - no form that blocks its own save leaves every field unmarked
+    these forms gate their save but mark no field mandatory: app/branches.tsx, app/change-mobile.tsx, app/course/edit.tsx, app/holiday.tsx, app/member/edit.tsx, app/offering/edit.tsx, app/register.tsx, app/staff/add.tsx
+# tests 5
+# pass 2
+# fail 3
+
+After the change, against the working tree:
+$ npx tsx --test src/components/required.test.ts
+ok 1 - the spec is looking at a real tree
+ok 2 - every label renderer draws the ONE shared mark
+ok 3 - nothing draws a second asterisk of its own
+ok 4 - the mark is a shape and a word before it is a colour
+ok 5 - no form that blocks its own save leaves every field unmarked
+# tests 5
+# pass 5
+# fail 0

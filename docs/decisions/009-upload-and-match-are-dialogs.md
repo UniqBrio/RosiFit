@@ -74,3 +74,31 @@ back to the screen that opened them, so the register you uploaded for is what yo
   the same way; no harness change was needed.
 - `router.dismiss(count)` clamps to the stack, so a `match` opened by URL lands as far back as
   the stack goes rather than erroring.
+
+## AMENDED 06-Sep-2026 — `member/import` came off the exclusion list too
+
+The decision above excluded the member import in one sentence: *"`member/import` is not — it is
+reached from More, takes over nothing, and stays a page."*
+
+**The premise was wrong when it was written.** `member/import` is not reached from More. It is
+reached from **Bulk Import on the Courses workspace** (`courses-bulk-import`,
+`app/(tabs)/courses.tsx`), sitting beside Add Member, above the list of courses and members the
+file is imported into — and from the course detail. It is opened by a button on the very thing it
+changes, which is the test this record set, and it passed it all along.
+
+As a page it did exactly what `upload` did before this decision: replaced the workspace with a
+full window of its own for the whole of the import, so *"import these members into this academy"*
+was asked with the academy no longer on screen.
+
+It is now a `transparentModal` route rendering through `FormDialog`, like the rest. Its title and
+subtitle move verbatim into the dialog's bar; its URL, its states and every other string are
+unchanged. The result stopped being a **second** `FormDialog` in a nested `Modal` over the first
+and became content in the same card — one card, one scrim, one close for one action.
+
+The test itself is untouched, and so is the rest of the exclusion list: `register` / `set-pin` /
+`forgot-pin` own the screen, and `branches`, `staff/index`, `audit`, `appearance`, `profile` and
+`help` are places, not decisions.
+
+Requester's words: *"The Bulk import dialog should also be in same format as upload session. pop
+up with background overlay not as seperate page."* Request
+`requests/2026-09-06-import-writes-on-upload-email-required.md`.

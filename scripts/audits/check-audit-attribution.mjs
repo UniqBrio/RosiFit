@@ -39,6 +39,11 @@ const NO_SESSION_YET = {
   'auth-login': 'a sign-in attempt: nobody has proved who they are, and that is the point',
   'auth-bootstrap': 'the first account does not exist until this call succeeds',
   'recovery-check': 'the questions are answered before any session is granted',
+  'pin-reset-request':
+    'she is asking BECAUSE she cannot sign in - there is no session to attribute, and the '
+    + 'subject of the entry (p_entity_id) is the only identity in the call. The admin who '
+    + 'answers it IS attributed, by pin-reset / pin-issue, which log auth.pin_reset and '
+    + 'auth.pin_issued with p_actor when they resolve the request.',
 };
 
 const CALL = /\brpc\(\s*['"]audit_log['"]/g;

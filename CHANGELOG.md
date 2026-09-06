@@ -1,5 +1,401 @@
 # Changelog
 
+## Unreleased — Staff sign in to the app they actually have
+
+**A staff account no longer sees Overview.** Signing in as staff now lands on **Attendance**,
+the academy header carries Attendance on its own, and **Home** in the footer means the
+Attendance workspace. Everything else about the shell is exactly the super admin's — the same
+academy name and bell, the same `Home · Reports · More` footer with the same three labels, and
+Reports unchanged.
+
+**More keeps only what staff can use.** Staff & access and the Audit log are not listed. They
+never were for staff — the rows have been withheld for a while — but the screens behind them
+could still be reached by typing the address, and doing so now goes to Attendance instead of to
+a screen that could only answer with an error. The same is true of Overview itself.
+
+This is the app agreeing with the database rather than a new restriction: the staff list and the
+audit log have always been readable by the academy admin alone. **Nothing changed about what a
+staff member can do** — the whole Attendance workspace, Reports, Branches, Appearance, Help and
+her own profile are all exactly as they were, and the super admin's app is untouched.
+
+## Unreleased — A member can be taken off the follow-up list from her own record
+
+**Active or Inactive is now a field on the Edit member form.** Until now the only place
+anybody could mark a member inactive was the pill on a course roster row — so changing her
+status meant opening a course she happens to be on and finding her in the list, and her own
+record said nothing about it at all.
+
+It behaves like every other field on that form: pick **Active** or **Inactive**, and nothing
+happens until **Save Changes**. Cancel leaves her exactly as she was. Choosing the one she is
+not on already puts a line on the form saying what Save will do — she is left out of the
+follow-up rule, she is not written to, and picking Active again puts her straight back — so
+"Inactive" cannot be mistaken for deleted, unenrolled, or gone. Her enrolment, her sessions
+and her attendance history are untouched either way, and the change is recorded in the audit
+log against whoever made it.
+
+The pill on the course roster is unchanged and still writes on the tap; both controls go
+through the one write path. Welcoming a new member does not ask the question — she starts
+active.
+
+
+## Unreleased — Edit opens on the person you tapped
+
+**Editing a member no longer starts as "Welcome a new member".** Tapping the pencil on a
+member opened the ADD form — her name blank, an **Add Member** button — because the dialog
+worked out which form it was from a record it had not finished fetching. It now says **Edit
+member** from the moment it opens: while her record is on its way it shows a skeleton with no
+Save, a read that fails offers **Try again**, and a member who is no longer on the register is
+told so instead of being quietly offered as somebody new. A Save taken in that state would
+have created a second copy of a member already on the register; it cannot be reached at all
+now until her record is in hand.
+
+The same three answers were given to **Edit course** — which could open blank when the course
+list arrived last, and stay blank — and to **Edit an offering**, which turned into "Add an
+offering" if the offering had been removed while the screen was open.
+
+
+## Unreleased — One calendar, the same size everywhere a date is chosen
+
+**The month no longer arrives cut off.** The calendar used to stretch to fill whatever
+it opened inside, which on a wide screen made a single day a 260-pixel tile and pushed
+all but the first row of the month out of sight — most visibly in the Overview's
+**Custom range**. Every day is now the same size wherever the calendar opens, on a
+phone and on a desktop: the whole month, and only the month.
+
+**A date opens under its own field.** Holiday start and end, a member's joining date
+and a course's "these days apply from" used to slide a sheet up from the bottom of the
+screen; they now open a small calendar just under the field you tapped. Near the edge of
+the window it moves back inside, and near the bottom it opens upwards. Nothing is dimmed
+over the form, **and the form no longer goes blank behind it** — the card that holds a
+form was capped at 90% of a viewport it measured as zero for as long as any picker was
+open, so it collapsed to a 2px sliver and clipped the form away. It is not capped at all
+until there is a viewport to be 90% of, which also fixes the blank screen you got by
+refreshing the page with a form open, or opening a form's URL directly (TD-021).
+
+**The month name opens the months and the years.** Tap "September 2026" for a list of
+the twelve months and a year to step through — a joining date four years ago is three
+taps instead of forty-eight.
+
+**The month keeps one shape.** The grid used to draw only its own days and leave the
+space before the 1st blank, so it was five rows in one month and six in the next and
+the Clear and Today buttons under it moved by a whole row between them. It is six
+weeks every time now, and the days either side are the neighbouring months' — greyed,
+and tappable, so a date at the turn of the month is one tap rather than a step and a
+tap.
+
+**The month steps up and down.** The month and year sit at the left of the header with
+the two arrows together on the right, so the name starts in one place instead of
+shifting as its length changes.
+
+Nothing else about choosing a date changed: the week still starts on Monday, Clear and
+Today are where they were, and a date a form will not accept is still shown and still
+unpickable rather than missing.
+
+## Unreleased — Choosing the attendance file is the whole upload
+
+**The file imports the moment you choose it.** The step bar is gone and so is the
+`Import N rows` button: `/upload` asks which course, you pick the Meet CSV, and what
+comes back is the result. The preview-then-commit split behind it has not changed —
+every row still lands in one transaction — what went is the stop in between.
+
+**The result is two numbers: with email, and no email.** *With email* is a name the
+register matched to a member who has an address on file; *no email* is everybody else
+who landed — a member with no address, plus every name the register did not know,
+which is added to the course as a new member. Each number says where that group is
+now, so there is nowhere to go and check.
+
+**Two members sharing a name no longer stops the import.** She is filed as somebody
+new rather than linked to a guess, and appears in the **No email** group where
+"Add display name to existing member" folds her into the real member and carries her
+attendance across. A wrong link looks exactly like a right one; a wrong create is a
+name you recognise, two taps from being undone.
+
+**Whoever ran the class is left off the register.** A Meet file lists everybody who was
+in the call, and the instructor is not a member — so `csv-import` now sets aside any
+row whose name matches a staff name before matching, and says whose. Without it she
+would be created the first week and marked present in every register after that.
+*This half needs the `csv-import` function deployed; until then such a row imports as a
+new member with no email.*
+
+**Upload Session is on every day of the course week strip**, not only on a day already
+waiting for a file. A class arranged on the day had no way in at all.
+
+**A file from another day says so before it is imported.** Open 6 Sep, choose a 31 Aug
+export, and the screen says it will update the **31 Aug** register — and on confirm
+that is the day it imports for. The day has always come from the file; now it is asked
+rather than discovered afterwards.
+
+## Unreleased — The Overview answers four questions, and the filters take more than one answer
+
+**The two tabs at the top of Overview are gone, and Branch is a filter like the
+others.** "Academy wise / Branch wise" and the Branch dropdown were two controls
+for one fact — academy-wide IS the branch filter with nothing chosen — and the
+Branch field only appeared once you had already found the right tab. The filter
+row now reads **Course, Period, Branch**, and it is always all three.
+
+**The filters take checkboxes, so they take more than one answer.** Tick two
+branches and every figure on the screen is those two together; tick none and it
+is the whole academy. The field says which — "All branches", one branch by name,
+or "2 branches" — and the caption under each chart says the same thing in
+words, because it is generated from the same selection the figures are counted
+from.
+
+**"Not expected" is no longer a category.** The ring shows **Present** and
+**Absent** and nothing else, and its percentage is now the share of what was
+actually expected of the members being counted. That is what made the third
+segment unnecessary rather than merely unwanted: it only ever existed to stop a
+member on a four-day schedule reading as two sessions short of a six-day week,
+and she now reads at her own attendance instead.
+
+**Three sections, three charts, one set of numbers.** Under the ring the screen
+answers three different questions and draws each with the mark that suits it:
+
+- **Based on member** — a ranked bar per member, lowest attendance first, six of
+  them, with the whole list still on Reports. The bar's length is her session
+  count, so a member due at ten does not look like a member due at three.
+- **Based on course** — every course as a dot on one shared 0–100% scale, so the
+  spread down the column is the finding rather than four lengths to compare.
+- **Based on period** — the period split into its own parts (a day each for a
+  week, a week each for a month) and drawn as a line, with the period's own
+  figure as the line to read it against. A stretch with nothing scheduled leaves
+  a gap in the line instead of dropping to zero, because those are different
+  facts.
+
+Every one of them is counted from the same member list, narrowed the same way.
+The period line asks the same query as the ring, once per part, over ranges that
+join up exactly — so the points add back up to the ring rather than answering a
+second question with a second number.
+
+A summary row under the ring carries the three counts worth knowing at a glance:
+how many members are in the figures, how many courses they span, and how many
+the follow-up rule has flagged — that last one opens the weekly review.
+
+## Unreleased — The member import is a dialog, and every imported member has an address
+
+**Bulk Import opens over the screen you were on, not instead of it.** It used
+to be a page: press Bulk Import and the workspace you were importing into was
+replaced by a window of its own for the whole of the import. It is a pop-up
+over a dimmed backdrop now — the same shape Upload Attendance already has —
+so the list you are adding people to stays behind it, and the close in the
+corner or a tap beside the card puts you straight back on it. Nothing about
+the import itself changed: same link, same buttons, same words.
+
+**And the result arrives in that same card.** Choosing the file used to open a
+second dialog on top of the first when it finished — two cards, two dimmed
+backdrops and two ways out for one action. Now the card you started in turns
+into **Import complete**, with the file name under the title and one **Done**.
+
+**The rows that did not import are on that card, and still downloadable.**
+Each one is named with what happened to her and the row number in your
+spreadsheet, so a handful of refusals needs nothing else. **Download these
+rows** is under the list for the files where that is not enough — two hundred
+refusals in a five-hundred-row import is not a list anybody scrolls, and the
+fix happens in the workbook anyway. Either way: fix those rows in your own file
+and choose it again; the ones that imported are skipped next time, not
+repeated.
+
+**Every member in an import file needs an email address.** A row without one is
+not imported: it is counted under **Failed**, named on the Import complete card
+with the reason, and carried into the error report so it can be fixed in place
+and the same file imported again. The template already asked for the address in
+its instructions and in the Email cell's own prompt — what changed is that the
+screen no longer says the opposite. The help behind **What the file needs** used
+to read "Only her name is required"; it now says her name and her email address
+are both required, and the refusal on a nameless row names both cells too.
+
+This is about the member file only. A member already on the register with no
+address still has her attendance imported, is still counted in the reports, and
+is still excluded from sends with the reason shown.
+
+**Choosing the file is still the whole import.** Nothing to approve, nothing to
+preview: the file is read, every row is judged, the ones that can be written are
+written, and the Import complete card says what happened — Imported, Skipped,
+Failed, No course. The description of the screen that still promised a preview
+and a confirm step was the last thing describing an import that no longer works
+that way.
+
+## Unreleased — A course fits on the screen again
+
+**The course page opens on the work instead of on its own name.** The name used
+to be printed twice — once as a `Courses → Postnatal` line and again as a
+banner underneath — above two more rows of branch and schedule. It is said once
+now, at heading size, with the branches and the days it runs on the line below.
+
+**Send Communication, Upload Session and Add Member sit together.** They were
+three separate places: Send was up in the header, Upload could only be reached
+by finding a day that was waiting for its file, and Add Member was a wide bar
+pinned across the middle of the page that followed you as you scrolled. They are
+one group at the top now. On a phone they stack full width; on a desktop they
+line up on the right of the course name. Every one of them still goes exactly
+where it went before, and the day that is waiting for a file keeps its own
+Upload button — that one arrives already knowing which session it is.
+
+**The back arrow and the date arrows can no longer be mistaken for each other.**
+There is one back arrow, beside the course name, and it means leave this course.
+The date arrows are smaller, squarer and sit at the two ends of the week strip,
+where the thing they move actually is.
+
+**A key to the day icons, beside the week it explains.** Present, Absent,
+Awaiting upload and Not expected, in one line.
+
+**The roster has a search box.** Type part of a name or an address and the list
+narrows; the count beside the heading follows it, and clearing the box brings
+everybody back. It searches the members already on this course — nothing is
+re-fetched, and no filter you had set is changed.
+
+**Everything got shorter.** The date cards, the day panel, the member rows and
+the spacing between them all lost the padding they did not need, and long email
+addresses now end in an ellipsis instead of pushing the Active pill and the edit
+button off the side of the card. Nothing was removed from the page: the branch
+filter, the follow-up rule, the members with no email on file and the two ways
+to resolve them, the delete, and every loading, error and empty message are all
+still there, saying the same things.
+
+## Unreleased — A member's days are already on the screen, in colour
+
+**The day chips now show which days are actually in force, filled in the same
+accent the course form uses.** Adding a member, every day her course runs is
+already on the moment you pick the course — take off the ones she will not
+attend, and if you leave them all on she simply follows the course. Nobody
+re-picks days the course already states.
+
+**Editing a member shows HER days, not a blank row.** A member who attends two
+days of a four-day course opens with those two filled and the other two
+available; the line above the chips says they are her own days and what
+clearing them means. Before this, the row opened empty however many days she
+was on — and saving that empty row quietly put her back on the whole course
+timetable, so correcting somebody's email address could change the days she was
+expected.
+
+**Picking the course or branch you already had picked no longer undoes
+anything.** Re-opening the course list and choosing the same course used to
+wipe the branch and blank out every day, with nothing to bring them back. The
+same was true of the course form's message template: choosing the template
+already shown threw away the wording written for that course.
+
+## Unreleased — Every form says which fields it will not do without
+
+**A red asterisk now sits beside every field a form cannot be saved without.**
+Course, branch, days, name, mobile number, start date, the answer to a security
+question — whichever ones a given form waits for, it says so before you start
+filling it in, rather than greying out the button and leaving you to work out
+which box is the empty one.
+
+**What is marked is decided by the form itself.** The asterisk goes exactly
+where the save is already blocked, so a field without one really can be left
+empty: the end date of a one-day holiday, a member's joining date, a staff
+member's role label, the times an offering runs, and — as before — the email
+address on the registration form.
+
+**The mark does not depend on seeing red.** It is an asterisk first, and it
+reads out as the word "required" to a screen reader.
+
+## Unreleased — Uploading a register is two choices and a list
+
+**The upload is no longer four steps and a second screen.** It is Course, File,
+Import. The spinning "Matching names" ring is gone — it was an animation of a
+network call — and so is the review that walked you through one name per screen
+before anything could be written.
+
+**Choosing the file starts the read.** There is no "Process" button any more:
+picking the register was already the instruction, and the button just asked you
+to say so twice. The card shows *Reading…* while it works, and what the file
+says it is — meeting code, date, course — now sits with the Import button,
+where checking it can still change what you do.
+
+**Everything the file can resolve on its own is simply imported.** A name that
+matches a member is marked present without being mentioned. A member with no
+email address is marked present too, counted in one line, and listed under
+**No email** on her course — where an address belongs — instead of interrupting
+the import to ask about her.
+
+**The names that do need you are one list, one tap each.** Each row shows the
+name exactly as the file spelled it, and the answers beside it: the member it
+probably is (already chosen, with her course and branch, so you are checking
+rather than searching), **New member**, or **Not a member** for the instructor
+and anyone else who was in the call but is not on the register.
+
+**One thing still stops the import, on purpose.** When two members carry the
+same name, nothing is chosen for you and the Import button waits. RosiFit has
+never guessed which of two women was in the class and it still does not.
+
+**"Add display name to existing member" now moves her attendance too.** It used
+to save the name and nothing else — which taught future files the right thing
+and left the current one wrong, with the class marked against a duplicate and
+the real member marked absent. Picking the member she is now moves her
+attendance across, moves her other display names, and retires the duplicate.
+The dialog says all of that before you confirm, opens at the top of the screen,
+and has a button to press — tapping a name no longer commits it.
+
+## Unreleased — Sending is a list of people, and it says who already got one
+
+**You now tick who gets the email.** The send dialog lists the members the
+week's rule flagged, each with a box, and sends to the ones that are ticked.
+Everyone who has not already been written to starts ticked, so the ordinary
+send is still one tap — but a member you would rather not mail this week is now
+one tap away from being left out, instead of impossible to leave out.
+
+**A member who has already had this week's message says so on her row**, with
+the date, and her box starts empty. Writing to her twice is still allowed; it
+just has to be meant now. Nothing on the screen used to say it had happened at
+all, even though every send has always been recorded.
+
+**The template no longer takes up half the dialog.** The wording is the
+course's — it is written there, it is the same on every send, and it could not
+be changed from this screen anyway. One line says so and points at where it
+lives. What is left is the thing you actually decide: who receives it.
+
+**Sending fewer people than the rule named now says so out loud.** The heading
+counts what is ticked out of the whole flagged list, and the confirmation names
+how many flagged members will not be contacted and how many are getting a
+second message this week. A member with no email address is still listed by
+name with her reason, and still counted in every figure.
+
+## Unreleased — The import file checks itself, and stops asking for a date
+
+**Every column in the member import template now refuses a bad cell.** Course
+and Branch were the only two that did, so a one-character name or an address
+with no @ in it went into the sheet quite happily and only failed once the
+file reached RosiFit — one round trip per mistake, on a file that may carry
+500 rows. Full Name, Email and Display Names now stop the cell where it is
+typed, and each says what it wants when you click it.
+
+**Display names are separated by commas**, and the column header says so —
+"Display Names (separate with commas)". It used to be a semicolon, mentioned
+on the instructions sheet and nowhere near the column itself. Files built from
+the old template still import: a semicolon is still understood.
+
+**No Branch column unless you have more than one branch.** A dropdown with a
+single entry in it is a question whose answer is already known, and it was
+being asked on every row. Where the column is gone, each member joins the one
+branch her course runs at.
+
+**Nobody is asked for a joining date any more.** The Joined On column is gone
+and every member a file imports joins on the day it is imported. It is the
+answer that was right nearly every time, and it was the one cell you could
+write in the wrong shape.
+
+**"What the file needs" is now a pop-up.** The description of the file and the
+table of what each column means used to sit on the screen above the two
+buttons — read once, scrolled past every time after. It is a dialog over the
+screen now, in the place the rest of the app puts an explanation.
+
+## Unreleased — Registering is one form, and it says what it needs
+
+**The registration form no longer has two steps.** Your details and the two
+recovery questions used to sit on separate tabs behind a progress bar, so half
+of what registering asks for was on a screen you could not see. It is one form
+now. The two tab names stayed on as headings, so nothing moved that you would
+have to hunt for.
+
+**"Academy you administer" is gone.** The academy is RosiFit. The box was
+asking a question with one answer — and it was never sending that answer
+anywhere.
+
+**Every field you have to fill now carries a red asterisk**, and a screen
+reader says "required" out loud rather than leaving it to the colour. Email
+carries neither: it says "Optional." underneath, because it always was.
+
 ## Unreleased — A member can be marked inactive, and two rows lost a floor
 
 **Marking somebody inactive now exists.** Tap the Active pill on her row in a

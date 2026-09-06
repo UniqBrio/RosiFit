@@ -1,0 +1,18 @@
+FAIL-FIRST — src/components/editDialog.test.ts (final spec) replayed against the PRE-FIX tree
+Pre-fix tree: git archive HEAD (8b16230, 06-Sep-2026) — app/ and src/, unpatched
+Command: EDIT_DIALOG_SPEC_ROOT=<that tree> npx tsx --test src/components/editDialog.test.ts
+
+ok 1 - the spec is looking at a real tree
+not ok 2 - Add-vs-Edit is decided by the route, never by the lookup result
+  error: 'app/member/edit.tsx: the title must be chosen by `editing` -- the name that says a record was asked for. Chosen from the looked-up record instead, "still loading" and "not on the register" both render as the ADD form.'
+not ok 3 - a form asked for a record answers loading before it renders
+  error: 'app/member/edit.tsx: nothing waits on `roster`, the query that supplies the record being edited. Until it lands, the form renders as though the record does not exist.'
+not ok 4 - a form asked for a record answers a failed read
+  error: 'app/member/edit.tsx: a failed read of `roster` is not answered, so it reads as "no such record" -- and a form that has decided there is no record offers to create one.'
+not ok 5 - a record asked for and not found is said, not treated as Add
+  error: 'app/member/edit.tsx: a record that was asked for and is not there must be SAID. Falling through to the Add form offers to create a record that already exists somewhere.'
+not ok 6 - the create path is unreachable once a record id was asked for
+  error: 'app/member/edit.tsx: Save can still reach `createMember` when the route asked for an existing record and the lookup came back empty -- that writes a duplicate.'
+# tests 6
+# pass 1
+# fail 5

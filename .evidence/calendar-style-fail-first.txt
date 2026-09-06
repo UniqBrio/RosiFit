@@ -1,0 +1,63 @@
+Fail-first evidence — src/components/monthGrid.test.ts, src/components/dialogSize.test.ts
+Recorded 06-Sep-2026 for requests/2026-09-06-calendar-style-all-date-fields.md
+
+Both specs were run against the implementation each one REPLACES, so the
+evidence is what the app actually did rather than a strawman.
+
+
+1. monthGrid.test.ts  vs  the grid as it shipped
+   ------------------------------------------------------------------
+   The naive version is the previous grid: this month's days only, with the
+   space before the 1st left blank.
+
+       export function monthCells(year, month) {
+         const days = new Date(year, month + 1, 0).getDate();
+         const out = [];
+         for (let d = 1; d <= days; d++) out.push(iso(new Date(year, month, d)));
+         return out;
+       }
+
+   $ npx tsx --test <scratch>/monthGrid.test.ts        # previous grid
+   not ok 1 - every month is six whole weeks, whatever its length
+   not ok 2 - the week starts on Monday, not Sunday
+   ok 3 - a month that begins on a Monday still begins its own grid
+   not ok 4 - a month that begins on a Sunday draws a whole leading week
+   ok 5 - the days of the month are unbroken and in order
+   not ok 6 - the days either side are the neighbouring months, not blanks
+   not ok 7 - January reaches back into the previous year
+   not ok 8 - December reaches forward into the next year
+   ok 9 - February in a leap year keeps its 29th
+   ok 10 - the month key is the prefix an ISO day of that month carries
+   not ok 11 - every cell is a real ISO day and no day is drawn twice
+   # tests 11
+   # pass 4
+   # fail 7
+
+   The four that pass are the ones the old grid gets right by construction:
+   it does draw its own month, in order, with the right number of days, and
+   the month key never depended on the grid at all.
+
+
+2. dialogSize.test.ts  vs  the cap as it shipped
+   ------------------------------------------------------------------
+   The naive version is the line that was in FormDialog.tsx — the cap applied
+   unconditionally, which is TD-021:
+
+       export function dialogMaxHeight(viewportHeight) {
+         return viewportHeight * DIALOG_MAX_H;
+       }
+
+   $ npx tsx --test <scratch>/dialogSize.test.ts       # the shipped cap
+   ok 1 - a real viewport is capped at 90% of itself
+   not ok 2 - a viewport of zero is not capped at zero — it is not capped at all
+     expected: undefined
+     actual: 0
+   not ok 3 - a viewport that is not a number does not become a NaN height
+   not ok 4 - a negative measurement is treated as no measurement
+   # tests 5
+   # pass 2
+   # fail 3
+
+   Assertion 2 is the defect itself, in one line: 0 * 0.9 = 0, and a card of
+   height 0 with `overflow: hidden` is the 2px sliver TD-021 measured on the
+   built app — the form clipped away behind its own calendar.

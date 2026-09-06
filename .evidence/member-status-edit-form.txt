@@ -1,0 +1,82 @@
+Built-page evidence - the Status field on the Edit member form
+Recorded 06-Sep-2026 for requests/2026-09-06-member-status-in-edit-form.md
+
+The .harness/ scripts are Linux-only (they hardcode /opt paths), so this was
+run the way this machine can run it: `npm run export`, the dist/ tree served
+statically, and Playwright 1.63 driving the BUILT page - the same artifact a
+browser would get. Both themes are forced through the stored preference
+(`rosifit.theme.mode`), not through prefers-color-scheme, because that is what
+ThemeProvider actually reads: emulating the colour scheme alone left both runs
+rendering dark, which is why the first pass reported identical colours for
+"light" and "dark" and proved nothing.
+
+Fixtures: member 1 (Divya, active), member 5 (Nithya, inactive).
+
+TWO DEFECTS THIS FOUND, both fixed before the run below:
+
+  1. `accessibilityState={{ selected }}` produced NO attribute at all on the
+     built page - role="radio" with no checked state, so a screen reader
+     announced both choices as unpicked. This is the same React Native Web
+     0.21 hole `src/components/Dropdown.tsx` already documents; the fix is the
+     same, `aria-checked` written directly.
+
+  2. Space did not operate the control. React Native Web's Pressable answers
+     Enter and lets Space through to the page - the keydown was observed
+     arriving at the element with no press following it. Space is the key that
+     picks a radio (CP-22, and the ARIA pattern before it), so the two choices
+     now carry their own handler. The two controls beside them on this form -
+     the day chips and the primary-address radios - do NOT answer Space
+     either, and expose no checked state; that is pre-existing and untouched
+     here.
+
+$ node verify.mjs
+  [light] body background rgba(0, 0, 0, 0)
+PASS  light edit?id=1 shows the Status section
+PASS  light edit?id=1 opens on Active (her record says so)
+PASS  light edit?id=1 Inactive is not picked
+PASS  light each choice says what it means
+PASS  light no consequence notice before anything changes
+PASS  light picking Inactive moves the answer in the accessibility tree too
+PASS  light the consequence notice appears on the change
+PASS  light the notice says the change is reversible
+PASS  light the footer still offers Save Changes
+PASS  light putting the pick back removes the notice
+  [light] picked border rgb(214, 21, 127) · unpicked rgba(28, 10, 23, 0.14) · row bg rgb(255, 255, 255)
+PASS  light the picked row is drawn apart from the other
+PASS  light edit?id=5 opens on Inactive (her record says so)
+PASS  light add form: no page errors
+PASS  light the Add form does not offer a status
+  [dark] body background rgba(0, 0, 0, 0)
+PASS  dark edit?id=1 shows the Status section
+PASS  dark edit?id=1 opens on Active (her record says so)
+PASS  dark edit?id=1 Inactive is not picked
+PASS  dark each choice says what it means
+PASS  dark no consequence notice before anything changes
+PASS  dark picking Inactive moves the answer in the accessibility tree too
+PASS  dark the consequence notice appears on the change
+PASS  dark the notice says the change is reversible
+PASS  dark the footer still offers Save Changes
+PASS  dark putting the pick back removes the notice
+  [dark] picked border rgb(214, 21, 127) · unpicked rgba(255, 255, 255, 0.12) · row bg rgb(23, 10, 20)
+PASS  dark the picked row is drawn apart from the other
+PASS  dark edit?id=5 opens on Inactive (her record says so)
+PASS  dark add form: no page errors
+PASS  dark the Add form does not offer a status
+PASS  keyboard: both choices are Tab-reachable (tabindex 0/0)
+PASS  keyboard: Enter operates the choice
+PASS  keyboard: Space operates the choice
+  hydration on /member/edit?id=1: Minified React error #418; visit https:/
+  hydration on /course/edit?id=c1: Minified React error #418; visit https:/
+  hydration on /offering/edit?id=o1: clean
+  hydration on /member/edit: clean
+
+ALL CHECKS PASS
+
+NOT CAUSED BY THIS CHANGE, found while running it: hydrating /member/edit?id=1
+logs React error #418 (a text mismatch). The prerendered dist/member/edit.html
+is the ADD form - "Welcome a new member", "Her name" - because the prerender
+has no `id` param, so the client rendering "Edit member" and her record
+mismatches on the title alone, before reaching anything added here.
+/course/edit?id=... , which this change does not touch, logs the identical
+error; /member/edit with no id and /offering/edit?id=... are clean. Worth a
+request of its own.

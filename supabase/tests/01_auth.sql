@@ -8,9 +8,21 @@ insert into public.app_users (auth_user_id, kind, name, phone_e164) values
   ('11111111-1111-1111-1111-111111111111','super_admin','Rosi Owner','+919994871158'),
   ('22222222-2222-2222-2222-222222222222','staff','Priya Menon','+918056329742');
 
-select t.rejects($$insert into public.app_users (auth_user_id,kind,name,phone_e164)
-    values ('33333333-3333-3333-3333-333333333333','super_admin','Impostor','+919000000001')$$,
-  'only one super admin can exist', 'one_super_admin');
+-- AMENDED 06-Sep-2026 (0033). This asserted 'only one super admin can exist'
+-- against the one_super_admin index, which 0033 drops: RosiFit is ONE academy
+-- with MANY super admins, and registration creates an admin rather than the
+-- academy. The assertion is REVERSED rather than deleted, so the spec still
+-- pins the behaviour at this exact point instead of falling silent about it.
+-- The harness has ok / eq / rejects and no lives_ok, so the positive case is
+-- written as the insert itself followed by a count: if the dropped index were
+-- still there the insert would raise and the script would abort before the
+-- assertion, which is exactly the failure this is meant to catch.
+insert into public.app_users (auth_user_id,kind,name,phone_e164)
+  values ('33333333-3333-3333-3333-333333333333','super_admin','Second Admin','+919000000001');
+select t.eq(
+  (select count(*)::int from public.app_users where kind = 'super_admin' and deleted_at is null),
+  2, 'a second super admin is allowed (0033 dropped one_super_admin)');
+delete from public.app_users where phone_e164 = '+919000000001';
 
 select t.rejects($$insert into public.app_users (auth_user_id,kind,name,phone_e164)
     values ('33333333-3333-3333-3333-333333333333','staff','Dup','+918056329742')$$,

@@ -1,12 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { H2, Body, Muted, Label, Button, Skeleton, ErrorState, EmptyState } from '../src/components/ui';
 import { Icon } from '../src/components/Icon';
 import { useTheme } from '../src/theme/ThemeProvider';
 import { useToast } from '../src/components/Toast';
-import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../src/theme/tokens';
-import { MATCH_ROWS, OUTCOME_META } from '../src/data/mock';
+import { SPACE, RADIUS, STATUS, statusSurface } from '../src/theme/tokens';
+import { MATCH_ROWS } from '../src/data/mock';
 import { usePendingSessions, useCourses } from '../src/data/hooks';
 import type { PendingSession } from '../src/data/repository';
 import { isConfigured } from '../src/lib/supabase';
@@ -15,29 +15,103 @@ import {
   CSV_COLUMNS, type MeetMeta,
 } from '../src/data/meetCsv';
 import { sha256Hex, pickCsvFile } from '../src/data/csv';
-import { csvPreview, type PreviewResult } from '../src/data/api';
-import { setStagedImport } from '../src/data/pending';
+import { csvPreview, csvCommit, type ImportDecision, type PreviewResult } from '../src/data/api';
 import { scopeSessions } from '../src/data/uploadScope';
 import { FormDialog } from '../src/components/FormDialog';
 
-const STEPS = ['Course', 'File', 'Process', 'Summary'] as const;
+/**
+ * THERE IS NO STEP BAR ANY MORE, because there is no longer a sequence to
+ * track. Choose the course, choose the file; the file is read AND IMPORTED on
+ * the pick, and what is left is the result. A progress bar over two choices
+ * was measuring a journey that no longer exists.
+ *
+ * WHAT WENT WITH IT: the "Import N rows" button, and the list of rows that
+ * needed a person which that button was waiting on. Both are gone on request
+ * -- "directly import data no confirmation". The preview/commit split behind
+ * them has NOT gone: csvPreview still classifies and stages, csvCommit still
+ * writes every row in one transaction. The two now happen back to back
+ * without stopping to ask.
+ */
+
+/** the phases this dialog actually has, which is not the same as steps */
+type Phase = 'choose' | 'pick' | 'clash' | 'working' | 'done';
 
 /**
- * WHAT THIS SCREEN USED TO REQUIRE
- * A session to upload AGAINST. Step one listed `sessions` rows already
- * scheduled and waiting for a file, and the import carried the offering and
- * the date chosen from that list.
+ * WHAT THE IMPORT DOES WITH A ROW NOBODY WAS ASKED ABOUT.
  *
- * A course whose classes are not on a fixed timetable has no such rows. The
- * screen said "Every session has a file" and there was NO WAY IN AT ALL --
- * for the case that matters most, an academy that schedules as it goes.
+ * An exact match -- her canonical name, or a display name already confirmed
+ * for her -- is her, and her attendance is marked. Everything else becomes a
+ * NEW MEMBER WITH NO EMAIL, which is what puts her in the No email group on
+ * the course, next to the two buttons that resolve her.
  *
- * So the first choice is the COURSE, which is a thing that always exists, and
- * the DATE comes from the file: Google Meet writes its meeting code and the
- * created and ended timestamps above the table, and that is what says which
- * session this is. Sessions still awaiting a file are offered first as
- * shortcuts, because when there IS one it is almost always the answer.
+ * WHY CREATE RATHER THAN LINK, for a fuzzy hit the matcher is 90% sure of,
+ * or for a name two members share: because the two mistakes are not the same
+ * size. A wrong LINK marks the wrong woman present and looks exactly like a
+ * right one -- nothing on any screen says it happened. A wrong CREATE puts a
+ * name you recognise in the No email group, where "add display name to
+ * existing member" folds her into the real member and carries her attendance
+ * across with her (0032). Visible and two taps to undo beats invisible and
+ * permanent. Confirmed by the requester on 06-Sep-2026.
+ *
+ * This is what C-79's "a fuzzy hit is never auto-accepted" becomes: it is
+ * still never accepted AS a match. It is filed as somebody new until a person
+ * says otherwise.
+ *
+ * The instructor is not in here at all: csv-import sets staff names aside
+ * before matching, so she never reaches this function as an unmatched row.
  */
+function autoDecisions(rows: { row: number; kind: string; candidates: unknown[] }[]): ImportDecision[] {
+  return rows
+    .filter(r => r.kind !== 'matched' && r.kind !== 'noEmail')
+    .map(r => ({
+      row: r.row,
+      action: 'add_as_new' as const,
+      // C-80 wants an acknowledgement that this is a different person from
+      // the candidate shown. Nobody was shown one, and this IS the
+      // acknowledgement: the row is deliberately filed as somebody new.
+      confirm_different_person: r.candidates.length > 0,
+    }));
+}
+
+/**
+ * What the import did, in the terms the requester asked to see it in:
+ * "how many student with email and no email".
+ *
+ * WITH EMAIL is `matched` -- one confident candidate who has an address on
+ * file (csv-import classifies exactly that, index.ts:183).
+ * NO EMAIL is everybody else who landed: `noEmail` (she is a member, the
+ * address is what is missing) plus every row filed as somebody new, because a
+ * member created by an import has no address either. Both groups are marked
+ * present; the difference is only whether the follow-up rule can reach them.
+ */
+type Outcome = {
+  session_date: string;
+  with_email: number;
+  no_email: number;
+  new_members: number;
+  /** what actually landed on the register */
+  imported: number;
+  /** blank or repeated names, never matched */
+  dropped: string[];
+  /** names that belong to staff, set aside before matching */
+  staff: string[];
+  /** names Meet wrote more than once, counted once */
+  duplicates: string[];
+  /** the file this one corrected, when the day already had one */
+  supersedes: string | null;
+};
+
+/** ISO day -> "Sun 31 Aug", the way every other date on this screen reads */
+const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function dayLabel(iso: string | null): string {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return '—';
+  const [y, m, d] = iso.split('-').map(Number);
+  // Constructed in LOCAL time from the parts: new Date('2026-08-31') is
+  // midnight UTC, which is the 30th for anybody west of Greenwich.
+  const date = new Date(y, m - 1, d);
+  return `${DOW[date.getDay()]} ${d} ${MON[m - 1]}`;
+}
 
 function UploadBody() {
   const { theme } = useTheme();
@@ -54,7 +128,7 @@ function UploadBody() {
   // the upload reachable for an academy that schedules as it goes.
   const courses = useCourses(forced);
 
-  const [step, setStep] = useState(1);
+  const [phase, setPhase] = useState<Phase>('choose');
   /**
    * What the file will be imported into. An OFFERING (a course at a branch),
    * never a session: the session is derived from the file's own date, and may
@@ -68,23 +142,36 @@ function UploadBody() {
   const [session, setSession] = useState<PendingSession | null>(null);
   const [file, setFile] = useState<
     { name: string; text: string; rows: number; meta: MeetMeta } | null>(null);
-  const [preview, setPreview] = useState<PreviewResult | null>(null);
-  const [progress, setProgress] = useState(0);
   const [failure, setFailure] = useState<string | null>(null);
-  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => () => { if (timer.current) clearInterval(timer.current); }, []);
+  /** what the import did, once it has done it */
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
+  /**
+   * A file whose own day is not the day she opened. Held here until she says
+   * which day wins -- the ONE question this flow still asks, because the file
+   * updating a register from last week is not something to discover
+   * afterwards.
+   */
+  const [clash, setClash] = useState<
+    { file: NonNullable<typeof file>; fileDay: string; openedDay: string } | null>(null);
 
   const scope = scopeSessions(pending.data ?? [], courseId, date);
   const sessions = scope.sessions;
+
   /**
-   * What step 2 says she is uploading FOR.
+   * THE DAY SHE OPENED, which is not always a session.
    *
-   * This used to fall back to `sessions[0].label` -- the first day anywhere in
-   * the academy awaiting a file. Picking a course with no session at all then
-   * announced "Fri 22 Aug · Prenatal Flow", a day she had not chosen and a
-   * course that might not be hers. A screen guessing which session it is about
-   * is the one thing this flow cannot afford.
+   * It used to be read off `session` alone -- a PendingSession, and those
+   * exist only for days already AWAITING a file. So the requester's own case
+   * (sitting on 6 Sep, uploading a 31 Aug export) never asked anything: 6 Sep
+   * is not awaiting, `session` was null, and the file silently updated the
+   * 31 Aug register. The date parameter is the day she tapped whether or not
+   * anything is scheduled on it, so that is what the check reads.
+   */
+  const openedDay = session?.session_date
+    ?? (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null);
+
+  /**
+   * What the file step says she is uploading FOR.
    *
    * A shortcut from a waiting day names that day. A course names the course:
    * the day is not known yet, because it comes from the file.
@@ -95,11 +182,6 @@ function UploadBody() {
   /**
    * One session means the choice was already made, on the screen she tapped.
    * Asking her to make it again is where she picks the wrong one.
-   *
-   * Guarded on `session` rather than on a ran-once ref: if she uses "Choose a
-   * different session" the preselect must not put her straight back, and the
-   * back-out clears the params, so this stops applying rather than fighting
-   * her.
    */
   useEffect(() => {
     if (!scope.preselect || session) return;
@@ -109,7 +191,7 @@ function UploadBody() {
       course: scope.preselect.course,
       branch: scope.preselect.meta.split(' · ')[0] ?? '',
     });
-    setStep(2);
+    setPhase('pick');
   }, [scope.preselect, session]);
 
   /**
@@ -135,9 +217,8 @@ function UploadBody() {
   useEffect(() => {
     if (target || !courseId || targets.length !== 1) return;
     setTarget(targets[0]);
-    setStep(2);
+    setPhase('pick');
   }, [target, courseId, targets]);
-  const picked = file !== null;
 
   const choose = async () => {
     setFailure(null);
@@ -149,154 +230,191 @@ function UploadBody() {
       // Meet export actually has (C-74).
       const parsed = parseMeetCsv(chosenFile.text);
       if (parsed.rows.length === 0) throw new Error('That file has no attendance rows.');
-      setFile({
+      const picked = {
         name: chosenFile.name, text: chosenFile.text, rows: parsed.rows.length,
         // The lines Meet writes above the table. They are the only evidence
-        // in the file of WHICH meeting it came from, which is what lets the
-        // map below say whether it matches the session picked.
+        // in the file of WHICH meeting it came from, and the only thing that
+        // says which day it covers.
         meta: parsed.meta,
-      });
-      flash(`${chosenFile.name} selected`);
+      };
+      setFile(picked);
+
+      const fileDay = meetCreatedDate(parsed.meta.created);
+      // A file with no "Created on" line cannot be imported at all. It stays
+      // here, where the panel below names what is missing and Browse is still
+      // there to try another export.
+      if (!fileDay) return;
+
+      /**
+       * THE ONE QUESTION LEFT, and the requester asked for it by name.
+       *
+       * The day has always come from the FILE, never from the day she
+       * tapped -- so a 31-Aug export opened from 6-Sep silently updated the
+       * 31-Aug register, and the only warning was a line of grey text she had
+       * already scrolled past. It is the right behaviour and the wrong way to
+       * find out about it, so now it is asked: which day did you mean.
+       *
+       * Only when a day was actually CHOSEN. Opened from the Attendance list
+       * or a course header there is no day to disagree with, and inventing a
+       * question there would put a dialog in front of every ordinary import.
+       */
+      if (openedDay && !meetMatchesSession(parsed.meta.created, openedDay)) {
+        setClash({ file: picked, fileDay, openedDay });
+        setPhase('clash');
+        return;
+      }
+      void run(picked, fileDay);
     } catch (err) {
       setFailure(err instanceof Error ? err.message : 'That file could not be read.');
     }
   };
 
-  const run = async () => {
-    setStep(3); setProgress(0); setFailure(null);
-    if (timer.current) clearInterval(timer.current);
-    // The bar is honest about being indeterminate: it advances while the
-    // request is out and finishes when the answer lands, rather than
-    // pretending to know how far along a server call is.
-    timer.current = setInterval(() => setProgress(p => (p >= 92 ? 92 : p + 7)), 70);
+  /**
+   * READ, MATCHED AND WRITTEN, in one go.
+   *
+   * `source` and `day` are passed rather than read from state: setFile has
+   * not landed yet in the tick that calls this, and importing the PREVIOUS
+   * file is exactly how the wrong register gets written.
+   */
+  const run = async (source: NonNullable<typeof file>, day: string) => {
+    setFailure(null);
+    setPhase('working');
 
-    if (!isConfigured || !file || !target?.offering_id) {
-      setTimeout(() => {
-        if (timer.current) clearInterval(timer.current);
-        setProgress(100); setStep(4);
-      }, 900);
+    if (!isConfigured) {
+      // No project configured: the fixtures answer, and they answer at once.
+      setOutcome(fixtureOutcome(day, source));
+      setPhase('done');
+      return;
+    }
+    // NOT folded into the line above, deliberately. Reaching here with no
+    // offering is a bug -- the file step is only reachable once one is
+    // chosen -- and answering a bug with fixture numbers would report an
+    // import that never happened, against a course nobody picked.
+    if (!target?.offering_id) {
+      setFailure('No course is selected, so there is nothing to import into. Nothing was written.');
+      setPhase('pick');
       return;
     }
 
     try {
-      const parsed = parseMeetCsv(file.text);
-      const day = meetCreatedDate(parsed.meta.created);
-      if (!day) throw new Error(
-        'This file carries no “Created on” line, so RosiFit cannot tell which day it covers.');
-      const result = await csvPreview({
+      const parsed = parseMeetCsv(source.text);
+      const deduped = dedupeRows(parsed.rows);
+      const preview: PreviewResult = await csvPreview({
         offering_id: target.offering_id,
         // FROM THE FILE, not from a list. The session this belongs to is
         // whatever day the meeting ran; if no such session exists yet, the
         // import creates it (0024).
         session_date: day,
-        file_name: file.name,
-        file_sha256: await sha256Hex(file.text),
+        file_name: source.name,
+        file_sha256: await sha256Hex(source.text),
         meeting_code: parsed.meta.code,
         meeting_started_at: parsed.meta.created,
-        // Deduped before it is sent, so the count reviewed is the count
-        // written: one person, one session, one day.
-        rows: dedupeRows(parsed.rows).rows,
+        // Deduped before it is sent, so the count imported is the count the
+        // file describes: one person, one session, one day.
+        rows: deduped.rows,
       });
-      setPreview(result);
-      if (timer.current) clearInterval(timer.current);
-      setProgress(100);
-      setStep(4);
+      // NO STOP HERE. This is the whole of the change: the decisions that a
+      // person used to make one row at a time are made by autoDecisions, and
+      // the commit follows immediately.
+      const result = await csvCommit(preview.import_id, autoDecisions(preview.rows));
+      const c = preview.counts;
+      setOutcome({
+        session_date: day,
+        with_email: c.matched ?? 0,
+        no_email: (c.noEmail ?? 0) + (c.possible ?? 0) + (c.ambiguous ?? 0) + (c.unmatched ?? 0),
+        new_members: result.new_members,
+        imported: result.present_or_extra,
+        dropped: preview.dropped_names ?? [],
+        staff: preview.staff_names ?? [],
+        duplicates: [...new Set(deduped.duplicates)],
+        supersedes: preview.supersedes?.file_name ?? null,
+      });
+      setPhase('done');
     } catch (err) {
-      if (timer.current) clearInterval(timer.current);
-      setFailure(err instanceof Error ? err.message : 'That file could not be processed.');
-      setStep(2);
+      // The whole file failed together -- nothing landed -- so say that rather
+      // than leaving anyone to wonder which half went in.
+      setFailure(err instanceof Error
+        ? `${err.message} Nothing was written.`
+        : 'The import did not run. Nothing was written.');
+      setPhase('pick');
     }
   };
 
-  // Live counts once a file has been staged; the fixtures' five outcomes
-  // otherwise, which is what the walkthrough and the route harness show.
-  const rows = preview?.rows ?? MATCH_ROWS;
-  const decisionRows = preview
-    ? rows.filter(r => r.kind !== 'matched')
-    : MATCH_ROWS.filter(r => r.kind !== 'matched');
-  const blocking = decisionRows.filter(r => OUTCOME_META[r.kind].blocks).length;
-  const needDecision = decisionRows.length;
-  const rowsRead = preview ? preview.rows.length + preview.dropped_count : 18;
-  const matchedCount = preview ? (preview.counts.matched ?? 0) + (preview.counts.noEmail ?? 0) : 15;
-  const ambiguousCount = preview ? (preview.counts.ambiguous ?? 0) : 3;
-
   const warnInk = theme.isDark ? STATUS.awaiting.fgDark : STATUS.awaiting.fgLight;
   const okInk = theme.isDark ? STATUS.present.fgDark : STATUS.present.fgLight;
+  const dangerInk = theme.isDark ? STATUS.absent.fgDark : STATUS.absent.fgLight;
 
   /* ----------------------------------------------- what the file says it is
    *
-   * THIS PANEL CHANGED MEANING. It used to ask "does the file match the
+   * THIS PANEL CHANGED MEANING TWICE. It used to ask "does the file match the
    * session you picked" -- a check that only made sense while a session was
-   * something chosen in advance. The date now comes FROM the file, so the
-   * panel states what the file says and the app cannot contradict it.
-   *
-   * One check survives, and only where it is real: when she took a shortcut
-   * from a day already awaiting a file, a file for a DIFFERENT day is
-   * probably the wrong file. `ok: null` is "cannot be checked", never
-   * "wrong" -- warning on unknown trains people past the warning that counts.
+   * something chosen in advance. The day now comes FROM the file, and a file
+   * that disagrees with the day she opened is asked about outright, so what
+   * is left here is a statement of what the file said it was.
    */
   const fileDate = meetCreatedDate(file?.meta.created ?? null);
   const fileTime = meetCreatedTime(file?.meta.created ?? null);
-  const mapMatches = session
-    ? meetMatchesSession(file?.meta.created ?? null, session.session_date)
-    : null;
-  const dupNames = file ? dedupeRows(parseMeetCsv(file.text).rows).duplicates : [];
 
   const sessionMap: { label: string; value: string; ok: boolean | null }[] = file ? [
     { label: 'Meeting code', value: file.meta.code ?? 'not in this file',
       ok: file.meta.code ? true : null },
-    { label: 'Session date', value: fileDate ?? 'not in this file',
-      ok: fileDate ? (mapMatches ?? true) : null },
+    { label: 'Session date', value: fileDate ? dayLabel(fileDate) : 'not in this file',
+      ok: fileDate ? true : null },
     { label: 'Started at', value: fileTime ?? 'no time in this file',
       ok: fileTime ? true : null },
     { label: 'Course', value: target ? `${target.course} · ${target.branch}` : '—', ok: null },
     { label: 'Rows read', value: `${file.rows}`, ok: true },
   ] : [];
 
-  const mapNote = !fileDate
-    ? 'This file carries no “Created on” line, so RosiFit cannot tell which day it covers. Pick a day awaiting a file instead, or export it again from Meet.'
-    : mapMatches === false
-    ? `This file is from ${fileDate}, but the day you tapped is ${session?.session_date}. Check you have the right file before importing.`
-    : 'The meeting code and date come from the lines above the table in the Meet file — that is what says which session this is. The course and branch come from RosiFit, never from the file.';
+  const sessionMapPanel = file ? (
+    <View style={{
+      marginTop: SPACE.md, padding: SPACE.lg, borderRadius: RADIUS.lg,
+      backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
+    }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+        <Icon name="link" size={17} color={theme.accentInk} />
+        <Label style={{ flex: 1 }}>Mapped to this session</Label>
+      </View>
 
-  /** Blocked from processing: no course to import into, or no date to import for. */
-  const cannotRun = !target || !fileDate;
+      <View style={{ gap: 9, marginTop: SPACE.md }}>
+        {sessionMap.map(row => (
+          <View key={row.label}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }}>
+            <Text style={{ flex: 1, fontSize: 11.5, color: theme.muted }}>{row.label}</Text>
+            <Text numberOfLines={1} style={{
+              flexShrink: 1, fontSize: 12, fontWeight: '700',
+              color: theme.fgStrong, fontVariant: ['tabular-nums'],
+            }}>{row.value}</Text>
+            {/* the icon is a SECOND encoding of row.ok, never the only one --
+                the note below spells out anything that is missing */}
+            <Icon
+              name={row.ok === null ? 'lock' : row.ok ? 'check_circle' : 'warning'}
+              size={15}
+              color={row.ok === null ? theme.dim : row.ok ? okInk : warnInk} />
+          </View>
+        ))}
+      </View>
 
-  const goReview = () => {
-    if (preview) {
-      setStagedImport({
-        import_id: preview.import_id, session_label: chosen,
-        rows: preview.rows, dropped_count: preview.dropped_count, counts: preview.counts,
-      });
-    }
-    router.push('/match');
-  };
+      <View style={{
+        marginTop: SPACE.md, paddingTop: SPACE.md,
+        borderTopWidth: 1, borderTopColor: theme.line,
+      }}>
+        <Text style={{ fontSize: 11.5, lineHeight: 17, color: fileDate ? theme.muted : warnInk }}>
+          {fileDate
+            ? 'The meeting code and date come from the lines above the table in the Meet file — that is what says which session this is. The course and branch come from RosiFit, never from the file.'
+            : 'This file carries no “Created on” line, so RosiFit cannot tell which day it covers. Pick a day awaiting a file instead, or export it again from Meet.'}
+        </Text>
+      </View>
+    </View>
+  ) : null;
 
   return (
     <>
-      <Muted>{`Step ${step} of 4 · ${STEPS[step - 1]}`}</Muted>
-
-      {/* the four steps are always visible, so it is clear how much is left
-          and that nothing has been written yet */}
-      <View style={{ flexDirection: 'row', gap: 6, marginTop: SPACE.md, marginBottom: SPACE.lg }}>
-        {STEPS.map((label, i) => {
-          const done = step >= i + 1;
-          return (
-            <View key={label} style={{ flex: 1, gap: 6 }}>
-              <View style={{ height: 4, borderRadius: 2, backgroundColor: done ? theme.accent : theme.line }} />
-              <Text style={{ fontSize: 10.5, fontWeight: '700', color: done ? theme.accentInk : theme.muted }}>
-                {label}
-              </Text>
-            </View>
-          );
-        })}
-      </View>
-
-      {step === 1 && (pending.state === 'loading' || courses.state === 'loading') && (
+      {phase === 'choose' && (pending.state === 'loading' || courses.state === 'loading') && (
         <Skeleton lines={4} />
       )}
 
-      {step === 1 && courses.state === 'error' && (
+      {phase === 'choose' && courses.state === 'error' && (
         <ErrorState onRetry={courses.retry}
           message={courses.error ?? 'The course list could not be loaded. Nothing has been changed.'} />
       )}
@@ -305,7 +423,7 @@ function UploadBody() {
           to be "no session is awaiting a file", which blocked the case this
           screen exists for: an academy that schedules as it goes has no
           sessions waiting and a file to import all the same. */}
-      {step === 1 && courses.state === 'ready' && targets.length === 0 && (
+      {phase === 'choose' && courses.state === 'ready' && targets.length === 0 && (
         <EmptyState
           title={courseId ? 'This course runs at no branch yet' : 'No course to upload for'}
           body="A file is imported into a course at a branch, so add that first. The days it runs do not have to be decided — the attendance file says which day it covers."
@@ -313,7 +431,7 @@ function UploadBody() {
           onAction={() => router.replace(courseId ? '/upload' : '/course/edit')} />
       )}
 
-      {step === 1 && courses.state === 'ready' && targets.length > 0 && (
+      {phase === 'choose' && courses.state === 'ready' && targets.length > 0 && (
         <>
           {/* Days already awaiting a file come first, because when there IS
               one it is almost always the answer -- and taking the shortcut
@@ -328,7 +446,7 @@ function UploadBody() {
                       setSession(sn);
                       setTarget({ offering_id: sn.offering_id, course: sn.course,
                         branch: sn.meta.split(' · ')[0] ?? '' });
-                      setFile(null); setPreview(null); setFailure(null); setStep(2);
+                      setFile(null); setOutcome(null); setFailure(null); setPhase('pick');
                     }}
                     accessibilityRole="button" accessibilityLabel={`${sn.title}. ${sn.meta}`}
                     style={({ pressed }) => ({
@@ -365,7 +483,7 @@ function UploadBody() {
               <Pressable key={t.offering_id} testID={`upload-offering-${t.offering_id}`}
                 onPress={() => {
                   setTarget(t); setSession(null);
-                  setFile(null); setPreview(null); setFailure(null); setStep(2);
+                  setFile(null); setOutcome(null); setFailure(null); setPhase('pick');
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={`Upload a file for ${t.course} at ${t.branch}`}
@@ -401,7 +519,10 @@ function UploadBody() {
         </>
       )}
 
-      {step === 2 && (
+      {/* ------------------------------------------------------- pick a file
+          The whole of the upload, for anybody who arrived from a course or a
+          day: one card, one button, and the import runs on the pick. */}
+      {(phase === 'pick' || phase === 'working') && (
         <>
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: SPACE.md }}>
             <View style={{ flex: 1 }}>
@@ -418,7 +539,7 @@ function UploadBody() {
                 session she is trying to get away from. */}
             <Pressable testID="upload-change-session" onPress={() => {
                 setSession(null); setTarget(null);
-                setFile(null); setPreview(null); setFailure(null); setStep(1);
+                setFile(null); setOutcome(null); setFailure(null); setPhase('choose');
                 router.replace('/upload');
               }}
               accessibilityRole="button" accessibilityLabel="Choose a different session"
@@ -455,241 +576,262 @@ function UploadBody() {
               Meet writes its own lines first — meeting code, created and ended times — then the
               table. RosiFit reads past those, so upload the file exactly as Meet gave it to you.
             </Muted>
-            <Button label="Browse files" variant="secondary" style={{ marginTop: SPACE.lg }}
+            {/* WHAT THE BUTTON DOES, before it is pressed. It no longer
+                stages a file for review, and a button that imports a register
+                the moment it is pressed has to say so. */}
+            <Body style={{ marginTop: SPACE.md, textAlign: 'center', fontWeight: '700' }}>
+              The file imports as soon as you choose it.
+            </Body>
+            <Button testID="upload-browse"
+              label={phase === 'working' ? 'Importing…' : 'Browse files'}
+              variant="secondary" disabled={phase === 'working'}
+              style={{ marginTop: SPACE.md }}
               onPress={() => void choose()} />
           </View>
 
-          {failure && (
+          {phase === 'working' ? (
+            <View testID="upload-working" accessibilityLiveRegion="polite" style={{
+              marginTop: SPACE.md, padding: SPACE.lg, borderRadius: RADIUS.lg,
+              flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
+              backgroundColor: statusSurface(theme.accentInk).bg,
+              borderWidth: 1, borderColor: statusSurface(theme.accentInk).border,
+            }}>
+              <Icon name="cloud_upload" size={20} color={theme.accentInk} />
+              <Body style={{ flex: 1, fontSize: 12.5 }}>
+                {`Importing ${file?.name ?? 'the file'} — matching every name against the register.`}
+              </Body>
+            </View>
+          ) : null}
+
+          {failure && phase !== 'working' && (
             <View
+              testID="upload-failure"
               accessibilityLiveRegion="polite"
               style={{
                 marginTop: SPACE.md, padding: SPACE.lg, borderRadius: RADIUS.lg,
                 flexDirection: 'row', gap: SPACE.md,
-                backgroundColor: statusSurface(theme.isDark ? STATUS.absent.fgDark : STATUS.absent.fgLight).bg,
-                borderWidth: 1,
-                borderColor: statusSurface(theme.isDark ? STATUS.absent.fgDark : STATUS.absent.fgLight).border,
+                backgroundColor: statusSurface(dangerInk).bg,
+                borderWidth: 1, borderColor: statusSurface(dangerInk).border,
               }}>
-              <Icon name="error" size={20} color={theme.isDark ? STATUS.absent.fgDark : STATUS.absent.fgLight} />
+              <Icon name="error" size={20} color={dangerInk} />
               <Body style={{ flex: 1, fontSize: 12.5, lineHeight: 19 }}>{failure}</Body>
             </View>
           )}
 
-          {picked && (
-            <View style={{
-              marginTop: SPACE.md, padding: SPACE.lg, borderRadius: RADIUS.lg,
-              flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
-              backgroundColor: statusSurface(okInk).bg, borderWidth: 1, borderColor: statusSurface(okInk).border,
-            }}>
-              <Icon name="check_circle" size={22} color={okInk} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 13.5, fontWeight: '700', color: theme.fgStrong, fontVariant: ['tabular-nums'] }}>
-                  {file?.name ?? 'meet-attendance.csv'}
-                </Text>
-                <Text style={{ fontSize: 11.5, color: theme.muted, fontVariant: ['tabular-nums'] }}>
-                  {`${file?.rows ?? 0} rows`}
-                </Text>
-              </View>
-              {/* Blocked when there is no day to import FOR. The date comes
-                  from the file, so a file with no "Created on" line has
-                  nothing to import into -- and processing it would land
-                  attendance on a date nobody chose. */}
-              <Button testID="upload-process" label="Process"
-                disabled={cannotRun} onPress={() => void run()} />
-            </View>
-          )}
-
-          {/* ------------------------------------------- mapped to this session
-              The canvas' session map. It is the last chance to notice the
-              wrong file: everything after this point matches names and asks
-              for decisions, and none of it looks at WHICH meeting the rows
-              came from. The meeting code and date are read from the lines
-              Meet writes above the table; course and branch come from
-              RosiFit and are not the file's to say. */}
-          {picked && file ? (
-            <View style={{
-              marginTop: SPACE.md, padding: SPACE.lg, borderRadius: RADIUS.lg,
-              backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
-            }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                <Icon name="link" size={17} color={theme.accentInk} />
-                <Label style={{ flex: 1 }}>Mapped to this session</Label>
-              </View>
-
-              <View style={{ gap: 9, marginTop: SPACE.md }}>
-                {sessionMap.map(row => (
-                  <View key={row.label}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }}>
-                    <Text style={{ flex: 1, fontSize: 11.5, color: theme.muted }}>{row.label}</Text>
-                    <Text numberOfLines={1} style={{
-                      flexShrink: 1, fontSize: 12, fontWeight: '700',
-                      color: row.ok === false ? warnInk : theme.fgStrong,
-                      fontVariant: ['tabular-nums'],
-                    }}>{row.value}</Text>
-                    {/* the icon is a SECOND encoding of row.ok, never the
-                        only one -- the value itself changes colour and the
-                        note below spells the mismatch out */}
-                    <Icon
-                      name={row.ok === null ? 'lock' : row.ok ? 'check_circle' : 'warning'}
-                      size={15}
-                      color={row.ok === null ? theme.dim : row.ok ? okInk : warnInk} />
-                  </View>
-                ))}
-              </View>
-
-              <View style={{
-                marginTop: SPACE.md, paddingTop: SPACE.md,
-                borderTopWidth: 1, borderTopColor: theme.line,
-              }}>
-                <Text style={{
-                  fontSize: 11.5, lineHeight: 17,
-                  color: mapMatches ? theme.muted : warnInk,
-                }}>{mapNote}</Text>
-              </View>
-            </View>
-          ) : null}
-
-          {/* ONE PERSON, ONE SESSION, ONE DAY -- said out loud, before the
-              import, with the names. Meet writes a line per JOIN, so anybody
-              whose connection dropped is in the file twice; collapsing that
-              silently would leave a file that says 14 rows importing 12 with
-              no explanation. */}
-          {dupNames.length > 0 ? (
-            <View style={{
-              flexDirection: 'row', gap: SPACE.md, marginTop: SPACE.md, padding: SPACE.lg,
-              borderRadius: RADIUS.md, backgroundColor: statusSurface(warnInk).bg,
-              borderWidth: 1, borderColor: statusSurface(warnInk).border,
-            }}>
-              <Icon name="content_copy" size={18} color={warnInk} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 12.5, fontWeight: '800', color: warnInk }}>
-                  {`${dupNames.length} repeated ${dupNames.length === 1 ? 'name' : 'names'} — counted once`}
-                </Text>
-                <Muted style={{ marginTop: 4, color: theme.fg }}>
-                  {`${[...new Set(dupNames)].join(', ')} ${dupNames.length === 1 ? 'appears' : 'appear'} more than once, which Meet does when somebody rejoins. She is marked present once — a member cannot be in her own session twice.`}
-                </Muted>
-              </View>
-            </View>
-          ) : null}
-
-          {/* A day that already has a file. Not refused -- a corrected export
-              is a real thing -- but never silent: one session per day is a
-              database invariant, so this file UPDATES that register. */}
-          {preview?.supersedes ? (
-            <View style={{
-              flexDirection: 'row', gap: SPACE.md, marginTop: SPACE.md, padding: SPACE.lg,
-              borderRadius: RADIUS.md, backgroundColor: statusSurface(warnInk).bg,
-              borderWidth: 1, borderColor: statusSurface(warnInk).border,
-            }}>
-              <Icon name="history" size={18} color={warnInk} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 12.5, fontWeight: '800', color: warnInk }}>
-                  This day already has a file
-                </Text>
-                <Muted style={{ marginTop: 4, color: theme.fg }}>
-                  {`${preview.supersedes.file_name} was imported for this course on this date. Importing this one CORRECTS that register rather than adding to it — nobody is counted twice.`}
-                </Muted>
-              </View>
-            </View>
-          ) : null}
+          {/* A file with no "Created on" line never imports at all, and this
+              panel is what says why. Any other file is already on its way. */}
+          {file && !fileDate && phase !== 'working' ? sessionMapPanel : null}
         </>
       )}
 
-      {step === 3 && (
-        <View style={{ alignItems: 'center', paddingVertical: SPACE.xxl }}>
-          <View accessibilityRole="progressbar"
-            accessibilityValue={{ min: 0, max: 100, now: progress }}
-            accessibilityLabel="Matching names"
-            style={{
-              width: 132, height: 132, borderRadius: 66, borderWidth: 8,
-              borderColor: theme.accent, alignItems: 'center', justifyContent: 'center',
-            }}>
-            <Text style={{ fontSize: 30, fontWeight: '800', color: theme.fgStrong, fontVariant: ['tabular-nums'] }}>
-              {`${progress}%`}
-            </Text>
-          </View>
-          <H2 style={{ marginTop: SPACE.lg }}>Matching names</H2>
-          <Muted style={{ marginTop: 6, textAlign: 'center' }}>
-            {progress < 45
-              ? `Reading ${file?.rows ?? 18} rows. Everyone the file names was there — time in the call decides nothing.`
-              : 'Comparing names against the enrolled members.'}
-          </Muted>
-        </View>
-      )}
-
-      {step === 4 && (
-        <>
+      {/* ----------------------------------------------------- the date clash
+          THE ONE CONFIRMATION LEFT. The requester asked for it by name: the
+          file is from another day, say so, and on confirm import it for THAT
+          day -- not for the day on the screen. */}
+      {phase === 'clash' && clash ? (
+        <View testID="upload-clash">
           <View style={{
             padding: SPACE.xl, borderRadius: RADIUS.lg,
-            backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
+            backgroundColor: statusSurface(warnInk).bg,
+            borderWidth: 1, borderColor: statusSurface(warnInk).border,
           }}>
-            <Label>Processed</Label>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: theme.fgStrong, marginTop: 4 }}>{chosen}</Text>
-            <View style={{ flexDirection: 'row', marginTop: SPACE.lg }}>
-              <Count n={rowsRead} label="rows read" color={theme.fgStrong} />
-              <Count n={matchedCount} label="matched" color={okInk} />
-              <Count n={ambiguousCount} label="ambiguous" color={warnInk} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+              <Icon name="history" size={20} color={warnInk} />
+              {/* the word as well as the colour (CP-010) */}
+              <Text style={{ flex: 1, fontSize: 13.5, fontWeight: '800', color: warnInk }}>
+                {`This file is from ${dayLabel(clash.fileDay)}`}
+              </Text>
             </View>
-            {/* WHY a row was dropped, and WHICH one.
-                This said "under 15 minutes". There is no minutes floor -- it
-                was removed on purpose, because it dropped a member who
-                reconnected or joined from a phone and then recorded her
-                absent from a class she attended. Rows are dropped now for
-                exactly two reasons, both in csv-import: the name cell is
-                blank, or it repeats a name already in the file (Meet writes
-                a line per JOIN). The names come back from the preview for
-                this reason -- a count alone has to be taken on trust. */}
-            {preview && preview.dropped_count > 0 && (
-              <Muted style={{ marginTop: SPACE.md }}>
-                {`${preview.dropped_count} row${preview.dropped_count === 1 ? '' : 's'} `
-                 + `dropped before matching — a blank name, or a repeat of another row`
-                 + (preview.dropped_names?.length
-                     ? `: ${preview.dropped_names.join(', ')}.`
-                     : '.')}
-              </Muted>
-            )}
-          </View>
-
-          {/* C-79: the file is atomic. Saying so here is what stops anyone
-              believing a partial import already happened. */}
-          <View style={{
-            marginTop: SPACE.md, padding: SPACE.lg, borderRadius: RADIUS.lg,
-            flexDirection: 'row', gap: SPACE.md,
-            backgroundColor: statusSurface(warnInk).bg, borderWidth: 1, borderColor: statusSurface(warnInk).border,
-          }}>
-            <Icon name="pause_circle" size={22} color={warnInk} />
-            <Body style={{ flex: 1, fontSize: 12.5, lineHeight: 19 }}>
-              <Text style={{ fontWeight: '800', color: theme.fgStrong }}>Nothing has been imported yet.</Text>
-              {needDecision === 0
-                ? ' Every row matched a member. Review them, then the whole file imports together.'
-                : ` ${needDecision} row${needDecision === 1 ? '' : 's'} need a decision. You decide each, then the whole file imports together.`}
+            <Body style={{ marginTop: SPACE.md, lineHeight: 20 }}>
+              {`You opened ${dayLabel(clash.openedDay)}. ${clash.file.name} says it covers `
+               + `${dayLabel(clash.fileDay)}, so importing it updates the `
+               + `${dayLabel(clash.fileDay)} register for ${chosen} — not ${dayLabel(clash.openedDay)}.`}
             </Body>
+            <Muted style={{ marginTop: SPACE.md }}>
+              The day always comes from the file, never from the screen. Nothing has been written yet.
+            </Muted>
           </View>
 
-          <Button label={needDecision === 0 ? 'Review and import' : `Review ${needDecision} rows`}
-            onPress={goReview} style={{ marginTop: SPACE.lg }} />
-          {/* Leaves the dialog on the screen it was opened from. It used to
-              push '/(tabs)': from under a modal that mounts a SECOND copy of
-              the whole shell over the first, the trap app/(tabs)/_layout.tsx
-              documents. Nothing was staged, so there is nothing to discard. */}
-          <Button label="Later" variant="secondary" onPress={() => router.back()}
-            style={{ marginTop: SPACE.sm }} />
-          <Muted style={{ marginTop: SPACE.md, textAlign: 'center' }}>
-            {`${blocking} of those block the import. Nothing is written until they are decided.`}
-          </Muted>
-        </>
-      )}
+          <Button testID="upload-clash-confirm"
+            label={`Import for ${dayLabel(clash.fileDay)}`}
+            style={{ marginTop: SPACE.lg }}
+            onPress={() => {
+              const held = clash;
+              setClash(null);
+              void run(held.file, held.fileDay);
+            }} />
+          <Button testID="upload-clash-cancel" label="Choose another file" variant="secondary"
+            style={{ marginTop: SPACE.sm }}
+            onPress={() => { setClash(null); setFile(null); setPhase('pick'); }} />
+        </View>
+      ) : null}
+
+      {/* ---------------------------------------------------------- the result
+          "just show how many student with email and no email" -- the two
+          numbers the requester asked for, and where each group landed. */}
+      {phase === 'done' && outcome ? (
+        <View testID="upload-done">
+          <View style={{
+            padding: SPACE.xl, borderRadius: RADIUS.lg,
+            backgroundColor: statusSurface(okInk).bg,
+            borderWidth: 1, borderColor: statusSurface(okInk).border,
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+              <Icon name="check_circle" size={20} color={okInk} />
+              <Text style={{ flex: 1, fontSize: 13.5, fontWeight: '800', color: okInk }}>
+                {`Imported · ${dayLabel(outcome.session_date)}`}
+              </Text>
+            </View>
+            <Muted style={{ marginTop: 4, color: theme.fg }}>
+              {`${outcome.imported} marked present on the ${chosen} register.`}
+            </Muted>
+          </View>
+
+          {/* THE TWO COUNTS, side by side, each saying where that group is
+              now -- the answer to "they should be landing in respective
+              sections" is a sentence under the number, not something to go
+              and check. */}
+          <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.md }}>
+            <Landed testID="upload-with-email" n={outcome.with_email} icon="mail"
+              word="With email" ink={okInk}
+              note="On the register, and counted for follow-up." />
+            <Landed testID="upload-no-email" n={outcome.no_email} icon="mail_off"
+              word="No email" ink={dangerInk}
+              note="Marked present, listed under No email on the course." />
+          </View>
+
+          {outcome.new_members > 0 ? (
+            <Muted style={{ marginTop: SPACE.md }}>
+              {`${outcome.new_members} of them ${outcome.new_members === 1 ? 'is' : 'are'} new — `
+               + 'a name the register did not know, added to this course with no email. '
+               + 'If she is somebody you already have, “Add display name to existing member” '
+               + 'on the course folds her in and carries her attendance across.'}
+            </Muted>
+          ) : null}
+
+          {/* WHO RAN THE CLASS. Named, because leaving the instructor off the
+              register silently is how somebody concludes the import missed
+              her. */}
+          {outcome.staff.length > 0 ? (
+            <Note testID="upload-staff" ink={theme.accentInk} icon="school"
+              title={`${outcome.staff.length} staff ${outcome.staff.length === 1 ? 'name' : 'names'} left off the register`}
+              body={`${outcome.staff.join(', ')} ${outcome.staff.length === 1 ? 'was' : 'were'} in the call as staff, not as a member. Attendance is for members, so ${outcome.staff.length === 1 ? 'she is' : 'they are'} not counted here.`} />
+          ) : null}
+
+          {/* ONE PERSON, ONE SESSION, ONE DAY -- with the names. Meet writes
+              a line per JOIN, so anybody whose connection dropped is in the
+              file twice; collapsing that silently would leave a file that
+              says 14 rows importing 12 with no explanation. */}
+          {outcome.duplicates.length > 0 ? (
+            <Note testID="upload-duplicates" ink={warnInk} icon="content_copy"
+              title={`${outcome.duplicates.length} repeated ${outcome.duplicates.length === 1 ? 'name' : 'names'} — counted once`}
+              body={`${outcome.duplicates.join(', ')} ${outcome.duplicates.length === 1 ? 'appears' : 'appear'} more than once, which Meet does when somebody rejoins. She is marked present once — a member cannot be in her own session twice.`} />
+          ) : null}
+
+          {outcome.dropped.length > 0 ? (
+            <Note testID="upload-dropped" ink={warnInk} icon="remove_circle"
+              title={`${outcome.dropped.length} row${outcome.dropped.length === 1 ? '' : 's'} dropped before matching`}
+              body={`${outcome.dropped.join(', ')} — a blank name, or a repeat of another row.`} />
+          ) : null}
+
+          {/* A day that already had a file. Not refused -- a corrected export
+              is a real thing -- but never silent: one session per day is a
+              database invariant, so this file UPDATED that register. */}
+          {outcome.supersedes ? (
+            <Note testID="upload-superseded" ink={warnInk} icon="history"
+              title="This day already had a file"
+              body={`${outcome.supersedes} was imported for this course on this date. This file CORRECTED that register rather than adding to it — nobody is counted twice.`} />
+          ) : null}
+
+          {sessionMapPanel}
+
+          <Button testID="upload-done-close" label="Done" style={{ marginTop: SPACE.lg }}
+            onPress={() => router.back()} />
+          <Button testID="upload-another" label="Upload another file" variant="secondary"
+            style={{ marginTop: SPACE.sm }}
+            onPress={() => {
+              setFile(null); setOutcome(null); setFailure(null); setPhase('pick');
+            }} />
+        </View>
+      ) : null}
     </>
   );
 }
 
-function Count({ n, label, color }: { n: number; label: string; color: string }) {
+/**
+ * One of the two counts the requester asked for, with the section it landed
+ * in written underneath it. The number alone answers "how many"; the line
+ * under it answers "and where did they go", which is the other half of what
+ * was asked.
+ */
+function Landed({ testID, n, icon, word, ink, note }: {
+  testID: string; n: number; icon: string; word: string; ink: string; note: string;
+}) {
   const { theme } = useTheme();
+  const box = statusSurface(ink);
   return (
-    <View style={{ flex: 1 }}>
-      <Text style={{ fontSize: 26, fontWeight: '800', color, fontVariant: ['tabular-nums'] }}>{n}</Text>
-      <Text style={{ fontSize: 11.5, color: theme.muted, marginTop: 2 }}>{label}</Text>
+    <View testID={testID} accessible accessibilityLabel={`${n} ${word}. ${note}`}
+      style={{
+        flex: 1, padding: SPACE.lg, borderRadius: RADIUS.md,
+        backgroundColor: box.bg, borderWidth: 1, borderColor: box.border,
+      }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <Icon name={icon} size={16} color={ink} />
+        {/* the WORD, never the colour alone (CP-010) */}
+        <Text style={{ flex: 1, fontSize: 11, fontWeight: '800', color: ink }}>{word}</Text>
+      </View>
+      <Text style={{
+        fontSize: 30, fontWeight: '800', marginTop: 4,
+        color: theme.fgStrong, fontVariant: ['tabular-nums'],
+      }}>{n}</Text>
+      <Text style={{ fontSize: 11, lineHeight: 16, color: theme.muted, marginTop: 2 }}>{note}</Text>
     </View>
   );
+}
+
+/** One thing the import did that nobody asked it to, said out loud. */
+function Note({ testID, ink, icon, title, body }: {
+  testID: string; ink: string; icon: string; title: string; body: string;
+}) {
+  const { theme } = useTheme();
+  const box = statusSurface(ink);
+  return (
+    <View testID={testID} style={{
+      flexDirection: 'row', gap: SPACE.md, marginTop: SPACE.md, padding: SPACE.lg,
+      borderRadius: RADIUS.md, backgroundColor: box.bg,
+      borderWidth: 1, borderColor: box.border,
+    }}>
+      <Icon name={icon} size={18} color={ink} />
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 12.5, fontWeight: '800', color: ink }}>{title}</Text>
+        <Muted style={{ marginTop: 4, color: theme.fg }}>{body}</Muted>
+      </View>
+    </View>
+  );
+}
+
+/**
+ * The result the walkthrough and the route harness show, with no project
+ * configured. Derived from the same five fixture outcomes the review screen
+ * used to walk through, so the numbers on the screen are the numbers the
+ * fixtures actually describe rather than a pleasing invention.
+ */
+function fixtureOutcome(day: string, source: { text: string }): Outcome {
+  const kinds = MATCH_ROWS.map(r => r.kind);
+  const withEmail = kinds.filter(k => k === 'matched').length;
+  const newMembers = kinds.filter(k => k === 'possible' || k === 'ambiguous' || k === 'unmatched').length;
+  const noEmail = kinds.filter(k => k === 'noEmail').length + newMembers;
+  return {
+    session_date: day,
+    with_email: withEmail,
+    no_email: noEmail,
+    new_members: newMembers,
+    imported: withEmail + noEmail,
+    dropped: [],
+    staff: [],
+    duplicates: [...new Set(dedupeRows(parseMeetCsv(source.text).rows).duplicates)],
+    supersedes: null,
+  };
 }
 
 /**
@@ -708,7 +850,11 @@ function Count({ n, label, color }: { n: number; label: string; color: string })
  */
 export default function Upload() {
   return (
-    <FormDialog title="Upload attendance" subtitle="The register from Google Meet, matched before anything is written">
+    // The subtitle used to end "matched before anything is written", which
+    // stopped being true the moment the Import button went: the file is
+    // matched AND written on the pick, and the bar has to say so.
+    <FormDialog title="Upload attendance"
+      subtitle="The register from Google Meet — the file says which day it covers">
       <UploadBody />
     </FormDialog>
   );

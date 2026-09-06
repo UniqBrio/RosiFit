@@ -121,6 +121,13 @@ export function changeOwnPin(newPin: string, signOutEverywhere = false):
 // ---------------------------------------------------------------- recovery
 /** The two questions THIS account registered, so the screen asks hers rather
  *  than a guess. Says which questions, never an answer. */
+/** A staff member asks the academy admin for a new PIN. Public: she is here
+ *  because she cannot sign in, so there is no session to send. The reply is
+ *  the same sentence whether or not the number belongs to anyone. */
+export function pinResetRequest(phone: string): Promise<{ ok: true; message: string }> {
+  return callFn('pin-reset-request', { phone });
+}
+
 export function recoveryQuestions(phone: string): Promise<{ questions: SecurityQuestion[] }> {
   return callFn('recovery-check', { action: 'questions', phone });
 }
@@ -155,6 +162,13 @@ export type PreviewResult = {
   import_id: string; rows: PreviewRow[]; dropped_count: number;
   /** the repeated or blank names, NAMED -- a count alone has to be taken on trust */
   dropped_names?: string[];
+  /**
+   * Names in the file that belong to STAFF, set aside before matching.
+   * A Meet file lists whoever ran the class as well as who attended, and
+   * attendance is for members: she is named here rather than counted as a
+   * dropped row, because nothing was wrong with the row.
+   */
+  staff_names?: string[];
   counts: Record<MatchKindLive, number>;
   /** the meeting the file names, echoed back so the screen can show it */
   meeting_code?: string | null;

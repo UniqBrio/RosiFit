@@ -1,0 +1,4 @@
+not ok 6 - the claim check ignores case, because the database normalizes before its unique index
+not ok 7 - a claimed name padded with space is still the same claim
+not ok 9 - 23505 is reported as the name already pointing at somebody
+not ok 12 - the two paths agree: the offline refusal and the live 23505 read identically

@@ -105,6 +105,36 @@ set with `supabase secrets set` and appear in no tracked file.
 
 ---
 
+## Production change applied 06-Sep-2026 — ✅ VERIFIED against the live project
+
+Project `lhpzhkzbnquwjljmbylo` ("Rosifit", ap-southeast-1), confirmed as the target by matching
+the ref against `EXPO_PUBLIC_SUPABASE_URL` in `.env` before anything was run.
+
+- **`0033_many_super_admins` APPLIED.** `drop index if exists public.one_super_admin`, plus a
+  table comment. Verified afterwards by listing `pg_indexes` for `app_users`: `one_super_admin`
+  is gone; `app_users_pkey`, `app_users_auth_user_id_key`, `app_users_phone_live` and
+  `app_users_active` all remain. One live account per mobile number is therefore still enforced.
+- **NOT REHEARSED ON THE HARNESS.** `db/harness` needs Docker and psql; this machine has
+  neither, so the rehearsal this register requires could not run. The owner was told before
+  giving the go-ahead and chose to proceed. The migration drops an index and adds no constraint
+  over existing rows, so it carries none of the data-compatibility risk the harness could not
+  have answered anyway — but the step was skipped, and that is recorded rather than implied.
+- **`auth-bootstrap` REDEPLOYED — by the OWNER, not by this session.** The MCP deploy was denied
+  by the session's permission classifier and was deliberately NOT re-attempted through
+  `npx supabase functions deploy`: routing a denied production deploy through a second tool
+  defeats the point of the denial. The owner ran it instead.
+- **✅ Verified by reading the DEPLOYED source back**, not by trusting the version number:
+  `auth-bootstrap` is at **version 9**, `verify_jwt: false` preserved (it must stay public —
+  nobody has a session when they register), and the
+  `409 'RosiFit is already set up. Sign in instead.'` branch is **absent from the deployed
+  code**. All six `_shared` modules shipped with it. The duplicate-number check
+  (`409 'This mobile number is already registered.'`) is still present, which is correct — that
+  is the one refusal that should survive.
+- **Net effect: the backend now supports the owner's flow end to end.** An unrecognised number
+  reaches registration, the form can complete, and the account is created as a super admin.
+
+---
+
 ## Current state of production — ◻ as recorded in `supabase/SETUP.md`, not re-verified here
 
 - Migrations `0001`–`0014` applied; 30 tables in `public`, every one with RLS.

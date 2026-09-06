@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { View, Text, Pressable, ScrollView, TextInput, useWindowDimensions } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Muted, Label, Skeleton, EmptyState, ErrorState, DeepBackground } from '../../src/components/ui';
 import { Icon } from '../../src/components/Icon';
-import { ConfirmDialog } from '../../src/components/Sheet';
+import { ConfirmDialog, SearchPicker } from '../../src/components/Sheet';
 import { DropdownRow, DropdownField, DropdownPanel, DropdownList } from '../../src/components/Dropdown';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
@@ -11,7 +11,8 @@ import { SPACE, RADIUS, STATUS, statusSurface, type StatusKey } from '../../src/
 import { DAY_NAMES, ruleSentence, AVATAR_TINTS, initials, type Member, type MemberStatus } from '../../src/data/mock';
 import { useCourses, useFollowUp, useAttendance } from '../../src/data/hooks';
 import { weekStart, iso, label as periodLabel } from '../../src/data/period';
-import { deleteCourse, setMemberStatus, dataSource } from '../../src/data/repository';
+import { deleteCourse, setMemberStatus, mergeMemberInto, dataSource } from '../../src/data/repository';
+import { MERGE_FAILED } from '../../src/data/alias';
 import { useIdentity } from '../../src/data/session';
 import { ALL_BRANCHES } from '../../src/state/academy';
 import { ShellScreen } from '../../src/components/AppShell';
@@ -60,6 +61,38 @@ function CourseDetailBody() {
   const router = useRouter();
   const { id, state: forced } = useLocalSearchParams<{ id?: string; state?: string }>();
 
+  /**
+   * The three breakpoints, and the only place they are stated.
+   *
+   *   >= 1024  desktop -- actions beside the title, search on the heading row
+   *   768-1023 tablet  -- the header wraps, the seven-card strip stays
+   *   <  768   phone   -- actions stacked, ONE date card, search full width
+   *
+   * A phone is not a narrow desktop here: three 42pt buttons side by side at
+   * 360pt truncate to one word each, and seven date cards give each day 44pt
+   * to hold a month, a number, a weekday and an icon.
+   *
+   * WHY THE WIDTH IS IGNORED ON THE FIRST RENDER
+   * This app ships as a STATIC export, so every route is prerendered in node
+   * and then hydrated. react-native-web has no window there and reports a
+   * width of 0 (Dimensions/index.js), while the browser reports the real one
+   * on its very first render -- so reading the width directly would draw the
+   * phone layout on the server and the desktop layout into the same markup,
+   * which is a hydration mismatch: React discards the tree and remounts it.
+   * That is the defect the note at the top of src/components/Icon.tsx was
+   * written for, and this is the same shape of it.
+   *
+   * So the first render uses 0 on BOTH sides -- identical markup, by
+   * construction -- and the measured width takes over on the render after
+   * mount.
+   */
+  const { width } = useWindowDimensions();
+  const [measured, setMeasured] = useState(false);
+  useEffect(() => { setMeasured(true); }, []);
+  const shownWidth = measured ? width : 0;
+  const wide = shownWidth >= 1024;
+  const compact = shownWidth < 768;
+
   const courses = useCourses(forced);
   const followUp = useFollowUp(forced);
   const { identity } = useIdentity();
@@ -71,6 +104,10 @@ function CourseDetailBody() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  // Roster search. It filters what this screen DRAWS and nothing else -- no
+  // refetch, no scope change: the branch filter above is what narrows the
+  // query, and the delete confirmation still counts every enrolled member.
+  const [query, setQuery] = useState('');
 
   // The week being shown, as a Period -- the shape useAttendance takes, so
   // stepping weeks refetches rather than re-slicing a stale load.
@@ -104,8 +141,17 @@ function CourseDetailBody() {
       && (branch === ALL_BRANCHES || m.branch === branch)),
     [members, course, branch]);
 
-  const withEmail = scoped.filter(m => m.emails.length > 0);
-  const withoutEmail = scoped.filter(m => m.emails.length === 0);
+  // What the roster shows: the scoped members, less anything the search box
+  // hides. Name or address, because those are the two things written on a card.
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return scoped;
+    return scoped.filter(m => m.name.toLowerCase().includes(q)
+      || m.emails.some(e => e.address.toLowerCase().includes(q)));
+  }, [scoped, query]);
+
+  const withEmail = shown.filter(m => m.emails.length > 0);
+  const withoutEmail = shown.filter(m => m.emails.length === 0);
 
   /**
    * The seven cells, built from the attendance rows for this course so the
@@ -174,6 +220,7 @@ function CourseDetailBody() {
     ?? days[0];
 
 
+
   const remove = async () => {
     if (!course || deleting) return;
     setConfirmDelete(false);
@@ -232,82 +279,114 @@ function CourseDetailBody() {
 
   const memberSplit = `${withEmail.length} with email · ${withoutEmail.length} without`;
 
+  // ONE line under the course name, where the hero used to spend three: how
+  // many branches it runs at, and which days it runs on. Both facts were
+  // already here; they were just on separate rows.
+  const branchLine = branch === ALL_BRANCHES
+    ? `${course.offerings.length} ${course.offerings.length === 1 ? 'branch' : 'branches'}`
+    : `${branch} Branch`;
+  const metaLine = `${branchLine} · ${freqLine}`;
+
   return (
     <>
-      {/* stickyHeaderIndices pins child [2] -- the Add Member row -- to the
-          top of the scroller once the page has scrolled past it. It is why
-          this content is FOUR children rather than a header and one padded
-          block: only a direct child of the scroller can be made sticky. */}
       <ScrollView style={{ flex: 1, backgroundColor: theme.bg }}
-        stickyHeaderIndices={[2]}
         contentContainerStyle={{ paddingBottom: 110 }}>
 
-        {/* The deep header the canvas draws. It is the same dark plum in both
-            themes, so its ink is white in both. */}
-        <DeepBackground style={{ paddingHorizontal: SPACE.lg, paddingTop: SPACE.sm, paddingBottom: 22 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.md }}>
-            <Pressable testID="course-back" onPress={() => router.back()} accessibilityRole="button"
-              accessibilityLabel="Go back"
-              style={({ pressed }) => ({
-                width: 38, height: 38, borderRadius: RADIUS.md,
-                alignItems: 'center', justifyContent: 'center',
-                backgroundColor: theme.deepControl,
-                borderWidth: 1, borderColor: theme.deepControlLine,
-                opacity: pressed ? 0.7 : 1,
-              })}>
-              <Icon name="arrow_back" size={21} color={theme.onAccent} />
-            </Pressable>
-            <Text numberOfLines={1} style={{ flex: 1, fontSize: 12, color: theme.onDeep }}>
-              {`Courses → ${course.name}`}
-            </Text>
-            {/* The primary action rides the breadcrumb row. At the same 38pt as
-                the two icon buttons already on it, it costs the header no
-                height of its own — the full-width block it replaced cost 61. */}
-            <Pressable testID="course-send"
-              onPress={() => router.push({ pathname: '/send', params: { id } })}
-              accessibilityRole="button"
-              accessibilityLabel={`Send communication for ${course.name}`}
-              style={({ pressed }) => ({
-                height: 38, borderRadius: RADIUS.md, paddingHorizontal: 10,
-                flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-                backgroundColor: theme.accent, opacity: pressed ? 0.85 : 1,
-              })}>
-              <Icon name="send" size={16} color={theme.onAccent} />
-              <Text numberOfLines={1} style={{ fontSize: 12.5, fontWeight: '800', color: theme.onAccent }}>
-                Send Communication
-              </Text>
-            </Pressable>
-            {identity?.isSuperAdmin ? (
-              <Pressable testID="course-delete" onPress={() => setConfirmDelete(true)}
-                accessibilityRole="button" accessibilityLabel={`Delete ${course.name}`}
-                style={({ pressed }) => ({
-                  width: 38, height: 38, borderRadius: RADIUS.md,
-                  alignItems: 'center', justifyContent: 'center',
-                  backgroundColor: theme.deepControl,
-                  borderWidth: 1, borderColor: theme.deepControlLine,
-                  opacity: pressed ? 0.7 : 1,
-                })}>
-                <Icon name="delete" size={19} color={theme.onAccent} />
-              </Pressable>
-            ) : null}
-          </View>
+        {/* --------------------------------------- THE COMPACT COURSE HEADER
+            The course is named ONCE, at heading size, with the back arrow
+            beside it and the schedule directly underneath. What was here
+            before said it twice -- a `Courses -> Postnatal` breadcrumb over a
+            25pt hero -- across four rows and 22pt of bottom padding.
 
-          <Text style={{
-            marginTop: SPACE.lg, fontSize: 25, fontWeight: '800',
-            color: theme.onAccent, letterSpacing: -0.5, lineHeight: 29,
-          }}>{course.name}</Text>
-          <Text style={{ fontSize: 13, color: theme.onDeep, marginTop: 5 }}>
-            {branch === ALL_BRANCHES
-              ? `${course.offerings.length} ${course.offerings.length === 1 ? 'branch' : 'branches'}`
-              : `${branch} Branch`}
-          </Text>
-          <Text style={{ fontSize: 12.5, color: theme.onDeep, marginTop: 2, fontVariant: ['tabular-nums'] }}>
-            {freqLine}
-          </Text>
+            The three primary actions ride this header rather than being spread
+            down the screen. Send Communication was already here; Upload Session
+            was reachable only from a day that happened to be awaiting; Add
+            Member was a full-width bar pinned below the strip. They are the
+            three things a person opens this screen to do, so they are one
+            group, in one place. Nothing else moved: the delete stays
+            super-admin only and stays an icon, so it never reads as a fourth
+            primary action. */}
+        <DeepBackground style={{
+          paddingHorizontal: SPACE.lg, paddingTop: SPACE.sm, paddingBottom: SPACE.md,
+        }}>
+          <View style={{
+            flexDirection: wide ? 'row' : 'column',
+            alignItems: wide ? 'center' : 'stretch',
+            gap: wide ? SPACE.lg : SPACE.md,
+          }}>
+            <View style={{ flex: wide ? 1 : undefined, minWidth: 0 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }}>
+                {/* THE ONE back control on this screen, and the reason the day
+                    arrows below are square, smaller and live inside the strip:
+                    "leave this course" and "move one day" were the same arrow
+                    drawn twice, and nobody could tell which was which. */}
+                <Pressable testID="course-back" onPress={() => router.back()} accessibilityRole="button"
+                  accessibilityLabel="Go back" hitSlop={6}
+                  style={({ pressed }) => ({
+                    width: 34, height: 34, borderRadius: RADIUS.md,
+                    alignItems: 'center', justifyContent: 'center',
+                    backgroundColor: theme.deepControl,
+                    borderWidth: 1, borderColor: theme.deepControlLine,
+                    opacity: pressed ? 0.7 : 1,
+                  })}>
+                  <Icon name="arrow_back" size={19} color={theme.onAccent} />
+                </Pressable>
+
+                <Text numberOfLines={1} style={{
+                  flex: 1, minWidth: 0, fontSize: 26, fontWeight: '800',
+                  color: theme.onAccent, letterSpacing: -0.5, lineHeight: 30,
+                }}>{course.name}</Text>
+
+                {identity?.isSuperAdmin ? (
+                  <Pressable testID="course-delete" onPress={() => setConfirmDelete(true)}
+                    accessibilityRole="button" accessibilityLabel={`Delete ${course.name}`}
+                    hitSlop={6}
+                    style={({ pressed }) => ({
+                      width: 34, height: 34, borderRadius: RADIUS.md,
+                      alignItems: 'center', justifyContent: 'center',
+                      backgroundColor: theme.deepControl,
+                      borderWidth: 1, borderColor: theme.deepControlLine,
+                      opacity: pressed ? 0.7 : 1,
+                    })}>
+                    <Icon name="delete" size={18} color={theme.onAccent} />
+                  </Pressable>
+                ) : null}
+              </View>
+
+              {/* Indented to the title, not the arrow, so the two read as one
+                  block. Two lines at most -- a course at four branches states
+                  four schedules, and that is a fact for the strip below to
+                  show rather than for the header to grow into. */}
+              <Text numberOfLines={2} style={{
+                fontSize: 12.5, color: theme.onDeep, marginTop: 4, marginLeft: 42,
+                fontVariant: ['tabular-nums'],
+              }}>{metaLine}</Text>
+            </View>
+
+            <View style={{
+              flexDirection: compact ? 'column' : 'row',
+              flexWrap: compact ? 'nowrap' : 'wrap',
+              alignItems: compact ? 'stretch' : 'center',
+              justifyContent: 'flex-end', gap: SPACE.sm,
+            }}>
+              <HeaderAction testID="course-send" icon="send" label="Send Communication" primary
+                accessibilityLabel={`Send communication for ${course.name}`}
+                onPress={() => router.push({ pathname: '/send', params: { id } })} />
+              {/* The COURSE, not a date. The awaiting day below keeps its own
+                  button because that one arrives already scoped to the session
+                  she tapped; this one opens the flow asking which. */}
+              <HeaderAction testID="course-upload" icon="cloud_upload" label="Upload Session"
+                accessibilityLabel={`Upload a session for ${course.name}`}
+                onPress={() => router.push({ pathname: '/upload', params: { courseId: course.id } })} />
+              <HeaderAction testID="course-add-member" icon="person_add" label="Add Member"
+                accessibilityLabel={`Add a member to ${course.name}`}
+                onPress={() => router.push({ pathname: '/member/edit', params: { courseId: course.id } })} />
+            </View>
+          </View>
         </DeepBackground>
 
-        <View style={{ paddingHorizontal: SPACE.lg, paddingTop: SPACE.lg }}>
-          {rule ? <Muted style={{ marginBottom: SPACE.md }}>{ruleSentence(rule, course.name)}</Muted> : null}
+        <View style={{ paddingHorizontal: SPACE.lg, paddingTop: SPACE.md }}>
+          {rule ? <Muted style={{ marginBottom: SPACE.sm }}>{ruleSentence(rule, course.name)}</Muted> : null}
 
           {/* ------------------------------------------------ branch filter */}
           {branchOptions.length > 2 ? (
@@ -328,6 +407,22 @@ function CourseDetailBody() {
             </>
           ) : null}
 
+          {/* ----------------------------- the week: its range and its legend
+              One row on anything but a phone. The legend is here rather than in
+              a section of its own because the only thing it explains is the
+              icon on a date card, and it is four words wide. */}
+          <View style={{
+            flexDirection: compact ? 'column' : 'row',
+            alignItems: compact ? 'flex-start' : 'center',
+            gap: compact ? 6 : SPACE.md, marginTop: SPACE.md,
+          }}>
+            <Text style={{
+              flex: compact ? undefined : 1, fontSize: 13, fontWeight: '700',
+              color: theme.fg, fontVariant: ['tabular-nums'],
+            }}>{weekOffset === 0 ? `${week.label} · this week` : week.label}</Text>
+            <DayLegend />
+          </View>
+
           {/* -------------------------------------------------- week strip
               The arrows flank the CARDS, not a caption. They used to sit on a
               row of their own with the week label centred between them, two
@@ -338,33 +433,27 @@ function CourseDetailBody() {
 
               They are rendered OUTSIDE the loading branch on purpose: stepping
               a week refetches, and arrows that blinked out for the duration
-              would be arrows you cannot press twice in a row. */}
-          <Text style={{
-            marginTop: SPACE.md, fontSize: 11.5, fontWeight: '700',
-            color: theme.muted, fontVariant: ['tabular-nums'],
-          }}>{weekOffset === 0 ? `${week.label} · this week` : week.label}</Text>
+              would be arrows you cannot press twice in a row.
 
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 }}>
-            <Pressable testID="course-week-prev"
-              onPress={() => { setWeekOffset(o => Math.max(o - 1, -WEEK_LIMIT)); setSelectedDay(null); }}
+              SEVEN CARDS AT EVERY WIDTH, on request. A phone shows the whole
+              week and every day stays one tap away; only the gaps close up to
+              pay for it. What changed on the phone is the height of a card,
+              not how many there are. */}
+          <View style={{
+            flexDirection: 'row', alignItems: 'center',
+            gap: compact ? 6 : SPACE.sm, marginTop: SPACE.sm,
+          }}>
+            <StripArrow testID="course-week-prev" icon="chevron_left" label="Previous week"
               disabled={weekOffset <= -WEEK_LIMIT}
-              accessibilityRole="button" accessibilityLabel="Previous week"
-              accessibilityState={{ disabled: weekOffset <= -WEEK_LIMIT }}
-              hitSlop={6}
-              style={({ pressed }) => ({
-                width: 30, height: 30, borderRadius: 9,
-                alignItems: 'center', justifyContent: 'center',
-                backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
-                opacity: pressed ? 0.7 : weekOffset <= -WEEK_LIMIT ? 0.4 : 1,
-              })}>
-              <Icon name="chevron_left" size={17} color={theme.fg} />
-            </Pressable>
+              onPress={() => {
+                setWeekOffset(o => Math.max(o - 1, -WEEK_LIMIT)); setSelectedDay(null);
+              }} />
 
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
               {attendance.state === 'loading' ? (
                 <Skeleton lines={2} />
               ) : attendance.state === 'error' ? null : (
-                <View style={{ flexDirection: 'row', gap: 6 }}>
+                <View style={{ flexDirection: 'row', gap: compact ? 4 : 6 }}>
                   {days.map(d => {
                     const on = chosen?.iso === d.iso;
                     const tone = STATUS[d.key];
@@ -379,9 +468,9 @@ function CourseDetailBody() {
                         // some other way.
                         accessibilityLabel={`${d.dow} ${d.dayNum} ${d.mon}, ${tone.word}`}
                         style={{
-                          flex: 1, alignItems: 'center', gap: 2,
-                          paddingVertical: 9, paddingHorizontal: 2,
-                          borderRadius: 13,
+                          flex: 1, minWidth: 0, alignItems: 'center', gap: 1,
+                          paddingVertical: 7, paddingHorizontal: compact ? 1 : 2,
+                          borderRadius: 12,
                           backgroundColor: on ? statusSurface(theme.accent).bg : theme.surface,
                           borderWidth: 1, borderColor: on ? theme.accent : theme.line,
                         }}>
@@ -403,20 +492,11 @@ function CourseDetailBody() {
               )}
             </View>
 
-            <Pressable testID="course-week-next"
-              onPress={() => { setWeekOffset(o => Math.min(o + 1, WEEK_LIMIT)); setSelectedDay(null); }}
+            <StripArrow testID="course-week-next" icon="chevron_right" label="Next week"
               disabled={weekOffset >= WEEK_LIMIT}
-              accessibilityRole="button" accessibilityLabel="Next week"
-              accessibilityState={{ disabled: weekOffset >= WEEK_LIMIT }}
-              hitSlop={6}
-              style={({ pressed }) => ({
-                width: 30, height: 30, borderRadius: 9,
-                alignItems: 'center', justifyContent: 'center',
-                backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
-                opacity: pressed ? 0.7 : weekOffset >= WEEK_LIMIT ? 0.4 : 1,
-              })}>
-              <Icon name="chevron_right" size={17} color={theme.fg} />
-            </Pressable>
+              onPress={() => {
+                setWeekOffset(o => Math.min(o + 1, WEEK_LIMIT)); setSelectedDay(null);
+              }} />
           </View>
 
           {/* A week that could not be loaded is stated under the strip
@@ -443,12 +523,12 @@ function CourseDetailBody() {
                   : `${chosen.present} present · ${chosen.absent} absent · ${chosen.expected} expected`;
                 return (
                   <View style={{
-                    flexDirection: 'row', alignItems: 'flex-start', gap: 9,
-                    marginTop: 11, padding: 13, borderRadius: 13,
+                    flexDirection: 'row', alignItems: 'flex-start', gap: SPACE.sm,
+                    marginTop: SPACE.md, padding: 11, borderRadius: RADIUS.md,
                     backgroundColor: box.bg, borderWidth: 1, borderColor: box.border,
                   }}>
-                    <Icon name={tone.icon} size={18} color={ink} />
-                    <View style={{ flex: 1 }}>
+                    <Icon name={tone.icon} size={17} color={ink} />
+                    <View style={{ flex: 1, minWidth: 0 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 7 }}>
                         <Text style={{ flex: 1, fontSize: 12.5, fontWeight: '800', color: ink }}>
                           {tone.word}
@@ -458,28 +538,52 @@ function CourseDetailBody() {
                           fontVariant: ['tabular-nums'],
                         }}>{`${chosen.dow} ${chosen.dayNum} ${chosen.mon}`}</Text>
                       </View>
-                      <Muted style={{ marginTop: 4 }}>{detail}</Muted>
-                      {chosen.key === 'awaiting' ? (
-                        <Pressable testID="course-day-upload"
-                          // The DAY she tapped, not "the upload screen". It
-                          // opens straight into this session (uploadScope).
-                          onPress={() => router.push(
-                            `/upload?courseId=${id}&date=${chosen.iso}`)}
-                          accessibilityRole="button" accessibilityLabel="Upload this session"
-                          style={({ pressed }) => ({
-                            marginTop: 10, alignSelf: 'flex-start',
-                            flexDirection: 'row', alignItems: 'center', gap: 6,
-                            minHeight: 36, paddingHorizontal: 13, borderRadius: 11,
-                            backgroundColor: statusSurface(warnInk).bg,
-                            borderWidth: 1, borderColor: statusSurface(warnInk).border,
-                            opacity: pressed ? 0.7 : 1,
-                          })}>
-                          <Icon name="cloud_upload" size={16} color={warnInk} />
-                          <Text style={{ fontSize: 11.5, fontWeight: '800', color: warnInk }}>
-                            Upload this session
-                          </Text>
-                        </Pressable>
-                      ) : null}
+                      <Muted style={{ marginTop: 3 }}>{detail}</Muted>
+                      {/* ------------------------------------------ upload
+                          ALWAYS PRESENT, on every day of the strip.
+
+                          It used to render only for an `awaiting` day -- a
+                          day this course was scheduled to run and had not
+                          been given a file for. That is the case the button
+                          was designed around and it is not the case the
+                          academy is in: a class that was arranged on the day,
+                          or run on a day the course does not normally run,
+                          has no scheduled session, so the day showed no way
+                          to upload anything at all.
+
+                          Nothing about the import needed the session to
+                          exist -- the day comes from the file and 0024
+                          creates the session if there is none. Only this
+                          button was gated. Now the day she tapped always
+                          travels with it, which is also what lets the upload
+                          ASK when the file turns out to be from another day.
+
+                          The tint still marks `awaiting` out: that is the day
+                          the register is actually waiting on. */}
+                      {(() => {
+                        const waiting = chosen.key === 'awaiting';
+                        const ink = waiting ? warnInk : theme.accentInk;
+                        return (
+                          <Pressable testID="course-day-upload"
+                            onPress={() => router.push(
+                              `/upload?courseId=${id}&date=${chosen.iso}`)}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Upload a session for ${chosen.dow} ${chosen.dayNum} ${chosen.mon}`}
+                            style={({ pressed }) => ({
+                              marginTop: SPACE.sm, alignSelf: 'flex-start',
+                              flexDirection: 'row', alignItems: 'center', gap: 6,
+                              minHeight: 34, paddingHorizontal: 12, borderRadius: RADIUS.sm,
+                              backgroundColor: statusSurface(ink).bg,
+                              borderWidth: 1, borderColor: statusSurface(ink).border,
+                              opacity: pressed ? 0.7 : 1,
+                            })}>
+                            <Icon name="cloud_upload" size={15} color={ink} />
+                            <Text style={{ fontSize: 11.5, fontWeight: '800', color: ink }}>
+                              Upload session
+                            </Text>
+                          </Pressable>
+                        );
+                      })()}
                     </View>
                   </View>
                 );
@@ -487,44 +591,53 @@ function CourseDetailBody() {
             </>
           ) : null}
 
-          {/* ----------------------------------------------------- members */}
-          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: SPACE.sm, marginTop: SPACE.xl }}>
-            <Label style={{ flex: 1 }}>Members</Label>
-            <Text style={{ fontSize: 11.5, color: theme.muted, fontVariant: ['tabular-nums'] }}>
-              {memberSplit}
-            </Text>
+          {/* ----------------------------------------------------- members
+              The heading carries the count and, on a desktop, the search box
+              on the same line.
+
+              THE PINNED ADD MEMBER BAR IS GONE. It was a full-width button in
+              a sticky child of its own, pinned because the roster is the long
+              part of this screen and the way to add somebody scrolled off the
+              top after four members. The action is now in the course header
+              with the other two, which is above the fold at every width and
+              needs no pinning to stay there -- so the sticky child, and the
+              61pt band it cost every scroll position, both go. Nothing was
+              removed: it is the same route, the same params and the same
+              testID.
+
+              Bulk Import is still not here, on the earlier request that took
+              it off this heading. It remains on the Attendance tab. */}
+          <View style={{
+            flexDirection: wide ? 'row' : 'column',
+            alignItems: wide ? 'center' : 'stretch',
+            gap: wide ? SPACE.md : SPACE.sm, marginTop: SPACE.xl,
+          }}>
+            <View style={{
+              flex: wide ? 1 : undefined, minWidth: 0,
+              flexDirection: 'row', alignItems: 'baseline', gap: SPACE.sm,
+            }}>
+              <Label>{`Members (${shown.length})`}</Label>
+              <Text numberOfLines={1} style={{
+                flex: 1, minWidth: 0, fontSize: 11.5, color: theme.muted,
+                fontVariant: ['tabular-nums'],
+              }}>{memberSplit}</Text>
+            </View>
+
+            <View style={{
+              width: wide ? 300 : undefined,
+              flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
+              height: 42, borderRadius: RADIUS.md, backgroundColor: theme.surface,
+              borderWidth: 1, borderColor: theme.lineStrong, paddingHorizontal: 12,
+            }}>
+              <Icon name="search" size={18} color={theme.muted} />
+              <TextInput testID="course-member-search"
+                value={query} onChangeText={setQuery}
+                placeholder="Search members"
+                placeholderTextColor={theme.muted}
+                accessibilityLabel="Search the members of this course"
+                style={{ flex: 1, minWidth: 0, color: theme.fgStrong, fontSize: 13.5, fontWeight: '600' }} />
+            </View>
           </View>
-        </View>
-
-        {/* ADD MEMBER, alone and PINNED.
-            Bulk Import is gone from this heading on request. It was never the
-            twin of the button beside it: Add Member opens a form already
-            scoped to this course, and Bulk Import opened a file flow that has
-            its own screen, its own preview and its own per-row verdicts. It
-            is still reachable from the Attendance tab, which is where the
-            requester kept it, and by its route -- nothing was deleted, one
-            duplicate entry point was.
-
-            Pinned because the roster is the long part of this screen: the way
-            to add somebody used to scroll off the top after four members, and
-            the answer to "where did the button go" was "back up". */}
-        <View style={{
-          paddingHorizontal: SPACE.lg, paddingTop: 11, paddingBottom: 11,
-          backgroundColor: theme.bg,
-        }}>
-          <Pressable testID="course-add-member"
-            onPress={() => router.push({ pathname: '/member/edit', params: { courseId: course.id } })}
-            accessibilityRole="button" accessibilityLabel={`Add a member to ${course.name}`}
-            style={({ pressed }) => ({
-              minHeight: 46, borderRadius: RADIUS.md,
-              flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-              backgroundColor: statusSurface(theme.accent).bg,
-              borderWidth: 1, borderColor: statusSurface(theme.accent).border,
-              opacity: pressed ? 0.7 : 1,
-            })}>
-            <Icon name="person_add" size={18} color={theme.accentInk} />
-            <Text style={{ fontSize: 12.5, fontWeight: '800', color: theme.accentInk }}>Add Member</Text>
-          </Pressable>
         </View>
 
         <View style={{ paddingHorizontal: SPACE.lg, paddingBottom: SPACE.lg }}>
@@ -541,12 +654,21 @@ function CourseDetailBody() {
                 title={branch === ALL_BRANCHES ? 'Nobody is enrolled yet' : `Nobody is enrolled at ${branch}`}
                 body="Adding a member names the OFFERING, the course at one branch, so she is expected at the days that offering runs." />
             </View>
+          ) : shown.length === 0 ? (
+            /* SEARCHED away, not absent. The count it offers to bring back is
+               the scoped roster, so the two states can never be confused. */
+            <View style={{ marginTop: SPACE.md }}>
+              <EmptyState
+                title="No member matches that"
+                body={`Nothing on this roster matches “${query.trim()}”. Clearing the search brings all ${scoped.length} back.`}
+                action="Clear search" onAction={() => setQuery('')} />
+            </View>
           ) : (
             <>
-              <View style={{ gap: 9, marginTop: SPACE.md }}>
+              <View style={{ gap: SPACE.sm, marginTop: SPACE.md }}>
                 {withEmail.map((m, i) => (
                   <MemberCard key={m.id} member={m} tint={AVATAR_TINTS[(i + 3) % AVATAR_TINTS.length]}
-                    weekLabel={week.label} noEmail={false} />
+                    weekLabel={week.label} noEmail={false} allMembers={members} />
                 ))}
               </View>
 
@@ -560,7 +682,7 @@ function CourseDetailBody() {
                     <Icon name="mail_off" size={16} color={dangerInk} />
                     <Label style={{ flex: 1, color: dangerInk }}>No email</Label>
                     <Text style={{ fontSize: 11.5, color: theme.muted, fontVariant: ['tabular-nums'] }}>
-                      {`${withoutEmail.length} of ${scoped.length}`}
+                      {`${withoutEmail.length} of ${shown.length}`}
                     </Text>
                   </View>
                   <View style={{
@@ -573,10 +695,10 @@ function CourseDetailBody() {
                       follow-up: there is no address to send to. Add an email and they join the rule.
                     </Muted>
                   </View>
-                  <View style={{ gap: 9, marginTop: 10 }}>
+                  <View style={{ gap: SPACE.sm, marginTop: 10 }}>
                     {withoutEmail.map((m, i) => (
                       <MemberCard key={m.id} member={m} tint={AVATAR_TINTS[i % AVATAR_TINTS.length]}
-                        weekLabel={week.label} noEmail />
+                        weekLabel={week.label} noEmail allMembers={members} />
                     ))}
                   </View>
                 </View>
@@ -625,12 +747,101 @@ function CourseDetailBody() {
 }
 
 /**
+ * One of the three primary course actions, on the deep header.
+ *
+ * Same height, same radius, same icon-and-word shape for all three; only the
+ * fill separates the primary from the two secondaries, and the WORD is what
+ * says which action it is. Full width when the parent stacks them (a phone),
+ * natural width when it lines them up.
+ */
+function HeaderAction({ testID, icon, label, onPress, primary, accessibilityLabel }: {
+  testID: string; icon: string; label: string; onPress: () => void;
+  primary?: boolean; accessibilityLabel: string;
+}) {
+  const { theme } = useTheme();
+  return (
+    <Pressable testID={testID} onPress={onPress} accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      style={({ pressed }) => ({
+        height: 42, borderRadius: RADIUS.md, paddingHorizontal: 13,
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+        backgroundColor: primary ? theme.accent : theme.deepControl,
+        borderWidth: 1, borderColor: primary ? theme.accent : theme.deepControlLine,
+        opacity: pressed ? 0.8 : 1,
+      })}>
+      <Icon name={icon} size={17} color={theme.onAccent} />
+      <Text numberOfLines={1} style={{ fontSize: 12.5, fontWeight: '800', color: theme.onAccent }}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+/**
+ * A DATE control, and deliberately not the page back button.
+ *
+ * 30pt square on the app surface with a 9pt radius, inside the strip it moves.
+ * The back button is 34pt, filled, rounded to RADIUS.md and up on the deep
+ * header beside the course name. hitSlop takes this to the 44pt minimum
+ * without taking the drawn control back up to the size of the one it must not
+ * be mistaken for.
+ */
+function StripArrow({ testID, icon, label, disabled, onPress }: {
+  testID: string; icon: string; label: string; disabled: boolean; onPress: () => void;
+}) {
+  const { theme } = useTheme();
+  return (
+    <Pressable testID={testID} onPress={onPress} disabled={disabled}
+      accessibilityRole="button" accessibilityLabel={label}
+      accessibilityState={{ disabled }} hitSlop={7}
+      style={({ pressed }) => ({
+        width: 30, height: 30, borderRadius: 9,
+        alignItems: 'center', justifyContent: 'center',
+        backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
+        opacity: pressed ? 0.7 : disabled ? 0.4 : 1,
+      })}>
+      <Icon name={icon} size={17} color={theme.fg} />
+    </Pressable>
+  );
+}
+
+/**
+ * What the icon on a date card means, in one wrapping row.
+ *
+ * The four states a WEEK of this course can be in. Scheduled is left out on
+ * purpose: it is the only one the day panel below always spells out in a
+ * sentence, and a five-item legend stopped fitting one row at 360pt.
+ */
+function DayLegend() {
+  const { theme } = useTheme();
+  const keys: StatusKey[] = ['present', 'absent', 'awaiting', 'none'];
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.md }}>
+      {keys.map(k => {
+        const tone = STATUS[k];
+        const ink = theme.isDark ? tone.fgDark : tone.fgLight;
+        return (
+          <View key={k} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Icon name={tone.icon} size={13} color={ink} />
+            <Text style={{ fontSize: 10.5, fontWeight: '700', color: theme.muted }}>{tone.word}</Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+/**
  * One member on the course roster. Extracted because the with-email and
  * no-email sections draw the SAME card with a different reason attached, and
  * two copies would be two places for the miss counts to drift.
  */
-function MemberCard({ member, tint, weekLabel, noEmail }:
-  { member: Member; tint: string; weekLabel: string; noEmail: boolean }) {
+function MemberCard({ member, tint, weekLabel, noEmail, allMembers }:
+  { member: Member; tint: string; weekLabel: string; noEmail: boolean;
+    /** the register this member's display name can be linked INTO -- only a
+     *  no-email card offers it, but the prop is passed by both call sites so
+     *  the two cards stay one component */
+    allMembers: Member[] }) {
   const { theme } = useTheme();
   const { flash } = useToast();
   const router = useRouter();
@@ -660,6 +871,9 @@ function MemberCard({ member, tint, weekLabel, noEmail }:
   // going and what follows.
   const [confirmStatus, setConfirmStatus] = useState(false);
   const [saving, setSaving] = useState(false);
+  // "Add display name to existing member" -- open, and mid-save.
+  const [linking, setLinking] = useState(false);
+  const [linkingSave, setLinkingSave] = useState(false);
 
   const applyStatus = async () => {
     if (saving) return;
@@ -684,7 +898,7 @@ function MemberCard({ member, tint, weekLabel, noEmail }:
 
   return (
     <View style={{
-      padding: 13, borderRadius: RADIUS.lg, backgroundColor: theme.surface,
+      padding: 11, borderRadius: RADIUS.md, backgroundColor: theme.surface,
       borderWidth: 1, borderColor: noEmail ? statusSurface(dangerInk).border : theme.line,
     }}>
       {/* ONE row. The status and the Edit control sit together at its right
@@ -695,7 +909,7 @@ function MemberCard({ member, tint, weekLabel, noEmail }:
           The card's own tap target is a SIBLING of those two rather than
           their parent: a pressable nested inside the card button is how "it
           opened her profile instead of editing her" happens. */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }}>
         <Pressable testID={`course-member-${member.id}`}
           onPress={() => router.push({ pathname: '/member/[id]', params: { id: member.id } })}
           accessibilityRole="button"
@@ -703,29 +917,34 @@ function MemberCard({ member, tint, weekLabel, noEmail }:
             noEmail ? 'No email on file, not in follow-up' : member.emails[0]?.address ?? ''
           }. Missed ${member.missed}, consecutive ${member.streak}`}
           style={({ pressed }) => ({
-            flex: 1, flexDirection: 'row', alignItems: 'center', gap: 11,
+            flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10,
             opacity: pressed ? 0.7 : 1,
           })}>
           <View style={{
-            width: 38, height: 38, borderRadius: 19, backgroundColor: tint,
+            width: 34, height: 34, borderRadius: 17, backgroundColor: tint,
             alignItems: 'center', justifyContent: 'center',
           }}>
-            <Text style={{ fontSize: 13, fontWeight: '800', color: theme.onAccent }}>
+            <Text style={{ fontSize: 12.5, fontWeight: '800', color: theme.onAccent }}>
               {initials(member.name)}
             </Text>
           </View>
-          <View style={{ flex: 1 }}>
+          {/* minWidth 0 is what makes the ellipsis happen. The default minimum
+              of a flex child is its CONTENT, so a long address pushed the
+              status pill and the edit button off the right edge instead of
+              truncating -- which is the one thing a roster of email addresses
+              is guaranteed to contain. */}
+          <View style={{ flex: 1, minWidth: 0 }}>
             <Text numberOfLines={1} style={{
-              fontSize: 14.5, fontWeight: '700', color: theme.fgStrong,
+              fontSize: 14, fontWeight: '700', color: theme.fgStrong,
             }}>{member.name}</Text>
             <Text numberOfLines={1} style={{
-              fontSize: 11.5, marginTop: 3,
+              fontSize: 11.5, marginTop: 2,
               color: noEmail ? dangerInk : theme.muted,
             }}>
               {noEmail ? 'No email on file · not in follow-up' : member.emails[0]?.address ?? ''}
             </Text>
             <Text numberOfLines={1} style={{
-              fontSize: 11, marginTop: 2, fontVariant: ['tabular-nums'],
+              fontSize: 11, marginTop: 1, fontVariant: ['tabular-nums'],
               color: heavy ? dangerInk : theme.dim,
             }}>
               {`Missed ${weekLabel}: ${member.missed} · consecutive ${member.streak}`}
@@ -774,6 +993,109 @@ function MemberCard({ member, tint, weekLabel, noEmail }:
             color={noEmail ? dangerInk : theme.accentInk} />
         </Pressable>
       </View>
+
+      {/* ------------------------------------------ the two no-email actions
+          A name with no address reached the register one of two ways: she is
+          somebody new who has not given one, or she is somebody ALREADY on
+          the register under a different display name. The two buttons are
+          those two answers, and each says which one it is.
+
+          They sit on their own row rather than beside the status pill: both
+          labels are sentences, and squeezed in beside an avatar and a pill
+          they truncate to "Add as..." / "Add display..." -- two buttons that
+          read the same are worse than one. */}
+      {noEmail ? (
+        <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: 11 }}>
+          <Pressable testID={`course-member-add-new-${member.id}`}
+            onPress={() => router.push({
+              pathname: '/member/edit', params: { name: member.name } })}
+            accessibilityRole="button"
+            accessibilityLabel={`Add ${member.name} as a new member`}
+            style={({ pressed }) => ({
+              flex: 1, minHeight: 34, borderRadius: RADIUS.sm,
+              flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+              paddingHorizontal: 8,
+              backgroundColor: statusSurface(theme.accentInk).bg,
+              borderWidth: 1, borderColor: statusSurface(theme.accentInk).border,
+              opacity: pressed ? 0.7 : 1,
+            })}>
+            <Icon name="person_add" size={14} color={theme.accentInk} />
+            <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '800', color: theme.accentInk }}>
+              Add as new member
+            </Text>
+          </Pressable>
+
+          <Pressable testID={`course-member-add-alias-${member.id}`}
+            onPress={() => setLinking(true)}
+            disabled={linkingSave}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: linkingSave }}
+            accessibilityLabel={`Add ${member.name} as a display name for an existing member`}
+            style={({ pressed }) => ({
+              flex: 1, minHeight: 34, borderRadius: RADIUS.sm,
+              flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+              paddingHorizontal: 8,
+              backgroundColor: theme.surface2,
+              borderWidth: 1, borderColor: theme.lineStrong,
+              opacity: pressed || linkingSave ? 0.6 : 1,
+            })}>
+            <Icon name="link" size={14} color={theme.fg} />
+            <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '800', color: theme.fg }}>
+              {linkingSave ? 'Saving…' : 'Add display name to existing member'}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {/* Every member on the register, searched by the operator -- nothing is
+          guessed from the name. Selected by member_id, never by label: two
+          members can share a name, and attaching a display name to the wrong
+          one is exactly what the import would then act on. */}
+      <SearchPicker
+        open={linking}
+        onClose={() => setLinking(false)}
+        placement="top"
+        title={`Who is “${member.name}”?`}
+        placeholder="Search by name"
+        options={allMembers
+          .filter(m => m.id !== member.id)
+          .map(m => ({ label: m.name, meta: `${m.course} · ${m.branch}`, value: m.id }))}
+        confirmLabel="Add as display name"
+        busy={linkingSave}
+        /* WHAT IT WILL DO, naming both halves. The attendance move is the
+           half nobody would guess from the button, and it is the half that
+           cannot be undone by tapping something else. */
+        confirmNote={chosen =>
+          `“${member.name}” becomes a display name for ${chosen.label}, and every class `
+          + `${member.name} was marked present at moves across to her. `
+          + `${member.name} is then retired — the same person is not on the register twice.`}
+        onSelect={memberId => {
+          const chosen = allMembers.find(m => m.id === memberId);
+          if (!chosen || linkingSave) return;
+          void (async () => {
+            setLinkingSave(true);
+            try {
+              const result = await mergeMemberInto(member.id, chosen.id);
+              setLinking(false);
+              flash(dataSource === 'live'
+                ? `“${member.name}” is now a display name for ${chosen.name}`
+                  + (result.attendance_moved > 0
+                      ? ` · ${result.attendance_moved} attendance record${result.attendance_moved === 1 ? '' : 's'} moved`
+                      : '')
+                : `“${member.name}” merged into ${chosen.name} on this device only. The academy database is not configured.`,
+                dataSource === 'live' ? 'ok' : 'warn');
+            } catch (err) {
+              // Every refusal here is a real answer about the register -- the
+              // name already points at somebody, she carries an address of her
+              // own -- not a glitch to swallow. The picker stays OPEN on a
+              // failure, so the message lands next to what caused it.
+              flash(err instanceof Error ? err.message : MERGE_FAILED, 'warn');
+            } finally {
+              setLinkingSave(false);
+            }
+          })();
+        }}
+        emptyNote="No member matches that. Add her as a new member instead — course and branch come from this course." />
 
       {/* What the mark DOES, in both directions, because "inactive" on its own
           could mean deleted, paused or unenrolled -- and which of those it is

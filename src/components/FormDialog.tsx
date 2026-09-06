@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { Muted, Button } from './ui';
 import { Icon } from './Icon';
 import { useTheme } from '../theme/ThemeProvider';
+import { dialogMaxHeight } from './dialogSize';
 import { SPACE, RADIUS } from '../theme/tokens';
 
 /**
@@ -54,8 +55,6 @@ import { SPACE, RADIUS } from '../theme/tokens';
  * content: you can tell where you are without being able to read it.
  */
 const DIALOG_MAX_W = 560;
-/** Never taller than this share of the viewport: the footer must stay on screen. */
-const DIALOG_MAX_H = 0.9;
 /**
  * Web only, and deliberately so. `backdrop-filter` is a CSS property that
  * react-native-web passes through (it is in the library's own prefix table);
@@ -96,7 +95,12 @@ export function FormDialog({
 }) {
   const { theme } = useTheme();
   const router = useRouter();
+  // Not `height * 0.9`: a Modal mounted over this dialog -- which is every
+  // picker in every form -- makes `useWindowDimensions()` report 0, and a
+  // card capped at 0 with `overflow: hidden` clipped the whole form away
+  // behind its own calendar (TD-021). No viewport, no cap.
   const { height } = useWindowDimensions();
+  const maxHeight = dialogMaxHeight(height);
   const close = onClose ?? (() => router.back());
 
   return (
@@ -113,7 +117,7 @@ export function FormDialog({
         style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} />
 
       <View style={{
-        width: '100%', maxWidth: DIALOG_MAX_W, maxHeight: height * DIALOG_MAX_H,
+        width: '100%', maxWidth: DIALOG_MAX_W, maxHeight,
         backgroundColor: theme.bg, borderRadius: RADIUS.lg,
         borderWidth: 1, borderColor: theme.lineStrong, overflow: 'hidden',
       }}>

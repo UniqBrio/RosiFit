@@ -129,7 +129,7 @@ export default function HolidayScreen() {
       hint={!valid ? 'A name and a start date are needed'
         : 'Removing it later puts every one of these sessions back to scheduled'}>
 
-      <Field label="Name or reason" value={name} onChange={setName} placeholder="e.g. Diwali" />
+      <Field label="Name or reason" required value={name} onChange={setName} placeholder="e.g. Diwali" />
 
       {/* Pickers, not typed dates. Both values are ISO yyyy-mm-dd, which is
           what holidays.start_date / end_date take, so there is no format to
@@ -138,7 +138,7 @@ export default function HolidayScreen() {
           stated in the control instead of only caught at save. */}
       <View style={{ flexDirection: 'row', gap: SPACE.md }}>
         <View style={{ flex: 1 }}>
-          <DateField label="Start date" value={from} onChange={setFrom}
+          <DateField label="Start date" required value={from} onChange={setFrom}
             placeholder="First day" testID="holiday-start-date" />
         </View>
         <View style={{ flex: 1 }}>

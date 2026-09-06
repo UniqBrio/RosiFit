@@ -1,0 +1,18 @@
+Fail-first — the already-sent mark and the selection it decides
+src/data/sent.test.ts, 06-Sep-2026
+
+Run against the behaviour that shipped before this change: everybody flagged
+is a recipient, nothing records or reads who has already been written to, and
+there is no mark to put on her row. 6 of the 12 assertions fail. The other 6
+are the merge and the period key, which are new plumbing rather than a
+behaviour reversal and pass either way.
+
+not ok 2 - a recorded send is readable back for that period only
+not ok 3 - recording again ADDS, it does not replace the period
+not ok 8 - everyone not yet written to starts ticked
+not ok 9 - a member already sent to starts UNTICKED, never silently ticked
+not ok 11 - the mark names the day it went out
+not ok 12 - an unreadable timestamp still says the thing that matters
+# tests 12
+# pass 6
+# fail 6

@@ -10,6 +10,7 @@ import { isConfigured } from '../src/lib/supabase';
 import { authLogin, adoptSession } from '../src/data/api';
 import { groupPhone, phoneDigits, isCompletePhone, needsRegistration, continueDestination } from '../src/data/signin';
 import { isRegisteredNumber } from '../src/data/repository';
+import { homeHref } from '../src/data/access';
 
 /** '1'..'9', clear-entry, '0', backspace -- the canvas' 3-column layout */
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'ce', '0', 'del'] as const;
@@ -47,7 +48,10 @@ export default function SignIn() {
    *  enumeration oracle and is accepted as one (DECISION_LOG 016). What
    *  it must not do is GUESS: a lookup that fails leaves her on this screen
    *  with a sentence, because answering "not registered" on a dropped
-   *  connection walks a staff member into registering a second academy. */
+   *  connection sends her somewhere she was never meant to go.
+   *
+   *  An unrecognised number goes to REGISTRATION -- the owner's flow, and
+   *  the form is expected to succeed there. */
   const toPin = async () => {
     if (!phoneOk || busy) return;
     setError(null);
@@ -96,7 +100,13 @@ export default function SignIn() {
       setPin('');
       // A first PIN (or one an admin reset) must be changed before she goes
       // anywhere else -- must_change_pin is the server's word, not a guess.
-      router.replace(result.user?.must_change_pin ? '/set-pin?for=self' : '/(tabs)');
+      // Straight to the shell this account actually has. A staff member sent
+      // to '/(tabs)' would be taken off Overview a moment later by the guard
+      // there; landing her on Attendance is the same destination without the
+      // hop. `kind` is the server's word for it, not a guess from the number.
+      router.replace(result.user?.must_change_pin
+        ? '/set-pin?for=self'
+        : homeHref(result.user?.kind !== 'staff'));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'That did not work. Try again.';
       setPin('');

@@ -109,3 +109,69 @@ export function resolvePeriod(choice: PeriodChoice, today = new Date()): Period 
     ? customRange(choice.from, choice.to)
     : presetPeriod(choice.key, today);
 }
+
+/* ------------------------------------------------------------- the buckets
+ *
+ * A period split into the consecutive sub-ranges the "based on period"
+ * section of Overview draws one bar for.
+ *
+ * WHY THE SPLIT IS A FUNCTION AND NOT A LOOP IN THE SCREEN
+ * Each bucket is queried with the SAME function the donut and the member
+ * report read (`member_period_metrics`), just over a shorter range. That is
+ * the only reason the trend can be trusted beside the total: the buckets
+ * PARTITION the period exactly -- consecutive, no gap, no overlap, clipped to
+ * the range at both ends -- so summing them reproduces the whole-period
+ * figure. Split it wrong and the bars quietly describe a different span from
+ * the ring above them, which is the drift C-84 exists to stop.
+ *
+ * The grain follows the span, because a bar per day over a year is not a
+ * chart and a single bar for a week is not a trend.
+ */
+
+/** A week and a bit: past this a bar per day stops fitting on a phone. */
+const MAX_DAILY_SPAN = 8;
+/** Eleven weeks. Past this the weekly grain gives more bars than bars. */
+const MAX_WEEKLY_SPAN = 77;
+
+const DAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+const dayCount = (from: Date, to: Date): number =>
+  Math.round((to.getTime() - from.getTime()) / 86400000) + 1;
+
+/** A bucket's own label — short enough to sit at the head of a bar row, and
+ *  built from the SAME two dates the bucket is queried over. */
+function bucketLabel(from: Date, to: Date, grain: 'day' | 'week' | 'month'): string {
+  if (grain === 'day') return `${DAYS_SHORT[from.getDay()]} ${from.getDate()}`;
+  if (grain === 'month') return `${MONTHS[from.getMonth()]} ${from.getFullYear()}`;
+  return from.getMonth() === to.getMonth()
+    ? `${from.getDate()}\u2013${to.getDate()} ${MONTHS[to.getMonth()]}`
+    : `${from.getDate()} ${MONTHS[from.getMonth()]}\u2013${to.getDate()} ${MONTHS[to.getMonth()]}`;
+}
+
+export function periodBuckets(range: Period): Period[] {
+  const start = parseISO(range.from);
+  const end = parseISO(range.to);
+  if (!start || !end || end < start) return [];
+
+  const span = dayCount(start, end);
+  const grain: 'day' | 'week' | 'month' =
+    span <= MAX_DAILY_SPAN ? 'day' : span <= MAX_WEEKLY_SPAN ? 'week' : 'month';
+
+  const out: Period[] = [];
+  let cursor = start;
+  // The guard is the calendar, not a counter: every branch below moves the
+  // cursor strictly forwards, and the loop stops on the range's own last day.
+  while (cursor <= end) {
+    // The natural end of the bucket the cursor sits in -- then CLIPPED to the
+    // range, which is what makes the first and last buckets partial rather
+    // than reaching outside the period the label promises.
+    const natural =
+      grain === 'day' ? cursor
+      : grain === 'week' ? shiftDays(weekStart(cursor), 6)
+      : new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
+    const to = natural > end ? end : natural;
+    out.push({ from: iso(cursor), to: iso(to), label: bucketLabel(cursor, to, grain) });
+    cursor = shiftDays(to, 1);
+  }
+  return out;
+}

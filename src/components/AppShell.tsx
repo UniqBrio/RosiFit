@@ -10,6 +10,8 @@ import { Icon } from './Icon';
 import { useTheme } from '../theme/ThemeProvider';
 import { RADIUS, SPACE, TAP_MIN } from '../theme/tokens';
 import { useNotifications } from '../data/hooks';
+import { useIdentity } from '../data/session';
+import { homeHref, homeMatch, tabVisible } from '../data/access';
 import { NotificationBell, NotificationsSheet } from './Notifications';
 
 /**
@@ -43,6 +45,12 @@ import { NotificationBell, NotificationsSheet } from './Notifications';
  * rather than from five slots competing for a phone's width. Its landing
  * screen is the course list, because that is what the canvas' Attendance tab
  * opens.
+ *
+ * OVERVIEW IS THE SUPER ADMIN'S TAB. A staff account is not offered it at all
+ * -- see src/data/access.ts and
+ * requests/2026-09-06-staff-does-not-see-overview.md. Attendance then fills
+ * the row on its own, which is the correct shape for one tab rather than a
+ * half-width tab beside a gap.
  */
 const TABS: { route: string; match: string; label: string; also: string[] }[] = [
   { route: 'index', match: '/', label: 'Overview', also: [] },
@@ -50,13 +58,35 @@ const TABS: { route: string; match: string; label: string; also: string[] }[] = 
     also: ['/members', '/weekly', '/attendance'] },
 ];
 
-/** The three destinations the floating bar shows. */
-const NAV: { href: Href; match: string; icon: string; label: string; also?: string[] }[] = [
-  { href: '/(tabs)',         match: '/',        icon: 'space_dashboard', label: 'Home',
-    also: ['/members', '/courses', '/weekly', '/attendance'] },
-  { href: '/(tabs)/reports', match: '/reports', icon: 'pie_chart',       label: 'Reports' },
-  { href: '/(tabs)/more',    match: '/more',    icon: 'more_horiz',      label: 'More' },
+type NavItem = { href: Href; match: string; icon: string; label: string; also?: string[] };
+
+/** The two destinations that mean the same thing to everybody. */
+const NAV_REST: NavItem[] = [
+  { href: '/(tabs)/reports', match: '/reports', icon: 'pie_chart',  label: 'Reports' },
+  { href: '/(tabs)/more',    match: '/more',    icon: 'more_horiz', label: 'More' },
 ];
+
+/**
+ * The three destinations the floating bar shows.
+ *
+ * The bar keeps its three items and its labels for every account -- the
+ * requester bound it to "same as super admin, just hiding overview". The one
+ * thing that moves is where HOME goes: the dashboard for the super admin, the
+ * Attendance workspace for a staff account that has no dashboard to go to.
+ */
+function navItems(isSuperAdmin: boolean): NavItem[] {
+  return [
+    { href: homeHref(isSuperAdmin), match: homeMatch(isSuperAdmin),
+      icon: 'space_dashboard', label: 'Home',
+      // The whole Attendance workspace lights Home, as it always has. For a
+      // staff account '/courses' is the match rather than one of these, and
+      // '/' is not in the set at all -- that account cannot be on Overview.
+      also: isSuperAdmin
+        ? ['/members', '/courses', '/weekly', '/attendance']
+        : ['/members', '/weekly', '/attendance'] },
+    ...NAV_REST,
+  ];
+}
 
 export function AcademyHeader({ navigation }: { navigation?: TabNavigation }) {
   const { theme } = useTheme();
@@ -67,6 +97,10 @@ export function AcademyHeader({ navigation }: { navigation?: TabNavigation }) {
   // ONE load for the bell's count and the sheet's list. Two calls would let
   // the number on the bell and the rows under it be a fetch apart.
   const notifications = useNotifications();
+  // Which tabs this account gets. `false` while the role is still resolving,
+  // which is the safe answer -- see src/data/access.ts.
+  const { identity, loading: roleLoading } = useIdentity();
+  const isSuperAdmin = !!identity?.isSuperAdmin;
 
   return (
     <View style={{ backgroundColor: theme.shell, paddingTop: insets.top }}>
@@ -130,7 +164,13 @@ export function AcademyHeader({ navigation }: { navigation?: TabNavigation }) {
       <View accessibilityRole="tablist"
         style={{ flexDirection: 'row', paddingHorizontal: SPACE.xl,
                  borderBottomWidth: 1, borderBottomColor: theme.line }}>
-        {TABS.map(t => {
+        {/* The Overview SLOT, held empty while the role is still unknown.
+            Filling it would offer a staff member a tap that was never hers;
+            dropping it would make Attendance jump from half-width to full and
+            back on every pushed screen that draws this header, because each
+            one resolves the role again. Holding it does neither. */}
+        {roleLoading ? <View style={{ flex: 1 }} /> : null}
+        {TABS.filter(t => tabVisible(t.route, isSuperAdmin)).map(t => {
           const on = path === t.match || t.also.includes(path) || path.startsWith('/course/');
           return (
             <Pressable key={t.label}
@@ -189,8 +229,12 @@ export function NavPill({ state, navigation }: BottomTabBarProps) {
   const { theme } = useTheme();
   const path = usePathname();
   const insets = useSafeAreaInsets();
+  const { identity } = useIdentity();
+  // Home means Attendance for a staff account. The label and the icon do not
+  // change, so nothing here reflows while the role resolves.
+  const nav = navItems(!!identity?.isSuperAdmin);
 
-  const active = (n: typeof NAV[number]) =>
+  const active = (n: NavItem) =>
     path === n.match || (n.also?.includes(path) ?? false);
 
   return (
@@ -205,7 +249,7 @@ export function NavPill({ state, navigation }: BottomTabBarProps) {
           borderRadius: RADIUS.pill, backgroundColor: theme.shell,
           borderWidth: 1, borderColor: theme.lineStrong,
         }}>
-        {NAV.map(n => {
+        {nav.map(n => {
           const on = active(n);
           const name = n.match === '/' ? 'index' : n.match.slice(1);
           const route = state.routes.find(r => r.name === name);
@@ -247,8 +291,10 @@ function ShellNavPill() {
   const router = useRouter();
   const path = usePathname();
   const insets = useSafeAreaInsets();
+  const { identity } = useIdentity();
+  const nav = navItems(!!identity?.isSuperAdmin);
 
-  const active = (n: typeof NAV[number]) =>
+  const active = (n: NavItem) =>
     path === n.match || (n.also?.includes(path) ?? false);
 
   return (
@@ -261,7 +307,7 @@ function ShellNavPill() {
         borderRadius: RADIUS.pill, backgroundColor: theme.shell,
         borderWidth: 1, borderColor: theme.lineStrong,
       }}>
-        {NAV.map(n => {
+        {nav.map(n => {
           const on = active(n);
           return (
             <Pressable key={n.label} testID={`shell-nav-${n.label.toLowerCase()}`}

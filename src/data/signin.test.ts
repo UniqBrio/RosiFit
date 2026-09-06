@@ -122,6 +122,11 @@ test('a recognised number goes to the PIN screen, never straight in', () => {
 });
 
 test('an unrecognised number goes to registration', () => {
+  // RESTORED 06-Sep-2026, same day it was amended. The amendment gated this
+  // on "registration is still open", which came from misreading the owner's
+  // "there is no registration page for staff" as a rule about this screen.
+  // It is not: an unrecognised number goes to the registration form, and the
+  // form is expected to succeed. The owner's flow, stated twice.
   assert.equal(continueDestination(false), 'register');
 });
 

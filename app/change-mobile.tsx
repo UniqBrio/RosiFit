@@ -50,10 +50,10 @@ export default function ChangeMobile() {
       <Card>
         <H2>Confirm it is you</H2>
         <View style={{ marginTop: SPACE.md }}>
-          <Field label="Your current PIN" value={pin} onChange={setPin} secure
+          <Field label="Your current PIN" required value={pin} onChange={setPin} secure
             keyboardType="number-pad" placeholder="••••"
             error={pin.length > 0 && !pinOk ? 'Your PIN is 4 digits.' : undefined} />
-          <Field label="New mobile number" value={next} onChange={setNext} prefix="+91"
+          <Field label="New mobile number" required value={next} onChange={setNext} prefix="+91"
             keyboardType="number-pad" placeholder="00000 00000"
             error={next.length > 0 && !nextOk ? 'Enter a 10-digit mobile number.' : undefined} />
         </View>

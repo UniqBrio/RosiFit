@@ -13,12 +13,16 @@ import { isConfigured } from '../src/lib/supabase';
 import { fetchSecurityQuestions, type SecurityQuestion } from '../src/data/api';
 import { setRegistrationDraft } from '../src/data/pending';
 
-const STEPS = ['Your details', 'Security questions'];
-
 /**
  * Registration collects the recovery answers UP FRONT (C-97): they are the
  * only way a PIN reset works later without a call, so they are part of
  * creating the account, not an optional afterthought.
+ *
+ * ONE FORM, not a two-step wizard. The details and the recovery answers were
+ * split across two tabs with a progress row; the split bought nothing -- both
+ * halves are needed before anything is sent, and neither can be saved on its
+ * own -- while costing a screen on which the remaining fields were invisible.
+ * The section labels are the two tab labels, kept word for word.
  */
 export default function Register() {
   const { theme } = useTheme();
@@ -29,9 +33,7 @@ export default function Register() {
   // registering is provably the one she tried to sign in with.
   const { phone: fromSignIn } = useLocalSearchParams<{ phone?: string }>();
 
-  const [step, setStep] = useState(1);
   const [name, setName] = useState('');
-  const [academy, setAcademy] = useState('');
   const [phone, setPhone] = useState(() => {
     const d = String(fromSignIn ?? '').replace(/\D/g, '').slice(0, 10);
     return d.length > 5 ? `${d.slice(0, 5)} ${d.slice(5)}` : d;
@@ -50,13 +52,15 @@ export default function Register() {
   useEffect(() => {
     if (!isConfigured) return;
     fetchSecurityQuestions()
-      .then(({ questions: list, bootstrap_completed }) => {
-        // Already registered: filling this form in would only earn a 409 at
-        // the end of it, so say so at the start instead.
-        if (bootstrap_completed) {
-          setNotice('This academy is already registered. Sign in with your mobile number and PIN instead.');
-          return;
-        }
+      .then(({ questions: list }) => {
+        // "This academy is already registered" used to be set here and was
+        // removed on 06-Sep-2026 at the owner's request: it appeared on a form
+        // the owner wants every unrecognised number to be able to COMPLETE, so
+        // it read as a refusal of the thing the screen is for. The condition it
+        // guarded is real and has not gone anywhere -- auth-bootstrap still
+        // answers 409 once the academy exists -- but the answer to that is to
+        // let the form succeed, not to warn about it here. bootstrap_completed
+        // is deliberately no longer read.
         if (list.length < 2) return;
         setBank(list);
         setQuestions([list[0].text, list[1].text]);
@@ -72,16 +76,21 @@ export default function Register() {
       });
   }, []);
 
-  const ok1 = !!(name.trim() && academy.trim() && phone.replace(/\D/g, '').length >= 10);
-  const ok2 = answers.every(a => a.trim().length >= 3);
-  const valid = step === 1 ? ok1 : ok2;
+  // ONE predicate, because there is one form. The academy is no longer asked
+  // for: it is RosiFit, and the answer was never sent anywhere -- the draft
+  // below has never carried it, and the academy's real name lives in
+  // app_settings. Email stays, and stays optional: it is not in here.
+  const valid = !!(
+    name.trim() &&
+    phone.replace(/\D/g, '').length >= 10 &&
+    answers.every(a => a.trim().length >= 3)
+  );
 
-  const next = () => {
+  const submit = () => {
     if (!valid) {
-      flash(step === 1 ? 'Name, academy and a 10-digit number are needed' : 'Both answers are needed', 'warn');
+      flash('Name, a 10-digit number and both answers are needed', 'warn');
       return;
     }
-    if (step === 1) { setStep(2); return; }
 
     // The answers never travel as route params -- see src/data/pending.ts.
     // The account is created on the next screen, where the PIN exists:
@@ -100,7 +109,7 @@ export default function Register() {
 
   return (
     <Screen>
-      <Muted>{`Step ${step} of 2 · recovery answers on record`}</Muted>
+      <Muted>Recovery answers on record</Muted>
 
       {notice && (
         <View
@@ -115,93 +124,87 @@ export default function Register() {
         </View>
       )}
 
-      <View style={{ flexDirection: 'row', gap: 6, marginTop: SPACE.md, marginBottom: SPACE.lg }}>
-        {STEPS.map((label, i) => {
-          const done = step >= i + 1;
-          return (
-            <View key={label} style={{ flex: 1, gap: 6 }}>
-              <View style={{ height: 4, borderRadius: 2, backgroundColor: done ? theme.accent : theme.line }} />
-              <Text style={{ fontSize: 10.5, fontWeight: '700', color: done ? theme.accentInk : theme.dim }}>
-                {label}
-              </Text>
-            </View>
-          );
-        })}
+      {/* The two tab labels, kept as section labels: the split is gone, the
+          words that named the two halves are not. */}
+      <View style={{ marginTop: SPACE.lg }}>
+        <Label>Your details</Label>
+      </View>
+      <View style={{ marginTop: SPACE.md }}>
+        <Field label="Full name" required value={name} onChange={setName} placeholder="e.g. Priya Menon" />
+        {/* "Academy you administer" was removed: the academy is RosiFit by
+            default, and the field's value was never sent anywhere. */}
+        <Field label="Mobile number" required value={phone} onChange={setPhone} prefix="+91"
+          keyboardType="phone-pad" placeholder="98765 43210"
+          hint="This becomes your sign-in ID and cannot be changed later."
+          error={phone.length > 0 && phone.replace(/\D/g, '').length < 10 ? 'A 10-digit mobile number is needed.' : undefined} />
+        {/* No asterisk, and the hint says so in words rather than leaving the
+            absence of a mark to carry the meaning on its own. */}
+        <Field label="Email" value={email} onChange={setEmail} placeholder="owner@academy.in"
+          keyboardType="email-address" hint="Optional." />
       </View>
 
-      {step === 1 ? (
-        <>
-          <Field label="Full name" value={name} onChange={setName} placeholder="e.g. Priya Menon" />
-          <Field label="Academy you administer" value={academy} onChange={setAcademy} placeholder="e.g. RosiFit" />
-          <Field label="Mobile number" value={phone} onChange={setPhone} prefix="+91"
-            keyboardType="phone-pad" placeholder="98765 43210"
-            hint="This becomes your sign-in ID and cannot be changed later."
-            error={phone.length > 0 && phone.replace(/\D/g, '').length < 10 ? 'A 10-digit mobile number is needed.' : undefined} />
-          <Field label="Email" value={email} onChange={setEmail} placeholder="owner@academy.in"
-            keyboardType="email-address" />
-        </>
-      ) : (
-        <>
-          <View style={{
-            padding: SPACE.lg, borderRadius: RADIUS.lg, flexDirection: 'row', gap: SPACE.md,
-            backgroundColor: theme.surface2, borderWidth: 1, borderColor: theme.line,
-          }}>
-            <Icon name="shield_lock" size={19} color={theme.accentInk} />
-            <Muted style={{ flex: 1 }}>
-              Two questions, answered now. These are the only way your PIN can be reset later without a
-              call, so pick answers you will still know in a year.
-            </Muted>
+      <View style={{ marginTop: SPACE.lg, marginBottom: SPACE.md }}>
+        <Label>Security questions</Label>
+      </View>
+      <View style={{
+        padding: SPACE.lg, borderRadius: RADIUS.lg, flexDirection: 'row', gap: SPACE.md,
+        backgroundColor: theme.surface2, borderWidth: 1, borderColor: theme.line,
+      }}>
+        <Icon name="shield_lock" size={19} color={theme.accentInk} />
+        <Muted style={{ flex: 1 }}>
+          Two questions, answered now. These are the only way your PIN can be reset later without a
+          call, so pick answers you will still know in a year.
+        </Muted>
+      </View>
+
+      {[0, 1].map(i => {
+        const short = answers[i].trim().length > 0 && answers[i].trim().length < 3;
+        return (
+          <View key={i} style={{ marginTop: SPACE.lg }}>
+            <Label>{`Question ${i + 1}`}</Label>
+            <Pressable onPress={() => setPicking(i)}
+              accessibilityRole="button" accessibilityLabel={questions[i]}
+              accessibilityHint="Opens the question list"
+              style={{
+                marginTop: 8, minHeight: TAP_MIN + 6, borderRadius: RADIUS.md,
+                backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
+                paddingHorizontal: SPACE.lg, paddingVertical: SPACE.sm,
+                flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
+              }}>
+              <Text style={{ flex: 1, fontSize: 13.5, fontWeight: '600', color: theme.fgStrong, lineHeight: 19 }}>
+                {questions[i]}
+              </Text>
+              <Icon name="arrow_drop_down" size={22} color={theme.muted} />
+            </Pressable>
+            <View style={{ marginTop: SPACE.sm }}>
+              <Field label="Your answer" required value={answers[i]}
+                onChange={v => setAnswers(p => p.map((x, j) => j === i ? v : x))}
+                placeholder="Your answer"
+                error={short ? 'A little longer, so it cannot be guessed.' : undefined}
+                hint="Stored hashed · case and spaces ignored" />
+            </View>
           </View>
+        );
+      })}
 
-          {[0, 1].map(i => {
-            const short = answers[i].trim().length > 0 && answers[i].trim().length < 3;
-            return (
-              <View key={i} style={{ marginTop: SPACE.lg }}>
-                <Label>{`Question ${i + 1}`}</Label>
-                <Pressable onPress={() => setPicking(i)}
-                  accessibilityRole="button" accessibilityLabel={questions[i]}
-                  accessibilityHint="Opens the question list"
-                  style={{
-                    marginTop: 8, minHeight: TAP_MIN + 6, borderRadius: RADIUS.md,
-                    backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
-                    paddingHorizontal: SPACE.lg, paddingVertical: SPACE.sm,
-                    flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
-                  }}>
-                  <Text style={{ flex: 1, fontSize: 13.5, fontWeight: '600', color: theme.fgStrong, lineHeight: 19 }}>
-                    {questions[i]}
-                  </Text>
-                  <Icon name="arrow_drop_down" size={22} color={theme.muted} />
-                </Pressable>
-                <View style={{ marginTop: SPACE.sm }}>
-                  <Field label="Your answer" value={answers[i]}
-                    onChange={v => setAnswers(p => p.map((x, j) => j === i ? v : x))}
-                    placeholder="Your answer"
-                    error={short ? 'A little longer, so it cannot be guessed.' : undefined}
-                    hint="Stored hashed · case and spaces ignored" />
-                </View>
-              </View>
-            );
-          })}
-
-          <Muted style={{ marginTop: SPACE.sm }}>
-            Answers are stored hashed and case-insensitive, trimmed of spaces. They are never shown
-            again — not to you, not to anyone at RosiFit. If both are forgotten, a call is the only
-            way back in.
-          </Muted>
-        </>
-      )}
+      <Muted style={{ marginTop: SPACE.sm }}>
+        Answers are stored hashed and case-insensitive, trimmed of spaces. They are never shown
+        again — not to you, not to anyone at RosiFit. If both are forgotten, a call is the only
+        way back in.
+      </Muted>
 
       <View style={{ flexDirection: 'row', gap: SPACE.md, marginTop: SPACE.xl }}>
-        {/* Step 1's Back leaves the screen entirely, because Continue on
-            sign-in now sends every unrecognised number here -- a mistyped
-            digit lands on this form, and until this button existed the only
-            way out of it was the browser's own back. */}
+        {/* Back leaves the screen entirely, because Continue on sign-in
+            sends every unrecognised number here -- a mistyped digit lands on
+            this form, and until this button existed the only way out of it
+            was the browser's own back. With one form there is no step to go
+            back to, so this is the only Back there is. */}
         <Button label="Back" variant="secondary"
-          testID={step === 1 ? 'register-back-to-signin' : 'register-back'}
-          onPress={() => (step === 1 ? router.replace('/') : setStep(1))}
+          testID="register-back-to-signin"
+          onPress={() => router.replace('/')}
           style={{ flex: 1 }} />
-        <Button label={step === 1 ? 'Next — security questions' : 'Register & issue PIN'}
-          onPress={next} disabled={!valid} style={{ flex: 2 }} />
+        <Button label="Register & issue PIN"
+          onPress={submit} disabled={!valid} style={{ flex: 2 }} />
       </View>
 
       <SearchPicker

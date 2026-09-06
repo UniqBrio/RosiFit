@@ -29,3 +29,26 @@ export function memberWeekdays(
         && selected.length === allowed.size && selected.every(d => allowed.has(d)));
   return followsCourse ? null : selected.map(d => DAY_NAMES.indexOf(d));
 }
+
+/**
+ * Which day chips the member form OPENS with.
+ *
+ * The saving rule above has an opening half, and the two must agree or the
+ * form lies about the member in front of it. `own` is her `member_schedules`
+ * override -- `null` when she has none and follows the offering.
+ *
+ * With no override, the row opens on every day the course runs: she joins a
+ * course to attend the days it runs, and making somebody tick them one by one
+ * asks her to re-state the course she just chose. With one, the row opens on
+ * HER days -- the whole point of an override is that it is not the course's
+ * set, and seeding the course's over it would show days that are not hers.
+ *
+ * A day of hers the course no longer runs is dropped: that chip is disabled,
+ * `update_member` refuses `p_weekdays` that is not a subset of the offering's
+ * days (0027), so lighting it would put the form in a state it cannot save.
+ */
+export function openingDays(courseDays: Iterable<string>, own: number[] | null): string[] {
+  const allowed = new Set(courseDays);
+  if (!own) return [...allowed];
+  return own.map(d => DAY_NAMES[d]).filter(name => allowed.has(name));
+}

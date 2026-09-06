@@ -81,6 +81,19 @@ Deno.serve(async (req) => {
       signedOut = await signOutEverywhere(existing.auth_user_id);
     }
 
+    // The ask is answered, so it stops being owed (0034). Closing it HERE and
+    // not in the app is the whole reason the tray can empty: the admin resets
+    // the PIN, and the notification goes with the act rather than needing a
+    // second, dismiss-shaped one she has to remember to perform.
+    // Non-fatal: the PIN has already been rotated by this point, and failing
+    // the whole call over a stale tray row would be the worse outcome.
+    const { error: closeErr } = await admin
+      .from('pin_reset_requests')
+      .update({ resolved_at: new Date().toISOString(), resolved_by: caller.id })
+      .eq('app_user_id', appUserId)
+      .is('resolved_at', null);
+    if (closeErr) console.error('pin-reset could not close the request:', closeErr.message);
+
     // Attributed (0023). Here the actor and the subject DIFFER -- an admin
     // reset somebody else's PIN -- which is exactly the entry that must name
     // its actor in its own column rather than in a metadata key.

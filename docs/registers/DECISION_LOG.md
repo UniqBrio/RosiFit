@@ -23,9 +23,15 @@
 | 014 | [The member code is retired; the column is kept](../decisions/006-member-code-retired.md) | Accepted | 04-Sep-2026 | |
 | 015 | [A rolled-back rehearsal against production, when the harness cannot run](../decisions/007-production-rollback-rehearsal.md) | Accepted | 04-Sep-2026 | |
 | 016 | [Continue validates the number, and the enumeration oracle is accepted](../decisions/008-continue-validates-the-number.md) | Accepted | 05-Sep-2026 | |
-| 017 | [The attendance upload and its match review are dialogs, not pages](../decisions/009-upload-and-match-are-dialogs.md) | Accepted | 05-Sep-2026 | |
+| 017 | [The attendance upload and its match review are dialogs, not pages](../decisions/009-upload-and-match-are-dialogs.md) | Accepted | 05-Sep-2026 | amended 06-Sep-2026: `member/import` came off the exclusion list — its premise (“reached from More”) was never true |
 | 018 | [A member's Active/Inactive is STORED, and it is the engine's own `members.status`](../decisions/010-member-status-is-stored-not-derived.md) | Accepted | 05-Sep-2026 | |
 | 019 | [A detail is TAPPED into the wording, not typed](../decisions/011-inserting-a-detail-into-the-wording.md) | Accepted | 05-Sep-2026 | |
+| 020 | [The send draft picks its recipients, and marks who has already had one](../decisions/012-send-picks-recipients.md) | Accepted | 06-Sep-2026 | |
+| 021 | [The import resolves itself, and “add display name” became a real merge](../decisions/013-import-resolves-itself-and-the-merge-is-real.md) | Accepted | 06-Sep-2026 | reverses the blocking half of C-79 |
+| 022 | [The file imports on the pick, and the instructor is never a member](../decisions/014-the-file-imports-on-the-pick.md) | Accepted | 06-Sep-2026 | retires the last of C-79's blocking rule; supersedes the “Not a member” chip from 021 |
+| 023 | [The Overview drops "Not expected" and the scope tabs, and gains a mark per question](../decisions/015-overview-drops-not-expected-and-the-scope-tabs.md) | Accepted | 06-Sep-2026 | departs from the canvas’ Overview |
+| 024 | [The calendar sizes itself and hangs under the field, in every place a date is chosen](../decisions/016-the-date-picker-hangs-under-the-field.md) | Accepted | 06-Sep-2026 | |
+| 025 | [Her status is a FIELD on the edit form, written by Save](../decisions/017-member-status-on-the-edit-form-applies-on-save.md) | Accepted | 06-Sep-2026 | extends 018 — a second control, the same write path, a different mechanism |
 
 Status: `Proposed` · `Accepted` · `Superseded by NNN` · `Deprecated`
 

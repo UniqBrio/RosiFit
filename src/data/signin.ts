@@ -72,6 +72,23 @@ export function needsRegistration(message: string): boolean {
  * stranger on a PIN screen no PIN can pass. A lookup that failed leaves her
  * exactly where she is, with a sentence saying so.
  */
+/**
+ * A number with an account goes to the PIN; a number without one goes to
+ * REGISTRATION. That is the owner's flow, stated twice: "enter number >>
+ * verify against staff and super admin >> if doesnt exist user goes to
+ * registration >> if present then enter pin screen".
+ *
+ * A destination that kept an unknown number on the sign-in screen with "ask
+ * your academy admin" was built on 06-Sep-2026 and REMOVED the same day. It
+ * came from reading the owner's "there is no registration page for staff" as
+ * a restriction on THIS screen. It was not one -- it was about who creates
+ * staff accounts (the admin does, and hands over the PIN). An unrecognised
+ * number still belongs on the registration form.
+ *
+ * What has to hold for that form to work is a SERVER fact, not a client one:
+ * auth-bootstrap must be able to create the account at the end of it. That is
+ * where the loop in RC-019 actually lives -- not in refusing to show the form.
+ */
 export type ContinueDestination = 'pin' | 'register' | 'stay';
 
 export function continueDestination(registered: boolean | null): ContinueDestination {

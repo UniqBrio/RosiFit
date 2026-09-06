@@ -75,6 +75,19 @@ Deno.serve(async (req) => {
       if (updErr) throw new HttpError(500, 'Could not update that staff member.');
 
       await rotatePin(admin, existingId, existing.auth_user_id, pin);
+
+      // She has a new PIN, so any open ask for one is answered (0034). The
+      // same close as pin-reset's, and it is here as well because the staff
+      // list routes to THIS function whenever her access is not yet 'active'
+      // -- one call site carrying the guard and its twin not carrying it is
+      // how a tray entry outlives the thing it was about.
+      const { error: closeErr } = await admin
+        .from('pin_reset_requests')
+        .update({ resolved_at: new Date().toISOString(), resolved_by: caller.id })
+        .eq('app_user_id', existingId)
+        .is('resolved_at', null);
+      if (closeErr) console.error('pin-issue could not close the request:', closeErr.message);
+
       await admin.rpc('audit_log_as', {
         p_actor: caller.id,
         p_action: 'auth.pin_issued', p_entity_type: 'app_user', p_entity_id: existingId,

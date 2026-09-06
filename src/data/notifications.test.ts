@@ -11,7 +11,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   actionableCount, orderNotifications,
-  awaitingNotification, sentNotification, excludedNotification,
+  awaitingNotification, sentNotification, excludedNotification, pinResetNotification,
   type Notification,
 } from './notifications';
 
@@ -120,4 +120,50 @@ test('no reason recorded says so rather than leaving the sentence dangling', () 
     id: 'm4', name: null, status: 'failed', exclusionReason: null, failureReason: null,
   });
   assert.equal(item.body, 'A member was not reached by the send: no reason was recorded.');
+});
+
+// ------------------------------------------------- pin reset (0034, 06-Sep-2026)
+// A staff member asks the academy admin for a new PIN. These pin the two rules
+// that make the tray usable rather than decorative: it must be COUNTED (or
+// nothing tells the admin somebody is locked out) and it must come FIRST (or
+// it sits under three finished sends nobody needs to read).
+test('a PIN request is counted as actionable', () => {
+  const list = [pinResetNotification({ id: 'r1', name: 'Priya Menon', when: 'today' })];
+  assert.equal(actionableCount(list), 1);
+});
+
+test('a PIN request outranks everything else in the tray', () => {
+  // Deliberately built in the WORST order, so a sort that does nothing fails.
+  const list: Notification[] = [
+    sentNotification({ id: 'b1', sent: 3, failed: 0, subject: 'Weekly', when: 'today' }),
+    excludedNotification({
+      id: 'm1', name: 'Asha', status: 'excluded', exclusionReason: 'no email', failureReason: null,
+    }),
+    awaitingNotification({ id: 's1', title: 'Monday 7am', meta: '12 expected', label: 'today' }),
+    pinResetNotification({ id: 'r1', name: 'Priya Menon', when: 'today' }),
+  ];
+  assert.deepEqual(orderNotifications(list).map(n => n.kind),
+    ['pinReset', 'awaiting', 'excluded', 'sent']);
+});
+
+test('the request names the person, because the admin has to know whose PIN', () => {
+  const item = pinResetNotification({ id: 'r1', name: 'Priya Menon', when: '6 Sep, 09:12' });
+  assert.equal(item.title, 'Priya Menon needs a new PIN');
+  assert.equal(item.kind, 'pinReset');
+  assert.equal(item.when, '6 Sep, 09:12');
+});
+
+test('the request does NOT carry her phone number', () => {
+  // A tray is read over shoulders. The staff list shows the number masked;
+  // there is no reason for this to show it at all.
+  const item = pinResetNotification({ id: 'r1', name: 'Priya Menon', when: 'today' });
+  assert.equal(/\d{5}/.test(`${item.title} ${item.body}`), false);
+});
+
+test('a resolved request is simply absent, never a "done" entry', () => {
+  // There is no read state in this product, so the only way the badge can go
+  // down is for the row to stop being returned -- which is why pin-reset and
+  // pin-issue close it at the moment the PIN is rotated.
+  assert.equal(actionableCount([]), 0);
+  assert.deepEqual(orderNotifications([]), []);
 });

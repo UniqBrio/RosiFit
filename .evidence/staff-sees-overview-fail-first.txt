@@ -1,0 +1,36 @@
+FAIL-FIRST — src/components/staffShell.test.ts (final spec) replayed against the PRE-FIX tree
+Pre-fix tree: git archive HEAD (8b16230, 06-Sep-2026) — app/ and src/, unpatched
+Command: STAFF_SHELL_SPEC_ROOT=<that tree> npx tsx --test src/components/staffShell.test.ts
+
+ok 1 - the spec is looking at a real tree
+not ok 2 - the header tab row is filtered by role, not rendered whole
+  error: 'src/components/AppShell.tsx: the tab row renders every TAB unconditionally, so a staff account is offered Overview.'
+not ok 3 - the Overview slot is HELD while the role is unknown
+  error: 'src/components/AppShell.tsx: nothing holds the Overview slot while the role is still resolving.'
+not ok 4 - BOTH nav pills take their items from the role
+  error: "src/components/AppShell.tsx: the pill's destinations are a module constant, so Home is the same screen for every role."
+not ok 5 - Overview guards itself, because its pathname is also the sign-in screen’s
+  error: "app/(tabs)/index.tsx: Overview is the super admin's screen and nothing sends a staff account off it."
+not ok 6 - the guard is mounted once, over the whole route tree
+  error: 'app/_layout.tsx: no route guard is mounted, so /staff, /staff/add, /staff/pin and /audit stay typeable.'
+ok 7 - every row More withholds is a route the guard withholds
+not ok 8 - sign-in lands each role on the screen it actually has
+  error: 'app/index.tsx: sign-in lands every account on the same route, so a staff member arrives on Overview.'
+not ok 9 - More’s back arrow returns to the account’s OWN home
+  error: 'app/(tabs)/more.tsx: the back arrow names Overview for everybody, including accounts that have none.'
+ok 10 - the destination is the Attendance workspace, in every one of them
+# tests 10
+# pass 3
+# fail 7
+
+Cases 7 and 10 pass PRE-fix, and that is the honest result:
+  7 — app/(tabs)/more.tsx already withheld Staff & access and Audit log from
+      staff via its adminOnly rows. That half of the ask was already shipped;
+      the request file records it under WHAT ALREADY EXISTS rather than
+      claiming it as new work. The case is kept because it is the SIBLING
+      SWEEP — it fails the moment a new adminOnly row is added to More
+      without a matching entry in ADMIN_ONLY.
+  10 — asserts src/data/access.ts, which the pre-fix tree does not contain;
+      the module is resolved from the CURRENT tree, as editDialog.test.ts
+      resolves its own imports. It is a same-tree invariant, not a
+      before/after claim.

@@ -155,6 +155,18 @@ export type Member = {
    * same way as 'inactive' -- not active, therefore not followed up.
    */
   status: MemberStatus;
+  /**
+   * Her OWN weekdays (1..7, Monday = 1), or null when she follows the days
+   * her offering runs.
+   *
+   * member_schedules (0006) is an OVERRIDE, not a copy: most members have no
+   * row and go on following the offering when its schedule changes. The
+   * record carried no such field at all, so the member form had nothing to
+   * open her day chips from -- it showed a blank row for a member who HAD
+   * days of her own, and update_member reads a blank row as 'put her back on
+   * the course' (RC-020).
+   */
+  weekdays: number[] | null;
   expected: number; attended: number; missed: number;
   /** her CURRENT run of consecutive misses -- not the week's total */
   streak: number;
@@ -179,14 +191,14 @@ export type Member = {
  * follow-up, which is exactly how those numbers drift apart.
  */
 export const MEMBERS: Member[] = [
-  { id: '1', code: 'RF-000102', name: 'Divya Ramesh',       course: 'Prenatal Flow',            branch: 'Coimbatore', aliases: ['Divya', 'Divya R'], emails: [{ address: 'divya.r@gmail.com', primary: true }],   status: 'active', expected: 3, attended: 0, missed: 3, streak: 3, last: '14 Aug', joined: 'Mar 2026' },
-  { id: '2', code: 'RF-000118', name: 'Shazia Begum',       course: 'Postnatal Core',           branch: 'Madurai',    aliases: ['Shazia', 'Shazia F'], emails: [{ address: 'shazia.b@gmail.com', primary: true }], status: 'active', expected: 3, attended: 1, missed: 2, streak: 2, last: '20 Aug', joined: 'Jan 2026' },
-  { id: '3', code: 'RF-000151', name: 'Meenakshi Sundaram', course: 'Trimester 3 Gentle',       branch: 'Chennai',    aliases: ['Meena S'],          emails: [{ address: 'meena.s@yahoo.in', primary: true }],    status: 'active', expected: 4, attended: 0, missed: 4, streak: 6, last: '2 Aug', joined: 'Apr 2026' },
-  { id: '4', code: 'RF-000127', name: 'Aarthi Venkat',      course: 'Prenatal Flow',            branch: 'Coimbatore', aliases: [],                   emails: [{ address: 'aarthi.v@gmail.com', primary: true }],  status: 'active', expected: 3, attended: 3, missed: 0, streak: 0, last: '\u2014', joined: 'Feb 2026' },
-  { id: '5', code: 'RF-000133', name: 'Nithya Krishnan',    course: 'Pelvic Floor Foundations', branch: 'Madurai',    aliases: [],                   emails: [],                    status: 'inactive', expected: 0, attended: 0, missed: 0, streak: 0, last: '11 Aug', joined: 'May 2026' },
-  { id: '6', code: 'RF-000140', name: 'Fathima Rizwan',     course: 'Postnatal Core',           branch: 'Coimbatore', aliases: ['Fathima'],          emails: [],                    status: 'active', expected: 3, attended: 0, missed: 3, streak: 4, last: '9 Aug', joined: 'Dec 2025' },
-  { id: '7', code: 'RF-000131', name: 'Lakshmi Priya',      course: 'Prenatal Flow',            branch: 'Chennai',    aliases: ['Lakshmi P'],        emails: [{ address: 'lakshmi.p@gmail.com', primary: true }], status: 'active', expected: 4, attended: 2, missed: 2, streak: 1, last: '\u2014', joined: 'Nov 2025' },
-  { id: '8', code: 'RF-000146', name: 'Kavya Balaji',       course: 'Postnatal Core',           branch: 'Madurai',    aliases: [],                   emails: [],                    status: 'active', expected: 3, attended: 0, missed: 3, streak: 3, last: '6 Aug', joined: 'Jun 2026' },
+  { id: '1', code: 'RF-000102', name: 'Divya Ramesh',       course: 'Prenatal Flow',            branch: 'Coimbatore', aliases: ['Divya', 'Divya R'], emails: [{ address: 'divya.r@gmail.com', primary: true }],   weekdays: null, status: 'active', expected: 3, attended: 0, missed: 3, streak: 3, last: '14 Aug', joined: 'Mar 2026' },
+  { id: '2', code: 'RF-000118', name: 'Shazia Begum',       course: 'Postnatal Core',           branch: 'Madurai',    aliases: ['Shazia', 'Shazia F'], emails: [{ address: 'shazia.b@gmail.com', primary: true }], weekdays: [2, 6], status: 'active', expected: 3, attended: 1, missed: 2, streak: 2, last: '20 Aug', joined: 'Jan 2026' },
+  { id: '3', code: 'RF-000151', name: 'Meenakshi Sundaram', course: 'Trimester 3 Gentle',       branch: 'Chennai',    aliases: ['Meena S'],          emails: [{ address: 'meena.s@yahoo.in', primary: true }],    weekdays: null, status: 'active', expected: 4, attended: 0, missed: 4, streak: 6, last: '2 Aug', joined: 'Apr 2026' },
+  { id: '4', code: 'RF-000127', name: 'Aarthi Venkat',      course: 'Prenatal Flow',            branch: 'Coimbatore', aliases: [],                   emails: [{ address: 'aarthi.v@gmail.com', primary: true }],  weekdays: null, status: 'active', expected: 3, attended: 3, missed: 0, streak: 0, last: '\u2014', joined: 'Feb 2026' },
+  { id: '5', code: 'RF-000133', name: 'Nithya Krishnan',    course: 'Pelvic Floor Foundations', branch: 'Madurai',    aliases: [],                   emails: [],                    weekdays: null, status: 'inactive', expected: 0, attended: 0, missed: 0, streak: 0, last: '11 Aug', joined: 'May 2026' },
+  { id: '6', code: 'RF-000140', name: 'Fathima Rizwan',     course: 'Postnatal Core',           branch: 'Coimbatore', aliases: ['Fathima'],          emails: [],                    weekdays: null, status: 'active', expected: 3, attended: 0, missed: 3, streak: 4, last: '9 Aug', joined: 'Dec 2025' },
+  { id: '7', code: 'RF-000131', name: 'Lakshmi Priya',      course: 'Prenatal Flow',            branch: 'Chennai',    aliases: ['Lakshmi P'],        emails: [{ address: 'lakshmi.p@gmail.com', primary: true }], weekdays: null, status: 'active', expected: 4, attended: 2, missed: 2, streak: 1, last: '\u2014', joined: 'Nov 2025' },
+  { id: '8', code: 'RF-000146', name: 'Kavya Balaji',       course: 'Postnatal Core',           branch: 'Madurai',    aliases: [],                   emails: [],                    weekdays: null, status: 'active', expected: 3, attended: 0, missed: 3, streak: 3, last: '6 Aug', joined: 'Jun 2026' },
 ];
 
 export const WEEK = { from: '18 Aug', to: '24 Aug 2026', label: '18\u201324 Aug 2026' };
@@ -327,6 +339,16 @@ export type Staff = {
   access: StaffAccess;
   /** why this person is in this state, in their own row */
   meta: string;
+  /**
+   * She has asked for a new PIN and nobody has issued one yet (0034).
+   *
+   * NOT a StaffAccess value, deliberately. Access is what her ACCOUNT is --
+   * enabled, awaiting, disabled, active -- and she is 'active' throughout:
+   * the account is fine, she just cannot remember the PIN. Folding it into
+   * the same field would make an ask look like an account state and lose the
+   * real one behind it.
+   */
+  pinResetRequested?: boolean;
 };
 
 export const STAFF_ACCESS: Record<StaffAccess, {

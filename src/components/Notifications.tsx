@@ -37,6 +37,8 @@ function toneFor(kind: Notification['kind'], isDark: boolean) {
       return { ink: pick('present'), icon: 'mark_email_read', word: 'Sent' };
     case 'excluded':
       return { ink: pick('absent'), icon: 'mail_off', word: 'Not sent' };
+    case 'pinReset':
+      return { ink: pick('awaiting'), icon: 'lock_reset', word: 'PIN reset requested' };
   }
 }
 
@@ -45,6 +47,10 @@ const DESTINATION: Record<Notification['kind'], string> = {
   awaiting: '/upload',
   sent: '/audit',
   excluded: '/(tabs)/weekly',
+  // Staff & access already owns resetting a PIN -- the sheet, the "Also sign
+  // her out everywhere" option and the show-once screen. The notification
+  // leads there rather than growing a second Reset button of its own.
+  pinReset: '/staff',
 };
 
 export function NotificationsSheet({ open, onClose, feed }:

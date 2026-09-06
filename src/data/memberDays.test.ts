@@ -34,3 +34,37 @@ test('a hand-made full selection is kept — the edit form seeds nothing', () =>
 test('a course with no days cannot produce a seeded follow — there is nothing to seed', () => {
   assert.deepEqual(memberWeekdays(['Mon'], [], true), [1]);
 });
+
+/**
+ * Which days the row OPENS with -- the other half of the same rule.
+ *
+ * `memberWeekdays` answers what a row means when it is saved. This answers
+ * what it must show when it opens, and the two have to agree: a row that
+ * opens blank on a member who HAS days of her own reads as "she follows the
+ * course" and saves as exactly that (RC-020).
+ */
+import { openingDays } from './memberDays';
+
+test('with no days of her own, every day the course runs opens on', () => {
+  assert.deepEqual(openingDays(COURSE, null), ['Mon', 'Wed', 'Fri']);
+});
+
+test('with days of her own, those are what opens on -- not the course', () => {
+  assert.deepEqual(openingDays(COURSE, [1, 5]), ['Mon', 'Fri']);
+});
+
+test('a day of her own the course has since stopped running does not open on', () => {
+  // her override was legal when it was written; 0018 closed that schedule
+  // and opened a narrower one. The chip is disabled either way, so showing
+  // it lit would be a state the form cannot save.
+  assert.deepEqual(openingDays(['Mon', 'Wed'], [1, 5]), ['Mon']);
+});
+
+test('an override the course has outrun entirely leaves the row blank', () => {
+  assert.deepEqual(openingDays(['Tue'], [1, 5]), []);
+});
+
+test('a course with no days opens nothing, with or without an override', () => {
+  assert.deepEqual(openingDays([], null), []);
+  assert.deepEqual(openingDays([], [1]), []);
+});

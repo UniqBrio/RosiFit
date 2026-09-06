@@ -1,0 +1,61 @@
+Fail-first evidence - src/components/datePanel.test.ts
+Recorded 06-Sep-2026 for requests/2026-09-06-compact-date-picker-everywhere.md
+
+The behaviour under test is new: the calendar now hangs under the field it
+belongs to, so where it lands is arithmetic that can be wrong on a window
+nobody tried it on. The spec was therefore run against the NAIVE first
+version of that arithmetic - the one the feature would have shipped with if
+nobody had asked what happens at an edge:
+
+    export function placePanel(anchor, _win, _panel) {
+      if (!anchor) return null;
+      return { left: anchor.x, top: anchor.y + anchor.h + PANEL_GAP };
+    }
+
+5 of its 8 assertions fail there. The three that pass are the ones the naive
+version gets right by construction: no anchor, a field in open space, and the
+preference for opening downwards.
+
+$ npx tsx --test <scratch>/datePanel.test.ts     # naive placement
+ok 1 - nothing to anchor to yet is not a guess at a position
+ok 2 - under the field, at its left edge
+not ok 3 - a field against the right edge pulls its panel back inside the window
+  expected: 1072
+  actual: 1300
+not ok 4 - a field low on a phone opens ABOVE itself rather than off the bottom
+  expected: 264
+  actual: 758
+ok 5 - room below is preferred even when there is room above as well
+not ok 6 - a window too short for either side still puts the whole panel on screen
+  expected: 62
+  actual: 358
+not ok 7 - a window shorter than the panel itself never places it off the top
+  expected: 8
+  actual: 158
+not ok 8 - a window narrower than the panel never places it off the left
+  expected: 8
+  actual: 200
+# tests 8
+# pass 3
+# fail 5
+
+After the change, against the working tree:
+$ npx tsx --test src/components/datePanel.test.ts
+ok 1 - nothing to anchor to yet is not a guess at a position
+ok 2 - under the field, at its left edge
+ok 3 - a field against the right edge pulls its panel back inside the window
+ok 4 - a field low on a phone opens ABOVE itself rather than off the bottom
+ok 5 - room below is preferred even when there is room above as well
+ok 6 - a window too short for either side still puts the whole panel on screen
+ok 7 - a window shorter than the panel itself never places it off the top
+ok 8 - a window narrower than the panel never places it off the left
+# tests 8
+# pass 8
+# fail 0
+
+The rest of the change - the cell size, the month-and-year list, the panel
+in place of the bottom sheet - is layout, and this repository has no
+component renderer to assert layout in. It was verified by rendering the
+built app and looking at it, in both themes, at 1440x900 and 420x900:
+holiday start date, member joining date, and the Overview period filter's
+custom range. Screenshots are in the run report, not committed.

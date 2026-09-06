@@ -20,21 +20,19 @@ export type RegistrationDraft = {
  *  bar, browser history, or anything that logs a path. */
 export type IssuedPinHandoff = { pin: string; name: string; phone: string; role: string };
 
-/** A staged CSV import on its way from the upload wizard to the review
- *  screen. Nothing has been written to attendance at this point -- the rows
- *  are a classification the operator is about to decide on. */
-export type StagedImport = {
-  import_id: string;
-  session_label: string;
-  rows: import('./api').PreviewRow[];
-  dropped_count: number;
-  counts: Record<string, number>;
-};
+/* THE STAGED CSV IMPORT IS GONE.
+ *
+ * It carried the classified rows from the upload wizard to `/match`, the
+ * review screen, because they were two routes and a route parameter could not
+ * hold them. There is no second route any more -- the rows that need a person
+ * are resolved on the upload's own last step, in the state that already holds
+ * the preview -- so the hand-off has nothing to hand off
+ * (requests/2026-09-06-upload-flow-shorter-no-email-resolution.md).
+ */
 
 let registration: RegistrationDraft | null = null;
 let recoveryToken: string | null = null;
 let issuedPin: IssuedPinHandoff | null = null;
-let stagedImport: StagedImport | null = null;
 let sendResult: import('./api').SendResult | null = null;
 
 /** The per-recipient outcome of a send, on its way to the result screen.
@@ -43,10 +41,6 @@ let sendResult: import('./api').SendResult | null = null;
 export const setSendResult = (r: import('./api').SendResult) => { sendResult = r; };
 export const peekSendResult = (): import('./api').SendResult | null => sendResult;
 export const clearSendResult = () => { sendResult = null; };
-
-export const setStagedImport = (s: StagedImport) => { stagedImport = s; };
-export const peekStagedImport = (): StagedImport | null => stagedImport;
-export const clearStagedImport = () => { stagedImport = null; };
 
 export const setIssuedPin = (p: IssuedPinHandoff) => { issuedPin = p; };
 export const takeIssuedPin = (): IssuedPinHandoff | null => {

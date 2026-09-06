@@ -109,6 +109,18 @@ export default function CourseEdit() {
   const senderList = senders.data ?? [];
   const rules = followUp.data?.rules;
 
+  /* The course being edited is READ like everything else on this form, and
+     until it lands `course` is null -- which is indistinguishable from Add.
+     Seeding then leaves the Edit form permanently blank, because `seeded` is
+     never reset. Waited on only while EDITING: Add needs neither the course
+     list nor the saved rules, and `followUp` carries the whole member fetch
+     behind it (RC-021). */
+  const recordPending = editing !== null
+    && (courses.state === 'loading' || followUp.state === 'loading');
+  const recordFailed = editing !== null
+    && (courses.state === 'error' || followUp.state === 'error');
+  const recordMissing = editing !== null && courses.state === 'ready' && !course;
+
   /* The form is SEEDED once from what the course already says, then left
    * alone. Re-seeding on every render would overwrite what is being typed the
    * moment any of these queries refetched. */
@@ -116,7 +128,8 @@ export default function CourseEdit() {
   useEffect(() => {
     if (seeded) return;
     const ready = message.state !== 'loading' && branches.state === 'ready'
-      && templates.state === 'ready' && senders.state === 'ready';
+      && templates.state === 'ready' && senders.state === 'ready'
+      && !recordPending;
     if (!ready) return;
 
     if (course) {
@@ -213,9 +226,10 @@ export default function CourseEdit() {
     }
   };
 
-  const loading = message.state === 'loading' || branches.state === 'loading'
+  const loading = recordPending || message.state === 'loading' || branches.state === 'loading'
     || templates.state === 'loading' || senders.state === 'loading';
-  const failed = branches.state === 'error' || templates.state === 'error' || message.state === 'error';
+  const failed = recordFailed || branches.state === 'error' || templates.state === 'error'
+    || message.state === 'error';
 
   const hint = !name.trim() ? 'A course name is required'
     : days.length === 0 ? 'Select at least one frequency day'
@@ -229,22 +243,25 @@ export default function CourseEdit() {
       confirmLabel={saving ? 'Saving…' : editing ? 'Save Changes' : 'Add Course'}
       /* No footer while it is loading or broken: a Save under a skeleton
          offers to write a form nobody has seen yet. */
-      onConfirm={loading || failed ? undefined : () => void save()}
+      onConfirm={loading || failed || recordMissing ? undefined : () => void save()}
       confirmDisabled={!valid || saving}
-      hint={loading || failed ? undefined : hint}>
+      hint={loading || failed || recordMissing ? undefined : hint}>
       {loading ? (
         <Skeleton lines={7} />
       ) : failed ? (
-        <ErrorState onRetry={() => { branches.retry(); templates.retry(); message.retry(); }}
-          message={branches.error ?? templates.error ?? message.error
+        <ErrorState onRetry={() => { branches.retry(); templates.retry(); message.retry(); courses.retry(); }}
+          message={branches.error ?? templates.error ?? message.error ?? courses.error
             ?? 'The course could not be loaded. Nothing has been changed.'} />
+      ) : recordMissing ? (
+        <ErrorState onRetry={() => router.back()}
+          message="That course is no longer on the list. It may have been removed since this screen was opened." />
       ) : (
         <>
-            <Field label="Course name" value={name} onChange={setName}
+            <Field label="Course name" required value={name} onChange={setName}
               placeholder="e.g. Gentle Recovery Yoga" />
 
             <DropdownRow open={open === 'branch'}>
-              <DropdownField label="Branch" value={branch?.name ?? 'Choose a branch'}
+              <DropdownField label="Branch" required value={branch?.name ?? 'Choose a branch'}
                 open={open === 'branch'} testID="course-branch-field"
                 onPress={() => setOpen(o => (o === 'branch' ? null : 'branch'))} />
               {open === 'branch' ? (
@@ -262,7 +279,7 @@ export default function CourseEdit() {
 
             {/* ------------------------------------------------- frequency */}
             <View style={{ flexDirection: 'row', alignItems: 'baseline', marginTop: SPACE.lg }}>
-              <Label style={{ flex: 1 }}>Frequency</Label>
+              <Label required style={{ flex: 1 }}>Frequency</Label>
               <Text style={{
                 fontSize: 11.5, fontWeight: '800',
                 color: days.length ? theme.accentInk : dangerInk,
@@ -308,7 +325,7 @@ export default function CourseEdit() {
 
             {/* --------------------------------------------------- sender */}
             <DropdownRow open={open === 'sender'} style={{ marginTop: SPACE.lg }}>
-              <DropdownField label="From email ID" value={sender ?? 'Choose an address'}
+              <DropdownField label="From email ID" required value={sender ?? 'Choose an address'}
                 open={open === 'sender'} testID="course-sender-field"
                 onPress={() => setOpen(o => (o === 'sender' ? null : 'sender'))} />
               {open === 'sender' ? (
@@ -322,7 +339,7 @@ export default function CourseEdit() {
             </DropdownRow>
 
             <DropdownRow open={open === 'template'} style={{ marginTop: SPACE.md }}>
-              <DropdownField label="Message template" value={template?.name ?? 'Choose a template'}
+              <DropdownField label="Message template" required value={template?.name ?? 'Choose a template'}
                 open={open === 'template'} testID="course-template-field"
                 onPress={() => setOpen(o => (o === 'template' ? null : 'template'))} />
               {open === 'template' ? (
@@ -331,11 +348,17 @@ export default function CourseEdit() {
                     options={templateList.map(t => ({ label: t.name, meta: t.preview }))}
                     value={template?.name ?? ''}
                     onSelect={l => {
-                      setTemplateId(templateList.find(t => t.name === l)?.id ?? null);
+                      const picked = templateList.find(t => t.name === l)?.id ?? null;
                       // Choosing a template means choosing ITS words. Keeping
                       // an override here would name one template and send
-                      // another's wording.
-                      setSubject(null); setBody(null);
+                      // another's wording -- but re-picking the template
+                      // already showing chose nothing, and throwing away the
+                      // wording written for this course would be the same
+                      // unchanged-pick defect as RC-020.
+                      if (picked !== templateId) {
+                        setTemplateId(picked);
+                        setSubject(null); setBody(null);
+                      }
                       setOpen(null);
                     }} />
                 </DropdownPanel>

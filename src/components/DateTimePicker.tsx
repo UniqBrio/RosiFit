@@ -1,10 +1,13 @@
-import { useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, Pressable, ScrollView, Modal, Platform, useWindowDimensions } from 'react-native';
 import { Sheet } from './Sheet';
 import { Icon } from './Icon';
+import { RequiredMark } from './RequiredMark';
+import { placePanel, type Anchor } from './datePanel';
 import { useTheme } from '../theme/ThemeProvider';
 import { RADIUS, SPACE, TAP_MIN } from '../theme/tokens';
 import { iso, parseISO } from '../data/period';
+import { monthCells, isOutside } from './monthGrid';
 
 /**
  * The date and time pickers the forms were missing.
@@ -22,10 +25,23 @@ import { iso, parseISO } from '../data/period';
  * the academy actually uses is worse than the text field it replaced.
  *
  * `MonthCalendar` is the grid itself, exported because the period filter
- * dates a RANGE inside a dropdown rather than one day inside a sheet. One
+ * dates a RANGE inside a dropdown rather than one day inside a panel. One
  * grid, two hosts -- a second copy is how two calendars end up disagreeing
  * about which day is today or where the week starts.
+ *
+ * The grid sizes itself and stops (`CELL`, `GRID_MAX`). It used to take
+ * whatever width its host had and draw SQUARE cells, so in a filter dropdown
+ * as wide as a desktop window each day was a 260px tile and six rows of them
+ * were four times the height of the panel: the month arrived cut off after
+ * one row of empty cells. A day is now a fixed-height cell in a grid capped
+ * at seven of them and centred, which is the same calendar on a phone as on
+ * a 27-inch screen.
  */
+
+/** One day cell. 48 leaves a 44pt tap target inside its 2px gutter (TAP_MIN). */
+const CELL = 48;
+/** Seven cells, and no wider however much room the host offers. */
+const GRID_MAX = CELL * 7;
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'];
@@ -49,9 +65,14 @@ export function formatTime(hhmm: string): string {
   return `${hr}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
 }
 
-function PickerRow({ label, display, placeholder, icon, hint, error, onPress, testID }:
+function PickerRow({ label, display, placeholder, icon, hint, error, onPress, testID, required, anchorRef }:
   { label: string; display: string; placeholder: string; icon: string;
-    hint?: string; error?: string; onPress: () => void; testID: string }) {
+    hint?: string; error?: string; onPress: () => void; testID: string;
+    required?: boolean;
+    /** The field the calendar hangs under. It is the ROW that is measured,
+     *  not the label above it or the hint below, because the panel opens
+     *  against the control the person just pressed. */
+    anchorRef?: React.Ref<View> }) {
   const { theme } = useTheme();
   const filled = display.length > 0;
   return (
@@ -59,12 +80,13 @@ function PickerRow({ label, display, placeholder, icon, hint, error, onPress, te
       <Text style={{
         fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase',
         color: theme.muted, marginBottom: 6,
-      }}>{label}</Text>
+      }}>{label}{required ? <RequiredMark /> : null}</Text>
       <Pressable
+        ref={anchorRef}
         onPress={onPress}
         testID={testID}
         accessibilityRole="button"
-        accessibilityLabel={`${label}. ${filled ? display : 'Nothing chosen'}. Opens a picker`}
+        accessibilityLabel={`${label}${required ? ', required' : ''}. ${filled ? display : 'Nothing chosen'}. Opens a picker`}
         style={({ pressed }) => ({
           flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
           minHeight: TAP_MIN + 8, paddingHorizontal: SPACE.lg,
@@ -111,16 +133,15 @@ export function MonthCalendar({ from, to = '', onPick, min, max, testID }:
     const start = parseISO(from) ?? today;
     return { year: start.getFullYear(), month: start.getMonth() };
   });
+  /** The month and year list, in place of the days. A joining date four
+   *  years back is 48 taps of the month arrow otherwise. */
+  const [jump, setJump] = useState(false);
 
-  // Monday-start, because every week in this app runs Mon-Sun.
-  const cells = useMemo(() => {
-    const first = new Date(cursor.year, cursor.month, 1);
-    const pad = (first.getDay() + 6) % 7;
-    const days = new Date(cursor.year, cursor.month + 1, 0).getDate();
-    const out: (string | null)[] = Array.from({ length: pad }, () => null);
-    for (let d = 1; d <= days; d++) out.push(iso(new Date(cursor.year, cursor.month, d)));
-    return out;
-  }, [cursor]);
+  // Six Monday-start weeks, the neighbouring months' days included. The
+  // arithmetic lives in `monthGrid.ts` under its own spec: a grid off by one
+  // day is off by one identically every month, so nothing looks wrong -- it
+  // only shows as a person choosing the wrong date.
+  const cells = useMemo(() => monthCells(cursor.year, cursor.month), [cursor]);
 
   const step = (delta: number) => setCursor(c => {
     const d = new Date(c.year, c.month + delta, 1);
@@ -129,9 +150,9 @@ export function MonthCalendar({ from, to = '', onPick, min, max, testID }:
 
   const blocked = (value: string) => (!!min && value < min) || (!!max && value > max);
 
-  const arrow = (icon: string, delta: number, name: string) => (
-    <Pressable testID={`${testID}-${name.toLowerCase()}`} onPress={() => step(delta)}
-      accessibilityRole="button" accessibilityLabel={`${name} month`}
+  const arrow = (icon: string, name: string, onPress: () => void, unit: string) => (
+    <Pressable testID={`${testID}-${name.toLowerCase()}${unit === 'year' ? '-year' : ''}`} onPress={onPress}
+      accessibilityRole="button" accessibilityLabel={`${name} ${unit}`}
       style={({ pressed }) => ({
         width: TAP_MIN, height: TAP_MIN, borderRadius: RADIUS.md,
         alignItems: 'center', justifyContent: 'center',
@@ -143,15 +164,71 @@ export function MonthCalendar({ from, to = '', onPick, min, max, testID }:
   );
 
   return (
-    <View>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.md }}>
-        {arrow('chevron_left', -1, 'Previous')}
-        <Text accessibilityLiveRegion="polite" style={{
-          flex: 1, textAlign: 'center', fontSize: 15.5, fontWeight: '800', color: theme.fgStrong,
-        }}>{`${MONTHS[cursor.month]} ${cursor.year}`}</Text>
-        {arrow('chevron_right', +1, 'Next')}
+    <View style={{ width: '100%', maxWidth: GRID_MAX, alignSelf: 'center' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }}>
+        {/* The month name is the way INTO the year, the way image two's
+            header works. It stays the live region either way, so the month
+            on show is announced however it was reached. */}
+        <Pressable testID={`${testID}-jump`} onPress={() => setJump(j => !j)}
+          accessibilityRole="button" accessibilityState={{ expanded: jump }}
+          accessibilityLabel={`${MONTHS[cursor.month]} ${cursor.year}. ${jump ? 'Closes' : 'Opens'} the month and year list`}
+          style={({ pressed }) => ({
+            flex: 1, minHeight: TAP_MIN, borderRadius: RADIUS.md,
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: 2,
+            paddingHorizontal: SPACE.sm,
+            opacity: pressed ? 0.7 : 1,
+          })}>
+          <Text accessibilityLiveRegion="polite" style={{
+            fontSize: 15.5, fontWeight: '800', color: theme.fgStrong,
+          }}>{`${MONTHS[cursor.month]} ${cursor.year}`}</Text>
+          <Icon name={jump ? 'arrow_drop_up' : 'arrow_drop_down'} size={20} color={theme.muted} />
+        </Pressable>
+        {/* The month steps UP and DOWN, as in the calendar the requester
+            pointed at -- the pair sits together on the right rather than
+            bracketing the month name, so the name has the row's left edge
+            to start at and stops moving as its length changes. */}
+        {arrow('arrow_upward', 'Previous', () => step(-1), 'month')}
+        {arrow('arrow_downward', 'Next', () => step(+1), 'month')}
       </View>
 
+      {jump ? (
+        <View style={{ marginTop: SPACE.md }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }}>
+            {arrow('chevron_left', 'Previous', () => setCursor(c => ({ ...c, year: c.year - 1 })), 'year')}
+            <Text accessibilityLiveRegion="polite" style={{
+              flex: 1, textAlign: 'center', fontSize: 15.5, fontWeight: '800',
+              fontVariant: ['tabular-nums'], color: theme.fgStrong,
+            }}>{cursor.year}</Text>
+            {arrow('chevron_right', 'Next', () => setCursor(c => ({ ...c, year: c.year + 1 })), 'year')}
+          </View>
+
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: SPACE.sm }}>
+            {MON_SHORT.map((short, i) => {
+              const on = i === cursor.month;
+              return (
+                <View key={short} style={{ width: '25%', height: CELL, padding: 2 }}>
+                  <Pressable testID={`${testID}-month-${i + 1}`}
+                    onPress={() => { setCursor(c => ({ ...c, month: i })); setJump(false); }}
+                    accessibilityRole="radio" accessibilityState={{ selected: on }}
+                    accessibilityLabel={`${MONTHS[i]} ${cursor.year}`}
+                    style={({ pressed }) => ({
+                      flex: 1, borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center',
+                      backgroundColor: on ? theme.accent : theme.surface2,
+                      borderWidth: 1, borderColor: on ? theme.accent : theme.line,
+                      opacity: pressed ? 0.7 : 1,
+                    })}>
+                    <Text style={{
+                      fontSize: 13, fontWeight: on ? '800' : '600',
+                      color: on ? theme.onAccent : theme.fgStrong,
+                    }}>{short}</Text>
+                  </Pressable>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      ) : (
+      <>
       <View style={{ flexDirection: 'row', marginTop: SPACE.md }}>
         {DOW.map(d => (
           <Text key={d} style={{
@@ -162,38 +239,56 @@ export function MonthCalendar({ from, to = '', onPick, min, max, testID }:
       </View>
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: SPACE.sm }}>
-        {cells.map((value, i) => {
-          if (!value) return <View key={`pad${i}`} style={{ width: `${100 / 7}%`, aspectRatio: 1, padding: 2 }} />;
+        {cells.map(value => {
           const day = Number(value.slice(8));
           const isEnd = value === from || (!!to && value === to);
           const inside = !!to && value > from && value < to;
           const isToday = value === iso(today);
           const off = blocked(value);
+          /** A day of the month either side of the one on show. */
+          const outside = isOutside(value, cursor.year, cursor.month);
           // The two ends carry the accent and the days between carry the
           // softer control tint, so a span reads as a span rather than as
-          // separate picks -- both are measured pairs (guardrail 2).
-          const bg = isEnd ? theme.accent : inside ? theme.control : off ? 'transparent' : theme.surface2;
-          const ink = isEnd ? theme.onAccent : inside ? theme.accentInk : off ? theme.dim : theme.fgStrong;
+          // separate picks -- both are measured pairs (guardrail 2). A day
+          // belonging to a neighbouring month is drawn without a tile at
+          // all: it is legible, and it is plainly not part of this month
+          // without the month having to be read.
+          const bg = isEnd ? theme.accent : inside ? theme.control
+            : off || outside ? 'transparent' : theme.surface2;
+          const ink = isEnd ? theme.onAccent : inside ? theme.accentInk
+            : off ? theme.dim : outside ? theme.muted : theme.fgStrong;
           // the range membership is spoken, not left to the fill alone
           const edge = value === from ? ', start of the range'
             : (!!to && value === to) ? ', end of the range'
             : inside ? ', inside the range' : '';
           return (
-            <View key={value} style={{ width: `${100 / 7}%`, aspectRatio: 1, padding: 2 }}>
+            <View key={value} style={{ width: `${100 / 7}%`, height: CELL, padding: 2 }}>
               <Pressable
                 testID={`${testID}-day-${value}`}
-                onPress={() => onPick(value)} disabled={off}
+                /* Picking a neighbouring day brings its month into view as
+                   well as choosing it: the range picker stays open after a
+                   pick, and a chosen day the grid no longer shows is a
+                   selection nobody can see. */
+                onPress={() => {
+                  if (outside) {
+                    const [y, m] = value.split('-').map(Number);
+                    setCursor({ year: y, month: m - 1 });
+                  }
+                  onPick(value);
+                }}
+                disabled={off}
                 accessibilityRole="button"
                 accessibilityState={{ selected: isEnd || inside, disabled: off }}
                 accessibilityLabel={`${formatDate(value)}${isToday ? ', today' : ''}${edge}${off ? ', not available' : ''}`}
                 style={({ pressed }) => ({
                   flex: 1, borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center',
                   backgroundColor: bg, borderWidth: 1,
-                  borderColor: isEnd ? theme.accent : isToday ? theme.accentInk : inside ? theme.control : theme.line,
+                  borderColor: isEnd ? theme.accent : isToday ? theme.accentInk
+                    : inside ? theme.control : outside ? 'transparent' : theme.line,
                   opacity: off ? 0.4 : pressed ? 0.7 : 1,
                 })}>
                 <Text style={{
-                  fontSize: 13.5, fontWeight: isEnd ? '800' : '600',
+                  fontSize: 13.5, fontWeight: isEnd ? '800' : outside ? '500' : '600',
                   fontVariant: ['tabular-nums'], color: ink,
                 }}>{day}</Text>
               </Pressable>
@@ -201,59 +296,166 @@ export function MonthCalendar({ from, to = '', onPick, min, max, testID }:
           );
         })}
       </View>
+      </>
+      )}
     </View>
   );
 }
 
+/** The card: the grid, its gutters, and its own border. */
+const PANEL_W = GRID_MAX + SPACE.md * 2 + 2;
+/** What the card takes when the month needs six rows. Its real height is its
+ *  own; this is what the placement reserves so the last week is never off
+ *  the bottom of the window. */
+const PANEL_H = 430;
+
 /**
- * One day, in a sheet. `value` and `onChange` speak ISO `yyyy-mm-dd`; ''
- * means nothing is chosen yet, which is a real state and not the same as
- * today.
+ * The calendar, hanging under the field it belongs to.
+ *
+ * A date field used to open the bottom sheet, which on a desktop window is a
+ * band the full width of the screen for a control 336px wide, and which
+ * covers the form the date is being entered into. This is the dropdown's
+ * behaviour instead -- the panel opens where the field is -- but drawn in a
+ * `Modal` rather than inline, because a form scrolls and an inline panel is
+ * clipped by the scroller the moment it is taller than what is left below
+ * the field.
+ *
+ * It keeps every rule the sheet keeps (CP-014): closed, it renders NOTHING;
+ * opening it blurs the opener, so nothing focused is left inside the
+ * `aria-hidden` subtree; and the way out beside the panel is a real,
+ * labelled control.
+ *
+ * That way out is UNTINTED, which is the one thing this does not take from
+ * the sheet. A date is entered into a form, and a scrim over that form dims
+ * the very fields the date is being chosen against -- twice over inside a
+ * dialog, which paints a scrim of its own. The panel separates itself the
+ * way the filter dropdowns do (`Dropdown.tsx`): its own surface, a border
+ * and a lift, and nothing over the page.
+ *
+ * **The page behind is nevertheless blank today, and not because of this.**
+ * Every date field lives inside a `FormDialog`, and TD-021 collapses that
+ * dialog's card to a 2px sliver whenever `useWindowDimensions()` re-reads as
+ * 0 -- which mounting any `Modal` over it does. The bottom sheet this
+ * replaced did exactly the same thing, so nothing regressed; what changes is
+ * that when TD-021 is paid, this panel will leave the form showing, and a
+ * tinted scrim would not have.
  */
-export function DateField({ label, value, onChange, placeholder = 'Choose a date', hint, error, min, max, testID }:
+function AnchoredPanel({ open, onClose, label, anchor, testID, children }:
+  { open: boolean; onClose: () => void; label: string; anchor: Anchor | null;
+    testID: string; children: React.ReactNode }) {
+  const { theme } = useTheme();
+  const { width: winW, height: winH } = useWindowDimensions();
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const active = document.activeElement as HTMLElement | null;
+    if (active && active !== document.body && typeof active.blur === 'function') active.blur();
+  }, [open]);
+
+  if (!open) return null;
+
+  // A window that reports nothing yet gives the panel its natural size rather
+  // than a negative one. `useWindowDimensions` is 0 for the first render of a
+  // page the browser is still hydrating, and `Math.min(360, 0 - 16)` is a
+  // panel nobody can see.
+  const width = winW ? Math.min(PANEL_W, winW - SPACE.lg) : PANEL_W;
+  const height = winH ? Math.min(PANEL_H, winH - SPACE.lg) : PANEL_H;
+  const at = placePanel(anchor, { width: winW, height: winH }, { width, height });
+  const placed = at ? { position: 'absolute' as const, ...at } : null;
+
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      {/* No anchor yet (the first frame on a device, where measuring is
+          asynchronous): the card is centred, which is a place, not a
+          guess at one. */}
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <Pressable
+          testID={`${testID}-scrim`}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel={`Close ${label}`}
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+        <View
+          accessibilityViewIsModal
+          accessibilityLabel={label}
+          testID={`${testID}-panel`}
+          style={{
+            width, maxHeight: height, ...(placed ?? {}),
+            backgroundColor: theme.surface, borderRadius: RADIUS.lg,
+            borderWidth: 1, borderColor: theme.lineStrong,
+            padding: SPACE.md, elevation: 8,
+          }}>
+          <ScrollView style={{ flexShrink: 1 }} keyboardShouldPersistTaps="handled">
+            {children}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+/**
+ * One day, in a panel under the field. `value` and `onChange` speak ISO
+ * `yyyy-mm-dd`; '' means nothing is chosen yet, which is a real state and
+ * not the same as today.
+ */
+export function DateField({ label, value, onChange, placeholder = 'Choose a date', hint, error, min, max, testID, required }:
   { label: string; value: string; onChange: (value: string) => void;
     placeholder?: string; hint?: string; error?: string;
-    min?: string; max?: string; testID: string }) {
+    min?: string; max?: string; testID: string;
+    /** Marks the date mandatory. TimeField deliberately has no such prop:
+     *  no time field in this app blocks a save, and a prop nothing passes is
+     *  a promise nothing keeps. */
+    required?: boolean }) {
   const { theme } = useTheme();
   const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState<Anchor | null>(null);
+  const row = useRef<View>(null);
   const today = new Date();
 
   const pick = (chosen: string) => { onChange(chosen); setOpen(false); };
 
+  // Measured at the press, not at layout: the field's place in the window is
+  // whatever the form has been scrolled to by the time it is tapped.
+  const openPanel = () => {
+    const node = row.current as (View & { measureInWindow?: (cb: (x: number, y: number, w: number, h: number) => void) => void }) | null;
+    node?.measureInWindow?.((x, y, w, h) => setAnchor(w || h ? { x, y, w, h } : null));
+    setOpen(true);
+  };
+
+  const footer = (name: string, text: string, spoken: string, onPress: () => void) => (
+    <Pressable testID={`${testID}-${name}`} onPress={onPress}
+      accessibilityRole="button" accessibilityLabel={spoken}
+      style={({ pressed }) => ({
+        flex: 1, minHeight: TAP_MIN, borderRadius: RADIUS.md,
+        alignItems: 'center', justifyContent: 'center',
+        borderWidth: 1, borderColor: theme.lineStrong,
+        opacity: pressed ? 0.75 : 1,
+      })}>
+      <Text style={{ fontSize: 13.5, fontWeight: '700', color: theme.fg }}>{text}</Text>
+    </Pressable>
+  );
+
   return (
     <>
       <PickerRow label={label} display={formatDate(value)} placeholder={placeholder}
-        icon="calendar_today" hint={hint} error={error} onPress={() => setOpen(true)} testID={testID} />
+        icon="calendar_today" hint={hint} error={error} required={required}
+        onPress={openPanel} testID={testID} anchorRef={row} />
 
-      <Sheet open={open} onClose={() => setOpen(false)} title={label}>
-        <View style={{ marginTop: SPACE.lg }}>
-          <MonthCalendar from={value} onPick={pick} min={min} max={max} testID={testID} />
-        </View>
+      <AnchoredPanel open={open} onClose={() => setOpen(false)} label={label}
+        anchor={anchor} testID={testID}>
+        <MonthCalendar from={value} onPick={pick} min={min} max={max} testID={testID} />
 
-        <View style={{ flexDirection: 'row', gap: SPACE.md, marginTop: SPACE.lg }}>
-          <Pressable testID={`${testID}-today`} onPress={() => pick(iso(today))}
-            accessibilityRole="button" accessibilityLabel="Choose today"
-            style={({ pressed }) => ({
-              flex: 1, minHeight: TAP_MIN, borderRadius: RADIUS.md,
-              flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.sm,
-              backgroundColor: theme.control, borderWidth: 1, borderColor: theme.lineStrong,
-              opacity: pressed ? 0.75 : 1,
-            })}>
-            <Icon name="today" size={18} color={theme.accentInk} />
-            <Text style={{ fontSize: 13.5, fontWeight: '800', color: theme.fgStrong }}>Today</Text>
-          </Pressable>
-          <Pressable testID={`${testID}-clear`} onPress={() => { onChange(''); setOpen(false); }}
-            accessibilityRole="button" accessibilityLabel={`Clear ${label}`}
-            style={({ pressed }) => ({
-              flex: 1, minHeight: TAP_MIN, borderRadius: RADIUS.md,
-              alignItems: 'center', justifyContent: 'center',
-              borderWidth: 1, borderColor: theme.lineStrong,
-              opacity: pressed ? 0.75 : 1,
-            })}>
-            <Text style={{ fontSize: 13.5, fontWeight: '700', color: theme.fg }}>Clear</Text>
-          </Pressable>
+        {/* Clear on the left, Today on the right, as in the calendar the
+            requester pointed at. Both are the words they always were. */}
+        <View style={{
+          flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.md,
+          width: '100%', maxWidth: GRID_MAX, alignSelf: 'center',
+        }}>
+          {footer('clear', 'Clear', `Clear ${label}`, () => { onChange(''); setOpen(false); })}
+          {footer('today', 'Today', 'Choose today', () => pick(iso(today)))}
         </View>
-      </Sheet>
+      </AnchoredPanel>
     </>
   );
 }

@@ -15,7 +15,7 @@
  *     the screen over.
  */
 
-export type NotificationKind = 'awaiting' | 'sent' | 'excluded';
+export type NotificationKind = 'awaiting' | 'sent' | 'excluded' | 'pinReset';
 
 export type Notification = {
   id: string;
@@ -39,7 +39,10 @@ export const NOTIFICATION_LIMIT = 5;
  * send is in the list to be read and is deliberately not counted.
  */
 export function actionableCount(list: Notification[]): number {
-  return list.filter(n => n.kind === 'awaiting').length;
+  // 'pinReset' counts for the same reason 'awaiting' does, and it is the
+  // stronger case of the two: somebody is locked out of the app until the
+  // admin acts, and nothing else in the product will tell her.
+  return list.filter(n => n.kind === 'awaiting' || n.kind === 'pinReset').length;
 }
 
 /**
@@ -49,7 +52,9 @@ export function actionableCount(list: Notification[]): number {
  * thing in the tray is usually a finished send, and sorting by time would put
  * it above a session that has been waiting three days.
  */
-const RANK: Record<NotificationKind, number> = { awaiting: 0, excluded: 1, sent: 2 };
+// A person who cannot sign in outranks a file that has not been uploaded:
+// the upload waits, she cannot work at all.
+const RANK: Record<NotificationKind, number> = { pinReset: 0, awaiting: 1, excluded: 2, sent: 3 };
 
 export function orderNotifications(list: Notification[]): Notification[] {
   return [...list].sort((a, b) => RANK[a.kind] - RANK[b.kind]);
@@ -64,6 +69,25 @@ export function awaitingNotification(session:
     title: `${session.title} awaits upload`,
     body: `${session.meta}. Until the Meet file is in, this session counts for nobody.`,
     when: session.label,
+  };
+}
+
+/**
+ * A staff member has asked the academy admin for a new PIN.
+ *
+ * Her NAME is the whole point -- the admin has to know whose PIN to reset, and
+ * the tray is where she finds out. The number is deliberately not here: the
+ * staff list shows it masked, and a tray is read over shoulders.
+ */
+export function pinResetNotification(request:
+  { id: string; name: string; when: string }): Notification {
+  return {
+    id: `pinreset-${request.id}`,
+    kind: 'pinReset',
+    title: `${request.name} needs a new PIN`,
+    body: 'She cannot sign in until you reset it. Open Staff & access, '
+      + 'reset her PIN, and give her the new one.',
+    when: request.when,
   };
 }
 

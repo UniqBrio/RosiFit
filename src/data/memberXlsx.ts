@@ -21,8 +21,11 @@
  */
 import type * as ExcelJS from 'exceljs';
 import {
-  MEMBER_IMPORT_COLUMNS, MEMBER_IMPORT_HELP, MEMBER_IMPORT_REQUIRED,
-  MEMBER_IMPORT_MAX_ROWS, MemberImportError, type MemberImportRow,
+  MEMBER_IMPORT_COLUMNS, MEMBER_IMPORT_HEADERS, MEMBER_IMPORT_HELP,
+  MEMBER_IMPORT_REQUIRED, MEMBER_IMPORT_MAX_ROWS,
+  NAME_MIN, NAME_MAX, EMAIL_MAX,
+  canonicalColumn, splitAliases,
+  MemberImportError, type MemberImportColumn, type MemberImportRow,
 } from './memberImport';
 
 /**
@@ -65,9 +68,39 @@ export const SHEET_COURSES = 'Courses';
 
 /** Sample rows are sample: named so, and on the sheet nobody imports from. */
 export const SAMPLE_ROWS: string[][] = [
-  ['Anitha Rajesh', 'anitha@example.com', '', '', 'Anitha R;Anitha', '2026-08-01'],
-  ['Divya Balakrishnan', '', '', '', 'Divya B', ''],
+  ['Anitha Rajesh', 'anitha@example.com', '', '', 'Anitha R, Anitha'],
+  ['Divya Balakrishnan', 'divya@example.com', '', '', 'Divya B'],
 ];
+
+/**
+ * The columns a template OFFERS, which is not always every column.
+ *
+ * BRANCH IS CONDITIONAL. An academy that runs everything at one branch was
+ * being given a dropdown with a single entry in it -- a question whose answer
+ * is already known, asked on every one of 500 rows. The column is built only
+ * when there is a choice to make.
+ *
+ * Leaving it out costs nothing: Branch is read by header NAME, not position
+ * (parseMemberXlsx), and a row with no branch resolves to the one branch its
+ * course runs at (validateMemberRows). A file built from a two-branch
+ * template still imports at an academy that has since closed one.
+ */
+export function templateColumns(offerings: { course: string; branch: string }[]): MemberImportColumn[] {
+  const branches = new Set(offerings.map(o => o.branch).filter(Boolean));
+  return MEMBER_IMPORT_COLUMNS.filter(c => c !== 'Branch' || branches.size > 1);
+}
+
+/** The sample rows, projected onto whichever columns this template has. */
+const sampleFor = (cols: MemberImportColumn[]): string[][] =>
+  SAMPLE_ROWS.map(r => cols.map(c => r[MEMBER_IMPORT_COLUMNS.indexOf(c)] ?? ''));
+
+/**
+ * The ceiling on ONE Display Names cell. Not a rule about a display name --
+ * each of those is bounded by ALIAS_MAX in the row verdict -- but about how
+ * much comma-separated text one cell may hold, which is the thing Excel can
+ * actually check.
+ */
+const ALIAS_CELL_MAX = 500;
 
 export type TemplateOptions = {
   /** the academy's name — goes in the file name and the instructions */
@@ -113,12 +146,15 @@ export async function buildMemberTemplate(opts: TemplateOptions): Promise<ArrayB
   wb.created = new Date();
 
   // ---------------------------------------------------- 1. instructions
+  // Which columns this file has, decided once and used by all three sheets.
+  const cols = templateColumns(opts.offerings);
+
   const info = wb.addWorksheet(SHEET_INSTRUCTIONS);
   info.columns = [{ width: 22 }, { width: 70 }];
   info.addRow([`${opts.academy} — member import`]).font = { bold: true, size: 14 };
   info.addRow([]);
   info.addRow(['How to use this file']).font = { bold: true };
-  info.addRow(['', `Fill in the "${SHEET_DATA}" sheet, one member per row. Only "${MEMBER_IMPORT_REQUIRED}" is required.`]);
+  info.addRow(['', `Fill in the "${SHEET_DATA}" sheet, one member per row. "${MEMBER_IMPORT_REQUIRED}" and "Email" are both required.`]);
   info.addRow(['', `Up to ${MEMBER_IMPORT_MAX_ROWS} members per file. Blank rows are ignored.`]);
   info.addRow(['', 'A member already on the register is skipped, never changed — edit her in the app instead.']);
   info.addRow(['', 'THE COURSE IS PER ROW. One file can carry members for as many courses as you run — pick each row’s course from the dropdown.']);
@@ -128,11 +164,14 @@ export async function buildMemberTemplate(opts: TemplateOptions): Promise<ArrayB
   }
   info.addRow([]);
   info.addRow(['Columns']).font = { bold: true };
-  for (const h of MEMBER_IMPORT_HELP) info.addRow([h.column, h.means]);
+  for (const h of MEMBER_IMPORT_HELP) {
+    if (cols.includes(h.column as MemberImportColumn)) info.addRow([h.column, h.means]);
+  }
+  info.addRow(['Joined On', 'not asked for — every member imported by this file joins today.']);
   info.addRow([]);
   info.addRow(['Sample rows (do not import these — they are here to show the shape)']).font = { bold: true };
-  info.addRow([...MEMBER_IMPORT_COLUMNS]).font = { bold: true };
-  for (const r of SAMPLE_ROWS) info.addRow(r);
+  info.addRow(cols.map(c => MEMBER_IMPORT_HEADERS[c])).font = { bold: true };
+  for (const r of sampleFor(cols)) info.addRow(r);
   await info.protect('', { selectLockedCells: true, selectUnlockedCells: true });
 
   // ------------------------------------------------------- 3. the lookup
@@ -149,36 +188,96 @@ export async function buildMemberTemplate(opts: TemplateOptions): Promise<ArrayB
 
   // --------------------------------------------------------- 2. the data
   const data = wb.addWorksheet(SHEET_DATA);
-  data.columns = MEMBER_IMPORT_COLUMNS.map(c => ({ header: c, key: c, width: c === 'Email' ? 30 : 22 }));
+  // The header CELL, not the column name: "Display Names (separate with
+  // commas)" says the shape in the one place that is on screen the whole time
+  // the column is being filled in. The parser strips the bracket again.
+  data.columns = cols.map(c => ({
+    header: MEMBER_IMPORT_HEADERS[c], key: c,
+    width: c === 'Email' ? 30 : c === 'Display Names' ? 34 : 22,
+  }));
   data.getRow(1).font = { bold: true };
   data.views = [{ state: 'frozen', ySplit: 1 }];
   const last = MEMBER_IMPORT_MAX_ROWS + 1;
+  /** A2:A501 for whichever letter this column landed on. */
+  const at = (c: MemberImportColumn) => {
+    const L = String.fromCharCode(65 + cols.indexOf(c));
+    return { range: `${L}2:${L}${last}`, first: `${L}2` };
+  };
+
+  // EVERY COLUMN CARRIES A RULE, and every rule STOPS.
+  //
+  // Course and Branch were the only two, so a name of one character or
+  // "not-an-address" landed in the cell and the file only failed once it
+  // reached RosiFit -- one round trip per mistake, times 500 rows. The rules
+  // below refuse the cell where it is typed, which is the only place the
+  // person is still looking at the row.
+  //
+  // allowBlank is TRUE on all of them: the sheet ships 500 empty rows and a
+  // blank row is not a member (parseMemberXlsx skips it). Only Full Name is
+  // required, and it is required of a row that has something else in it --
+  // which is a judgement about the ROW, so it stays a verdict rather than a
+  // cell rule.
+  const name = at('Full Name');
+  addRule(data, name.range, {
+    type: 'textLength', operator: 'between', allowBlank: true,
+    showErrorMessage: true, errorStyle: 'stop', formulae: [NAME_MIN, NAME_MAX],
+    showInputMessage: true, promptTitle: 'Full Name',
+    prompt: 'Required — her name as the academy writes it.',
+    errorTitle: 'Not a name',
+    error: `Her name as the academy writes it, between ${NAME_MIN} and ${NAME_MAX} characters. Leave the whole row blank to skip it.`,
+  });
+
+  const email = at('Email');
+  addRule(data, email.range, {
+    // Excel has no email rule, so this is the shape check the app makes,
+    // written as a formula: an @, a dot, and no more than the RFC ceiling.
+    type: 'custom', allowBlank: true, showErrorMessage: true, errorStyle: 'stop',
+    // No leading '=': OOXML stores a validation formula bare, which is what
+    // Excel's own files carry, and exceljs writes formula1 through verbatim.
+    formulae: [`OR(ISBLANK(${email.first}),AND(ISNUMBER(FIND("@",${email.first})),ISNUMBER(FIND(".",${email.first})),LEN(${email.first})<=${EMAIL_MAX}))`],
+    showInputMessage: true, promptTitle: 'Email',
+    prompt: 'Required — the address the academy writes to.',
+    errorTitle: 'Not an email address',
+    error: 'An address like name@example.com. Every member needs one, so this cell cannot be left empty on a row that has a name in it.',
+  });
+
+  const names = at('Display Names');
+  addRule(data, names.range, {
+    type: 'textLength', operator: 'lessThanOrEqual', allowBlank: true,
+    showErrorMessage: true, errorStyle: 'stop', formulae: [ALIAS_CELL_MAX],
+    showInputMessage: true, promptTitle: 'Display Names',
+    prompt: 'The names Google Meet shows for her, separated by commas.',
+    errorTitle: 'Too much for one cell',
+    error: `The names Google Meet shows for her, separated by commas — up to ${ALIAS_CELL_MAX} characters in all.`,
+  });
   // STOP, not warn. Excel's default for a list rule is an "information"
   // prompt with a Continue button, so a course typed by hand lands in the
   // cell anyway and the file only fails once it reaches RosiFit. errorStyle
   // 'stop' makes the dropdown the ONLY way in -- an academy cannot invent a
   // course by typing it here, which is the point of the hidden lookup sheet.
   if (courses.length) {
-    addRule(data, `C2:C${last}`, {
+    addRule(data, at('Course').range, {
       type: 'list', allowBlank: true, showErrorMessage: true, errorStyle: 'stop',
-      formulae: [`'${SHEET_COURSES}'!$A$2:$A$${courses.length + 1}`],
+      formulae: [`'${SHEET_COURSES}'!$A$2:$A${courses.length + 1}`],
+      showInputMessage: true, promptTitle: 'Course',
+      prompt: 'Pick from the list. Blank means the course this import was opened from.',
       errorTitle: 'Not one of your courses',
       error: 'Pick a course from the list. To use a new one, add the course in RosiFit first, then download the template again.',
     });
   }
-  if (branches.length) {
-    addRule(data, `D2:D${last}`, {
+  // Only when the column is there at all -- an academy with one branch has no
+  // Branch column to put a rule on. Same 'stop' as Course, for the same
+  // reason: a branch cannot be invented by typing it here either.
+  if (cols.includes('Branch') && branches.length) {
+    addRule(data, at('Branch').range, {
       type: 'list', allowBlank: true, showErrorMessage: true, errorStyle: 'stop',
-      formulae: [`'${SHEET_COURSES}'!$B$2:$B$${branches.length + 1}`],
+      formulae: [`'${SHEET_COURSES}'!$B$2:$B${branches.length + 1}`],
+      showInputMessage: true, promptTitle: 'Branch',
+      prompt: 'Pick from the list. Blank means that course’s branch.',
       errorTitle: 'Not one of your branches',
-      error: 'Pick a branch from the list, or leave it blank when the course runs at only one.',
+      error: 'Pick a branch from the list. To use a new one, add the branch in RosiFit first, then download the template again.',
     });
   }
-  addRule(data, `F2:F${last}`, {
-    type: 'date', allowBlank: true, showErrorMessage: true,
-    operator: 'lessThanOrEqual', formulae: ['TODAY()'],
-    errorTitle: 'Not a joining date', error: 'A date, no later than today. Blank means today.',
-  });
 
   // The order the person sees is already right -- instructions, then the
   // data -- because the lookup between them is veryHidden.
@@ -231,8 +330,11 @@ export async function parseMemberXlsx(bytes: ArrayBuffer): Promise<MemberImportR
     const row = ws.getRow(r);
     const found: Record<string, number> = {};
     row.eachCell((cell, c) => {
-      const name = cellText(cell).toLowerCase();
-      const match = MEMBER_IMPORT_COLUMNS.find(k => k.toLowerCase() === name);
+      // canonicalColumn, not an equality test: the header now carries its
+      // shape in brackets ("Display Names (separate with commas)"), and a file
+      // built from the earlier template carries the bare name. Both are the
+      // same column, and a template that grows another hint stays readable.
+      const match = canonicalColumn(cellText(cell));
       if (match) found[match] = c;
     });
     if (found[MEMBER_IMPORT_REQUIRED]) { headerRow = r; Object.assign(col, found); break; }
@@ -244,6 +346,9 @@ export async function parseMemberXlsx(bytes: ArrayBuffer): Promise<MemberImportR
   }
 
   const at = (row: ExcelJS.Row, key: string) => (col[key] ? cellText(row.getCell(col[key])) : '');
+  // Every column the reader knows about. A "Joined On" column on a file built
+  // from an earlier template is not one of them: it is ignored, and a row
+  // carrying nothing but a date is a blank row.
   const rows: MemberImportRow[] = [];
   for (let r = headerRow + 1; r <= ws.rowCount; r++) {
     const row = ws.getRow(r);
@@ -255,8 +360,7 @@ export async function parseMemberXlsx(bytes: ArrayBuffer): Promise<MemberImportR
       email: values[1].toLowerCase(),
       course: values[2],
       branch: values[3],
-      aliases: values[4].split(';').map(a => a.trim()).filter(Boolean),
-      joined_on: values[5],
+      aliases: splitAliases(values[4]),
     });
   }
   if (rows.length === 0) {
@@ -282,13 +386,18 @@ export async function buildErrorReport(lines: ReportLine[]): Promise<ArrayBuffer
   const ws = wb.addWorksheet('Import errors');
   ws.columns = [
     { header: 'Row', width: 6 }, { header: 'Status', width: 10 }, { header: 'Reason', width: 60 },
-    ...MEMBER_IMPORT_COLUMNS.map(c => ({ header: c, width: c === 'Email' ? 30 : 22 })),
+    // The SAME header cells the template writes, because this report is a file
+    // the person fixes and imports again -- so it has to read back.
+    ...MEMBER_IMPORT_COLUMNS.map(c => ({
+      header: MEMBER_IMPORT_HEADERS[c],
+      width: c === 'Email' ? 30 : c === 'Display Names' ? 34 : 22,
+    })),
   ];
   ws.getRow(1).font = { bold: true };
   for (const l of lines) {
     ws.addRow([
       l.row.row, l.status, l.reason,
-      l.row.full_name, l.row.email, l.row.course, l.row.branch, l.row.aliases.join(';'), l.row.joined_on,
+      l.row.full_name, l.row.email, l.row.course, l.row.branch, l.row.aliases.join(', '),
     ]);
   }
   const out = await wb.xlsx.writeBuffer();

@@ -107,6 +107,47 @@ async function preview(admin: SupabaseClient, actorId: string, body: Record<stri
     throw new HttpError(400, 'Every row in that file is blank or a repeat of another. Nothing to import.');
   }
 
+  /**
+   * WHOEVER RAN THE CLASS IS NOT ON THE REGISTER.
+   *
+   * A Meet file is a list of everybody who was in the call, and that always
+   * includes the instructor. She is not a member, so every match tier misses
+   * her: she comes out `unmatched`. While the operator answered row by row
+   * that was harmless -- "Not a member" left her out. Once the file imports
+   * on the pick there is nobody to ask, and an unmatched row becomes a new
+   * member: created the first week, then MATCHED every week after that, and
+   * marked present in every register for a class she teaches.
+   *
+   * Attendance is for members. The academy already says who its staff are,
+   * so the file does not have to: a row whose name is a staff name is set
+   * aside here and never reaches the matcher.
+   *
+   * WHY THIS CANNOT BE DONE ON THE CLIENT: app_users_read (0013) is
+   * `is_super_admin() or your own row`, so an instructor uploading her own
+   * register would read a staff list of one and the filter would apply to
+   * some operators and not others -- the same file importing differently
+   * depending on who pressed the button. Here it runs with the service role,
+   * so it runs the same for everybody.
+   *
+   * Set aside is NOT dropped: `dropped` means blank or repeated, and saying
+   * "1 row dropped" about the person who taught the class explains nothing.
+   * These are named separately and the screen says why.
+   */
+  const { data: staffRows } = await admin.from('app_users')
+    .select('name').is('deleted_at', null);
+  const staffNames = new Set(
+    (staffRows ?? []).map(u => normalizeName((u.name as string) ?? '')).filter(Boolean));
+  const staff: RawRow[] = [];
+  const attendees: RawRow[] = [];
+  for (const r of kept) {
+    if (staffNames.has(normalizeName(r.full_name ?? ''))) staff.push(r);
+    else attendees.push(r);
+  }
+  if (attendees.length === 0) {
+    throw new HttpError(400,
+      'Every name in that file belongs to a staff member, so there is no attendance to import.');
+  }
+
   const { data: aliases } = await admin.from('member_aliases')
     .select('member_id, alias_display, alias_normalized').eq('alias_type', 'name');
   const { data: members } = await admin.from('members')
@@ -150,7 +191,7 @@ async function preview(admin: SupabaseClient, actorId: string, body: Record<stri
     aliasNamesByMember.set(a.member_id as string, list);
   }
 
-  const rows = kept.map((r, i) => {
+  const rows = attendees.map((r, i) => {
     const normalized = normalizeName(r.full_name);
     let candidateIds: string[] = [];
     let tier: 'alias' | 'canonical' | 'fuzzy' | 'none' = 'none';
@@ -240,7 +281,7 @@ async function preview(admin: SupabaseClient, actorId: string, body: Record<stri
     p_actor: actorId,
     p_action: 'csv_import.previewed', p_entity_type: 'csv_import', p_entity_id: inserted.id,
     p_metadata: {
-      row_count: rawRows.length, dropped: dropped.length,
+      row_count: rawRows.length, dropped: dropped.length, staff: staff.length,
       meeting_code: meetingCode, session_date: sessionDate,
       superseded: supersedes !== null, ...counts,
     },
@@ -252,6 +293,11 @@ async function preview(admin: SupabaseClient, actorId: string, body: Record<stri
     // NAMED, not just counted. "2 rows dropped" is a number somebody has to
     // take on trust; the names are what lets her check.
     dropped_names: dropped.map(r => r.full_name).filter(Boolean),
+    // Set aside because they are staff, not because anything was wrong with
+    // the row. Named for the same reason the dropped ones are: leaving the
+    // instructor off the register silently is how somebody concludes the
+    // import missed her.
+    staff_names: staff.map(r => r.full_name).filter(Boolean),
     meeting_code: meetingCode,
     session_date: sessionDate,
     supersedes,

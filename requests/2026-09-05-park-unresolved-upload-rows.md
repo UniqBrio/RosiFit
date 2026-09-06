@@ -50,7 +50,23 @@ rather than five request files that could not be built in isolation.
   actions (*Add email to existing member*, *Continue without email*) and no discard; outcome E
   has exactly those THREE (*Link to an existing member*, *Add as new member*, *Skip this row*).
   This was put to them and they answered about where the BUTTON goes, not which row. Read as E.
-- **A2. A parked row becomes a PROVISIONAL member with no email.** This is the only reading
+- **A2. RESOLVED 2026-09-05 by the requester, against my reading — the two buttons go on
+  EVERY no-email member card.** They asked "i asked you to bring two button for no email member
+  one add as new member and add display name to an existing member right. why is it not create",
+  with a screenshot of the course screen's NO EMAIL group showing the member **Rani**
+  ("No email on file · not in follow-up") carrying the single envelope button. So the two
+  buttons REPLACE that envelope on the no-email member card, for members who already exist —
+  not only for parked rows. My contrary reading below is superseded and kept only as the record
+  of what was asked and answered.
+  **RESOLVED 2026-09-05 — alias only, no merge, and the link runs card → chosen.** The
+  requester's worked example: "Rani is present but she joined as Rani Sham then on selected add
+  display name for exsiting member and click it should be save as another display name for rani
+  thats it". So: the entry you are STANDING ON carries the stray Meet display name
+  ("Rani Sham"); the dropdown picks the REAL member ("Rani"); the stray name is saved as an
+  alias ON the picked member. "thats it" settles the rest — the record the action was invoked
+  from is NOT removed and attendance is NOT moved. Built and shipped exactly this way
+  (`addMemberAlias(chosen.id, member.name)`, `app/course/[id].tsx`).
+- **A2-superseded. A parked row becomes a PROVISIONAL member with no email.** This is the only reading
   under which the ask is coherent. The No email group on the course screen
   (`app/course/[id].tsx`, the group headed "No email" whose cards carry *Add email*) lists
   people who are ALREADY members — so "Add as new member" on a genuine member would duplicate

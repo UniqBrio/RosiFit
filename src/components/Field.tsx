@@ -1,16 +1,24 @@
 import { View, Text, TextInput, Pressable, type KeyboardTypeOptions } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
 import { RADIUS, SPACE, TAP_MIN } from '../theme/tokens';
+import { RequiredMark } from './RequiredMark';
 
-export function Field({ label, value, onChange, placeholder, hint, error, keyboardType, secure, multiline, prefix }:
+export function Field({ label, value, onChange, placeholder, hint, error, keyboardType, secure, multiline, prefix, required }:
   { label: string; value: string; onChange: (v: string) => void; placeholder?: string;
     hint?: string; error?: string; keyboardType?: KeyboardTypeOptions;
-    secure?: boolean; multiline?: boolean; prefix?: string }) {
+    secure?: boolean; multiline?: boolean; prefix?: string;
+    /** Marks the field mandatory. Optional, so the fields that were already
+     *  here keep compiling and keep rendering exactly as they did. */
+    required?: boolean }) {
   const { theme } = useTheme();
   return (
     <View style={{ marginBottom: SPACE.md }}>
       <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase',
-        color: theme.muted, marginBottom: 6 }}>{label}</Text>
+        color: theme.muted, marginBottom: 6 }}>
+        {label}
+        {/* One mark, four label renderers -- see RequiredMark. */}
+        {required ? <RequiredMark /> : null}
+      </Text>
       <View style={{
         flexDirection: 'row', alignItems: multiline ? 'flex-start' : 'center', gap: SPACE.sm,
         borderWidth: 1, borderRadius: RADIUS.md, paddingHorizontal: SPACE.lg,
@@ -23,7 +31,7 @@ export function Field({ label, value, onChange, placeholder, hint, error, keyboa
           value={value} onChangeText={onChange} placeholder={placeholder}
           placeholderTextColor={theme.muted} keyboardType={keyboardType}
           secureTextEntry={secure} multiline={multiline}
-          accessibilityLabel={label}
+          accessibilityLabel={required ? `${label}, required` : label}
           style={{ flex: 1, color: theme.fgStrong, fontSize: 15, fontWeight: '400',
             minHeight: multiline ? 86 : undefined, textAlignVertical: multiline ? 'top' : 'center' }} />
       </View>

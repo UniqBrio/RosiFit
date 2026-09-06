@@ -3,6 +3,7 @@ import { View, Text, Pressable, ScrollView, StyleSheet, type ViewStyle, type Tex
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../theme/ThemeProvider';
 import { RADIUS, SPACE, TAP_MIN } from '../theme/tokens';
+import { RequiredMark } from './RequiredMark';
 
 export function Screen({ children, scroll = true, deep = false }:
   { children: React.ReactNode; scroll?: boolean; deep?: boolean }) {
@@ -47,10 +48,16 @@ export const Muted = ({ children, style, numberOfLines, accessibilityLiveRegion 
   const { theme } = useTheme();
   return <Text numberOfLines={numberOfLines} accessibilityLiveRegion={accessibilityLiveRegion} style={[{ fontSize: 13, color: theme.muted, lineHeight: 19 }, style]}>{children}</Text>;
 };
-export const Label = ({ children, style }: TxtProps) => {
+export const Label = ({ children, style, required }: TxtProps & {
+  /** Marks the control BELOW this label mandatory. Optional, so the ~40
+   *  existing Labels -- most of which head a section, not a field -- keep
+   *  rendering exactly as they did. */
+  required?: boolean }) => {
   const { theme } = useTheme();
   return <Text style={[{ fontSize: 11, fontWeight: '700', letterSpacing: 0.8,
-    textTransform: 'uppercase', color: theme.muted }, style]}>{children}</Text>;
+    textTransform: 'uppercase', color: theme.muted }, style]}>
+    {children}{required ? <RequiredMark /> : null}
+  </Text>;
 };
 
 export function Button({ label, onPress, variant = 'primary', disabled, style, testID }:

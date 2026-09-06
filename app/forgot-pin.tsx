@@ -9,7 +9,7 @@ import { useToast } from '../src/components/Toast';
 import { SPACE, RADIUS, STATUS, statusSurface } from '../src/theme/tokens';
 import { SECURITY_QUESTIONS, SUPPORT_PHONE } from '../src/data/mock';
 import { isConfigured } from '../src/lib/supabase';
-import { recoveryQuestions, recoveryVerify, type SecurityQuestion } from '../src/data/api';
+import { recoveryQuestions, recoveryVerify, pinResetRequest, type SecurityQuestion } from '../src/data/api';
 import { setRecoveryToken } from '../src/data/pending';
 
 /**
@@ -43,7 +43,12 @@ export default function ForgotPin() {
   const [wrong, setWrong] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [stage, setStage] = useState<'asking' | 'locked' | 'passed'>('asking');
+  // 'staff' is the whole of this screen for a staff member: the security
+  // questions are the SUPER ADMIN's recovery and hers alone -- only she
+  // answered any at registration, and only super_admin_recovery has rows. A
+  // staff PIN is reset by the academy admin, so that is what she is told.
+  const [stage, setStage] = useState<'asking' | 'locked' | 'passed' | 'staff' | 'requested'>('asking');
+  const [sending, setSending] = useState(false);
 
   const ink = (k: keyof typeof STATUS) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
 
@@ -51,7 +56,17 @@ export default function ForgotPin() {
     if (!isConfigured || !phone) return;
     recoveryQuestions(phone)
       .then(({ questions: list }) => { if (list.length >= 2) setQuestions(list.slice(0, 2)); })
-      .catch((err: unknown) => setMessage(err instanceof Error ? err.message : null));
+      .catch((err: unknown) => {
+        const text = err instanceof Error ? err.message : '';
+        // recovery-check answers this for any number that is not the academy
+        // admin's. Until 06-Sep-2026 it was shown as a message UNDER two
+        // security questions that were still on screen -- the seeded fixture
+        // ones, because the real list only replaces them on success. So a
+        // staff member was invited to answer questions she had never been
+        // asked and could never pass. She gets her own screen instead.
+        if (/not registered as the academy admin/i.test(text)) { setStage('staff'); return; }
+        setMessage(text || null);
+      });
   }, [phone]);
 
   const submit = async () => {
@@ -101,6 +116,87 @@ export default function ForgotPin() {
       setBusy(false);
     }
   };
+
+  /** She asks; the academy admin is told. The PIN does not change here and
+   *  the screen says so -- the same rule the locked and passed states follow. */
+  const askAdmin = async () => {
+    if (sending) return;
+    setSending(true);
+    try {
+      if (!isConfigured) { setStage('requested'); return; }
+      await pinResetRequest(phone ?? '');
+      setStage('requested');
+    } catch (err) {
+      // A refusal here is HERS to read -- it is about her own request, not
+      // about anyone else's account, so the function's sentence is shown.
+      flash(err instanceof Error ? err.message : 'That request could not be sent. Try again.', 'warn');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (stage === 'requested') {
+    const okInk = ink('present');
+    return (
+      <Screen>
+        <View style={{ alignItems: 'center', paddingTop: SPACE.xxl }}>
+          <View style={{
+            width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center',
+            backgroundColor: statusSurface(okInk).bg, borderWidth: 1, borderColor: statusSurface(okInk).border,
+          }}>
+            <Icon name="check" size={34} color={okInk} />
+          </View>
+          <H2 style={{ marginTop: SPACE.lg }}>Request sent to your academy admin</H2>
+          <Body style={{ marginTop: SPACE.sm, textAlign: 'center' }}>
+            They will see it on their dashboard, reset your PIN and give you the new one. Sign in
+            with that PIN and you will be asked to choose your own straight away.
+          </Body>
+          {/* What has NOT happened, said as plainly as what has. */}
+          <Muted style={{ marginTop: SPACE.md, textAlign: 'center' }}>
+            Nothing has changed yet — your old PIN still works if you remember it.
+          </Muted>
+          <Button testID="forgot-pin-requested-back" label="Back to sign in"
+            style={{ marginTop: SPACE.xl, alignSelf: 'stretch' }}
+            onPress={() => router.replace('/')} />
+        </View>
+      </Screen>
+    );
+  }
+
+  if (stage === 'staff') {
+    const ink = theme.isDark ? STATUS.awaiting.fgDark : STATUS.awaiting.fgLight;
+    return (
+      <Screen>
+        <View style={{ alignItems: 'center', paddingTop: SPACE.xxl }}>
+          <View style={{
+            width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center',
+            backgroundColor: statusSurface(ink).bg, borderWidth: 1, borderColor: statusSurface(ink).border,
+          }}>
+            <Icon name="lock_reset" size={34} color={ink} />
+          </View>
+          <H2 style={{ marginTop: SPACE.lg }}>Your academy admin resets your PIN</H2>
+          {/* What has NOT happened, stated as plainly as what has -- the rule
+              the rest of this screen already follows. */}
+          <Body style={{ marginTop: SPACE.sm, textAlign: 'center' }}>
+            Security questions are only for the academy admin's own account. Send them a
+            request and they will reset your PIN — you choose your own the first time you sign
+            in with the new one.
+          </Body>
+          <Button testID="forgot-pin-staff-ask"
+            label={sending ? 'Sending…' : 'Ask my academy admin to reset it'}
+            disabled={sending}
+            style={{ marginTop: SPACE.xl, alignSelf: 'stretch' }}
+            onPress={() => void askAdmin()} />
+          <Button testID="forgot-pin-staff-call" label="Call the academy instead" variant="secondary"
+            style={{ marginTop: SPACE.sm, alignSelf: 'stretch' }}
+            onPress={() => flash(`Calling ${SUPPORT_PHONE}`)} />
+          <Button testID="forgot-pin-staff-back" label="Back to sign in" variant="secondary"
+            style={{ marginTop: SPACE.sm, alignSelf: 'stretch' }}
+            onPress={() => router.replace('/')} />
+        </View>
+      </Screen>
+    );
+  }
 
   if (stage === 'locked') {
     const badInk = ink('absent');
@@ -173,7 +269,7 @@ export default function ForgotPin() {
           {questions[ix].text}
         </Text>
         <View style={{ marginTop: SPACE.md }}>
-          <Field label="Your answer" value={answer} onChange={v => { setAnswer(v); setWrong(false); }}
+          <Field label="Your answer" required value={answer} onChange={v => { setAnswer(v); setWrong(false); }}
             placeholder="Your answer"
             error={wrong
               ? (message ?? `That does not match. ${2 - tries} attempt${2 - tries === 1 ? '' : 's'} left before recovery closes.`)

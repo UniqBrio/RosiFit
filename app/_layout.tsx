@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider, useTheme } from '../src/theme/ThemeProvider';
 import { ToastProvider } from '../src/components/Toast';
 import { AcademyProvider } from '../src/state/academy';
+import { AdminRouteGuard } from '../src/components/AdminOnly';
 
 /**
  * EVERY FORM IS A DIALOG -- and it takes THREE things, not the two this file
@@ -37,6 +38,11 @@ function Nav() {
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <StatusBar style={theme.isDark ? 'light' : 'dark'} />
+      {/* Staff & access and the Audit log are is_super_admin() in the
+          database and are not offered to staff in the navigation. This sends
+          a staff account that reaches one anyway -- a typed URL, a stale
+          bookmark -- to the Attendance workspace. It renders nothing. */}
+      <AdminRouteGuard />
       <Stack screenOptions={{
         headerStyle: { backgroundColor: theme.shell },
         headerTitleStyle: { color: theme.fgStrong, fontWeight: '800' },
@@ -45,14 +51,19 @@ function Nav() {
       }}>
         <Stack.Screen name="index"  options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        {/* Upload and match are DIALOGS over the screen that opened them --
-            the Attendance register, a day on a course, or the bell. As pages
-            they replaced that screen with a full window of their own, so the
+        {/* Upload is a DIALOG over the screen that opened it -- the
+            Attendance register, a day on a course, or the bell. As a page it
+            replaced that screen with a full window of its own, so the
             register you were uploading FOR was gone while you uploaded for it.
-            Both are FormDialogs and both take DIALOG_SCREEN, exactly as the
-            forms below do -- including the `contentStyle: transparent` that
+            It is a FormDialog and takes DIALOG_SCREEN, exactly as the forms
+            below do -- including the `contentStyle: transparent` that
             RC-016 is about, without which the card would sit on an opaque
             panel and the register underneath would be mounted but invisible.
+
+            `match` USED TO BE HERE TOO, and it is gone: the row-by-row match
+            review is one list on the upload's own last step now, so there is
+            no second dialog to register
+            (requests/2026-09-06-upload-flow-shorter-no-email-resolution.md).
             Their URLs are unchanged. */}
         <Stack.Screen name="upload"        options={DIALOG_SCREEN} />
         <Stack.Screen name="register"      options={{ title: 'Register' }} />
@@ -78,10 +89,14 @@ function Nav() {
             the same shape and already turn it off; this makes the rule
             uniform rather than a thing three screens happened to get right. */}
         <Stack.Screen name="member/[id]"   options={{ headerShown: false }} />
-        {/* The MEMBER import — file, validate, preview, confirm. A review,
-            not a form, and it is not taken OVER a screen the way the
-            attendance upload is: it stays under the shell. */}
-        <Stack.Screen name="member/import" options={{ headerShown: false }} />
+        {/* The MEMBER import. It USED TO STAY UNDER THE SHELL, on the reading
+            that it was a review rather than something done over a screen.
+            That came off on 06-Sep-2026: importing a file of members is done
+            TO the list you are looking at, exactly as the attendance upload
+            above is done to the register you are looking at, and as a page it
+            replaced that list while you imported into it. Same three halves
+            as every dialog here — change any one and it stops being one. */}
+        <Stack.Screen name="member/import" options={DIALOG_SCREEN} />
         {/* EVERY FORM IS A DIALOG. A form is a decision taken OVER a screen,
             not a place you travel to: pushed as a page it wears the stack's
             header, so the only way out is in the chrome and the save sits
@@ -99,7 +114,8 @@ function Nav() {
             of the register you are looking at is still something done TO
             that screen, not a place to travel to, and the rule that decided
             it is the requester's: no separate page with a back button for
-            anything a button opens. */}
+            anything a button opens. `match` has since stopped existing at
+            all -- see above. */}
         <Stack.Screen name="member/edit"   options={DIALOG_SCREEN} />
         <Stack.Screen name="holiday"       options={DIALOG_SCREEN} />
         <Stack.Screen name="branches"      options={{ headerShown: false }} />
@@ -119,7 +135,6 @@ function Nav() {
             back through a draft that has already gone out. */}
         <Stack.Screen name="send/index"    options={DIALOG_SCREEN} />
         <Stack.Screen name="send/result"   options={DIALOG_SCREEN} />
-        <Stack.Screen name="match"         options={DIALOG_SCREEN} />
         <Stack.Screen name="appearance"    options={{ headerShown: false }} />
         <Stack.Screen name="profile"       options={{ headerShown: false }} />
         <Stack.Screen name="help"          options={{ headerShown: false }} />

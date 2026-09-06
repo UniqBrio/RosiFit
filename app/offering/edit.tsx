@@ -41,10 +41,15 @@ export default function OfferingEdit() {
   const { courseId, offeringId, state: forced } =
     useLocalSearchParams<{ courseId?: string; offeringId?: string; state?: string }>();
 
+  /* WHICH form this is, decided by the ROUTE. Deciding it from the lookup
+     below makes "the offering was deleted while this list was on screen"
+     render as Add an offering -- over a Save that then creates one (RC-021). */
+  const editingOffering = typeof offeringId === 'string' && offeringId.length > 0 ? offeringId : null;
+
   const editor = useOfferingEditor(courseId ?? '', forced);
   const course = editor.data?.course ?? null;
   const branches = editor.data?.branches ?? [];
-  const existing = editor.data?.offerings.find(o => o.id === offeringId) ?? null;
+  const existing = editor.data?.offerings.find(o => o.id === editingOffering) ?? null;
 
   // null means "not edited yet", so a loaded value shows through without an
   // effect that would clobber a half-made choice on every refetch.
@@ -73,6 +78,9 @@ export default function OfferingEdit() {
 
   const save = async () => {
     if (!valid || saving || !courseId) return;
+    // Asked to change an offering that is not there: nothing to save, and the
+    // line below would create one instead (RC-021).
+    if (editingOffering && !existing) return;
     setSaving(true);
     setFailure(null);
     try {
@@ -111,6 +119,14 @@ export default function OfferingEdit() {
       </Screen>
     );
   }
+  if (editingOffering && !existing) {
+    return (
+      <Screen>
+        <ErrorState message="That offering is no longer on this course, so there is nothing to change."
+          onRetry={() => router.back()} />
+      </Screen>
+    );
+  }
 
   const stated = course.frequency ?? 0;
   const chosen = dayValue.length;
@@ -118,9 +134,9 @@ export default function OfferingEdit() {
 
   return (
     <FormDialog
-      title={existing ? 'Where and when' : 'Add an offering'}
+      title={editingOffering ? 'Where and when' : 'Add an offering'}
       subtitle={existing ? `${course.name} at ${existing.branch}` : `${course.name} — where it runs`}
-      confirmLabel={saving ? 'Saving…' : existing ? 'Save Days' : 'Add Offering'}
+      confirmLabel={saving ? 'Saving…' : editingOffering ? 'Save Days' : 'Add Offering'}
       confirmTestID="offering-save"
       confirmDisabled={!valid || saving}
       onConfirm={save}
@@ -150,7 +166,7 @@ export default function OfferingEdit() {
         </>
       ) : (
         <DropdownRow open={open}>
-          <DropdownField label="Branch" value={branchName || 'Choose a branch'}
+          <DropdownField label="Branch" required value={branchName || 'Choose a branch'}
             open={open} highlight={!!branchName}
             onPress={() => setOpen(o => !o)} testID="offering-branch" />
           {open ? (
@@ -168,7 +184,7 @@ export default function OfferingEdit() {
         </DropdownRow>
       )}
 
-      <Label style={{ marginTop: SPACE.xl }}>Days it runs</Label>
+      <Label required style={{ marginTop: SPACE.xl }}>Days it runs</Label>
       <View style={{ flexDirection: 'row', gap: 6, marginTop: SPACE.md }}>
         {DAYS.map(d => {
           const on = dayValue.includes(d);
@@ -219,7 +235,7 @@ export default function OfferingEdit() {
 
       <Label style={{ marginTop: SPACE.xl }}>From</Label>
       <View style={{ marginTop: SPACE.sm }}>
-        <DateField label="These days apply from" value={fromValue} onChange={setFrom}
+        <DateField label="These days apply from" required value={fromValue} onChange={setFrom}
           placeholder="Choose a date" testID="offering-effective-from"
           hint="Changing the days later opens a new version from that date. Weeks already marked keep what was expected of them." />
       </View>

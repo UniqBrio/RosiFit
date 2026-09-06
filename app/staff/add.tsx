@@ -64,10 +64,10 @@ export default function StaffAdd() {
       onConfirm={() => void save()}
       hint={valid ? `Saved as ${role} · no app access yet`
         : 'Name and a 10-digit mobile number are needed'}>
-      <Field label="Full name" value={name} onChange={setName} placeholder="e.g. Revathi Anand" />
+      <Field label="Full name" required value={name} onChange={setName} placeholder="e.g. Revathi Anand" />
 
       <Field
-        label="Mobile number" value={phone} onChange={setPhone}
+        label="Mobile number" required value={phone} onChange={setPhone}
         placeholder="98765 43210" keyboardType="phone-pad" prefix="+91"
         hint="This number becomes her sign-in ID and cannot be changed later."
         error={digits.length > 0 && digits.length < 10 ? 'A 10-digit mobile number is needed.' : undefined} />

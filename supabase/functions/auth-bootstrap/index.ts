@@ -1,7 +1,20 @@
-// auth-bootstrap: one-time super-admin registration, incl. two hashed
-// recovery answers. Public (verify_jwt=false) -- nobody has a session before
-// this runs -- but gated by app_settings.bootstrap_completed, a one-way
-// latch the schema itself will not let flip back to false (0002).
+// auth-bootstrap: super-admin registration, incl. two hashed recovery
+// answers. Public (verify_jwt=false) -- nobody has a session before this runs.
+//
+// NO LONGER ONE-TIME (06-Sep-2026). It used to refuse every call after the
+// first, because registration was modelled as creating the ACADEMY and an
+// academy can only be created once. It is not: the academy is RosiFit, fixed,
+// and this form creates a super ADMIN for it -- the owner's words, "we are
+// just creating super admins for rosifit academy". The singleton index went
+// with it in 0033.
+//
+// bootstrap_completed is still written by the first registration and still
+// read by auth-login, which uses "nobody has registered at all" to explain an
+// empty project instead of answering like a wrong PIN. It is no longer a gate.
+//
+// WHAT STILL REFUSES: a mobile number that already has a live account
+// (app_users_phone_live). That is the check that stops one person registering
+// twice, and it is unchanged.
 import { handlePreflight } from '../_shared/cors.ts';
 import { json, errorJson, HttpError } from '../_shared/response.ts';
 import { adminClient } from '../_shared/db.ts';
@@ -67,11 +80,6 @@ Deno.serve(async (req) => {
 
     const admin = adminClient();
 
-    const { data: settings, error: settingsErr } = await admin
-      .from('app_settings').select('bootstrap_completed').eq('id', 1).single();
-    if (settingsErr) throw new HttpError(500, 'Could not check registration status.');
-    if (settings.bootstrap_completed) throw new HttpError(409, 'RosiFit is already set up. Sign in instead.');
-
     const { data: questions, error: qErr } = await admin
       .from('security_questions').select('id').in('id', Array.from(ids)).eq('is_active', true);
     if (qErr || !questions || questions.length !== 2) {
@@ -83,10 +91,9 @@ Deno.serve(async (req) => {
       .eq('phone_e164', e164).is('deleted_at', null);
     if (dupCount && dupCount > 0) throw new HttpError(409, 'This mobile number is already registered.');
 
-    // From here on, clean up the half-created app_user on any failure --
-    // bootstrap_completed has not flipped yet, so a retry must be possible,
-    // and the partial-unique index on kind='super_admin' would otherwise
-    // block it forever.
+    // From here on, clean up the half-created app_user on any failure, so a
+    // retry is possible: app_users_phone_live would otherwise refuse the same
+    // number forever on the strength of a row that was never finished.
     const { data: inserted, error: insertErr } = await admin
       .from('app_users')
       .insert({
@@ -108,6 +115,10 @@ Deno.serve(async (req) => {
         if (recErr) throw new Error(`Could not save recovery answers: ${recErr.message}`);
       }
 
+      // Still set, and still one-way (0002). It no longer gates this
+      // function; auth-login reads it to tell an EMPTY project apart from a
+      // wrong PIN, and that remains true and useful. Already-true is a
+      // no-op update, so a second registration costs nothing here.
       const { error: latchErr } = await admin
         .from('app_settings').update({ bootstrap_completed: true }).eq('id', 1);
       if (latchErr) throw new Error(`Could not complete setup: ${latchErr.message}`);

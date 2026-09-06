@@ -8,6 +8,7 @@ import { SPACE, RADIUS, TAP_MIN, STATUS } from '../../src/theme/tokens';
 import { SUPPORT_PHONE } from '../../src/data/mock';
 import { useBranchUsage, useStaff } from '../../src/data/hooks';
 import { useIdentity, signOut } from '../../src/data/session';
+import { homeHref } from '../../src/data/access';
 
 type Item = {
   icon: string; label: string; meta: string;
@@ -154,10 +155,11 @@ export default function More() {
           inside the tab group answers about the stack the tabs sit in and
           would leave the app for the sign-in screen. The canvas draws a back
           arrow here all the same, and it means the same thing a hardware back
-          means on a non-home tab: return to Overview. A named destination,
-          not a guess. */}
+          means on a non-home tab: return HOME -- Overview for the super admin,
+          the Attendance workspace for a staff account, which has no Overview
+          to return to. A named destination, not a guess. */}
       <ScreenHeader title="More" subtitle="Your account, your academy, your rules"
-        onBack={() => router.navigate('/')} />
+        onBack={() => router.navigate(homeHref(identity.isSuperAdmin))} />
 
       <Pressable onPress={() => router.push('/profile')}
         accessibilityRole="button"
