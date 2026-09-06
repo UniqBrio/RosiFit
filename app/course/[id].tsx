@@ -63,9 +63,9 @@ function CourseDetailBody() {
   /**
    * The three breakpoints, and the only place they are stated.
    *
-   *   >= 1024  desktop -- actions beside the title, search on the heading row
+   *   >= 1024  desktop -- actions beside the title, search under the heading
    *   768-1023 tablet  -- the header wraps, the seven-card strip stays
-   *   <  768   phone   -- actions stacked, ONE date card, search full width
+   *   <  768   phone   -- actions stacked, ONE date card, search under the heading
    *
    * A phone is not a narrow desktop here: three 42pt buttons side by side at
    * 360pt truncate to one word each, and seven date cards give each day 44pt
@@ -121,7 +121,6 @@ function CourseDetailBody() {
   const rules = followUp.data?.rules;
 
   const dangerInk = theme.isDark ? STATUS.absent.fgDark : STATUS.absent.fgLight;
-  const warnInk = theme.isDark ? STATUS.awaiting.fgDark : STATUS.awaiting.fgLight;
 
   // Only the branches this course actually runs at. Offering one it has no
   // offering at would filter every member away and read as "nobody is
@@ -463,93 +462,25 @@ function CourseDetailBody() {
               <ErrorState onRetry={attendance.retry}
                 message={attendance.error ?? 'This week could not be loaded. Nothing has been changed.'} />
             </View>
-          ) : attendance.state === 'ready' ? (
-            <>
-              {/* the chosen day, in words */}
-              {chosen ? (() => {
-                const tone = STATUS[chosen.key];
-                const ink = theme.isDark ? tone.fgDark : tone.fgLight;
-                const box = statusSurface(ink);
-                const detail = chosen.key === 'none'
-                  ? 'This course does not run on this day, so nobody is expected and nobody is missing.'
-                  : chosen.key === 'scheduled'
-                  ? 'Still to come. Nothing is counted until the session runs and its file arrives.'
-                  : chosen.key === 'awaiting'
-                  ? 'The session ran and no attendance file has arrived. Until it does, nobody is marked present or absent.'
-                  : `${chosen.present} present · ${chosen.absent} absent · ${chosen.expected} expected`;
-                return (
-                  <View style={{
-                    flexDirection: 'row', alignItems: 'flex-start', gap: SPACE.sm,
-                    marginTop: SPACE.md, padding: 11, borderRadius: RADIUS.md,
-                    backgroundColor: box.bg, borderWidth: 1, borderColor: box.border,
-                  }}>
-                    <Icon name={tone.icon} size={17} color={ink} />
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 7 }}>
-                        <Text style={{ flex: 1, fontSize: 12.5, fontWeight: '800', color: ink }}>
-                          {tone.word}
-                        </Text>
-                        <Text style={{
-                          fontSize: 10.5, fontWeight: '700', color: theme.muted,
-                          fontVariant: ['tabular-nums'],
-                        }}>{`${chosen.dow} ${chosen.dayNum} ${chosen.mon}`}</Text>
-                      </View>
-                      <Muted style={{ marginTop: 3 }}>{detail}</Muted>
-                      {/* ------------------------------------------ upload
-                          ALWAYS PRESENT, on every day of the strip.
-
-                          It used to render only for an `awaiting` day -- a
-                          day this course was scheduled to run and had not
-                          been given a file for. That is the case the button
-                          was designed around and it is not the case the
-                          academy is in: a class that was arranged on the day,
-                          or run on a day the course does not normally run,
-                          has no scheduled session, so the day showed no way
-                          to upload anything at all.
-
-                          Nothing about the import needed the session to
-                          exist -- the day comes from the file and 0024
-                          creates the session if there is none. Only this
-                          button was gated. Now the day she tapped always
-                          travels with it, which is also what lets the upload
-                          ASK when the file turns out to be from another day.
-
-                          The tint still marks `awaiting` out: that is the day
-                          the register is actually waiting on. */}
-                      {(() => {
-                        const waiting = chosen.key === 'awaiting';
-                        const ink = waiting ? warnInk : theme.accentInk;
-                        return (
-                          <Pressable testID="course-day-upload"
-                            onPress={() => router.push(
-                              `/upload?courseId=${id}&date=${chosen.iso}`)}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Upload a session for ${chosen.dow} ${chosen.dayNum} ${chosen.mon}`}
-                            style={({ pressed }) => ({
-                              marginTop: SPACE.sm, alignSelf: 'flex-start',
-                              flexDirection: 'row', alignItems: 'center', gap: 6,
-                              minHeight: 34, paddingHorizontal: 12, borderRadius: RADIUS.sm,
-                              backgroundColor: statusSurface(ink).bg,
-                              borderWidth: 1, borderColor: statusSurface(ink).border,
-                              opacity: pressed ? 0.7 : 1,
-                            })}>
-                            <Icon name="cloud_upload" size={15} color={ink} />
-                            <Text style={{ fontSize: 11.5, fontWeight: '800', color: ink }}>
-                              Upload session
-                            </Text>
-                          </Pressable>
-                        );
-                      })()}
-                    </View>
-                  </View>
-                );
-              })() : null}
-            </>
           ) : null}
 
+          {/* THE DAY PANEL IS GONE. Tapping a day used to open a card under
+              the strip -- the status in words, a sentence about it, and an
+              Upload session button for that date. The requester asked for it
+              to go: the course header already carries Upload Session, and a
+              second one under the strip, wrapped in a message, read as a
+              dialog the screen had put in her way. The strip itself is
+              untouched: every cell still speaks its date and status, and the
+              tapped day still holds its highlight. The upload still takes a
+              date, from the file itself (0024). */}
+
           {/* ----------------------------------------------------- members
-              The heading carries the count and, on a desktop, the search box
-              on the same line.
+              The heading carries the count; the search box is the row UNDER
+              it, full width at every size. It used to share the heading row
+              on a desktop, at the far right, where the requester's screenshot
+              cut it off -- so it is under the heading now, where it was asked
+              for. Name or address, because those are the two things written
+              on a card.
 
               THE PINNED ADD MEMBER BAR IS GONE. It was a full-width button in
               a sticky child of its own, pinned because the roster is the long
@@ -563,13 +494,9 @@ function CourseDetailBody() {
 
               Bulk Import is still not here, on the earlier request that took
               it off this heading. It remains on the Attendance tab. */}
-          <View style={{
-            flexDirection: wide ? 'row' : 'column',
-            alignItems: wide ? 'center' : 'stretch',
-            gap: wide ? SPACE.md : SPACE.sm, marginTop: SPACE.xl,
-          }}>
+          <View style={{ gap: SPACE.sm, marginTop: SPACE.xl }}>
             <View style={{
-              flex: wide ? 1 : undefined, minWidth: 0,
+              minWidth: 0,
               flexDirection: 'row', alignItems: 'baseline', gap: SPACE.sm,
             }}>
               <Label>{`Members (${shown.length})`}</Label>
@@ -580,7 +507,6 @@ function CourseDetailBody() {
             </View>
 
             <View style={{
-              width: wide ? 300 : undefined,
               flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
               height: 42, borderRadius: RADIUS.md, backgroundColor: theme.surface,
               borderWidth: 1, borderColor: theme.lineStrong, paddingHorizontal: 12,
@@ -588,7 +514,7 @@ function CourseDetailBody() {
               <Icon name="search" size={18} color={theme.muted} />
               <TextInput testID="course-member-search"
                 value={query} onChangeText={setQuery}
-                placeholder="Search members"
+                placeholder="Search by name or email"
                 placeholderTextColor={theme.muted}
                 accessibilityLabel="Search the members of this course"
                 style={{ flex: 1, minWidth: 0, color: theme.fgStrong, fontSize: 13.5, fontWeight: '600' }} />
