@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased — Add a course: the follow-up trigger moves up beside the schedule
+
+**Follow-up trigger now follows Frequency.** On *Add a course* and *Edit course* the trigger
+section sits directly after the days the course runs and before *From email ID*, so the rule
+is set beside the schedule it counts against rather than after the email wording.
+
+**The count sits on the heading.** The separate *Missed sessions in a week* card is gone. The
+− 4 + stepper now sits on the right of the *Follow-up trigger* heading; the two rule cards
+under it still read the live number. The warning that a weekly count above the days the
+course runs can never be reached is kept, shown as one line under the rule cards only when it
+applies.
+
+## Unreleased — The Overview reads in one screen: two sections to a row, rings for courses and periods
+
+**Two sections to a row.** On a desktop the Overview's four sections — Attendance, Based on
+member, Based on course, Based on period — now sit two to a row instead of stacking one under
+the next, so the whole picture is on one screen rather than a long scroll of one chart at a
+time. On a phone they stack exactly as before.
+
+**Based on course and Based on period are rings.** Each course, and each part of the period,
+is drawn as a small ring — present in green, absent in red, the percentage in the middle and
+the counts under it — the same ring the Attendance section draws for the whole academy. The
+dot plot on a shared scale and the line over time are gone; every ring on the screen now means
+the same thing. A course or a day with nothing scheduled shows a dash on an empty ring, never
+0%. The numbers behind the rings are unchanged: they are still counted from the one member
+list every figure on the Overview reads.
+
 ## Unreleased — The course and branch lists open under their field
 
 **Choosing a course or a branch no longer slides a sheet up over the form.** On **Welcome a new

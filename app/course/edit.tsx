@@ -323,6 +323,76 @@ export default function CourseEdit() {
               </Text>
             </View>
 
+            {/* ----------------------------------------- the follow-up rule */}
+            {/* THE COUNT sits on the heading row. It was hard-coded 4 once, so
+                a course running once or twice a week had a trigger that could
+                never fire -- switched on in the form and unreachable by
+                arithmetic. Capped at 7 because a week has seven days and a
+                weekly threshold above that is the same defect the other way up. */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, marginTop: SPACE.lg }}>
+              <Label style={{ flex: 1 }}>Follow-up trigger</Label>
+              <Step testID="course-threshold-minus" icon="remove" label="One fewer"
+                disabled={threshold <= MIN_THRESHOLD}
+                onPress={() => setThreshold(t => clampThreshold(t - 1))} />
+              <Text testID="course-threshold-value"
+                accessibilityLabel={`${threshold} missed sessions`}
+                style={{ minWidth: 34, textAlign: 'center', fontSize: 20, fontWeight: '800',
+                         color: theme.fgStrong, fontVariant: ['tabular-nums'] }}>
+                {threshold}
+              </Text>
+              <Step testID="course-threshold-plus" icon="add" label="One more"
+                disabled={threshold >= MAX_THRESHOLD}
+                onPress={() => setThreshold(t => clampThreshold(t + 1))} />
+            </View>
+            <View style={{ gap: SPACE.sm, marginTop: SPACE.sm }}>
+              {([
+                { key: 'week' as const, label: `${threshold} missed ${threshold === 1 ? 'session' : 'sessions'} in a week`,
+                  desc: 'Counted across the current week’s scheduled sessions.' },
+                { key: 'consec' as const, label: `${threshold} consecutive missed ${threshold === 1 ? 'session' : 'sessions'}`,
+                  desc: 'Counted as an unbroken run, however long it takes.' },
+              ]).map(r => {
+                const on = rule === r.key;
+                return (
+                  <Pressable key={r.key} testID={`course-rule-${r.key}`}
+                    onPress={() => setRule(r.key)}
+                    accessibilityRole="radio" accessibilityState={{ selected: on }}
+                    accessibilityLabel={`${r.label}. ${r.desc}`}
+                    style={{
+                      flexDirection: 'row', gap: SPACE.md, padding: SPACE.lg,
+                      borderRadius: RADIUS.lg, minHeight: TAP_MIN,
+                      backgroundColor: on ? statusSurface(theme.accent).bg : theme.surface,
+                      borderWidth: 1.5, borderColor: on ? theme.accent : theme.line,
+                    }}>
+                    <Icon name={on ? 'radio_button_checked' : 'radio_button_unchecked'}
+                      size={20} color={on ? theme.accentInk : theme.muted} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 14, fontWeight: '800', color: theme.fgStrong }}>{r.label}</Text>
+                      <Text style={{ fontSize: 12, color: theme.muted, marginTop: 3, lineHeight: 17 }}>{r.desc}</Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {/* The one thing the card said that the stepper cannot: a weekly
+                count above the days the course runs is a trigger nobody can
+                ever reach. Shown only when it is true. */}
+            {threshold > days.length && rule === 'week' && days.length > 0 ? (
+              <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.md }}>
+                <Icon name="error" size={16} color={dangerInk} />
+                <Text style={{ flex: 1, fontSize: 11.5, lineHeight: 17, color: dangerInk }}>
+                  {`This course runs ${days.length} ${days.length === 1 ? 'day' : 'days'} a week, so ${threshold} can never be reached — nobody will ever be followed up.`}
+                </Text>
+              </View>
+            ) : null}
+
+            <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.md }}>
+              <Icon name="rule" size={16} color={okInk} />
+              <Muted style={{ flex: 1 }}>
+                One or the other, never both. Holidays and cancelled classes never count toward a miss.
+              </Muted>
+            </View>
+
             {/* --------------------------------------------------- sender */}
             <DropdownRow open={open === 'sender'} style={{ marginTop: SPACE.lg }}>
               <DropdownField label="From email ID" required value={sender ?? 'Choose an address'}
@@ -479,79 +549,6 @@ export default function CourseEdit() {
               <Icon name="info" size={16} color={theme.dim} />
               <Muted style={{ flex: 1 }}>
                 This wording and sender belong to this course. Nothing is edited at send time.
-              </Muted>
-            </View>
-
-            {/* ----------------------------------------- the follow-up rule */}
-            <Label style={{ marginTop: SPACE.xl }}>Follow-up trigger</Label>
-            <View style={{ gap: SPACE.sm, marginTop: SPACE.sm }}>
-              {([
-                { key: 'week' as const, label: `${threshold} missed ${threshold === 1 ? 'session' : 'sessions'} in a week`,
-                  desc: 'Counted across the current week’s scheduled sessions.' },
-                { key: 'consec' as const, label: `${threshold} consecutive missed ${threshold === 1 ? 'session' : 'sessions'}`,
-                  desc: 'Counted as an unbroken run, however long it takes.' },
-              ]).map(r => {
-                const on = rule === r.key;
-                return (
-                  <Pressable key={r.key} testID={`course-rule-${r.key}`}
-                    onPress={() => setRule(r.key)}
-                    accessibilityRole="radio" accessibilityState={{ selected: on }}
-                    accessibilityLabel={`${r.label}. ${r.desc}`}
-                    style={{
-                      flexDirection: 'row', gap: SPACE.md, padding: SPACE.lg,
-                      borderRadius: RADIUS.lg, minHeight: TAP_MIN,
-                      backgroundColor: on ? statusSurface(theme.accent).bg : theme.surface,
-                      borderWidth: 1.5, borderColor: on ? theme.accent : theme.line,
-                    }}>
-                    <Icon name={on ? 'radio_button_checked' : 'radio_button_unchecked'}
-                      size={20} color={on ? theme.accentInk : theme.muted} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 14, fontWeight: '800', color: theme.fgStrong }}>{r.label}</Text>
-                      <Text style={{ fontSize: 12, color: theme.muted, marginTop: 3, lineHeight: 17 }}>{r.desc}</Text>
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            {/* THE COUNT. It was hard-coded 4, so a course running once or twice
-                a week had a trigger that could never fire -- switched on in the
-                form and unreachable by arithmetic. Capped at 7 because a week
-                has seven days and a weekly threshold above that is the same
-                defect the other way up. */}
-            <View style={{
-              flexDirection: 'row', alignItems: 'center', gap: SPACE.md, marginTop: SPACE.md,
-              padding: SPACE.lg, borderRadius: RADIUS.lg,
-              backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
-            }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 14, fontWeight: '800', color: theme.fgStrong }}>
-                  {rule === 'week' ? 'Missed sessions in a week' : 'Missed sessions in a row'}
-                </Text>
-                <Text style={{ fontSize: 12, color: theme.muted, marginTop: 3 }}>
-                  {threshold > days.length && rule === 'week' && days.length > 0
-                    ? `This course runs ${days.length} ${days.length === 1 ? 'day' : 'days'} a week, so ${threshold} can never be reached — nobody will ever be followed up.`
-                    : `Between 1 and ${MAX_THRESHOLD}.`}
-                </Text>
-              </View>
-              <Step testID="course-threshold-minus" icon="remove" label="One fewer"
-                disabled={threshold <= MIN_THRESHOLD}
-                onPress={() => setThreshold(t => clampThreshold(t - 1))} />
-              <Text testID="course-threshold-value"
-                accessibilityLabel={`${threshold} missed sessions`}
-                style={{ minWidth: 34, textAlign: 'center', fontSize: 20, fontWeight: '800',
-                         color: theme.fgStrong, fontVariant: ['tabular-nums'] }}>
-                {threshold}
-              </Text>
-              <Step testID="course-threshold-plus" icon="add" label="One more"
-                disabled={threshold >= MAX_THRESHOLD}
-                onPress={() => setThreshold(t => clampThreshold(t + 1))} />
-            </View>
-
-            <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.md }}>
-              <Icon name="rule" size={16} color={okInk} />
-              <Muted style={{ flex: 1 }}>
-                One or the other, never both. Holidays and cancelled classes never count toward a miss.
               </Muted>
             </View>
 
