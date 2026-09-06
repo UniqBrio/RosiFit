@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, TextInput } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Muted, Label, Button, Skeleton, ErrorState } from '../../src/components/ui';
@@ -6,7 +6,8 @@ import { Field } from '../../src/components/Field';
 import { DateField } from '../../src/components/DateTimePicker';
 import { iso } from '../../src/data/period';
 import { Icon } from '../../src/components/Icon';
-import { SearchPicker } from '../../src/components/Sheet';
+import { AnchoredPicker } from '../../src/components/Sheet';
+import { useAnchor } from '../../src/components/AnchoredPanel';
 import { FormDialog } from '../../src/components/FormDialog';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
@@ -66,12 +67,13 @@ const STATUS_CHOICES: { value: MemberStatus; label: string; icon: string; meanin
  *
  * C-70/C-73: no phone number is held for members -- it was never used to
  * identify anyone. Aliases are what the Meet CSV matches on; emails are
- * several with exactly one primary. On the ADD form an address is required
+ * several with exactly one primary. An address is REQUIRED on both forms
  * (06-Sep-2026, the same rule the member file already enforces): a member
- * with no address cannot be written to, and this is the form that creates
- * her. The EDIT form keeps her name as the only field of hers it needs -- a
- * member the attendance import created (C-76) has no address, and she must
- * still be renamed, moved or marked inactive without one being invented.
+ * with no address cannot be written to. A member the attendance import
+ * created has none, and that is why the upload offers two ways out of it --
+ * add her as a new member, or make the name a display name of somebody
+ * already on the register; editing her is the third, and it asks for the
+ * address before it saves anything.
  */
 export default function MemberEdit() {
   const { theme } = useTheme();
@@ -151,6 +153,9 @@ export default function MemberEdit() {
    */
   const [status, setStatus] = useState<MemberStatus>('active');
   const [picker, setPicker] = useState<null | 'course' | 'branch'>(null);
+  // The fields the two lists hang under, measured at the press.
+  const courseRow = useAnchor();
+  const branchRow = useAnchor();
   const [seeded, setSeeded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
@@ -186,16 +191,12 @@ export default function MemberEdit() {
 
   const ink = (k: keyof typeof STATUS) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
 
-  // Her name and, on the Add form, an address are the fields of HERS the save
-  // needs (C-70/C-73; requests/2026-09-06-add-member-email-required.md). A
-  // member with no offering cannot be enrolled, and an unenrolled member is
-  // expected at no session and appears in no follow-up list -- so the
-  // offering is required too, and the form says which piece is missing.
-  //
-  // Decided by the ROUTE, like Add-vs-Edit itself (RC-021): `editing` is the
-  // id in the URL, so the rule cannot flicker while her record is fetched.
-  const emailRequired = !editing;
-  const valid = name.trim().length > 0 && !!offering && (!emailRequired || emails.length > 0);
+  // Her name and an address are the fields of HERS the save needs (C-70/C-73;
+  // requests/2026-09-06-add-member-email-required.md, both forms). A member
+  // with no offering cannot be enrolled, and an unenrolled member is expected
+  // at no session and appears in no follow-up list -- so the offering is
+  // required too, and the form says which piece is missing.
+  const valid = name.trim().length > 0 && !!offering && emails.length > 0;
 
   /**
    * What her record HOLDS, in the two words this form offers.
@@ -374,11 +375,11 @@ export default function MemberEdit() {
 
   /** The one line under the footer: what is missing, or what will be saved. */
   const hint = !name.trim()
-      ? (emailRequired ? 'Her name and an email address are required' : 'Her name is all that is required')
+      ? 'Her name and an email address are required'
       : !course ? 'Choose the course she joins'
       : !offering ? `Choose the branch — ${course} runs at ${branchOptions.length || 'no'} of them`
-      : emailRequired && !emails.length ? 'Add her email address — follow-ups are sent there'
-      : `${course} · ${branch}${emails.length ? '' : ' · no email, she will be excluded from sends'}`;
+      : !emails.length ? 'Add her email address — follow-ups are sent there'
+      : `${course} · ${branch}`;
 
   return (
     <FormDialog
@@ -393,8 +394,13 @@ export default function MemberEdit() {
       confirmDisabled={!valid || saving}
       hint={unresolved ? undefined : hint}
       overlays={<>
-        <SearchPicker open={picker === 'course'} onClose={() => setPicker(null)}
-        title="Choose a course" placeholder="Search courses"
+        {/* Each list opens UNDER its field, as wide as the field, with the
+            rest of the form still in view -- the way Joined on already
+            does. The sheet these replaced covered the form the choice was
+            being made for. */}
+        <AnchoredPicker open={picker === 'course'} onClose={() => setPicker(null)}
+        label="Choose a course" placeholder="Search courses"
+        anchor={courseRow.anchor} testID="member-course-list"
         options={courseList.map(c => ({
           label: c.name,
           meta: c.offerings.length ? `${c.offerings.length} branch${c.offerings.length > 1 ? 'es' : ''}` : 'no branch yet',
@@ -410,8 +416,9 @@ export default function MemberEdit() {
           if (l !== course) { setCourse(l); setBranch(''); }
           setPicker(null);
         }} />
-      <SearchPicker open={picker === 'branch'} onClose={() => setPicker(null)}
-        title="Choose a branch" placeholder="Search branches"
+      <AnchoredPicker open={picker === 'branch'} onClose={() => setPicker(null)}
+        label="Choose a branch" placeholder="Search branches"
+        anchor={branchRow.anchor} testID="member-branch-list"
         options={branchOptions.map(label => ({ label }))} value={branch}
         emptyNote={course
           ? `${course} does not run at any branch yet. Add an offering for it and she can join there.`
@@ -433,8 +440,9 @@ export default function MemberEdit() {
 
       <Label required>Course</Label>
       <PickRow testID="member-course" icon="school" value={course || 'Choose a course'} muted={!course}
+        anchorRef={courseRow.ref}
         onPress={() => courseList.length
-          ? setPicker('course')
+          ? (courseRow.measure(), setPicker('course'))
           : flash(courses.state === 'loading'
               ? 'The course list is still loading'
               : 'No course has been added yet — a member joins a course at a branch', 'warn')} />
@@ -443,10 +451,11 @@ export default function MemberEdit() {
           opened before the course is chosen -- and picking a pair that has no
           offering is how she would end up enrolled in nothing. */}
       <PickRow testID="member-branch" icon="apartment" value={branch || 'Choose a branch'} muted={!branch}
+        anchorRef={branchRow.ref}
         onPress={() => !course
           ? flash('Choose her course first — the branches are the ones that course runs at', 'warn')
           : branchOptions.length
-            ? setPicker('branch')
+            ? (branchRow.measure(), setPicker('branch'))
             : flash(`${course} does not run at any branch yet`, 'warn')} />
 
       <View style={{ marginTop: SPACE.md }}>
@@ -551,7 +560,7 @@ export default function MemberEdit() {
         placeholder="e.g. Anitha R" onAdd={addAlias} />
 
       {/* -------------------------------------------------- emails (C-73) */}
-      <Label required={emailRequired} style={{ marginTop: SPACE.xl }}>Email addresses</Label>
+      <Label required style={{ marginTop: SPACE.xl }}>Email addresses</Label>
       <View style={{ gap: SPACE.sm, marginTop: SPACE.md }}>
         {emails.map(e => (
           <View key={e.address} style={{
@@ -600,9 +609,7 @@ export default function MemberEdit() {
         <Muted style={{ flex: 1 }}>
           {emails.length
             ? 'Follow-up emails go to the primary address only.'
-            : emailRequired
-              ? 'Add her email address — it is where every follow-up is sent, and she cannot be added without one.'
-              : 'With no address she is listed and counted as excluded from every send — never quietly dropped.'}
+            : `Add her email address — it is where every follow-up is sent, and she cannot be ${editing ? 'saved' : 'added'} without one.`}
         </Muted>
       </View>
 
@@ -716,13 +723,15 @@ export default function MemberEdit() {
   );
 }
 
-function PickRow({ icon, value, onPress, muted, testID }:
-  { icon: string; value: string; onPress: () => void; muted?: boolean; testID: string }) {
+function PickRow({ icon, value, onPress, muted, testID, anchorRef }:
+  { icon: string; value: string; onPress: () => void; muted?: boolean; testID: string;
+    /** the row the list hangs under -- see `useAnchor` */
+    anchorRef?: React.Ref<View> }) {
   const { theme } = useTheme();
   return (
-    <Pressable testID={testID} onPress={onPress}
+    <Pressable testID={testID} onPress={onPress} ref={anchorRef}
       accessibilityRole="button" accessibilityLabel={value}
-      accessibilityHint="Opens a searchable list"
+      accessibilityHint="Opens a list under the field"
       style={{
         marginTop: 8, minHeight: TAP_MIN + 8, borderRadius: RADIUS.md,
         backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,

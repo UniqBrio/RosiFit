@@ -4,17 +4,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 /**
- * "email address is mandatory for add member"
+ * "email address is mandatory for add member" -- and, on the requester's
+ * follow-up the same day, "same for edit member as well"
  * (requests/2026-09-06-add-member-email-required.md).
  *
- * The Add form -- `app/member/edit.tsx` with no id in the route -- does not
- * offer to save a member who has no address. The rule already held for a
- * member arriving in a FILE (memberImport.test.ts); this is the same rule on
- * the form that creates one member at a time, and the two must not drift.
+ * `app/member/edit.tsx` does not offer to save a member who has no address,
+ * whichever form it is. The rule already held for a member arriving in a
+ * FILE (memberImport.test.ts); this is the same rule on the form that
+ * creates or changes one member at a time, and the two must not drift.
  *
- * The Edit form is deliberately NOT under this rule: a member created by the
- * attendance import (C-76) has no address, and she must still be renamed,
- * moved or marked inactive without somebody inventing one for her.
+ * A member the attendance import created has no address, and that is why
+ * the upload offers two ways out of it -- add her as a new member, or make
+ * the name a display name of somebody already on the register. Editing her
+ * is the third: it asks for the address before it saves anything.
  *
  * It reads source rather than rendering, for the same reason
  * editDialog.test.ts does: there is no component harness in this project,
@@ -35,25 +37,28 @@ test('the spec is looking at a real tree', () => {
     `${ROOT} is not the repository root: no ${FORM}. Run from the root, or set ADD_MEMBER_EMAIL_SPEC_ROOT.`);
 });
 
-test('the Add form gates its save on an address; the Edit form does not', () => {
+test('both forms gate their save on an address', () => {
   const src = read(FORM);
-  // The rule is decided by the ROUTE, like Add-vs-Edit itself (RC-021):
-  // `editing` is the id from the URL, not the result of a lookup.
-  assert.ok(src.includes('const emailRequired = !editing;'),
-    'the address is required on the Add path, and the Add path is the route with no id');
-  // The gate that disables Add Member reads that decision.
-  assert.match(src, /const valid = [^;]*\(!emailRequired \|\| emails\.length > 0\)/,
-    'the save gate must refuse an Add with no address');
+  // ONE gate, no Add-vs-Edit branch in it: the first cut of this rule held
+  // for Add only, and the requester's follow-up removed the exception.
+  assert.match(src, /const valid = [^;]*emails\.length > 0/,
+    'the save gate must refuse a save with no address');
+  assert.doesNotMatch(src, /emailRequired/,
+    'the rule no longer depends on which form this is');
 });
 
 test('the form SAYS the address is required, with the shared mark', () => {
   const src = read(FORM);
   // CP-017: one mark, drawn by the label renderer, never a second asterisk.
-  assert.match(src, /<Label required=\{emailRequired\}[^>]*>Email addresses<\/Label>/,
-    'the Email addresses label must carry `required` on the Add form');
-  // The footer no longer promises that her name is enough on the Add form.
-  assert.doesNotMatch(src, /!name\.trim\(\)\s*\?\s*'Her name is all that is required'/,
-    'the Add form footer still says her name is all that is required');
+  assert.match(src, /<Label required[^>]*>Email addresses<\/Label>/,
+    'the Email addresses label must carry `required`');
+  // The footer no longer promises that her name is enough.
+  assert.ok(!src.includes('Her name is all that is required'),
+    'the footer still says her name is all that is required');
   assert.ok(src.includes('Her name and an email address are required'),
-    'the Add form footer names both required fields');
+    'the footer names both required fields');
+  // A member with no address can no longer be SAVED from here, so the form
+  // must not describe that as a state it will produce.
+  assert.ok(!src.includes('excluded from every send'),
+    'the form still describes saving her with no address');
 });

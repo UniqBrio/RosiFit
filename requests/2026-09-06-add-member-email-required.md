@@ -110,3 +110,45 @@ Run **Track B** ([workflows/enhance.md](../workflows/enhance.md)) with this requ
   edited; the register records the divergence, as it does for the import.
 - **Learning check:** a correctly functioning process would not have caught
   this — it is a product rule the requester changed, not a defect.
+
+## FOLLOW-UP FROM THE REQUESTER, 06-Sep-2026 — same session
+
+*"yes same for edit member as well . yes member created by attendnace upload are uploaded
+without mail that is why we have two options after upload wither to add as new member or to
+add display name to existings"*
+
+This answers the one `unknown` above: the Edit form is under the rule too. The
+assumption logged in auto mode ("Edit keeps its rule") is **withdrawn** — the
+requester's reason is that a member the attendance import created without an
+address is meant to be resolved through the two choices the upload offers, not
+to go on being saved without one.
+
+## AS BUILT, ROUND 2 — 06-Sep-2026
+
+- **One gate, no Add-vs-Edit branch.** `emailRequired` is gone from
+  `app/member/edit.tsx`; `valid` needs a name, an offering and an address on
+  both forms. The Email addresses label carries the required mark on both.
+- **Strings.** With no address the note reads *"…she cannot be saved / added
+  without one"* (Edit / Add); the footer's *"Her name is all that is required"*
+  is gone from the file, as is *"With no address she is listed and counted as
+  excluded from every send"* and the *"· no email, she will be excluded from
+  sends"* tail — none of them describes a state this form can save any more.
+  The sentence survives where it is still true: her record page and the roster.
+- **A member with no address opens Edit with Save disabled** and the footer
+  asking for her address. Her status cannot be changed from that form until
+  one is added; the roster pill still can.
+- **The spec was revised, not appended** — the same reversal the import
+  request recorded for `memberImport.test.ts`: its round-1 assertions
+  (`emailRequired = !editing`) asserted the exemption the requester removed.
+  Fail-first for the revised spec appended to
+  `.evidence/add-member-email-fail-first.txt` (2 of 3 fail at 4978ad4).
+- Register and CHANGELOG amended; the Edit row now says why.
+- **Verified:** `npm run check` green — typecheck, 473 unit specs, 2,840
+  contrast pairs, 75 icons; `audit:testids` and `audit:colors` clean. Both
+  forms looked at on a fresh export in dark and light (scratchpad Playwright,
+  DOM and screenshots): Edit on a fixture member with no address opens with
+  Save Changes `aria-disabled`, the mark on Email addresses, the "cannot be
+  saved" note and the footer asking for her address; adding one enables Save
+  and the footer reads her course and branch. Add shows the same with
+  "cannot be added". (The static export runs on fixtures — the exported
+  bundle carries no Supabase URL — which is what made the Edit form reachable.)

@@ -62,3 +62,11 @@ not ok 3 - the form SAYS the address is required, with the shared mark
 # skipped 0
 # todo 0
 # duration_ms 408.061
+
+# ---- Round 2, 06-Sep-2026: the requester's follow-up 'same for edit member as well'.
+# The revised spec run against the tree at 4978ad4 (Add-only rule), BEFORE the change:
+ok 1 - the spec is looking at a real tree
+not ok 2 - both forms gate their save on an address
+  error: 'the rule no longer depends on which form this is'
+not ok 3 - the form SAYS the address is required, with the shared mark
+  error: 'the footer still says her name is all that is required'

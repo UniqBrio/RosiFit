@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased — Add Member and Bulk Import sit beside Add Course
+
+**The Attendance header carries all three of its actions.** Add Member and Bulk Import used
+to be a row of their own between the search box and the course list, two bars stretched
+across the whole screen. They now sit beside **Add Course** in the header, in the same
+compact style, as one group. On a phone the group drops under the title as a full-width row
+that wraps, so no button is squeezed to a single word. Nothing about what they do or who sees
+them has changed: Add Member and Bulk Import are still for the academy admin only.
+
+## Unreleased — The course screen: search under the heading, no day card
+
+**The card under the week strip is gone.** Tapping a day on a course's week used to open a
+tinted card beneath it — the day's status in words, a sentence about it, and a second
+**Upload session** button. The course header already carries **Upload Session** beside Send
+Communication, so the card only put a message and a duplicate button in the way. The strip
+itself is unchanged: each day still shows its status, still reads it aloud, and still holds
+its highlight when tapped.
+
+**Search sits under the Members heading.** The roster search now has its own full-width row
+directly under **Members**, at every screen size, and its placeholder says what it does:
+**Search by name or email**. It always matched both; on a wide screen it sat at the far right
+of the heading row, where it was easy to miss.
+
 ## Unreleased — A new member needs an email address
 
 **Add Member now asks for her email address.** Until now a member could be added with her
@@ -9,9 +32,11 @@ addresses row on **Welcome a new member** now carries the same red mark as her n
 and branch, the note under it says she cannot be added without one, and **Add Member** stays
 disabled until an address is on the form. This is the rule the member file already follows.
 
-**Editing a member is unchanged.** A member who was created by an attendance upload has no
-address on file, and she can still be renamed, moved to another course or marked inactive
-without one — the form goes on saying she is excluded from sends until an address is added.
+**Editing a member asks for one too.** A member who was created by an attendance upload has
+no address on file. Her Edit form now opens with **Save Changes** disabled and the line under
+it asking for her email address, and nothing about her — her course, her status, her display
+names — is saved until one is added. That is what the two choices after an upload are for:
+add her as a new member, or make the name a display name of someone already on the register.
 
 ## Unreleased — Staff sign in to the app they actually have
 
