@@ -2226,7 +2226,7 @@ const TEMPLATES = [
     body:'Subject: Fee due for {course}\n\nInactive — not offered in the send flow while it is switched off.' },
 ];
 
-const SENDERS = ['support@rosifit.com','support@ravisfit.com'];
+const SENDERS = ['support@getfit.rosifit.com','support@getfit.ravisfit.com'];
 const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 const COURSES = [
   { name:'Prenatal Flow', branch:'Coimbatore', days:['Mon','Wed','Fri'], sender:SENDERS[0], template:'Gentle check-in', rule:'week' },
@@ -3729,7 +3729,7 @@ class Component extends DCLogic {
         press: () => { this.setState({ notifsOpen:false }); this.go('upload', { upStep:2, chosenId:p.id, upCourse:p.course }); },
       })).concat([
         { icon:'mark_email_read', iBg:'rgba(47,190,140,.13)', iFg:'#2FBE8C', bd:'rgba(47,190,140,.26)',
-          title:'1 check-in email sent', body:'Meenakshi Sundaram \u00b7 Trimester 3 Gentle \u00b7 sent from support@ravisfit.com using the Long absence template.',
+          title:'1 check-in email sent', body:'Meenakshi Sundaram \u00b7 Trimester 3 Gentle \u00b7 sent from support@getfit.ravisfit.com using the Long absence template.',
           when:'2 Sep 2026, 8:42 pm', press: () => { this.setState({ notifsOpen:false }); this.go('audit'); } },
         { icon:'mail_off', iBg:'rgba(242,104,60,.12)', iFg:'#F2683C', bd:'rgba(242,104,60,.26)',
           title:'1 email could not be sent', body:'Fathima Rizwan meets the rule for Postnatal Core but has no email on file, so she was excluded from the send.',

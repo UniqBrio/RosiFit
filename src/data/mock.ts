@@ -210,10 +210,17 @@ export const SUPPORT_PHONE = '9994871158';
  * The addresses the academy may send AS.
  *
  * A list to choose from, never free text: a from-address nobody owns bounces
- * every message the course will ever send. Live, the academy's own configured
- * address leads this list (fetchSenders).
+ * every message the course will ever send. Both of these sit under domains
+ * VERIFIED in SES -- getfit.rosifit.com and getfit.ravisfit.com -- which is
+ * what makes them sendable; the bare rosifit.com / ravisfit.com addresses
+ * these replaced on 07-Sep-2026 were not verified anywhere (TD-016).
+ *
+ * A verified DOMAIN covers every address under it, so support@ needs no
+ * mailbox and no separate verification. What it does NOT do is choose the
+ * envelope sender: SES is called with SES_FROM_ADDRESS, not with the address
+ * picked here, so a course's pick is stored and not yet honoured (TD-016).
  */
-export const SENDERS = ['support@rosifit.com', 'support@ravisfit.com'];
+export const SENDERS = ['support@getfit.rosifit.com', 'support@getfit.ravisfit.com'];
 
 /**
  * A course's own sender, template and wording, offline.

@@ -857,9 +857,14 @@ export async function fetchTemplates(): Promise<Template[]> {
  * has only ever offered SENDERS -- two FIXTURE addresses -- as the from-
  * address for a real course.
  *
- * That is worse than cosmetic. save_course stores what is picked, and a
- * from-address the academy does not own bounces every message that course
- * will ever send, which is the exact failure the original comment named.
+ * AMENDED 07-Sep-2026. The two addresses are no longer fictitious: SENDERS
+ * now reads support@getfit.rosifit.com / support@getfit.ravisfit.com, and
+ * both domains are verified identities in SES, so either is sendable. The
+ * bounce-every-message half of this gap is therefore closed. What remains is
+ * that the list is HARDCODED -- adding or changing an address is a code
+ * change, not a setting -- and that save_course stores the pick while
+ * send-followups sends as SES_FROM_ADDRESS regardless, so the per-course
+ * choice does not yet reach SES.
  *
  * Deliberately NOT repointed at another column: `app_settings` carries
  * `sender_name` and no address at all, so there is nothing truthful to read.

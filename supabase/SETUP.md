@@ -247,7 +247,7 @@ supabase secrets set PIN_PEPPER="$(openssl rand -base64 32)"
 # which writes each message to the function log and reports it as sent.
 supabase secrets set EMAIL_PROVIDER='ses' AWS_REGION='ap-south-1' \
                      AWS_ACCESS_KEY_ID='...' AWS_SECRET_ACCESS_KEY='...' \
-                     SES_FROM_ADDRESS='no-reply@your-verified-domain'
+                     SES_FROM_ADDRESS='support@getfit.rosifit.com'
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY` is injected into Edge Functions automatically —
