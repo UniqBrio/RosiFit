@@ -100,6 +100,11 @@ export default function CourseEdit() {
   const [subjectSel, setSubjectSel] = useState<{ start: number; end: number } | null>(null);
   const [bodySel, setBodySel] = useState<{ start: number; end: number } | null>(null);
   const [open, setOpen] = useState<null | 'branch' | 'sender' | 'template'>(null);
+  /* The wording card opens on its PREVIEW, not its editor. Most courses keep
+   * the template's words, and on a phone the editor was two screens of boxes
+   * and chips before the person saw what a member will actually read. Edit on
+   * the heading reveals it; Done folds it back and changes nothing. */
+  const [wordingOpen, setWordingOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
@@ -455,8 +460,25 @@ export default function CourseEdit() {
                     <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.accentInk }}>Reset</Text>
                   </Pressable>
                 ) : null}
+                <Pressable testID="course-edit-wording"
+                  onPress={() => setWordingOpen(o => !o)}
+                  accessibilityRole="button"
+                  accessibilityLabel={wordingOpen ? 'Done editing the wording' : 'Edit the wording'}
+                  accessibilityState={{ expanded: wordingOpen }}
+                  style={({ pressed }) => ({
+                    flexDirection: 'row', alignItems: 'center', gap: 4,
+                    minHeight: TAP_MIN / 2, paddingHorizontal: SPACE.sm, borderRadius: RADIUS.sm,
+                    backgroundColor: theme.control, borderWidth: 1, borderColor: theme.lineStrong,
+                    opacity: pressed ? 0.7 : 1,
+                  })}>
+                  <Icon name={wordingOpen ? 'check' : 'edit'} size={15} color={theme.accentInk} />
+                  <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.accentInk }}>
+                    {wordingOpen ? 'Done' : 'Edit'}
+                  </Text>
+                </Pressable>
               </View>
 
+              {wordingOpen ? (<>
               <Label style={{ marginTop: SPACE.md }}>Subject</Label>
               <TextInput
                 testID="course-subject"
@@ -502,6 +524,7 @@ export default function CourseEdit() {
 
               <TokenChips label="Add to the message" testIDPrefix="course-body-token"
                 onInsert={insertIntoBody} />
+              </>) : null}
 
               {/* The preview is the point. This wording is authored once and
                   sent to everyone in the course, so an unresolved token is not

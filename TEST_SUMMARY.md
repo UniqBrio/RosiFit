@@ -92,6 +92,62 @@ themes -- so contrast is proven by measurement, not by eye. Weaker than looking,
 
 ---
 
+## Gate run - 2026-09-06 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+**Reading this run** (requests/2026-09-06-course-wording-preview-first.md -- the Wording for
+this course card on Add / Edit course opens on its preview; Edit reveals the editor):
+
+The four FAILs and the BLOCKED are the same accepted-unverifiable classes as every run on this
+repo -- G1/G2/G3 no design/tokens.json (TD-001/002/003), G6 BLOCKED no eslint (TD-004), G8 FAIL
+on an empty log, no test:functional (TD-006). None is touched by this change. Contrast is
+proven the way this repo proves it: `npm run check` -- 2840/2840 pairs, 75/75 icons, 482 unit
+specs, types PASS. audit:testids and audit:colors report no new violation.
+
+No spec added (CASES-NA in the commit): the change is one boolean of screen state in
+app/course/edit.tsx with no rule in src/data/. The behaviour was walked on the BUILT page in
+both themes -- closed shows preview + Edit only; Edit shows Subject, chips, Message, chips;
+Done keeps the typed words and the preview shows them; Reset appears once overridden; Tab from
+Reset lands on the control and Enter opens it. Recorded in
+.evidence/course-wording-preview-first.txt.
+
+---
+
 FAIL-FIRST: src/components/overviewGrid.test.ts -- run against the tree at 2b4c516, before
 app/(tabs)/index.tsx changed and before AttendanceRings.tsx existed: 4 of 5 specs failed (the
 grid, the rings import, the old marks still present, the ring component missing). Full TAP in

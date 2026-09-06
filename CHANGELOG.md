@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — Add a course: the wording opens on its preview
+
+**The Wording for this course card now opens showing only the preview.** Under *Message
+template*, the card used to open on the full editor — the Subject box, the tap-to-add chips,
+the Message box, more chips — with what a member would actually read at the very bottom. It now
+opens on that preview alone, against a real member of the course, with **Edit** on its heading.
+Tap Edit and the Subject and Message boxes and their chips appear as before; tap **Done** and
+they fold away with whatever was typed kept, and the preview showing it. **Reset** still
+appears on the heading whenever the course's words differ from the template, whether or not
+the editor is open, and the not-a-token warning is never hidden behind the edit tap. Nothing
+about what is saved has changed.
+
 ## Unreleased — A member opens as a pop-up over the list, not as a page
 
 **Tap a member and her record opens over the list you tapped her on.** On a course roster, the

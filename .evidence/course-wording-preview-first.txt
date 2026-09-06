@@ -1,0 +1,39 @@
+Built-page evidence - the Wording for this course card opens on its preview
+Recorded 06-Sep-2026 for requests/2026-09-06-course-wording-preview-first.md
+
+The .harness/ scripts are Linux-only, so this was run the way this machine can
+run it: `EXPO_NO_DOTENV=1 npx expo export --platform web` (fixtures), the dist/
+tree served statically on a fresh port (8100 was already held by another
+session's server and was serving an OLDER build - the first pass against it
+showed the old always-open card; port 8107 showed the change), and Playwright
+1.63 driving the BUILT page at 390x844. Both themes forced through the stored
+preference (`rosifit.theme.mode`). Clicks sent with dispatchEvent because the
+dialog scrim intercepts pointer events below the fold.
+
+No unit spec was added: the change is one boolean of screen state on
+app/course/edit.tsx (open/closed) with no rule in src/data/, so there is no
+fail-first run to record - the honest negative. The DOM walk below is the
+behaviour check instead.
+
+dark closed: btn="Edit" subject=false body=false chips=false reset=false bg=rgb(33, 16, 28) fg=rgb(245, 168, 206)
+   preview label: PREVIEW · DIVYA RAMESH
+dark open: btn="Done" subject=true body=true chips=true reset=false bg=rgb(33, 16, 28) fg=rgb(245, 168, 206)
+   preview label: PREVIEW · DIVYA RAMESH
+dark done-after-typing: btn="Edit" subject=false body=false chips=false reset=true
+   preview shows typed subject: true
+   page errors: Minified React error #418 (pre-existing hydration error on every route; not from this change)
+   tab from Reset lands on: course-edit-wording; Enter opened editor: true
+light closed: btn="Edit" subject=false body=false chips=false reset=false bg=rgb(240, 231, 237) fg=rgb(200, 20, 119)
+   preview label: PREVIEW · DIVYA RAMESH
+light open: btn="Done" subject=true body=true chips=true reset=false bg=rgb(240, 231, 237) fg=rgb(200, 20, 119)
+light done-after-typing: btn="Edit" subject=false body=false chips=false reset=true
+   preview shows typed subject: true
+   tab from Reset lands on: course-edit-wording; Enter opened editor: true
+
+Colour pairs: accentInk on control in both themes - a pair scripts/check-contrast.ts
+already measures (2840/2840 pass). Screenshots looked at in both themes: closed
+shows heading + Edit + preview only; open shows Done + Subject + note + chips +
+Message + chips + preview.
+
+Gate: npm run check green (typecheck, 482 unit specs, contrast, icons);
+audit:testids and audit:colors report no new violation.
