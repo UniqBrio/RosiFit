@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased — A member opens as a pop-up over the list, not as a page
+
+**Tap a member and her record opens over the list you tapped her on.** On a course roster, the
+member list and the weekly follow-up list, a member used to open as a full page of her own — a
+tall coloured header, five big tiles, a card for every session — and the list was gone while you
+read it. She now opens as a card over that list, the way every form does, with the list still
+visible behind it. Close the card and you are back where you were.
+
+**The same facts, in less room.** Her name, course, branch and joining month are the card's
+heading. Expected, Attended, Missed and Missed streak sit side by side in one strip, with her
+attendance for the week on the line under them. Her sessions this week are one short list — a
+holiday or a cancelled session is still listed and still says it does not count. Her email, or
+the note that she has no usable one, is one line. **Edit** and **Reach out** stay at the bottom of
+the card, and Edit now says its word rather than being an icon alone.
+
 ## Unreleased — Add a course: the follow-up trigger moves up beside the schedule
 
 **Follow-up trigger now follows Frequency.** On *Add a course* and *Edit course* the trigger

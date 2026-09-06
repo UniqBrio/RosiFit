@@ -102,3 +102,23 @@ The test itself is untouched, and so is the rest of the exclusion list: `registe
 Requester's words: *"The Bulk import dialog should also be in same format as upload session. pop
 up with background overlay not as seperate page."* Request
 `requests/2026-09-06-import-writes-on-upload-email-required.md`.
+
+## AMENDED AGAIN 06-Sep-2026 — `member/[id]`, one member's record, is a dialog too
+
+The record was never on the exclusion list by name; it was simply a page, pushed on the root
+stack with a plum gradient header of its own and a back button, and it wore the academy shell
+so it would not look orphaned. The requester's words
+(`requests/2026-09-06-member-detail-as-popup.md`): *"a page appears with lengthy details of
+member … it should appear as pop up on top of screen with minimal but yet full info"*.
+
+It passes this record's test: it is opened by tapping a row on the very list it describes — the
+course roster, the member list, the weekly follow-up list — and as a page it replaced that list
+for the whole of the reading. It is now a `transparentModal` route rendering through
+`FormDialog`, over the list, with her name in the dialog's bar and her course, branch and
+joining month under it. Her five figures are one strip, her week one hairline list, her email
+one line, and Edit and Reach out are pinned in the footer. Nothing that was shown is dropped;
+its URL is unchanged.
+
+The exclusion list is still what it was: `register` / `set-pin` / `forgot-pin` own the screen,
+and `branches`, `staff/index`, `audit`, `appearance`, `profile` and `help` are places, not
+decisions.

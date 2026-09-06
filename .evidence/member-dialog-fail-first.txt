@@ -1,0 +1,29 @@
+# Fail-first evidence: src/components/memberDialog.test.ts run against the tree at 2b4c516,
+# BEFORE src/components/memberDialog.ts existed and before app/member/[id].tsx was changed (06-Sep-2026).
+# The whole file fails to load (MODULE_NOT_FOUND), as it must. Command: npx tsx --test src/components/memberDialog.test.ts
+
+TAP version 13
+# node:internal/modules/cjs/loader:1401
+#   const err = new Error(message);
+#               ^
+# Error: Cannot find module './memberDialog'
+# Require stack:
+# - C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\src\\components\\memberDialog.test.ts
+#     at node:internal/modules/cjs/loader:1401:15
+#     at nextResolveSimple (C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\node_modules\\tsx\\dist\\register-OY9cqBEN.cjs:10:1006)
+#     at C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\node_modules\\tsx\\dist\\register-OY9cqBEN.cjs:9:4959
+#     at C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\node_modules\\tsx\\dist\\register-OY9cqBEN.cjs:9:4261
+#     at resolveTsPaths (C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\node_modules\\tsx\\dist\\register-OY9cqBEN.cjs:10:759)
+#     at C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\node_modules\\tsx\\dist\\register-OY9cqBEN.cjs:10:1199
+#     at j._resolveFilename (file:///C:/Users/shazi/Downloads/RosiFit%20Custom%20App/RosiFit/node_modules/tsx/dist/register-SoqaU4rg.mjs:2:17957)
+#     at defaultResolveImpl (node:internal/modules/cjs/loader:1057:19)
+#     at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1062:22)
+#     at Function._load (node:internal/modules/cjs/loader:1211:37) {
+#   code: 'MODULE_NOT_FOUND',
+#   requireStack: [
+#     'C:\\\\Users\\\\shazi\\\\Downloads\\\\RosiFit Custom App\\\\RosiFit\\\\src\\\\components\\\\memberDialog.test.ts'
+#   ]
+# }
+# Node.js v22.16.0
+# Subtest: src\\components\\memberDialog.test.ts
+not ok 1 - src\\components\\memberDialog.test.ts

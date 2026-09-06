@@ -80,15 +80,20 @@ function Nav() {
             stops being one. */}
         <Stack.Screen name="course/edit"   options={DIALOG_SCREEN} />
         <Stack.Screen name="offering/edit" options={DIALOG_SCREEN} />
-        {/* ONE HEADING PER SCREEN. These three draw their own -- member/[id] a
-            gradient header carrying her name, audit and branches a
-            ScreenHeader -- and each has its own back button. Leaving the
-            stack header on top of that rendered the title TWICE, one bar
-            above the other ("Audit log" over "Audit log"), with two back
-            controls that did the same thing. course/[id] and send/index are
-            the same shape and already turn it off; this makes the rule
-            uniform rather than a thing three screens happened to get right. */}
-        <Stack.Screen name="member/[id]"   options={{ headerShown: false }} />
+        {/* ONE MEMBER'S RECORD is a DIALOG over the list she was tapped on
+            (06-Sep-2026, requests/2026-09-06-member-detail-as-popup.md). It
+            was a page with a gradient header and a back button of its own;
+            the requester called it "lengthy" and asked for a pop-up. Same
+            three halves as every dialog here -- change any one and it stops
+            being one. Its URL is unchanged. */}
+        <Stack.Screen name="member/[id]"   options={DIALOG_SCREEN} />
+        {/* ONE HEADING PER SCREEN. audit and branches draw their own
+            ScreenHeader with its own back button. Leaving the stack header
+            on top of that rendered the title TWICE, one bar above the other
+            ("Audit log" over "Audit log"), with two back controls that did
+            the same thing. course/[id] and send/index are the same shape and
+            already turn it off; this makes the rule uniform rather than a
+            thing the screens happened to get right. */}
         {/* The MEMBER import. It USED TO STAY UNDER THE SHELL, on the reading
             that it was a review rather than something done over a screen.
             That came off on 06-Sep-2026: importing a file of members is done
