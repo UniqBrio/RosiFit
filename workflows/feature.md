@@ -33,14 +33,29 @@ not reviewed them yet; a correction there updates the request file before anythi
    both rather than silently choosing one.
 7. **Declare the run mode and the scale** ([docs/01 §Run modes](../docs/01-SDLC.md)) — one
    line each. Mode: `auto` (default — gates 1–4 are checkpoints with an ASSUMPTIONS ledger)
-   or `confirm` (each gate waits). Scale: `scoped` (≤5 files, no schema change beyond
-   additive columns, no new navigation area, no new shared component) or `full`. A scoped
-   run produces ONE combined `RUN_<feature>.md` in place of the four gate artifacts and
-   skips A2 unless build-vs-buy is a real question — the obligations are identical, the
-   packaging shrinks.
-8. **Speed discipline.** Read each register once per run, not once per stage. Artifacts are
-   terse tables, not essays — never restate the runbook, never re-derive what an earlier
-   stage established. Independent checks run together, not in sequence.
+   or `confirm` (each gate waits). Scale: `micro`, `scoped` or `full`
+   ([docs/01 §Run modes](../docs/01-SDLC.md) has the entry tests). A **scoped** run produces
+   ONE combined `RUN_<feature>.md` in place of the four gate artifacts and skips A2 unless
+   build-vs-buy is a real question. A **micro** run is rarely a Track A shape at all — a new
+   feature that fits in two files with no new screen is usually an enhancement; classify it
+   again before continuing. The obligations are identical at every scale; the packaging
+   shrinks. **Write the scale into the commit message (`SCALE: micro`) — guard G8 checks the
+   claim against the diff.**
+8. **Speed discipline — the three budgets.**
+   - **Reading budget.** A run READS: this runbook, the project's `CLAUDE.md`, and the
+     registers relevant to the touched modules — once each. Everything else
+     (docs/23, docs/24, docs/04, docs/13, checklists) is **lookup material**: open the named
+     section at the moment a stage points at it, never front-load the library. The process
+     documents describe the work; reading all of them IS not the work.
+   - **Evidence budget.** Verdicts are per AREA or per screen, one evidence line each; a
+     checklist's bullet items are prompts for the eye, not documents to write. **Never
+     hand-verify what a mechanical gate already checks** — contrast, tokens, test ids,
+     column control are the audits' job; cite their result ("theme:contrast PASS") as the
+     evidence line and move on. Duplicating an audit by hand is waste on top of noise.
+   - **Writing budget.** Scoped scale: `RUN_<feature>.md` ≤ ~150 lines, ledger entries one
+     line each, the QA verdict table 18 lines + the grade. Artifacts are terse tables;
+     never restate the runbook, never re-derive what an earlier stage established.
+     Independent checks run together, not in sequence.
 
 ---
 
@@ -79,7 +94,13 @@ security and data sensitivity · performance expectations.
 bare list of choices without a reasoned pick does the same thing more slowly. The requester
 may take the recommendation, pick any alternative, or define their own — their answer binds.
 
-Two mandatory items:
+Three mandatory items:
+
+- **Usage-profile completion.** Every `unknown` line of the request's USAGE PROFILE —
+  frequency, essential vs optional info, frequent vs occasional actions, what to automate —
+  is asked here, with a recommendation. The profile is what the design subtracts with
+  ([docs/24 §3b](../docs/24-DESIGN-PLANNING.md)); designing without it produces a UI for an
+  imaginary user.
 
 - **Cardinality check.** For every entity pair the feature touches, state 1:1 / 1:N / N:M
   explicitly, with a recommendation. Left implicit, it is discovered during build, and by then
@@ -149,6 +170,14 @@ Resolution order, one read each ([docs/registers/COMPONENT_LIBRARY.md](../docs/r
 
 Follow the project's naming conventions for anything genuinely new.
 
+### A3.1b Translate the usage profile, then subtract
+Apply the translation table ([docs/24 §3b](../docs/24-DESIGN-PLANNING.md)) mechanically:
+frequent/essential → primary screen, one interaction; occasional/optional → progressive
+disclosure; automatable → eliminated, outcome shown. Then run the **subtraction pass**
+([§3c](../docs/24-DESIGN-PLANNING.md)) on every screen: *need to see it? need to do it?
+fewer steps possible?* — recording what was removed (or "nothing removable", per screen) as
+design-QA evidence. A separate screen is never created merely because information exists.
+
 ### A3.2 Simplify before you add
 Run the substitution table before adding any control:
 
@@ -178,6 +207,21 @@ primary action cannot be named is a finding, not an exemption.
 ### A3.3 Every state, every screen
 Empty · loading · error · offline · partial-data · permission-denied · first-run.
 An empty state that only says "nothing here" is incomplete — it must offer the next action.
+
+### A3.3b Every list view: the standard controls
+Any screen that renders a list or table carries CP-23 through `ListControls` /
+`useListControls` — never a per-module search box or sort. The design states, per list:
+**search fields** (name, phone, email, and the module's own key fields) · **filter groups** ·
+**the date field**, if any, which turns on the presets (Today · This week · Last week · This
+month · Custom) · **sortable columns**. A list designed without these is incomplete, not
+minimal — the subtraction pass removes clutter, and these are how the user removes *theirs*.
+
+### A3.3c Dashboards and analytics
+A screen that reports numbers uses CP-24 (`DashboardShell` + `MetricCard` + the analytics
+config), never a bespoke dashboard. The design states, per dashboard: the **question each
+section answers** · which metrics are **cost-like** (`higherIsBetter: false`) · the **breakdown
+ladder** for anything drillable · **role visibility** per metric. A section whose question
+cannot be written is decoration and does not ship ([docs/25](../docs/25-ANALYTICS-AND-DASHBOARDS.md)).
 
 ### A3.4 Theme and contrast (see [docs/11](../docs/11-THEME-AND-COLOR-SYSTEM.md), [docs/13](../docs/13-CONTRAST-AND-ACCESSIBILITY.md))
 - **Semantic tokens only.** No colour literal enters the design or the code.
@@ -225,10 +269,15 @@ gap found after the build is the next correction round.
 ### A3.9 Design validation loop (before Gate 3)
 
 Run [checklists/DESIGN_QUALITY_CHECKLIST.md](../checklists/DESIGN_QUALITY_CHECKLIST.md) —
-all 18 areas, each with a verdict (PASS · NEEDS-IMPROVEMENT · CRITICAL) **and one line of
-evidence**, never a bare tick. Fix the findings, re-run the affected areas, and compute the
-grade ([docs/24 §11](../docs/24-DESIGN-PLANNING.md)). Iterate while critical or repeated
-findings remain: **Design → render/canvas → inspect → identify → refine → re-validate.**
+**one verdict per AREA** (PASS · NEEDS-IMPROVEMENT · CRITICAL) with **one line of evidence**;
+the bullet items under each area are prompts for the reviewer's eye, not per-item paperwork.
+Full scale: all 18 areas. **Scoped scale: the core six** — user flow · visual hierarchy ·
+accessibility · states · simplicity · overall — **plus any area the change touches**; the
+untouched rest is one line: "not touched by this change". Where an area overlaps a mechanical
+audit, the audit's result is the evidence — never re-verify it by hand. Fix the findings,
+re-run the affected areas, and compute the grade ([docs/24 §11](../docs/24-DESIGN-PLANNING.md)).
+Iterate while critical or repeated findings remain: **Design → render/canvas → inspect →
+identify → refine → re-validate.**
 
 Gate 3 sees a design graded **Production-ready or better** — or it sees the specific blocking
 findings with a question for the requester. A first draft presented as final outsources the
@@ -298,6 +347,32 @@ migration, removing or reshaping an existing capability, anything on the safety 
 ## A5 — Build
 
 - Implement to the plan. Minimum change for the ask. No drive-by refactors.
+- **Build in parallel when the plan supports it.** Token *generation* is the slowest part of a
+  run, and it is the only part that parallel agents genuinely shorten. When the plan has **3+
+  independent tasks**, serialise them to `fanout.json` and validate first:
+
+  ```bash
+  npm run fanout:check -- fanout.json     # BLOCKED on a collision, a race read, or a task
+  ```                                     # that declares no contract or no acceptance
+
+  Then spawn one `implementation-builder` per task, **all in one message**, and the wall-clock
+  becomes the slowest lane instead of the sum. Each task declares `files` (owned exclusively),
+  `reads` (never written by a parallel task — the validator proves it), `contract` (the exported
+  signatures, **written by the planner before any agent starts**) and `acceptance`.
+
+  **Contract-first is the rule that makes this work.** Agents implement against declared
+  signatures, never against each other's in-progress code — interface drift discovered at
+  integration costs every lane that built on it. A lane that needs a file outside its set
+  reports back; it never takes it.
+
+  Fan out **only** the build. Design and planning are sequential by nature — each stage
+  constrains the next — and a reviewer cannot run concurrently with the code it reviews
+  ([workflows/agents/README.md](./agents/README.md)). Below three tasks, build inline: the
+  per-agent context costs more than it saves. Never at `micro` scale.
+- **Integrate, then gate — once, centrally.** When every lane returns, the coordinating agent
+  reconciles the reports, checks that nothing was written outside its declared lane
+  (`git status` against the union of `files`), and runs the gate on the whole tree. A lane that
+  gates alone is testing a half-built repository.
 - **Verify every dependency before installing**: it exists, it is the intended name, it is
   pinned. An unverified dependency blocks the change.
 - Implement the approved string table verbatim. A string the design never covered is a NEW
@@ -312,6 +387,11 @@ migration, removing or reshaping an existing capability, anything on the safety 
   compiled" is not evidence that text is readable.
 - **Drive the primary flow once keyboard-only** — Tab, Enter, Space, no pointer. A flow that
   needs a mouse is unfinished (CP-22, rule A-10).
+- **Review passes per the matrix** ([workflows/agents/README.md](./agents/README.md)): a
+  scoped run spawns `code-reviewer` plus only the conditional reviewers the diff actually
+  triggers (visible strings → copy; roles/tenant data → permissions; schema → parity) — **in
+  one message, in parallel**. Blast radius, plan, gate run and close-out stay inline. Every
+  spawn is a cold start; ten of them in sequence was the largest time sink after the budgets.
 
 ---
 
@@ -330,6 +410,8 @@ promotion is a separate approved step, **in every run mode**.
 **The auto-mode run report** (delivered with the preview URL): the FIELDS restated from the
 request file · the ASSUMPTIONS ledger — every decision taken at a checkpoint, with its
 recommendation and why · the gate artifacts (or the one combined `RUN_<feature>.md`) · the QA
-verdict table · the gate result. The review the gates deferred happens here, with everything
+verdict table · the gate result · **stage timings** — one line per stage (ground · plan ·
+build · verify · gate), minutes each, so a slow run names the stage that ate the time and the
+next process fix starts from data instead of a feeling. The review the gates deferred happens here, with everything
 on one screen — and anything the requester corrects becomes the next `/request`, round 2,
 with the ledger showing exactly which assumption missed.

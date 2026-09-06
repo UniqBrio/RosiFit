@@ -53,6 +53,7 @@ Both are explained in [01-SDLC.md](./01-SDLC.md) and
 | [10-DOCUMENTATION-STANDARDS.md](./10-DOCUMENTATION-STANDARDS.md) | Modules, registers, the copy layer. |
 | [23-DESIGN-CRAFT.md](./23-DESIGN-CRAFT.md) | The bar: what separates working from crafted — and the anti-gimmick rule. |
 | [24-DESIGN-PLANNING.md](./24-DESIGN-PLANNING.md) | The method: discovery, IA-first, the pipeline, scoring, the iteration loop. |
+| [25-ANALYTICS-AND-DASHBOARDS.md](./25-ANALYTICS-AND-DASHBOARDS.md) | Dashboards as configuration: metric model, honesty rules, choosing a visualization, drill-down. |
 
 ### Appearance — colours, themes, contrast, assets
 | | |
@@ -81,7 +82,8 @@ Both are explained in [01-SDLC.md](./01-SDLC.md) and
 ### The wiring
 `.claude/` — slash commands, review agents, and the hook that runs the commit guards in every
 session. See [21-AGENT-WIRING.md](./21-AGENT-WIRING.md). Without this the rest is documentation.
-`CLAUDE.md` at the repository root carries the binding rules, read before every task.
+`.codex/` — the same agents and hook adapter for Codex; `AGENTS.md` at the root is a pointer to
+`CLAUDE.md`, which carries the binding rules, read before every task.
 
 ### The runbooks
 `workflows/` — [request (intake)](../workflows/request.md) ·

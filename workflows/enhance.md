@@ -27,6 +27,36 @@ attached to the thing you are about to move.
 
 ---
 
+## B0 — Scale: is this a micro correction?
+
+Most corrections are small, and running a full design pass over a label change is why a
+two-minute fix took twenty. Declare the scale before anything else.
+
+**MICRO — all of these must hold:**
+
+- ≤2 source files · no schema change · no new screen, route or component · no new dependency
+- no permission change · no user-visible string except one the request states verbatim
+- not a hotspot file (2,000+ lines, or 3+ root-cause entries)
+- **not CORRECTION ROUND ≥ 2** — a fix that did not hold gets the full B1 analysis, always
+
+**A micro run is:** read the actual file (B1's first paragraph) → make the change → B6's diff
+review → both themes and a keyboard pass if anything rendered changed → the test gate. It
+**skips** B2's full impact table, B3, B4's plan and design pass, and the QA verdict table.
+It **keeps** every mechanical gate, the freeze rule, canonical patterns, and the hard stops.
+
+**Spawn `code-reviewer` even at micro when the change touches a shared or exported symbol** —
+that is the moment a two-file change acquires a twenty-file blast radius, and it is the one
+thing the inline reviewer (who just wrote the code) is worst at seeing.
+
+**Promotion is immediate and stated.** The moment a disqualifier appears — a third file, a
+schema change, an unapproved string — say so and continue as a scoped correction with its
+plan and design pass. Guard **G8** checks the `SCALE: micro` claim against the diff at commit
+time, so an over-reaching micro run is blocked rather than merged.
+
+Anything that is not micro runs B1–B6 in full.
+
+---
+
 ## B1 — Read what actually exists
 
 Load the context slice for the named feature and **read the current files**. Not your memory of
@@ -101,6 +131,8 @@ on it. The plan states, explicitly:
 | Strings | The string table for every string this change adds or alters (surface · placement · final string) |
 | Permissions | Does who-can-see-or-do change? If yes, the five RBAC questions; if no, say so |
 | Keyboard | Touched controls stay Tab-reachable in visual order and Enter/Space-operable; the changed flow is walked once keyboard-only (CP-22, A-10) |
+| Subtraction | The three questions (docs/24 §3c) asked of the touched area — need to see it? need to do it? fewer steps? — with what was removed, or "nothing removable" |
+| Lists | A list or table touched carries the standard controls (CP-23): search fields, filter groups, date presets where dated, sortable columns — through the shared component, or a stated reason why not |
 
 The design gaps that force a second correction live exactly here: a correction built without
 this pass ships the happy path in one theme and leaves every other state to be discovered by
@@ -152,6 +184,8 @@ claim, and the B4 correction design pass runs before this change proceeds.
 If the change is visual: **render and look at the touched area, in both themes**, before
 calling it done. "The build compiled" is not evidence that text is readable.
 
-Then the close-out checklist and the test gate
-([workflows/test-gate.md](./test-gate.md)). The blast radius from B2 defines the regression
-scope — that is what B2 was for.
+Review passes per the matrix ([workflows/agents/README.md](./agents/README.md)):
+`code-reviewer` always, conditional reviewers only where the diff triggers them, all spawned
+in one message. Then the close-out checklist and the test gate
+([workflows/test-gate.md](./test-gate.md)) — run inline for a scoped correction. The blast
+radius from B2 defines the regression scope — that is what B2 was for.
