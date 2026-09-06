@@ -5,7 +5,8 @@ import { Screen, Muted, Label, Button } from '../../src/components/ui';
 import { FormDialog } from '../../src/components/FormDialog';
 import { Field } from '../../src/components/Field';
 import { Icon } from '../../src/components/Icon';
-import { SearchPicker } from '../../src/components/Sheet';
+import { AnchoredPicker } from '../../src/components/Sheet';
+import { useAnchor } from '../../src/components/AnchoredPanel';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../../src/theme/tokens';
@@ -24,6 +25,8 @@ export default function StaffAdd() {
   const [roles, setRoles] = useState<string[]>(
     [...ROLE_LABELS, 'Physiotherapist', 'Nutrition coach']);
   const [picking, setPicking] = useState(false);
+  // The role field the list hangs under, measured at the press.
+  const roleRow = useAnchor();
   const [busy, setBusy] = useState(false);
 
   const digits = phone.replace(/\D/g, '');
@@ -73,10 +76,10 @@ export default function StaffAdd() {
         error={digits.length > 0 && digits.length < 10 ? 'A 10-digit mobile number is needed.' : undefined} />
 
       <Label style={{ marginTop: SPACE.sm }}>Role label</Label>
-      <Pressable onPress={() => setPicking(true)}
+      <Pressable onPress={() => { roleRow.measure(); setPicking(true); }} ref={roleRow.ref}
         accessibilityRole="button"
         accessibilityLabel={`Role label, ${role}`}
-        accessibilityHint="Opens a list of role labels"
+        accessibilityHint="Opens a list of role labels under the field"
         style={{
           marginTop: 8, minHeight: TAP_MIN + 8, borderRadius: RADIUS.md,
           backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
@@ -101,11 +104,15 @@ export default function StaffAdd() {
         </Text>
       </View>
 
-      <SearchPicker
+      {/* Under the field, as wide as the field (requests/
+          2026-09-06-pickers-open-under-their-field.md). The search box stays:
+          it is how a new label is typed in. */}
+      <AnchoredPicker
         open={picking}
         onClose={() => setPicking(false)}
-        title="Choose a role label"
+        label="Choose a role label"
         placeholder="Search or type a new one"
+        anchor={roleRow.anchor} testID="staff-role-list"
         options={roles.map(label => ({ label }))}
         value={role}
         onSelect={l => { setRole(l); setPicking(false); }}

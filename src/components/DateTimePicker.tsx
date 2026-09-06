@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, Pressable, ScrollView, Modal, Platform, useWindowDimensions } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, Pressable, ScrollView } from 'react-native';
 import { Sheet } from './Sheet';
 import { Icon } from './Icon';
 import { RequiredMark } from './RequiredMark';
-import { placePanel, type Anchor } from './datePanel';
+import { AnchoredPanel, useAnchor } from './AnchoredPanel';
 import { useTheme } from '../theme/ThemeProvider';
 import { RADIUS, SPACE, TAP_MIN } from '../theme/tokens';
 import { iso, parseISO } from '../data/period';
@@ -309,90 +309,13 @@ const PANEL_W = GRID_MAX + SPACE.md * 2 + 2;
  *  the bottom of the window. */
 const PANEL_H = 430;
 
-/**
- * The calendar, hanging under the field it belongs to.
- *
- * A date field used to open the bottom sheet, which on a desktop window is a
- * band the full width of the screen for a control 336px wide, and which
- * covers the form the date is being entered into. This is the dropdown's
- * behaviour instead -- the panel opens where the field is -- but drawn in a
- * `Modal` rather than inline, because a form scrolls and an inline panel is
- * clipped by the scroller the moment it is taller than what is left below
- * the field.
- *
- * It keeps every rule the sheet keeps (CP-014): closed, it renders NOTHING;
- * opening it blurs the opener, so nothing focused is left inside the
- * `aria-hidden` subtree; and the way out beside the panel is a real,
- * labelled control.
- *
- * That way out is UNTINTED, which is the one thing this does not take from
- * the sheet. A date is entered into a form, and a scrim over that form dims
- * the very fields the date is being chosen against -- twice over inside a
- * dialog, which paints a scrim of its own. The panel separates itself the
- * way the filter dropdowns do (`Dropdown.tsx`): its own surface, a border
- * and a lift, and nothing over the page.
- *
- * **The page behind is nevertheless blank today, and not because of this.**
- * Every date field lives inside a `FormDialog`, and TD-021 collapses that
- * dialog's card to a 2px sliver whenever `useWindowDimensions()` re-reads as
- * 0 -- which mounting any `Modal` over it does. The bottom sheet this
- * replaced did exactly the same thing, so nothing regressed; what changes is
- * that when TD-021 is paid, this panel will leave the form showing, and a
- * tinted scrim would not have.
+/*
+ * The calendar hangs under the field it belongs to, in an `AnchoredPanel`
+ * (its own module, since the course, branch, role and question pickers hang
+ * the same way). The calendar is the one host that names its own width: the
+ * grid is seven cells wide wherever it opens, so the panel is PANEL_W rather
+ * than the field's width.
  */
-function AnchoredPanel({ open, onClose, label, anchor, testID, children }:
-  { open: boolean; onClose: () => void; label: string; anchor: Anchor | null;
-    testID: string; children: React.ReactNode }) {
-  const { theme } = useTheme();
-  const { width: winW, height: winH } = useWindowDimensions();
-
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    const active = document.activeElement as HTMLElement | null;
-    if (active && active !== document.body && typeof active.blur === 'function') active.blur();
-  }, [open]);
-
-  if (!open) return null;
-
-  // A window that reports nothing yet gives the panel its natural size rather
-  // than a negative one. `useWindowDimensions` is 0 for the first render of a
-  // page the browser is still hydrating, and `Math.min(360, 0 - 16)` is a
-  // panel nobody can see.
-  const width = winW ? Math.min(PANEL_W, winW - SPACE.lg) : PANEL_W;
-  const height = winH ? Math.min(PANEL_H, winH - SPACE.lg) : PANEL_H;
-  const at = placePanel(anchor, { width: winW, height: winH }, { width, height });
-  const placed = at ? { position: 'absolute' as const, ...at } : null;
-
-  return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      {/* No anchor yet (the first frame on a device, where measuring is
-          asynchronous): the card is centred, which is a place, not a
-          guess at one. */}
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <Pressable
-          testID={`${testID}-scrim`}
-          onPress={onClose}
-          accessibilityRole="button"
-          accessibilityLabel={`Close ${label}`}
-          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
-        <View
-          accessibilityViewIsModal
-          accessibilityLabel={label}
-          testID={`${testID}-panel`}
-          style={{
-            width, maxHeight: height, ...(placed ?? {}),
-            backgroundColor: theme.surface, borderRadius: RADIUS.lg,
-            borderWidth: 1, borderColor: theme.lineStrong,
-            padding: SPACE.md, elevation: 8,
-          }}>
-          <ScrollView style={{ flexShrink: 1 }} keyboardShouldPersistTaps="handled">
-            {children}
-          </ScrollView>
-        </View>
-      </View>
-    </Modal>
-  );
-}
 
 /**
  * One day, in a panel under the field. `value` and `onChange` speak ISO
@@ -409,19 +332,12 @@ export function DateField({ label, value, onChange, placeholder = 'Choose a date
     required?: boolean }) {
   const { theme } = useTheme();
   const [open, setOpen] = useState(false);
-  const [anchor, setAnchor] = useState<Anchor | null>(null);
-  const row = useRef<View>(null);
+  const row = useAnchor();
   const today = new Date();
 
   const pick = (chosen: string) => { onChange(chosen); setOpen(false); };
 
-  // Measured at the press, not at layout: the field's place in the window is
-  // whatever the form has been scrolled to by the time it is tapped.
-  const openPanel = () => {
-    const node = row.current as (View & { measureInWindow?: (cb: (x: number, y: number, w: number, h: number) => void) => void }) | null;
-    node?.measureInWindow?.((x, y, w, h) => setAnchor(w || h ? { x, y, w, h } : null));
-    setOpen(true);
-  };
+  const openPanel = () => { row.measure(); setOpen(true); };
 
   const footer = (name: string, text: string, spoken: string, onPress: () => void) => (
     <Pressable testID={`${testID}-${name}`} onPress={onPress}
@@ -440,10 +356,10 @@ export function DateField({ label, value, onChange, placeholder = 'Choose a date
     <>
       <PickerRow label={label} display={formatDate(value)} placeholder={placeholder}
         icon="calendar_today" hint={hint} error={error} required={required}
-        onPress={openPanel} testID={testID} anchorRef={row} />
+        onPress={openPanel} testID={testID} anchorRef={row.ref} />
 
       <AnchoredPanel open={open} onClose={() => setOpen(false)} label={label}
-        anchor={anchor} testID={testID}>
+        anchor={row.anchor} testID={testID} width={PANEL_W} height={PANEL_H}>
         <MonthCalendar from={value} onPick={pick} min={min} max={max} testID={testID} />
 
         {/* Clear on the left, Today on the right, as in the calendar the

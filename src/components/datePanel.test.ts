@@ -8,7 +8,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { placePanel, PANEL_GAP, PANEL_EDGE } from './datePanel';
+import { placePanel, anchoredWidth, PANEL_GAP, PANEL_EDGE } from './datePanel';
 
 const PANEL = { width: 360, height: 430 };
 const DESKTOP = { width: 1440, height: 900 };
@@ -57,4 +57,25 @@ test('a window narrower than the panel never places it off the left', () => {
   const narrow = { width: 320, height: 900 };
   const at = placePanel({ x: 200, y: 100, w: 100, h: 52 }, narrow, PANEL)!;
   assert.equal(at.left, PANEL_EDGE);
+});
+
+/* ---- a list panel is as wide as the field it opens under
+ * (requests/2026-09-06-pickers-open-under-their-field.md) */
+
+test('a list panel takes the width of its field', () => {
+  assert.equal(anchoredWidth({ x: 320, y: 300, w: 512, h: 52 }, DESKTOP.width, 360), 512);
+});
+
+test('with nothing measured yet the fallback width stands in', () => {
+  assert.equal(anchoredWidth(null, DESKTOP.width, 360), 360);
+  assert.equal(anchoredWidth({ x: 0, y: 0, w: 0, h: 0 }, DESKTOP.width, 360), 360);
+});
+
+test('a field wider than the window gives a panel that still fits the window', () => {
+  const w = anchoredWidth({ x: 0, y: 300, w: 600, h: 52 }, PHONE.width, 360);
+  assert.equal(w, PHONE.width - PANEL_EDGE * 2);
+});
+
+test('a window that reports no width yet does not shrink the panel to nothing', () => {
+  assert.equal(anchoredWidth({ x: 0, y: 0, w: 512, h: 52 }, 0, 360), 512);
 });

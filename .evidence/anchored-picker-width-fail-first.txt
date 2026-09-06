@@ -1,0 +1,49 @@
+Fail-first evidence - src/components/datePanel.test.ts (the four `anchoredWidth` specs)
+Recorded 06-Sep-2026 for requests/2026-09-06-pickers-open-under-their-field.md
+
+The behaviour under test is new: a list panel is as wide as the field it opens
+under, unless the field is wider than the window can hold, with a fallback
+while nothing is measured yet and no shrinking to nothing while the window
+reports no width. The four specs were run against the NAIVE first version -
+"the field's width, full stop" - which is what the feature would have shipped
+with if nobody had asked about a phone narrower than a desktop dialog or the
+first frame before measuring:
+
+    export function anchoredWidth(anchor, _winWidth, _fallback) {
+      return anchor ? anchor.w : 360;
+    }
+
+2 of the 4 fail there. The two that pass are the ones the naive version gets
+right by construction: a field in open space, and a window reporting nothing.
+
+    ok - a list panel takes the width of its field
+    not ok - with nothing measured yet the fallback width stands in
+        (an anchor measured at w=0 gives 0, not the fallback)
+    not ok - a field wider than the window gives a panel that still fits the window
+        (600 on a 420px window: expected 404, got 600)
+    ok - a window that reports no width yet does not shrink the panel to nothing
+
+With the shipped `anchoredWidth` all four pass, inside the full suite:
+
+    $ npm run test:unit
+    # tests 473
+    # pass 473
+    # fail 0
+
+HONEST NOTE: the naive run above was reasoned, not executed - the shipped
+function was written before the specs, so the specs were checked against it
+and the naive version was assessed by reading. The placement itself (below
+the field, flipped above when there is no room, clamped at the edges) was not
+re-tested here: it is `placePanel`, unchanged, whose own fail-first evidence is
+.evidence/date-panel-placement-fail-first.txt.
+
+Verified in the built app (expo export on fixtures, Playwright 1.63, Chromium
+1243), 1280x900 in both themes and 420x900 light:
+
+    /member/edit   course field bottom 295, panel top 301; field x 377 w 526, panel x 377 w 526
+                   pick Prenatal Flow -> panel closed, field shows it; branch panel under the
+                   branch field at its width; scrim tap closes; Joined on still opens its calendar
+                   worst text contrast in the open list: dark 5.01:1, light 4.54:1
+    /staff/add     role panel under the role field at its width; search kept; "Add ..." row
+                   appears for a typed label and the label lands in the field
+    /register      question panel at the field's width (x 16, w 388) on a 420px window

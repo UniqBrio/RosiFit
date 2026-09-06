@@ -49,3 +49,21 @@ export function placePanel(anchor: Anchor | null, win: Size, panel: Size): Place
 
   return { left, top: clamp(wanted, PANEL_EDGE, Math.max(PANEL_EDGE, win.height - panel.height - PANEL_EDGE)) };
 }
+
+/**
+ * How wide a panel that FOLLOWS its field is.
+ *
+ * The calendar has a width of its own (seven cells), but a list of courses
+ * has no natural width, and the reference the requester pointed at draws the
+ * list exactly as wide as the field it opens under -- the way a browser's
+ * own <select> does. So the width is the field's, unless the field is wider
+ * than the window can hold, and `fallback` stands in while there is nothing
+ * measured yet.
+ */
+export function anchoredWidth(anchor: Anchor | null, winWidth: number, fallback: number): number {
+  const wanted = anchor && anchor.w > 0 ? anchor.w : fallback;
+  // A window that reports nothing yet gives the panel the width it asked for
+  // rather than a negative one (see AnchoredPanel on hydration).
+  if (!winWidth) return wanted;
+  return Math.min(wanted, Math.max(PANEL_EDGE, winWidth - PANEL_EDGE * 2));
+}

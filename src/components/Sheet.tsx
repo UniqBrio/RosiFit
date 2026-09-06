@@ -3,6 +3,8 @@ import { View, Text, Pressable, Modal, ScrollView, TextInput, Platform } from 'r
 import { useTheme } from '../theme/ThemeProvider';
 import { RADIUS, SPACE, TAP_MIN } from '../theme/tokens';
 import { Icon } from './Icon';
+import { AnchoredPanel } from './AnchoredPanel';
+import type { Anchor } from './datePanel';
 
 /**
  * The canvas' bottom sheet: scrim, rounded top, grab handle. Dismissing by
@@ -100,10 +102,111 @@ export function Sheet({ open, onClose, title, children, placement = 'bottom' }:
 export type PickerOption = { label: string; meta?: string; value?: string };
 
 /**
- * Search-and-pick sheet used for the role, course and branch pickers. When
- * `onAdd` is given, a query that matches nothing existing can be added as a
- * new label -- the canvas' behaviour, and the reason the empty state says
- * what to do rather than just "no results".
+ * The search box, the rows, the "Add …" row and the nothing-matches note are
+ * ONE set of pieces shared by the sheet picker and the anchored picker
+ * below, so a row looks the same whichever host draws it. The host owns
+ * where the pieces sit; the pieces own how a choice looks.
+ */
+
+/** What the query does to the options. */
+function usePickerQuery(options: PickerOption[], onAdd?: (label: string) => void) {
+  const [query, setQuery] = useState('');
+  const q = query.trim().toLowerCase();
+  const results = useMemo(
+    () => options.filter(o => o.label.toLowerCase().includes(q)),
+    [options, q]);
+  const canAdd = !!onAdd && q.length >= 2 && !options.some(o => o.label.toLowerCase() === q);
+  const empty = q.length > 0 && results.length === 0 && !canAdd;
+  return { query, setQuery, results, canAdd, empty };
+}
+
+function PickerSearch({ query, onChange, placeholder, testID }:
+  { query: string; onChange: (q: string) => void; placeholder: string; testID?: string }) {
+  const { theme } = useTheme();
+  return (
+    <View style={{
+      flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
+      height: 50, borderRadius: RADIUS.md, backgroundColor: theme.shell,
+      borderWidth: 1, borderColor: theme.lineStrong, paddingHorizontal: SPACE.lg,
+    }}>
+      <Icon name="search" size={20} color={theme.muted} />
+      <TextInput
+        testID={testID}
+        value={query} onChangeText={onChange} placeholder={placeholder}
+        placeholderTextColor={theme.muted} accessibilityLabel={placeholder}
+        style={{ flex: 1, color: theme.fgStrong, fontSize: 14.5, fontWeight: '600' }} />
+    </View>
+  );
+}
+
+/** One choice. The chosen row says "Selected" as well as showing a filled
+ *  radio, so the state is not carried by the glyph alone (guardrail 3). */
+function PickerChoice({ option, on, onPress, testID }:
+  { option: PickerOption; on: boolean; onPress: () => void; testID?: string }) {
+  const { theme } = useTheme();
+  return (
+    <Pressable
+      testID={testID}
+      onPress={onPress}
+      accessibilityRole="radio" accessibilityState={{ selected: on }}
+      style={{
+        flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
+        minHeight: TAP_MIN + 6, paddingHorizontal: SPACE.lg, paddingVertical: SPACE.md,
+        borderRadius: RADIUS.md, borderWidth: 1,
+        borderColor: on ? theme.accent : theme.line,
+        backgroundColor: on ? theme.control : theme.surface2,
+      }}>
+      <Icon name={on ? 'radio_button_checked' : 'radio_button_unchecked'}
+        size={19} color={on ? theme.accentInk : theme.dim} />
+      <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: theme.fgStrong }}>{option.label}</Text>
+      <Text style={{ fontSize: 11.5, color: theme.muted }}>{on ? 'Selected' : option.meta ?? ''}</Text>
+    </Pressable>
+  );
+}
+
+/** The row that turns a query nothing matches into a new label. */
+function PickerAddRow({ label, meta, onPress, testID }:
+  { label: string; meta?: string; onPress: () => void; testID?: string }) {
+  const { theme } = useTheme();
+  return (
+    <Pressable
+      testID={testID}
+      onPress={onPress}
+      accessibilityRole="button"
+      style={{
+        flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
+        minHeight: TAP_MIN + 6, paddingHorizontal: SPACE.lg, paddingVertical: SPACE.md,
+        borderRadius: RADIUS.md, borderWidth: 1, borderColor: theme.accent,
+        backgroundColor: theme.control,
+      }}>
+      <Icon name="add_circle" size={19} color={theme.accentInk} />
+      <Text style={{ flex: 1, fontSize: 14, fontWeight: '800', color: theme.fgStrong }}>
+        {`Add “${label}”`}
+      </Text>
+      <Text style={{ fontSize: 11.5, color: theme.accentInk }}>{meta ?? 'New label'}</Text>
+    </Pressable>
+  );
+}
+
+function PickerEmpty({ note }: { note?: string }) {
+  const { theme } = useTheme();
+  return (
+    <Text style={{ paddingVertical: SPACE.lg, paddingHorizontal: SPACE.xs, fontSize: 12.5, color: theme.muted, lineHeight: 19 }}>
+      {note ?? 'Nothing matches that.'}
+    </Text>
+  );
+}
+
+const slug = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+/**
+ * Search-and-pick sheet. Left for the ONE picker that is not filling a form
+ * field: the course screen's "Who is …?" merge, which is opened from a list
+ * row and confirms in two steps. The pickers that ARE form fields -- course,
+ * branch, role, question -- open under their field instead (`AnchoredPicker`).
+ * When `onAdd` is given, a query that matches nothing existing can be added
+ * as a new label -- the canvas' behaviour, and the reason the empty state
+ * says what to do rather than just "no results".
  */
 export function SearchPicker({ open, onClose, title, placeholder, options, value, onSelect, onAdd, addMeta, emptyNote, placement, confirmLabel, confirmNote, busy }:
   {
@@ -133,21 +236,13 @@ export function SearchPicker({ open, onClose, title, placeholder, options, value
     busy?: boolean;
   }) {
   const { theme } = useTheme();
-  const [query, setQuery] = useState('');
+  const { query, setQuery, results, canAdd, empty } = usePickerQuery(options, onAdd);
   const [staged, setStaged] = useState<string | null>(null);
   const twoStep = confirmLabel !== undefined;
 
   // A picker reopened must not still be holding the last answer, and the
   // options themselves change under it once a merge removes a member.
   useEffect(() => { if (!open) setStaged(null); }, [open]);
-
-  const q = query.trim().toLowerCase();
-  const results = useMemo(
-    () => options.filter(o => o.label.toLowerCase().includes(q)),
-    [options, q]);
-
-  const canAdd = !!onAdd && q.length >= 2 && !options.some(o => o.label.toLowerCase() === q);
-  const empty = q.length > 0 && results.length === 0 && !canAdd;
 
   const stagedOption = staged === null ? null
     : options.find(o => (o.value ?? o.label) === staged) ?? null;
@@ -156,70 +251,28 @@ export function SearchPicker({ open, onClose, title, placeholder, options, value
 
   return (
     <Sheet open={open} onClose={close} title={title} placement={placement}>
-      <View style={{
-        flexDirection: 'row', alignItems: 'center', gap: SPACE.md, marginTop: SPACE.md,
-        height: 50, borderRadius: RADIUS.md, backgroundColor: theme.shell,
-        borderWidth: 1, borderColor: theme.lineStrong, paddingHorizontal: SPACE.lg,
-      }}>
-        <Icon name="search" size={20} color={theme.muted} />
-        <TextInput
-          value={query} onChangeText={setQuery} placeholder={placeholder}
-          placeholderTextColor={theme.muted} accessibilityLabel={placeholder}
-          style={{ flex: 1, color: theme.fgStrong, fontSize: 14.5, fontWeight: '600' }} />
+      <View style={{ marginTop: SPACE.md }}>
+        <PickerSearch query={query} onChange={setQuery} placeholder={placeholder} />
       </View>
 
       {/* flexShrink so a pinned footer below cannot be pushed off the card's
           own maxHeight -- the list gives way, the confirm stays reachable. */}
       <ScrollView style={{ marginTop: SPACE.md, flexShrink: 1 }} contentContainerStyle={{ gap: 7 }} keyboardShouldPersistTaps="handled">
-        {results.map(o => {
-          const on = twoStep ? staged === (o.value ?? o.label) : o.label === value;
-          return (
-            <Pressable key={o.label}
-              onPress={() => {
-                if (twoStep) { setStaged(o.value ?? o.label); return; }
-                setQuery(''); onSelect(o.value ?? o.label);
-              }}
-              accessibilityRole="radio" accessibilityState={{ selected: on }}
-              style={{
-                flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
-                minHeight: TAP_MIN + 6, paddingHorizontal: SPACE.lg, paddingVertical: SPACE.md,
-                borderRadius: RADIUS.md, borderWidth: 1,
-                borderColor: on ? theme.accent : theme.line,
-                backgroundColor: on ? theme.control : theme.surface2,
-              }}>
-              <Icon name={on ? 'radio_button_checked' : 'radio_button_unchecked'}
-                size={19} color={on ? theme.accentInk : theme.dim} />
-              <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: theme.fgStrong }}>{o.label}</Text>
-              {/* the selected row says "Selected" as well as showing a filled
-                  radio, so the state is not carried by the glyph alone */}
-              <Text style={{ fontSize: 11.5, color: theme.muted }}>{on ? 'Selected' : o.meta ?? ''}</Text>
-            </Pressable>
-          );
-        })}
+        {results.map(o => (
+          <PickerChoice key={o.label} option={o}
+            on={twoStep ? staged === (o.value ?? o.label) : o.label === value}
+            onPress={() => {
+              if (twoStep) { setStaged(o.value ?? o.label); return; }
+              setQuery(''); onSelect(o.value ?? o.label);
+            }} />
+        ))}
 
         {canAdd ? (
-          <Pressable
-            onPress={() => { const v = query.trim(); setQuery(''); onAdd!(v); }}
-            accessibilityRole="button"
-            style={{
-              flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
-              minHeight: TAP_MIN + 6, paddingHorizontal: SPACE.lg, paddingVertical: SPACE.md,
-              borderRadius: RADIUS.md, borderWidth: 1, borderColor: theme.accent,
-              backgroundColor: theme.control,
-            }}>
-            <Icon name="add_circle" size={19} color={theme.accentInk} />
-            <Text style={{ flex: 1, fontSize: 14, fontWeight: '800', color: theme.fgStrong }}>
-              {`Add “${query.trim()}”`}
-            </Text>
-            <Text style={{ fontSize: 11.5, color: theme.accentInk }}>{addMeta ?? 'New label'}</Text>
-          </Pressable>
+          <PickerAddRow label={query.trim()} meta={addMeta}
+            onPress={() => { const v = query.trim(); setQuery(''); onAdd!(v); }} />
         ) : null}
 
-        {empty ? (
-          <Text style={{ paddingVertical: SPACE.lg, paddingHorizontal: SPACE.xs, fontSize: 12.5, color: theme.muted, lineHeight: 19 }}>
-            {emptyNote ?? 'Nothing matches that.'}
-          </Text>
-        ) : null}
+        {empty ? <PickerEmpty note={emptyNote} /> : null}
       </ScrollView>
 
       {/* WHAT IT WILL DO, before it is done -- and only once there is
@@ -262,6 +315,66 @@ export function SearchPicker({ open, onClose, title, placeholder, options, value
         </View>
       ) : null}
     </Sheet>
+  );
+}
+
+/** How many rows a list may reach before it is worth a search box. */
+const SEARCH_FROM = 7;
+
+/**
+ * A picker that opens UNDER the field it fills, the way the date field does
+ * (requests/2026-09-06-pickers-open-under-their-field.md).
+ *
+ * The sheet covered the form the value was being chosen for and, on a
+ * desktop window, slid a band the full width of the screen up for a list of
+ * two courses. This hangs the same rows off the field instead, as wide as
+ * the field, with the rest of the form still in view around it.
+ *
+ * The search box is drawn only where it earns its height: when a label can
+ * be typed in and added (`onAdd`), or when the list is long enough to need
+ * narrowing. A two-item course list is just the two items.
+ *
+ * `label` is spoken, not drawn: the field the panel hangs under already
+ * says what is being chosen.
+ */
+export function AnchoredPicker({ open, onClose, label, placeholder, options, value, onSelect, onAdd, addMeta, emptyNote, anchor, testID }:
+  {
+    open: boolean; onClose: () => void; label: string; placeholder: string;
+    options: PickerOption[]; value?: string;
+    /** the option's `value` when it has one, otherwise its label */
+    onSelect: (chosen: string) => void;
+    onAdd?: (label: string) => void;
+    addMeta?: string;
+    emptyNote?: string;
+    /** where the field is -- `useAnchor().anchor`, measured at the press */
+    anchor: Anchor | null;
+    testID: string;
+  }) {
+  const { query, setQuery, results, canAdd, empty } = usePickerQuery(options, onAdd);
+  const searchable = !!onAdd || options.length > SEARCH_FROM;
+  const close = () => { setQuery(''); onClose(); };
+
+  return (
+    <AnchoredPanel open={open} onClose={close} label={label} anchor={anchor} testID={testID}
+      header={searchable ? (
+        <View style={{ marginBottom: SPACE.sm }}>
+          <PickerSearch query={query} onChange={setQuery} placeholder={placeholder}
+            testID={`${testID}-search`} />
+        </View>
+      ) : null}>
+      <View style={{ gap: 7 }} accessibilityRole="radiogroup" accessibilityLabel={label}>
+        {results.map(o => (
+          <PickerChoice key={o.label} option={o} on={o.label === value}
+            testID={`${testID}-option-${slug(o.label)}`}
+            onPress={() => { setQuery(''); onSelect(o.value ?? o.label); }} />
+        ))}
+        {canAdd ? (
+          <PickerAddRow label={query.trim()} meta={addMeta} testID={`${testID}-add`}
+            onPress={() => { const v = query.trim(); setQuery(''); onAdd!(v); }} />
+        ) : null}
+        {empty ? <PickerEmpty note={emptyNote} /> : null}
+      </View>
+    </AnchoredPanel>
   );
 }
 

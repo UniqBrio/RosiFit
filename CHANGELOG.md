@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased — The course and branch lists open under their field
+
+**Choosing a course or a branch no longer slides a sheet up over the form.** On **Welcome a new
+member** and **Edit member**, tapping Course or Branch now opens the list directly under that
+field, as wide as the field, with the rest of the form still in view around it — the way
+**Joined on** already opens its calendar. Tap a course and the list closes with the course in the
+field; tap beside the list and it closes with nothing changed. The chosen row still says
+*Selected*. A short list is just the list: the search box appears only when there are more than
+seven choices to narrow.
+
+**The same for the role label on Add staff and the two questions on Register.** The role list
+keeps its search box, because that is where a new label is typed in and added. On a phone, where
+there is no room under the second question, the list opens above it instead.
+
+Nothing about what the lists offer or what choosing does has changed: changing the course still
+clears the branch, the branch list is still the branches that course runs at, and a question used
+for the other slot is still withheld.
+
 ## Unreleased — Add Member and Bulk Import sit beside Add Course
 
 **The Attendance header carries all three of its actions.** Add Member and Bulk Import used

@@ -231,6 +231,31 @@ still starts the week (CP-012) and every colour is a semantic token in both them
 `TimeField` still opens the sheet — the request was about dates. ADR 024; request
 `requests/2026-09-06-compact-date-picker-everywhere.md`.
 
+**The course, branch, role and question pickers open under their field too — 06-Sep-2026.**
+The four single-tap "pick one value into a form field" pickers (member form course and branch,
+Add staff role label, Register's two questions) used to slide up `SearchPicker`'s bottom sheet:
+a band the full width of the viewport, over a scrim, covering the form the value was being
+chosen for. They now open `AnchoredPicker` (`src/components/Sheet.tsx`) in the same
+`AnchoredPanel` the date field uses (now its own module, `src/components/AnchoredPanel.tsx`):
+directly under the field, **as wide as the field** (`anchoredWidth`, `datePanel.ts`, 4 more
+specs), with the rest of the form in view around it, pulled back inside the window at the edges
+and flipped above the field when there is no room below — pinned by its bottom edge there, so a
+short list sits on the field rather than floating the reserved height above it. The rows are the
+sheet's rows unchanged: a radio, the label, the meta on the right, and the chosen row saying
+**Selected** in words (guardrail 3). The **search box is drawn only where it earns its height**
+— when a label can be typed in and added (the role picker), or when the list is longer than seven
+— so a two-course academy gets the two courses and nothing else. The picker's title is no longer
+drawn (the field above it says what is being chosen) and is the panel's accessibility label. What
+each picker offers and what choosing does is untouched: a real course change still drops the
+branch (RC-020), the branch list is still the branches that course runs at, a new role label can
+still be typed in, and a question already used by the other slot is still withheld. The merge
+picker on the course screen ("Who is …?", two-step, confirm) stays a sheet: it is opened from a
+list row, not a form field, and has nothing to hang under. Verified in the built app in both
+themes: the panel's top is under the field's bottom and its left and width equal the field's, in
+`/member/edit`, `/staff/add` and `/register` (phone width, where the question list flips above).
+Request `requests/2026-09-06-pickers-open-under-their-field.md`; ADR 024 applies, no new
+decision.
+
 **Every form is a dialog.** A form is a decision taken *over* a screen, not a place you travel to.
 Pushed as a page it wears the stack's header — so the only way out is in the chrome, and the save
 sits below however much has been typed. `member/edit`, `course/edit`, `offering/edit`, `holiday`,

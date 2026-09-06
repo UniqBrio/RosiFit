@@ -4,7 +4,8 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Screen, Muted, Label, Button } from '../src/components/ui';
 import { Field } from '../src/components/Field';
 import { Icon } from '../src/components/Icon';
-import { SearchPicker } from '../src/components/Sheet';
+import { AnchoredPicker } from '../src/components/Sheet';
+import { useAnchor } from '../src/components/AnchoredPanel';
 import { useTheme } from '../src/theme/ThemeProvider';
 import { useToast } from '../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN } from '../src/theme/tokens';
@@ -47,6 +48,11 @@ export default function Register() {
   const [questions, setQuestions] = useState([SECURITY_QUESTIONS[0], SECURITY_QUESTIONS[1]]);
   const [answers, setAnswers] = useState(['', '']);
   const [picking, setPicking] = useState<number | null>(null);
+  // The two question fields the list hangs under, measured at the press.
+  // Two hooks rather than a loop, because there are exactly two slots.
+  const questionRow0 = useAnchor();
+  const questionRow1 = useAnchor();
+  const questionRows = [questionRow0, questionRow1];
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
@@ -162,9 +168,10 @@ export default function Register() {
         return (
           <View key={i} style={{ marginTop: SPACE.lg }}>
             <Label>{`Question ${i + 1}`}</Label>
-            <Pressable onPress={() => setPicking(i)}
+            <Pressable onPress={() => { questionRows[i].measure(); setPicking(i); }}
+              ref={questionRows[i].ref}
               accessibilityRole="button" accessibilityLabel={questions[i]}
-              accessibilityHint="Opens the question list"
+              accessibilityHint="Opens the question list under the field"
               style={{
                 marginTop: 8, minHeight: TAP_MIN + 6, borderRadius: RADIUS.md,
                 backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
@@ -207,9 +214,13 @@ export default function Register() {
           onPress={submit} disabled={!valid} style={{ flex: 2 }} />
       </View>
 
-      <SearchPicker
+      {/* Under whichever question field was tapped, as wide as the field
+          (requests/2026-09-06-pickers-open-under-their-field.md). */}
+      <AnchoredPicker
         open={picking !== null} onClose={() => setPicking(null)}
-        title="Choose a question" placeholder="Search questions"
+        label="Choose a question" placeholder="Search questions"
+        anchor={picking === null ? null : questionRows[picking].anchor}
+        testID="register-question-list"
         options={bank
           .map(q => q.text)
           // the OTHER slot's question is not offered: two answers to one
