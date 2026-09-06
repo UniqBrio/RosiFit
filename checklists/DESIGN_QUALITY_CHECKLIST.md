@@ -5,9 +5,14 @@
 > [docs/24-DESIGN-PLANNING.md](../docs/24-DESIGN-PLANNING.md) · craft:
 > [docs/23-DESIGN-CRAFT.md](../docs/23-DESIGN-CRAFT.md).
 >
-> **Protocol — validate, refine, re-validate.** Every area below gets a verdict:
-> **PASS · NEEDS-IMPROVEMENT · CRITICAL**, with one line of evidence ("counted 4 interactions
-> on scenario 2"), never a bare tick. Findings are fixed and the affected areas re-run.
+> **Protocol — validate, refine, re-validate.** Every AREA below gets ONE verdict:
+> **PASS · NEEDS-IMPROVEMENT · CRITICAL**, with ONE line of evidence ("counted 4 interactions
+> on scenario 2"), never a bare tick — and never per-item paperwork: the bullet items are
+> prompts for the reviewer's eye, not documents to write. Where an item overlaps a mechanical
+> audit (contrast, tokens, test ids, columns), the audit's result IS the evidence — cite it,
+> never re-verify by hand. Findings are fixed and the affected areas re-run.
+> **Scoped changes** run the core six areas (1 · 5 · 7 · 10 · 15 · 18) plus areas the change
+> touches; each untouched area is one line: "not touched". Full scale runs all 18.
 > Gate 3 sees a design at **Production-ready or better** (docs/24 §11), or sees the blocking
 > findings with a question — never a first draft presented as final.
 
@@ -76,15 +81,17 @@
 ## 14. Cognitive load
 - [ ] What the user must hold in their head is counted per step, and minimised.
 - [ ] Density matches the task (scan/decide/enter — docs/23 §4); nothing on screen that doesn't earn its place.
+- [ ] The usage-profile translation holds (docs/24 §3b): essential/frequent on the primary screen; optional/occasional progressively disclosed; no medium/low-priority information rendered by default.
 
 ## 15. Design simplicity
+- [ ] The subtraction pass ran per screen (docs/24 §3c) with its evidence: what was removed, or "nothing removable" — including fields eliminated through automation.
 - [ ] Substitution table applied; every removable step removed.
 - [ ] Consolidations pass all four rules (docs/23 §2): nothing lost · logical groups · internal structure · scales.
 - [ ] **Simplify the experience, not the capability** — capability inventory checked off.
 
 ## 16. Production readiness
 - [ ] All roles walked: what each sees, cannot see, and the denial states.
-- [ ] Large-dataset day designed (paging, search, density); performance budget stated.
+- [ ] Large-dataset day designed (paging, density); every list/table view carries the CP-23 standard controls — search fields, filters, date presets where dated, sortable columns — via `ListControls`; performance budget stated.
 - [ ] Permissions answered (five RBAC questions); analytics/instrumentation named if required.
 
 ## 17. Edge cases
@@ -92,6 +99,7 @@
 - [ ] Rare-but-critical workflows still findable; interruption/resume survivable.
 
 ## 18. Overall UX quality
+- [ ] The no-manual test: a first-time user completes the primary workflow with no instruction — walked in the scenario dry run.
 - [ ] The craft bar (docs/23 §1) walked feeling-by-feeling with evidence.
 - [ ] The anti-gimmick rule holds: no decoration doing hierarchy's job (docs/23 — what NOT to do).
 - [ ] Grade computed (docs/24 §11) and stated: Basic · Acceptable · Production-ready · High quality · Exceptional.

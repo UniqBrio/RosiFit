@@ -12,6 +12,357 @@
 
 ---
 
+## 1.20.0 — 06-Sep-2026 — MINOR
+
+**Validated parallel build — the only lever that shortens generation.** Aimed deliberately:
+wall-clock in an agent run is dominated by token *generation*, not reading. Writing several
+hundred lines is the slowest single act in a run; file reading is fast prefill and v1.13 already
+trimmed it. Concurrent lanes are therefore the only remaining change that attacks the actual
+bottleneck.
+
+### Added
+- **`scripts/fanout-check.mjs`** (+ `npm run fanout:check`) — validates a parallel-build plan
+  **before any agent is spawned**, which is the cheapest possible moment. It BLOCKS on:
+  a file written by two tasks (the lost-write failure — both agents report success and one's
+  work is gone) · a task reading a file another task is rewriting (the race read) · a task with
+  no declared `contract` or `acceptance` · a duplicate id · an empty or unparseable plan. It
+  WARNS, without blocking, below three tasks, where per-agent context costs more than it saves.
+- **`scripts/fanout-check.test.sh`** — 11 executed cases, wired into `npm run guard:test`.
+  Every block was observed firing and every pass observed passing before commit.
+- **`implementation-builder` agent** (`.claude/agents/` + the `.codex/` twin, descriptions
+  generated identical): builds ONE task inside its declared file lane, implements against
+  declared contracts, and may never write outside `files`, change a declared signature, or run
+  the gate. Verdicts: `DONE` · `BLOCKED` · `CONTRACT-DEFECT`.
+- **Contract-first** is the rule that makes it work: shared signatures are written by the
+  planner *before* any lane starts. Interface drift found at integration costs every lane that
+  built on it; a contract defect found before spawning costs one message.
+- `feature.md` A5 and `docs/01` Stage 5 carry the rule; integration and the gate run **once,
+  centrally**, and a lane that gates alone is testing a half-built tree.
+
+### The limit, stated plainly
+**Fan out the build only.** Design and planning are sequential by nature — each stage constrains
+the next — and a **reviewer cannot run concurrently with the code it reviews**: a reviewer
+reading a half-written file produces findings about code that no longer exists, which is rework
+wearing the costume of speed. Build in parallel; review after. Never at `micro` scale.
+
+### App action required
+**None.** New scripts and a new agent; `guard:test` gains a suite.
+
+---
+
+## 1.19.0 — 06-Sep-2026 — MINOR
+
+**The micro lane — proportional process for the change you make every day.** Owner report:
+even a small correction takes too long. Root cause: the lightest path was `scoped`, which
+still runs a design pass, a QA verdict table, a plan document, an assumptions ledger and a
+spawned reviewer. For "change this label" that is absurd — and it is why a two-minute fix took
+twenty.
+
+The fix is **differentiation by risk, not thinning by default.** The earlier lighter workflow
+was fast because it applied one thin process to everything — fast on small changes, and the
+source of the design gaps this framework was built to close. Three lanes keep both properties.
+
+### Added
+- **`micro` scale** (`docs/01` §Run modes, `enhance.md` **B0**, `bug.md` **C0b**,
+  `feature.md` Step 0). Entry test, all required: **≤2 source files · no schema change · no
+  new screen, route or component · no new dependency · no permission change · no invented
+  user-visible string · not a hotspot file · not CORRECTION ROUND ≥ 2.**
+  It **skips** the impact table, the clarification round, the plan, the design pass and the QA
+  verdict table. It **keeps** every mechanical gate, the diff-traces-to-request rule, the copy
+  freeze, canonical patterns, both-theme and keyboard verification, and all hard stops.
+- **Guard G8** (`scripts/hooks/pre-commit-guard.sh`) — the rung. A commit declaring
+  `SCALE: micro` is checked **against its own diff**: more than two source files, a migration,
+  a newly added component, or a dependency change → BLOCKED, with one instruction: *promote to
+  scoped*. Silent when micro is not claimed; `MICRO-NA:` excuses only this guard.
+  Guard suite grows 10 → **17 executed cases**, seven of them G8: each block observed firing,
+  each pass observed passing.
+- **Mid-run promotion is stated, never silent.** A disqualifier discovered during the run
+  promotes it to scoped and discharges the skipped obligations out loud.
+- **Round ≥ 2 is refused the lane** — a fix that did not hold gets the full "what did the last
+  attempt miss" analysis. Making the second attempt cheaper is how a two-round loop becomes a
+  five-round one.
+- Review matrix gains a micro column: no planner, no parity, no permission pass; `code-reviewer`
+  spawned **only when a shared or exported symbol is touched** — the moment two files acquire a
+  twenty-file blast radius, and the thing an inline reviewer who just wrote the code sees worst.
+- `REQUEST_CHANGE.md` gains a `SCALE` field. Cases FW-MICRO-001..004.
+
+### App action required
+**None** — but note `scripts/hooks/pre-commit-guard.sh` changed. Workspace-mode apps get it
+through the link; standalone apps pick it up on the next `framework:upgrade`.
+
+---
+
+## 1.18.0 — 06-Sep-2026 — MINOR
+
+**CP-24: analytics and dashboards become a reusable module.** Owner directive: every business
+application needs a dashboard, and regenerating one per app is both slow and inconsistent. A
+dashboard is now **configuration, not code** — the largest single block of generated code
+removed from a new-app run.
+
+### Added — `starter/src/lib/analytics/` (pure) + `starter/src/components/analytics/`
+- **Metric model** (`metrics.ts`): `MetricDefinition` (dataSource · aggregation · format ·
+  comparison · target · priority · visualization · breakdown · visibleTo · actions) and the
+  aggregations `count · sum · avg · min · max · distinct · ratio · percentage`.
+- **Four honesty rules, enforced in code and covered by the spec:**
+  **(1) Direction is not sentiment** — `higherIsBetter: false` makes rising expenses, churn,
+  cancellations and outstanding report as *bad*; the arrow says which way, the **word** says
+  whether that is good. **(2) Growth from zero is `null`**, never `+∞%` or a silent `+100%`.
+  **(3) An absent value renders `—`, never `0`** — and suppresses its comparison.
+  **(4) Role-restricted metrics are REMOVED** from the resolved config, not CSS-hidden.
+- **Formatting** (`format.ts`): currency with the lakh/crore ladder *or* K/M/B, percent,
+  compact, duration, dates — locale and convention are options, never literals.
+- **Components:** `MetricCard` (value · comparison · target · sparkline as layers, not five
+  components), `DashboardShell`, `InsightCard`/`InsightList` (insight · exception ·
+  recommendation · goal · alert), `BarChart` (ranking and comparison), `Sparkline`,
+  `ProgressMeter`, `AnalyticsTable` — which **composes CP-23** rather than building a second
+  filter system, and becomes cards below 48rem.
+- **No charting dependency.** Every visual is inline SVG or CSS: nothing to install, nothing to
+  version, and the theme is inherited automatically.
+- **Four domain configs** (`examples.ts`): restaurant · gym · academy · badminton — the standing
+  proof that a new domain is a config, not a component edit.
+- `docs/25-ANALYTICS-AND-DASHBOARDS.md`; CP-24; component-library baseline concern + rows,
+  including **honest GAP rows** for donut/funnel/heatmap/stacked/area/timeline — deliberately
+  unbuilt until an application has a real need. `feature.md` **A3.3c** asks for it at design
+  time. Cases FW-DASH-001..002.
+
+**Fail-first evidence:** ~70 assertions executed against the esbuild-compiled actual libs. The
+role-visibility assertion was **observed failing** and caught a real defect — the academy
+example gated the fee *section* but not the fee *metrics*, leaving them in the instructor's
+resolved config. The config was fixed, not the assertion.
+
+### App action required
+**None.** New seed files; new scaffolds include them, existing apps copy via upgrade or by hand.
+
+---
+
+## 1.17.0 — 05-Sep-2026 — MINOR
+
+**CP-23: every list and table view is searchable, filterable and sortable — by default.**
+Owner standard: a list shipped bare, or with a per-module search box that behaves differently
+from the next screen's, is the inconsistency users stop trusting. The capability is now a
+canonical pattern with a shared implementation, and the design passes ask for it.
+
+### Added
+- **`ListControls`** (`starter/src/components/ListControls.tsx`) + **`useListControls`**
+  (`starter/src/hooks/useListControls.ts`) + the pure **`list-controls.ts`** lib: one search
+  box across the module's key fields (case-insensitive; **phone numbers compared
+  digit-to-digit**, so "98765 43210" finds "+91 98765-43210"); **multi-select contextual
+  filters** (OR within a field, AND across fields); **date presets** — Today · This week ·
+  Last week · This month · Last month · All time · **Custom range** (inline date inputs, no
+  dialog) — computed in local time, Monday weeks by default, inclusive ends; **stable
+  ascending/descending sort** per column (locale for strings, value for numbers and dates,
+  **blanks last in both directions**); the count shown as **matching / total**; one
+  "Clear all". Native inputs and buttons throughout (CP-22); host renders the list and its
+  own empty state.
+- **CP-23** in `CANONICAL_PATTERNS.md`, rung `starter/tests/unit/list-controls.unit.spec.ts`.
+  Fail-first: 40+ assertions executed against the esbuild-compiled actual lib (all passed);
+  a deliberately inverted blanks-last assertion observed failing.
+- **Lists & tables** as a baseline concern in `COMPONENT_LIBRARY.md` §1 (auto-Must-Have in
+  the advisor pass) + the READY row.
+- The design passes ask for it: `feature.md` **A3.3b** (per list: search fields · filter
+  groups · date field · sortable columns), `enhance.md` B4 **Lists** row (seven rows now),
+  `docs/04 §5`, design-QA area 16. Cases FW-LIST-001..002; FW-ENH-002 updated.
+
+### App action required
+**None.** New seed files; new scaffolds include them, existing apps copy via upgrade or by
+hand. Existing bare lists are debt to be closed as each is next touched (Track B's Lists row).
+
+---
+
+## 1.16.0 — 05-Sep-2026 — MINOR
+
+**Codex wiring, committed properly.** The owner had built `.codex/` (a Codex-CLI mirror of
+`.claude/`: eleven agents as TOML, the hook adapter, `hooks.json`) and a root `AGENTS.md`, both
+untracked. Committing them as found would have shipped four defects, so they are fixed first:
+
+### Fixed before committing
+- `.codex/hooks.json` hardcoded an **absolute path on one machine** — now
+  `node .codex/hooks/pre-tool-use-guard.mjs`, relative, like `.claude/settings.json`.
+- `.codex/hooks/adapter.test.sh` tested **`.claude/`'s adapter**, not the `.codex` copy — the
+  Codex adapter had never been executed by anything. It now tests its own copy, and
+  `npm run guard:test` runs it.
+- The ten Codex agent **descriptions still said "PROACTIVELY"** — pre-1.15.0 wording, so Codex
+  would have spawned every reviewer on every run. Synced verbatim to `.claude/agents` (the
+  review matrix applies to both); keep them synced together.
+- Root `AGENTS.md` was a **full copy of `CLAUDE.md` that had already drifted** (it named a
+  `.codex/commands/` folder that does not exist; its runbook list lacked `/request`). It is
+  now a pointer to `CLAUDE.md` — the same convention `new-app.mjs` writes into every app.
+
+### Added
+- `.codex/` and `AGENTS.md` registered in `FRAMEWORK_MANIFEST.md`, `docs/00-OVERVIEW.md`,
+  `docs/21-AGENT-WIRING.md`. Stated honestly: `.codex/` is framework-repo wiring today — not in
+  `HALF_A`, so scaffolds do not yet carry it (a future MINOR if wanted).
+
+### App action required
+**None.** `framework:upgrade` note: that script exists only in a *scaffolded app's*
+`package.json` (written by `new-app.mjs`); it is not a framework-repo command.
+
+---
+
+## 1.15.1 — 05-Sep-2026 — PATCH (seed defect fix — one app action, see below)
+
+**`starter/tsconfig.json` made `tsc` fail in every scaffolded app.** Present since the
+initial commit. The file carried `"//strict": "…"` and `"//paths": "…"` inside
+`compilerOptions` — the `"//key"` comment convention that npm tolerates in `package.json`, but
+which TypeScript rejects: `error TS5025: Unknown compiler option '//strict'` (and `'//paths'`).
+Observed with `tsc --showConfig -p starter/tsconfig.json` before the fix; clean after. The
+consequence in an app: the gate's type step fails on the *config* before checking any source,
+so the type ratchet was never actually running.
+
+### Fixed
+- The three explanatory entries are now real JSONC `//` comments — legal for tsc, Vite,
+  esbuild and Next, and no framework script parses tsconfig as strict JSON. The didactic
+  content is preserved verbatim.
+
+### App action required
+**Yes, one edit:** in your app's `tsconfig.json`, delete the `"//strict"` and `"//paths"`
+lines inside `compilerOptions` (and optionally the top-level `"//exclude"`), or replace them
+with `//` comments. If the file is unmodified since scaffold, `npm run framework:upgrade`
+offers the corrected seed. Then run `npm run gate` — expect the type step to *start reporting*
+real results for the first time; a baseline regenerate (`scripts/hooks/tsc-baseline.sh`) may
+be needed to record the true starting debt.
+
+*Taxonomy note:* PATCH by content (a wording-level config fix), but it carries an action
+because the defect was hiding a gate — stated rather than buried.
+
+---
+
+## 1.15.0 — 05-Sep-2026 — MINOR
+
+**The third speed pass: reviewers spawn by scale, in parallel.** After the waiting (1.9.0)
+and the process weight (1.13.0), the largest remaining sink was the review layer: all eleven
+agents self-described as "use PROACTIVELY", the runbooks never scoped them, so a run could
+spawn up to ten sub-agents **sequentially, each a cold start** re-reading rules, registers and
+files — to review a scoped change the main agent had already analysed inline. The close-out
+checklists (DoD's 33 items, 20 per screen) also still invited prose.
+
+### Added
+- **The review matrix** (`workflows/agents/README.md`): per pass, what a **scoped** run does
+  vs a **full-scale/hotspot** run. Scoped: blast radius, plan, gate run and close-out stay
+  **inline**; `code-reviewer` is spawned always (it built nothing, so it *is* the fresh
+  context); `copy-gate` / `permission` / `parity` reviewers spawn **only when the diff
+  triggers them**; `fresh-context-reviewer` is a full-scale second pass only;
+  `preview-smoke-verifier` remains never optional after merge. **Whatever applies is spawned
+  in ONE message, in parallel** — three reviewers cost the slowest one, not the sum.
+- **Agent descriptions gated to the matrix** (`.claude/agents/*.md`) — the actual lever that
+  stops auto-spawning: "PROACTIVELY" replaced with the matrix condition on ten agents.
+- **Compact close-out output**: DoD as one table (`item · done | N/A: <reason>`, gate-proven
+  items cite the gate); SCREEN_CHECKLIST as one row of 20 symbols per screen. Same close-out,
+  a fraction of the writing.
+- `feature.md` A5, `enhance.md` B6, `docs/21` aligned. Cases FW-SPEED-004..005.
+
+### App action required
+**None** — but note `.claude/agents/*.md` changed; workspace-mode apps carry a copy of
+`.claude/`, which `framework:upgrade` replaces wholesale (it is linked-managed).
+
+### What remains, honestly
+The floor is the build itself and the mechanical gate (`tsc`, the audits, the specs). If a run
+is still slow, the run report's **stage timings** line names the stage — send that line.
+
+---
+
+## 1.14.0 — 05-Sep-2026 — MINOR
+
+**Two contributed components: module access and app customization.** Owner-commissioned from
+a real app's screens, generalized (domain-free) into the reference stack's library — the
+contribute-back loop's first exercise.
+
+### Added
+- **`ModuleAccessPanel`** (`starter/src/components/ModuleAccessPanel.tsx` +
+  `starter/src/lib/module-access.ts`) — grant another member limited access: role preset as
+  a starting point (**reset-to-role, never a merge** — a merge would make "Manager preset"
+  a lie to every access reviewer), per-capability custom switches, **deny-by-default**
+  stated in the UI, confidential capabilities marked with a word never a colour, collapsed
+  sections showing granted/total counts, and an honest save button ("No changes" /
+  "Save N changes" — never silently disabled). Compose inside `Dialog.tsx`; the
+  login-lifecycle buttons beside it (enable/disable login, reset credential) are host-app
+  chrome, destructive ones isolated.
+- **`ModuleCustomizer`** (`starter/src/components/ModuleCustomizer.tsx` +
+  `starter/src/lib/module-customizer.ts`) — the user shapes their own app: per-module
+  enable/disable, **button reorder never drag** (CP-21 reasoning — this edits navigation,
+  where the least confident users end up), `alwaysOn` locks the **toggle not the position**
+  (a worded "Always on" mark, never a dead ghost toggle), children keep their flags across a
+  parent's disable, and position badges ("Main tab 2") count **enabled modules only**.
+- Unit specs for every branch (`starter/tests/unit/module-{access,customizer}.unit.spec.ts`).
+  Fail-first: the assertions were executed against the esbuild-compiled actual libs (20/20
+  passed) and a deliberately inverted alwaysOn assertion was observed failing.
+- Registry rows in `COMPONENT_LIBRARY.md`: Settings gains the customizer, Permissions gains
+  the access editor. All logic is in the pure libs; the components render state, never
+  compute it.
+
+### App action required
+**None.** New seed files — new scaffolds include them; existing apps copy them via upgrade
+or by hand when needed.
+
+---
+
+## 1.13.0 — 05-Sep-2026 — MINOR
+
+**The second speed release: the process weight itself was the bottleneck.** After 1.9.0
+removed the waiting, runs were still slow. Measured root cause: the design releases stacked
+~1,700+ lines of process documents into Track A's orbit and ~130 checklist items into a run —
+and a faithful agent was (a) reading the whole library up front, and (b) hand-writing
+evidence per bullet item, much of it re-verifying what the mechanical audits already prove.
+The obligations were right; the reading and writing they induced were not.
+
+### Added — the three budgets (`docs/01` §Run modes, `feature.md` Step 0)
+- **Reading budget.** A run READS its runbook, the project rules, and the touched modules'
+  registers — once each. Every other process document (docs/23, docs/24, 04, 13, checklists)
+  is **lookup material**: opened at the section a stage names, never front-loaded. The
+  process documents describe the work; reading all of them is not the work.
+- **Evidence budget.** ONE verdict per checklist area (or screen) with ONE evidence line;
+  bullet items are prompts for the reviewer's eye, not paperwork. **Never hand-verify what a
+  mechanical audit already checks** — cite the audit ("theme:contrast PASS") as the evidence.
+  Design QA scoped runs cover the core six areas (1 · 5 · 7 · 10 · 15 · 18) plus touched
+  areas; untouched areas are one line each. Full scale still runs all 18.
+- **Writing budget.** Scoped `RUN_<feature>.md` ≤ ~150 lines; ledger entries one line; the
+  QA table 18 lines + grade.
+- **Stage timings** in the run report (ground · plan · build · verify · gate, minutes each) —
+  the next slow run is diagnosed from data, not feeling. Cases FW-SPEED-001..003.
+
+### App action required
+**None.** No check was removed — what shrank is reading the library and writing essays about
+what a script already proved.
+
+---
+
+## 1.12.0 — 05-Sep-2026 — MINOR
+
+**Requirements that drive design.** Root cause of the requirement→UI gap: prose requirements
+carry the *what* but not the facts a simple UI is built from — frequency, priority,
+essential-vs-optional, automatable-vs-manual. Fed prose, the design stage had nothing to
+subtract with, so it added: extra screens, extra fields, extra navigation. The correction is
+a structured, machine-interpretable requirement layer plus mechanical translation rules, so
+the conversion never depends on individual interpretation.
+
+### Added
+- **`REQUEST_NEW.md` §USAGE PROFILE** — the structured half of the requirement: primary
+  objective · primary workflow · frequency of use · operating environment · essential vs
+  optional information · frequent vs occasional actions · automate vs must-stay-manual.
+  Intake fills it from the customer's words only; every `unknown` becomes a Gate 1 question
+  (new mandatory usage-profile section in `GATE1_QUESTIONS.md`, asked with recommendations —
+  never invented). `REQUEST_CHANGE.md` gains a one-line USAGE field.
+- **`docs/24` §3b — the translation table**: requirement facts → forced UI decisions.
+  Frequent/essential → primary screen, one interaction, early Tab order; occasional/optional →
+  progressive disclosure, *never a separate screen just because the information exists*;
+  automatable → the field is **eliminated**, the outcome shown with an override;
+  must-stay-manual → an explicit visible decision; operating environment → density, targets,
+  keyboard model.
+- **`docs/24` §3c — the subtraction pass**, run per screen with recorded evidence: *does the
+  user really need to see this? really need to do this? can it take fewer steps?* Complexity
+  is never justified by "technically possible" or "other apps have it". New A3.1b executes
+  it in Track A; the Track B correction design pass gains a Subtraction row (six rows now).
+- **The no-manual bar**, stated in docs/23 and tested in design QA area 18: a first-time
+  user completes the primary workflow with no instruction — simplicity as the selling point.
+- Design-QA hooks: area 14 checks the usage-profile translation held; area 15 demands the
+  subtraction evidence. Cases FW-REQ-001..003; FW-ENH-002 updated.
+
+### App action required
+**None.** Old-format request files keep working — a missing USAGE PROFILE simply means Gate 1
+asks those questions.
+
+---
+
 ## 1.11.0 — 05-Sep-2026 — MINOR
 
 **The component library: discover → reuse → build the missing piece → register → reuse.**

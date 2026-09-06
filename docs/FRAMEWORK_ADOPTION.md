@@ -13,6 +13,83 @@ current; adopt a **MAJOR** within one quarter.
 
 ---
 
+## v1.20.0 — adopted 06-Sep-2026 (from: v1.11.0, via 1.12 · 1.13 · 1.14 · 1.15 · 1.15.1 · 1.16 · 1.17 · 1.18 · 1.19)
+
+### What kind of adoption this is
+
+**Half A (PROCESS) only, by hand** — the same method as every pass since v1.6.0. Every process
+file changed upstream was compared against framework **v1.11.0** first; only files still
+**byte-identical** to it were replaced with their **v1.20.0** version.
+
+**Scope held: nothing under `app/`, `src/`, `supabase/`, `assets/`, `db/`, `design/` or
+`.harness/` was touched.** Asserted mechanically from `git status`, not by inspection.
+
+### Auto-applied — pristine in RosiFit, changed upstream (35)
+
+Ten `.claude/agents/*.md` (descriptions gated to the 1.15.0 review matrix) ·
+`FRAMEWORK_MANIFEST.md` · `README.md` · `UPGRADES.md` · `VERSION` ·
+`checklists/DEFINITION_OF_DONE.md` · `checklists/DESIGN_QUALITY_CHECKLIST.md` ·
+`checklists/SCREEN_CHECKLIST.md` · `docs/00` · `docs/01` · `docs/04` · `docs/21` · `docs/23` ·
+`docs/24` · `docs/registers/COMPONENT_LIBRARY.md` (pristine since v1.11.0; §1 gains
+Lists & tables and Analytics as baseline concerns) · **`scripts/hooks/pre-commit-guard.sh`** ·
+**`scripts/hooks/guard-reachability.test.sh`** · `templates/gates/GATE1_QUESTIONS.md` ·
+`templates/requests/REQUEST_CHANGE.md` · `templates/requests/REQUEST_NEW.md` ·
+`tests/cases/FRAMEWORK_PROCESS_CASES.md` · `workflows/agents/README.md` · `workflows/bug.md` ·
+`workflows/enhance.md` · `workflows/feature.md` · `workflows/request.md`
+
+### Added — new since v1.11.0 (4)
+
+`.claude/agents/implementation-builder.md` (1.20.0, the parallel-build agent) ·
+`docs/25-ANALYTICS-AND-DASHBOARDS.md` (1.18.0) · `scripts/fanout-check.mjs` +
+`scripts/fanout-check.test.sh` (1.20.0, the parallel-plan validator and its executed cases).
+
+### Skipped, with the reason (6 groups)
+
+| File(s) | Why |
+|---|---|
+| `.codex/` (12 agent TOMLs, hook adapter, `hooks.json`) | `FRAMEWORK_MANIFEST.md` says it plainly: *framework-repo wiring today, not yet in `HALF_A`, so scaffolds do not carry it*. RosiFit does not run Codex; adding a second hook adapter nobody executes is a dead gate |
+| `AGENTS.md` | A pointer to `CLAUDE.md` that also points at `.codex/`, which RosiFit does not have. Expected-divergent path. Adding it is a one-line owner decision once Codex is in use here |
+| `CHANGELOG.md` | RosiFit's own changelog |
+| `docs/registers/CANONICAL_PATTERNS.md` | Upstream adds **CP-23** (every list searchable / filterable / sortable) and **CP-24** (analytics as a module). RosiFit's register superseded the framework rows at adoption (ADR 002) and numbers its own; both rungs point at `starter/` specs RosiFit does not have. RosiFit-numbered equivalents are a `/promote`-style owner decision |
+| `package.json` | RosiFit's own. Upstream wires `fanout:check` and adds `fanout-check.test.sh` + `.codex/hooks/adapter.test.sh` to `guard:test`. **Not wired here** — see Known gap below |
+| `starter/` (24 files: ListControls, ModuleAccessPanel, ModuleCustomizer, the analytics module, their specs, `tsconfig.json`) | Half B seed. RosiFit has no `starter/`; a component wanted here is copied deliberately, by a `/request`, not by an upgrade |
+
+`CLAUDE.md` (expected-divergent) gained only the version reference.
+
+### App action required — checked one by one
+
+- **1.15.1 (PATCH, the only listed app action):** delete `"//strict"` / `"//paths"` keys from
+  the app's `tsconfig.json`. **N/A** — RosiFit's `tsconfig.json` is its own (extends
+  `expo/tsconfig.base`) and contains neither key (grep count 0).
+- **1.19.0 — `pre-commit-guard.sh` changed:** guard **G8** verifies a `SCALE: micro` claim
+  against the diff (≤ 2 source files, no migration, no new component, no `package.json`).
+  **Opt-in by claim** — a commit that does not say `SCALE: micro` is untouched. Carried, and
+  proven to fire here (below).
+- **1.15.0 — `.claude/agents/*.md` changed:** carried; RosiFit runs the copied wiring.
+- Every other release: none.
+
+### Verification — executed, not read
+
+- `bash scripts/hooks/guard-reachability.test.sh` — **17 passed, 0 failed**, including all
+  seven G8 cases (blocks 3 files / schema / new component / dependency; passes 2 files + test
+  + doc; `MICRO-NA:` releases; silent when not claimed). Run inside this repository.
+- `bash scripts/fanout-check.test.sh` — **11 passed, 0 failed.**
+- `node scripts/audits/check-rule-coverage.mjs` — OK, 1 known violation, none new (unchanged).
+- `node scripts/audits/check-dead-weight.mjs` — OK, clean gate; the two new scripts are
+  referenced (by each other and by `workflows/feature.md`), so nothing was flagged.
+- `npm run check` — **not run**: `node_modules/` absent in the adopting session; nothing under
+  `src/` or `app/` changed, so its inputs are identical to before this pass.
+
+### Known gap in this adoption
+
+**`fanout-check.test.sh` passes but is not yet in `npm run guard:test`.** Wiring it is one
+edit to `package.json` — an app-owned file this pass was told not to touch. Until the owner
+adds `&& bash scripts/fanout-check.test.sh` to `guard:test` (and optionally
+`"fanout:check": "node scripts/fanout-check.mjs"`), the suite runs only by hand. Recorded here
+so it is a decision, not an oversight.
+
+---
+
 ## v1.11.0 — adopted 05-Sep-2026 (from: v1.7.0, via 1.8.0 · 1.9.0 · 1.10.0)
 
 ### What kind of adoption this is

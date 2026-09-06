@@ -112,14 +112,46 @@ safety floor · outbound sends · production · and a genuine fork where both re
 defensible, expensive, and costly to undo. Everything else is a recommendation taken and
 recorded, reviewable after the fact.
 
-**Proportional ceremony.** The run also declares its **scale** at Step 0. A **scoped**
-feature (roughly: ≤5 files, no schema change beyond additive columns, no new navigation area,
-no new shared component) produces ONE combined run document — assumptions, requirements
+**Proportional ceremony.** The run declares its **scale** at Step 0, and the scale decides how
+much process the change carries. Three lanes:
+
+| Scale | Entry test (ALL must hold) | What it runs |
+|---|---|---|
+| **micro** | ≤2 source files · no schema change · no new screen, route or component · no new dependency · no permission change · no invented user-visible string · not a hotspot file · **not correction round ≥ 2** | Read the file → change it → verify → gate. No design pass, no QA verdict table, no run document, no advisor pass, no spawned reviewer unless a shared symbol is touched. |
+| **scoped** | ≤5 files · no schema change beyond additive columns · no new navigation area · no new shared component | ONE combined `RUN_<feature>.md`, the core-six QA areas, `code-reviewer` spawned |
+| **full** | anything else | Every artifact, all 18 QA areas, the full review matrix |
+
+**The micro lane is verified, not trusted.** A commit declaring `SCALE: micro` is checked
+against its own diff by guard **G8** (`scripts/hooks/pre-commit-guard.sh`): more than two
+source files, a migration, a new component or a dependency change and the commit is BLOCKED
+with one instruction — *promote to scoped*. A lane that can be claimed for anything is not a
+lane, it is a global bypass with a friendlier name.
+
+**Promotion is one-way and immediate.** If a disqualifier is discovered mid-run — the fix needs
+a third file, a schema change, a new string nobody approved — the run says so out loud and
+**promotes to scoped**, discharging the obligations it had skipped. Shrinking the process to
+fit the label is the failure this lane exists to make impossible.
+
+**Why round ≥ 2 is disqualified.** A correction that did not hold is exactly where a thin
+process failed once already; the second attempt must read the first and state what it missed
+(Track B, B1). Making that cheaper is how a two-round loop becomes a five-round one.
+
+A **scoped** feature produces ONE combined run document — assumptions, requirements
 deltas, design essentials, plan, and the QA verdicts for touched areas — instead of four
 separate gate artifacts, and skips the feasibility brief unless build-vs-buy is a real
 question. A **full**-scale feature keeps every artifact. The obligations are identical; only
 the packaging and the prose shrink. This is the difference between a five-minute run and a
 forty-minute one, and none of it touches what is checked.
+
+**The three budgets (added 05-Sep-2026 after process weight itself became the bottleneck):**
+a run **reads** its runbook, the project rules, and the touched modules' registers — once;
+every other process document is opened at the section a stage names, never front-loaded. A
+run **writes** one verdict per checklist area or screen with one evidence line — bullet items
+are prompts, not paperwork — and **never hand-verifies what a mechanical audit already
+checks**: the audit's result is the evidence. Scoped artifacts carry line budgets
+(`RUN_<feature>.md` ≤ ~150 lines). The run report's **stage timings** make the next slow run
+attributable from data. The checks are unchanged; what shrank is reading the library and
+writing essays about what a script already proved.
 
 Not every track runs every gate. A one-line bug fix runs stages 0, 5, 6, 7 — and it still
 runs stage 6, because a one-line change is exactly the size of change that ships regressions.
@@ -225,7 +257,18 @@ The plan is the last cheap place to be wrong. It contains:
 Auto mode: the plan is logged and the build starts immediately; destructive migrations and
 capability removals are hard stops.
 
-### Stage 5 — Build + close-out
+### Stage 5 — Build
+
+**Parallel where the plan proves it is safe.** Generation is the slowest part of any run and the
+only part parallel agents genuinely shorten. A plan with **3+ independent tasks** is serialised
+to `fanout.json`, validated by `node scripts/fanout-check.mjs` (which BLOCKS on a file written by
+two tasks, a task reading a file another is rewriting, or a task with no declared contract or
+acceptance), and then built by one `implementation-builder` per lane, all spawned in one message.
+Contracts are written by the planner **before** any lane starts; lanes implement against them,
+never against each other's in-progress code. Integration and the gate happen once, centrally.
+Below three tasks, or at `micro` scale, build inline — the per-agent context costs more than it
+saves.
+ + close-out
 
 Implement to the plan. Minimum change for the ask; no drive-by refactors; state assumptions
 before acting rather than silently picking one interpretation.

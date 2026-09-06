@@ -1,6 +1,6 @@
 # Review Agents
 
-> Eleven narrow reviewers, each with a scope, a boundary, and a machine-readable verdict.
+> Eleven narrow reviewers and one builder, each with a scope, a boundary, and a machine-readable verdict.
 >
 > Use them as sub-agent definitions for a coding agent, as role descriptions for human
 > reviewers, or as a checklist of *review passes* a change needs. The value is the same either
@@ -40,19 +40,56 @@ Each agent below is specifically looking for one thing.
 | **preview-smoke-verifier** | After merge, before handoff | **The only stage that opens the running application.** Scripted journeys against the deployed preview | Substitute a local build when there is no preview URL — that is BLOCKED |
 | **fresh-context-reviewer** | After the primary review loop reports clean | The change with **no memory of building it** — extends the previous reviewer no trust and re-derives the verdict. Self-review has a blind spot that no amount of re-checking removes: a reviewer who has already accepted a premise keeps accepting it | Close the run. It reports; someone else decides |
 | *(gate step G10, mechanical)* | Every framework change | Live conformance vs `fixtures/expected-verdicts.json` — no fixture may go green → red | It is a script (`check-backward-compat.mjs`), not an agent: machines prove, agents judge |
+| **implementation-builder** | Build stage, one per task, only on a validated 3+ task fan-out plan | Implements ONE task inside its declared file lane, against declared contracts | Write outside its `files`, change a declared signature, or run the gate. It reports `DONE` / `BLOCKED` / `CONTRACT-DEFECT` and stops |
 | **post-release-monitor** | Deploy +1h, +24h | Groups production errors by **signature**, diffs against the pre-deploy window, checks for silent failures (jobs stopped, queues stalled, sends not sending) | Invent causation. Map a signature to the release only where the link is defensible |
 
 ---
 
+## Which passes a change needs — the review matrix (added 05-Sep-2026)
+
+Every spawned agent is a **cold start**: it re-reads the rules, the registers and the files
+before it can say anything. Ten sequential cold starts per feature was the largest remaining
+time sink after the process budgets — and most of them were reviewing a scoped change the
+main agent had already analysed inline. Spawn by scale, never by habit:
+
+| Pass | Micro run (≤2 files, no schema) | Scoped run (≤5 files, additive schema) | Full-scale / hotspot run |
+|---|---|---|---|
+| blast-radius-explorer | **Inline**, and small | **Inline** — the main agent does B2/A4's impact table itself | Spawn |
+| implementation-planner | **Not run** — there is no plan to write | **Inline** — the plan is a section of `RUN_<feature>.md` | Spawn |
+| parity-gate-checker | **Not run** — a schema change disqualifies micro | Only if the **schema** changed | Spawn if data is touched |
+| code-reviewer | **Only when a shared/exported symbol is touched** — that is where two files become twenty | **Spawn — always.** It has no memory of building the change, so for a scoped run it IS the fresh context | Spawn |
+| copy-gate-reviewer | Only if a **visible string** changed | Only if a **visible string** was added or altered | Same rule |
+| permission-reviewer | **Not run** — a permission change disqualifies micro | Only if **roles, policies or tenant data** were touched | Same rule |
+| fresh-context-reviewer | Not spawned | Not spawned — the spawned code-reviewer already satisfies it | Spawn, as a second pass after code-reviewer reports clean |
+| test-gate-runner | **Inline** — `npm run gate`, read the verdict | **Inline** — the main agent runs `npm run gate` and reads the verdict | Spawn when the exit codes need independent interpretation |
+| close-out-auditor | **Inline** | **Inline** — the DoD table is the close-out | Spawn |
+| preview-smoke-verifier | **After merge when the change is user-visible**; a non-visual micro change states N/A with its reason | **Spawn — always**, after merge: the only stage that opens the running app | Same |
+| post-release-monitor | Production only, unchanged | Production only, unchanged | Same |
+
+**Whatever applies, spawn it in ONE message, in parallel** — never one reviewer after another.
+Their boundaries are disjoint by design, so nothing is lost by running them together, and the
+wall-clock cost of three reviewers becomes the cost of the slowest one.
+
+**The same logic applies to BUILDING, with one hard limit.** `implementation-builder` lanes run
+concurrently when the plan has 3+ independent tasks and `scripts/fanout-check.mjs` passes — that
+is the only place in the run where generation, the slowest part, happens in parallel. But a
+**reviewer still cannot run concurrently with the code it reviews**: a reviewer reading a
+half-written file produces findings about code that no longer exists, which is rework wearing
+the costume of speed. Build in parallel; review after.
+
 ## Using them
 
 **With a coding agent** — one file per agent under your agent directory, each with its scope,
-its boundary, and its verdict format. Invoke the ones a change actually needs.
+its boundary, and its verdict format. Invoke the ones the **matrix above** selects — the
+descriptions in `.claude/agents/*.md` are gated to it, so a scoped change is not reviewed ten
+times by ten cold contexts.
 
 **Without one** — read the row as a review pass, and run the passes that apply. A UI-only change
 needs the code, copy and preview passes; a schema change needs blast radius, parity and
 permissions.
 
-**Two that are not optional:** `fresh-context-reviewer` and `preview-smoke-verifier`. Static gates prove *consistency* —
+**One that is never optional:** `preview-smoke-verifier`. Static gates prove *consistency* —
 that the code agrees with itself. Only opening the running application proves it *works*. Every
-defect that reaches a user was, by definition, runtime-visible.
+defect that reaches a user was, by definition, runtime-visible. (`fresh-context-reviewer` is
+mandatory at full scale; for a scoped run the spawned `code-reviewer`, which built nothing, is
+the fresh context by construction — a second one reviews the same diff with the same eyes.)
