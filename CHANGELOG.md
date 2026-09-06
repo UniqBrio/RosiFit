@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased — A new member needs an email address
+
+**Add Member now asks for her email address.** Until now a member could be added with her
+name alone, and the form said so under its buttons. She would then sit on the register
+counted as *excluded from every send* — the academy had nobody to write to. The Email
+addresses row on **Welcome a new member** now carries the same red mark as her name, course
+and branch, the note under it says she cannot be added without one, and **Add Member** stays
+disabled until an address is on the form. This is the rule the member file already follows.
+
+**Editing a member is unchanged.** A member who was created by an attendance upload has no
+address on file, and she can still be renamed, moved to another course or marked inactive
+without one — the form goes on saying she is excluded from sends until an address is added.
+
 ## Unreleased — Staff sign in to the app they actually have
 
 **A staff account no longer sees Overview.** Signing in as staff now lands on **Attendance**,

@@ -64,9 +64,14 @@ const STATUS_CHOICES: { value: MemberStatus; label: string; icon: string; meanin
  * the only way out in the chrome, so "Add Member" from a course looked like
  * navigation away from the course rather than a decision taken over it.
  *
- * C-70/C-73: her name is the only required field. No phone number is held for
- * members -- it was never used to identify anyone. Aliases are what the Meet
- * CSV matches on; emails are several with exactly one primary.
+ * C-70/C-73: no phone number is held for members -- it was never used to
+ * identify anyone. Aliases are what the Meet CSV matches on; emails are
+ * several with exactly one primary. On the ADD form an address is required
+ * (06-Sep-2026, the same rule the member file already enforces): a member
+ * with no address cannot be written to, and this is the form that creates
+ * her. The EDIT form keeps her name as the only field of hers it needs -- a
+ * member the attendance import created (C-76) has no address, and she must
+ * still be renamed, moved or marked inactive without one being invented.
  */
 export default function MemberEdit() {
   const { theme } = useTheme();
@@ -181,11 +186,16 @@ export default function MemberEdit() {
 
   const ink = (k: keyof typeof STATUS) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
 
-  // Her name is the only field SHE needs (C-70/C-73), but a member with no
-  // offering cannot be enrolled, and an unenrolled member is expected at no
-  // session and appears in no follow-up list -- so the offering is required
-  // by the save, and the form says which piece is missing.
-  const valid = name.trim().length > 0 && !!offering;
+  // Her name and, on the Add form, an address are the fields of HERS the save
+  // needs (C-70/C-73; requests/2026-09-06-add-member-email-required.md). A
+  // member with no offering cannot be enrolled, and an unenrolled member is
+  // expected at no session and appears in no follow-up list -- so the
+  // offering is required too, and the form says which piece is missing.
+  //
+  // Decided by the ROUTE, like Add-vs-Edit itself (RC-021): `editing` is the
+  // id in the URL, so the rule cannot flicker while her record is fetched.
+  const emailRequired = !editing;
+  const valid = name.trim().length > 0 && !!offering && (!emailRequired || emails.length > 0);
 
   /**
    * What her record HOLDS, in the two words this form offers.
@@ -364,9 +374,10 @@ export default function MemberEdit() {
 
   /** The one line under the footer: what is missing, or what will be saved. */
   const hint = !name.trim()
-      ? 'Her name is all that is required'
+      ? (emailRequired ? 'Her name and an email address are required' : 'Her name is all that is required')
       : !course ? 'Choose the course she joins'
       : !offering ? `Choose the branch — ${course} runs at ${branchOptions.length || 'no'} of them`
+      : emailRequired && !emails.length ? 'Add her email address — follow-ups are sent there'
       : `${course} · ${branch}${emails.length ? '' : ' · no email, she will be excluded from sends'}`;
 
   return (
@@ -540,7 +551,7 @@ export default function MemberEdit() {
         placeholder="e.g. Anitha R" onAdd={addAlias} />
 
       {/* -------------------------------------------------- emails (C-73) */}
-      <Label style={{ marginTop: SPACE.xl }}>Email addresses</Label>
+      <Label required={emailRequired} style={{ marginTop: SPACE.xl }}>Email addresses</Label>
       <View style={{ gap: SPACE.sm, marginTop: SPACE.md }}>
         {emails.map(e => (
           <View key={e.address} style={{
@@ -589,7 +600,9 @@ export default function MemberEdit() {
         <Muted style={{ flex: 1 }}>
           {emails.length
             ? 'Follow-up emails go to the primary address only.'
-            : 'With no address she is listed and counted as excluded from every send — never quietly dropped.'}
+            : emailRequired
+              ? 'Add her email address — it is where every follow-up is sent, and she cannot be added without one.'
+              : 'With no address she is listed and counted as excluded from every send — never quietly dropped.'}
         </Muted>
       </View>
 
