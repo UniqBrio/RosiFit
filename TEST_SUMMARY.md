@@ -1,4 +1,95 @@
 
+<!-- The four FAILs and the one BLOCKED below are the SAME four and one this
+     repo has carried since 02-Sep-2026, and every one of them is a missing
+     runner, not a failing check: G1/G2/G3 want `design/tokens.json`, which
+     RosiFit does not have because colour lives in `src/theme/tokens.ts`
+     (ADR 001, TD-001..TD-003); G6 wants eslint, which is not installed
+     (TD-004); G8 wants a `test:functional` script, which does not exist
+     (TD-006). The substitute rungs ran green for this change:
+     `npm run check` -- typecheck clean, 542/542 unit, 2840/2840 contrast
+     pairs, 75/75 icons -- plus `audit:colors` and `audit:testids`, no new
+     violations. Recorded as a verdict, not passed off as one. -->
+
+## Gate run - 2026-09-06 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-06 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
 ## Gate run - 2026-09-06 - VERDICT: FAIL
 
 Steps: 6 pass, 4 fail, 1 blocked.
@@ -187,6 +278,42 @@ limit, not a pass - see .evidence/course-wording-bounds.txt section 3.
 
 Registry delta, verified against the files: `src/data/message.test.ts` 25 -> 35
 (+10), `src/data/courseWordingGate.test.ts` new at 5. Suite 501 -> 516.
+
+---
+
+### Fail-first - src/components/pickerSearch.test.ts (new this run)
+
+Three injected defects, each reverted; the clean module is 9/9 green before and after.
+Injections 1 and 2 are not invented defects - each restores the expression that actually
+shipped. Full transcript in `.evidence/picker-search-and-key.txt`.
+
+```
+FAIL-FIRST: src/components/pickerSearch.test.ts - `pickerMatches` ignores `option.search`,
+which is the shipped label-only filter. Produced: not ok 2 - an email address matches,
+which is the whole ask; not ok 3 - the address is what tells two same-named members apart;
+not ok 4 - case and surrounding space do not decide the answer. 6/9.
+
+FAIL-FIRST: src/components/pickerSearch.test.ts - `pickerKey` returns `option.label`, which
+is the shipped `key={o.label}` (RC-024). Produced: not ok 7 - two members sharing a name are
+two different rows; not ok 8 - a row keyed by its member id does not move when the list is
+filtered; not ok 9 - labels with no identity of their own still key uniquely. 6/9.
+
+FAIL-FIRST: src/components/pickerSearch.test.ts - the `q === ''` early return removed.
+Produced NOTHING: 9/9 still green. `label.includes('')` is true for every row, so the suite
+cannot distinguish the guarded version from the unguarded one. Recorded as the honest limit
+of that test's reach - the guard is kept for intent, not for behaviour.
+```
+
+NOT OBSERVED FAILING: the picker rendered in a browser, either theme. No browser driver in
+this project and adding one for a correction is an unrequested dependency. The row's new
+second line reuses the token pair the row's meta text already uses on the same surface, so
+it adds no new pair for check-contrast to measure. Stated as a limit, not a pass -
+see `.evidence/picker-search-and-key.txt` section 4.
+
+Registry delta, verified against the files: `src/components/pickerSearch.test.ts` new at 9.
+Suite 528 -> 537 at the moment this change was measured. The total has since read 542: a
+concurrent session is working in this same tree and added its own cases. The delta this change
+owns is +9, and that is the number verified against the file.
 
 ---
 

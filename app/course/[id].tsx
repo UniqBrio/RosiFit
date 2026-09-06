@@ -8,7 +8,7 @@ import { DropdownRow, DropdownField, DropdownPanel, DropdownList } from '../../s
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, STATUS, statusSurface, type StatusKey } from '../../src/theme/tokens';
-import { DAY_NAMES, ruleSentence, AVATAR_TINTS, initials, type Member, type MemberStatus } from '../../src/data/mock';
+import { DAY_NAMES, ruleSentence, AVATAR_TINTS, initials, primaryEmail, type Member, type MemberStatus } from '../../src/data/mock';
 import { useCourses, useFollowUp, useAttendance } from '../../src/data/hooks';
 import { weekStart, iso, label as periodLabel } from '../../src/data/period';
 import { setMemberStatus, mergeMemberInto, dataSource } from '../../src/data/repository';
@@ -915,10 +915,27 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers }:
         onClose={() => setLinking(false)}
         placement="top"
         title={`Who is “${member.name}”?`}
-        placeholder="Search by name"
+        placeholder="Search by name or email"
+        /* THE ADDRESS IS ON THE ROW, not only in the query. The register holds
+           two live members called "Kavitha Ramesh"; on a name alone these were
+           two identical rows over an irreversible merge. `search` carries
+           EVERY address she holds, so an old address on a spreadsheet still
+           finds her, while the row prints the primary one -- the same address
+           the roster card and the send list print for her. */
         options={allMembers
           .filter(m => m.id !== member.id)
-          .map(m => ({ label: m.name, meta: `${m.course} · ${m.branch}`, value: m.id }))}
+          .map(m => ({
+            label: m.name,
+            /* C-76's own words, the ones this screen already prints two cards
+               up: a member with no address is NAMED, never silently blank. A
+               blank line here reads as "still loading", and two same-named
+               members with no address between them would be two identical
+               rows again -- which is the defect this picker was opened for. */
+            sub: primaryEmail(m) || 'No email on file',
+            search: m.emails.map(e => e.address).join(' '),
+            meta: `${m.course} · ${m.branch}`,
+            value: m.id,
+          }))}
         confirmLabel="Add as display name"
         busy={linkingSave}
         /* WHAT IT WILL DO, naming both halves. The attendance move is the

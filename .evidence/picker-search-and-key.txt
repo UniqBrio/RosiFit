@@ -1,0 +1,78 @@
+Evidence — requests/2026-09-07-merge-picker-search-by-email.md
+The merge picker: search by email, and RC-024 (two members, one React key).
+
+Machine: Windows 11, node --test via tsx. The .harness/*.mjs route checks are
+Linux-only on this machine, so the browser-level pass below is stated as a LIMIT,
+not claimed as a result.
+
+SECTION 1 — the register the fix is written against (live project, read-only)
+--------------------------------------------------------------------------
+select id, member_code, full_name, status, deleted_at, ... where full_name ilike '%kavitha%'
+
+  79e79f0d-e58f-40c7-a9c1-3db788f2588f  RF-000105  Kavitha Ramesh  active  null
+     enrolment: Zumba Basics · Anna Nagar, status 'ended'
+     email:     kavitha+rf-000105@example.com
+  b498f05e-bd7a-4a86-abbf-fd39bc3afacf  RF-000106  Kavitha Ramesh  active  null
+     enrolment: Yoga Flow · Velachery, status 'ended'
+     email:     kavitha+rf-000106@example.com
+
+  members_live 21 · no_active_enrol 10 · enrol_rows 21 · statuses {active, ended}
+
+Two different people sharing a name, told apart by nothing but an address. Both
+absent from every course roster because fetchMembers reads enrolments with
+.eq('status','active') (repository.ts:126) and an ENDED enrolment leaves
+course/branch as '—' (repository.ts:191-192), which no roster filter matches
+(app/course/[id].tsx:132). The picker offers the UNFILTERED list, deliberately.
+
+SECTION 2 — fail-first, src/components/pickerSearch.test.ts (new this run)
+--------------------------------------------------------------------------
+Three injected defects, each reverted; clean module 9/9 green before and after.
+Injections 1 and 2 are not inventions — each restores the expression that
+actually shipped.
+
+=== INJECTION 1 - pickerMatches ignores option.search (the shipped label-only filter) ===
+not ok 2 - an email address matches, which is the whole ask
+not ok 3 - the address is what tells two same-named members apart
+not ok 4 - case and surrounding space do not decide the answer
+# pass 6
+# fail 3
+
+=== INJECTION 2 - pickerKey returns the label (the shipped key expression, RC-024) ===
+not ok 7 - two members sharing a name are two different rows
+not ok 8 - a row keyed by its member id does not move when the list is filtered
+not ok 9 - labels with no identity of their own still key uniquely
+# pass 6
+# fail 3
+
+=== INJECTION 3 - an empty query stops matching everything ===
+# pass 9
+# fail 0
+
+=== REVERTED ===
+# pass 9
+# fail 0
+
+HONEST NEGATIVE — injection 3 changed nothing. Removing the `q === ''` early
+return leaves `label.includes('')`, which is true for every row, so the suite
+cannot tell the guarded version from the unguarded one. The guard is kept for
+intent, not for behaviour, and no test claims otherwise.
+
+SECTION 3 — gates
+--------------------------------------------------------------------------
+npm run check      typecheck clean · 537/537 unit · 2840/2840 contrast · 75/75 icons
+npm run audit:colors    OK, 7 + 8 known violations, none new
+npm run audit:testids   OK, 6 + 10 known violations, none new
+
+SECTION 4 — what was NOT observed
+--------------------------------------------------------------------------
+NOT OBSERVED: the picker rendered in a browser, either theme. No browser driver
+is installed in this project and adding one for a correction is an unrequested
+dependency (CLAUDE.md: verify every dependency before installing). The row's new
+second line reuses the token pair the row's existing meta text already uses on
+the same surface -- theme.muted at 11.5 on theme.surface2 / theme.control -- so
+it introduces no new colour pair for check-contrast to measure. Stated as a
+limit, not a pass.
+
+NOT OBSERVED: the merge itself succeeding against production. public.merge_member_into
+does not exist there (0032 unapplied); the same is true of public.set_member_status
+(0031). Verified against pg_proc, not inferred from the migration ledger.

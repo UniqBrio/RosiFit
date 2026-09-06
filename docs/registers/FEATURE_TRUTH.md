@@ -351,6 +351,21 @@ stored templates may use it, and it is the academy's choice.
 It matched on the display label, which was unique only because it contained the code; without it,
 two members sharing a name would both have matched the first — linking an attendance row to the
 wrong person, silently.
+
+**The same label was still the React KEY until 07-Sep-2026 (RC-024).** The note above fixed the
+selection path and left the render path keyed on the name, so the academy's two Kavitha Rameshes
+were two children with one key: rows the query did not match stayed on screen, and one member's
+label was painted over another's props. Rows are keyed by `pickerKey` — her id, or `label#index`
+where there is no id — at BOTH call sites. A note is not a guard.
+
+**And the merge picker now shows her email address and searches by it.** The row prints her
+primary address under her name (`PickerOption.sub`, ellipsized in the MIDDLE so two addresses
+that differ just before the `@` stay different at phone width), or `No email on file` when she
+has none (C-76: named, never silently blank). The query matches EVERY address she holds, not
+only the printed one, so an old address off a spreadsheet still finds her — the placeholder says
+*Search by name or email*, the same words the roster box on the same screen uses. No other
+picker passes `sub` or `search`, so course, branch, role and question pickers are untouched.
+`requests/2026-09-07-merge-picker-search-by-email.md`.
 ---
 
 ### Sessions — `(tabs)/sessions` · `holiday` · `upload`

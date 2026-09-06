@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased — Who is she: the picker shows her address, searches by it, and stops mixing two people up
+
+**The *Who is "…"?* list now prints each member's email address under her name, and finds her by
+it.** Type a name as before, or type any address she holds — including an old one the list does
+not show — and the box narrows to her. The box says *Search by name or email*, the same words
+the roster search on this screen already uses.
+
+**This is the list that could not tell two people apart.** The academy has two members called
+Kavitha Ramesh. On a name alone they were two identical rows, and the button under them merges
+one member into another: her classes move and her record is retired. Their addresses are on the
+rows now, so the person you are about to merge is the person you meant. A member with no address
+says **No email on file** rather than showing a blank line.
+
+**And the list no longer shows the wrong rows.** Searching after picking somebody could leave
+rows on screen that the search did not match, highlight one name while the sentence underneath
+named a different member — three people in one dialog. Two members with the same name were
+being drawn as if they were one. They are drawn as two now, and what you tapped is what the
+sentence describes.
+
+**Nothing else about the merge changed.** The same two steps — pick, then confirm — the same
+warning, the same button, and the same members offered. Course, branch, role and question
+pickers elsewhere in the app are untouched.
+
 ## Unreleased — Welcome a new member: the branch fills itself, and typing is enough
 
 **A course that runs at one branch no longer asks you to choose it.** The Branch row offers
@@ -23,6 +46,23 @@ with *That does not look like an address* and left in the box for you to fix, a 
 already on her record is still refused, the first address is still the primary one, and
 leaving the field *by* pressing **+ Add** adds it once. **+ Add** and Enter both still work —
 this is a third way in, not a replacement.
+
+**A refusal about a display name now clears the moment you start changing it.** When a save is
+turned down because the display name already belongs to another member, the message stays under
+the form so you can read it — but it used to stay there while you typed the corrected name into
+the box above, still naming the old one. Typing a display name, adding one, or removing one now
+takes the message off the screen.
+
+**Only that message, though.** A refusal about her email address, her days or her branch stays
+where it is while you type a display name — it is a different problem and it has not been read
+yet. And nothing here decides anything: pressing **Add Member** still asks the academy database
+again, and it is still the one that answers.
+
+**It also reads as a sentence.** The message opens *The display name …* rather than *the display
+name …*. Only that first letter changed — the name you typed is quoted back exactly as you typed
+it. Every refusal that can appear in that box now opens the same way, including the one about
+changing her status, so the box no longer reads two ways depending on which part of the form was
+turned down.
 
 ## Unreleased — Add a course: the wording is checked before Save, not by the database after it
 

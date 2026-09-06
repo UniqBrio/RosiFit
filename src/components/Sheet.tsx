@@ -5,6 +5,7 @@ import { RADIUS, SPACE, TAP_MIN } from '../theme/tokens';
 import { Icon } from './Icon';
 import { AnchoredPanel } from './AnchoredPanel';
 import type { Anchor } from './datePanel';
+import { pickerMatches, pickerKey } from './pickerSearch';
 
 /**
  * The canvas' bottom sheet: scrim, rounded top, grab handle. Dismissing by
@@ -99,7 +100,27 @@ export function Sheet({ open, onClose, title, children, placement = 'bottom' }:
  * them, so two members sharing a name would both have matched the first.
  * Linking an attendance row to the wrong person, silently.
  */
-export type PickerOption = { label: string; meta?: string; value?: string };
+export type PickerOption = {
+  label: string;
+  meta?: string;
+  value?: string;
+  /**
+   * A second line under the label -- what tells two rows with the SAME label
+   * apart. The member picker puts her email address here, because a name is
+   * not an identity: the register holds two live members called "Kavitha
+   * Ramesh" and the sheet this row sits in commits a merge.
+   *
+   * Optional, and no other picker passes one: a course or a branch is
+   * identified by its label and gains nothing from a second line.
+   */
+  sub?: string;
+  /**
+   * Text the QUERY may match but the row never prints. Every address a member
+   * holds goes here, so searching by an address she does not show still finds
+   * her. Absent, the row is searched by its label exactly as before.
+   */
+  search?: string;
+};
 
 /**
  * The search box, the rows, the "Add …" row and the nothing-matches note are
@@ -112,8 +133,10 @@ export type PickerOption = { label: string; meta?: string; value?: string };
 function usePickerQuery(options: PickerOption[], onAdd?: (label: string) => void) {
   const [query, setQuery] = useState('');
   const q = query.trim().toLowerCase();
+  // The match itself lives in pickerSearch.ts, tested against the two live
+  // members who share a name -- see the note there.
   const results = useMemo(
-    () => options.filter(o => o.label.toLowerCase().includes(q)),
+    () => options.filter(o => pickerMatches(o, q)),
     [options, q]);
   const canAdd = !!onAdd && q.length >= 2 && !options.some(o => o.label.toLowerCase() === q);
   const empty = q.length > 0 && results.length === 0 && !canAdd;
@@ -158,7 +181,23 @@ function PickerChoice({ option, on, onPress, testID }:
       }}>
       <Icon name={on ? 'radio_button_checked' : 'radio_button_unchecked'}
         size={19} color={on ? theme.accentInk : theme.dim} />
-      <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: theme.fgStrong }}>{option.label}</Text>
+      {/* minWidth 0 so a long address shortens itself rather than pushing the
+          meta off the row -- the name and the address are both left-aligned
+          under each other, which is how the roster card and the send list
+          already print a member. */}
+      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+        <Text style={{ fontSize: 14, fontWeight: '700', color: theme.fgStrong }}>{option.label}</Text>
+        {/* ellipsize in the MIDDLE, not at the tail. The two addresses this
+            row exists to separate are kavitha+rf-000105@example.com and
+            kavitha+rf-000106@example.com -- they differ in three characters
+            just before the @, which is the first thing tail-truncation eats.
+            Tail-ellipsized at phone width both rows read "kavitha+rf-0001…"
+            and we are back to two identical rows. */}
+        {option.sub ? (
+          <Text numberOfLines={1} ellipsizeMode="middle"
+            style={{ fontSize: 11.5, color: theme.muted }}>{option.sub}</Text>
+        ) : null}
+      </View>
       <Text style={{ fontSize: 11.5, color: theme.muted }}>{on ? 'Selected' : option.meta ?? ''}</Text>
     </Pressable>
   );
@@ -258,8 +297,13 @@ export function SearchPicker({ open, onClose, title, placeholder, options, value
       {/* flexShrink so a pinned footer below cannot be pushed off the card's
           own maxHeight -- the list gives way, the confirm stays reachable. */}
       <ScrollView style={{ marginTop: SPACE.md, flexShrink: 1 }} contentContainerStyle={{ gap: 7 }} keyboardShouldPersistTaps="handled">
-        {results.map(o => (
-          <PickerChoice key={o.label} option={o}
+        {/* `o.value ?? o.label` is the fallback, and a two-step picker whose
+            options carry NO value would mark BOTH of two same-label rows
+            "Selected" -- the duplicate-key defect's twin, now that duplicate
+            rows actually render. The one two-step caller passes a member id;
+            a second one must too. */}
+        {results.map((o, i) => (
+          <PickerChoice key={pickerKey(o, i)} option={o}
             on={twoStep ? staged === (o.value ?? o.label) : o.label === value}
             onPress={() => {
               if (twoStep) { setStaged(o.value ?? o.label); return; }
@@ -363,8 +407,8 @@ export function AnchoredPicker({ open, onClose, label, placeholder, options, val
         </View>
       ) : null}>
       <View style={{ gap: 7 }} accessibilityRole="radiogroup" accessibilityLabel={label}>
-        {results.map(o => (
-          <PickerChoice key={o.label} option={o} on={o.label === value}
+        {results.map((o, i) => (
+          <PickerChoice key={pickerKey(o, i)} option={o} on={o.label === value}
             testID={`${testID}-option-${slug(o.label)}`}
             onPress={() => { setQuery(''); onSelect(o.value ?? o.label); }} />
         ))}

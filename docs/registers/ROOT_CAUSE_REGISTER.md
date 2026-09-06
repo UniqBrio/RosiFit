@@ -59,6 +59,54 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-024 — Two members with one name were two React children with one key
+**Date:** 07-Sep-2026 · **Severity:** S2 · **Modules:** `src/components/Sheet.tsx`, `src/components/pickerSearch.ts`, `app/course/[id].tsx`
+
+**Symptom** — In the course screen's `Who is "Rani"?` merge picker: *"When user selected a name
+already, it is not searching properly."* The screenshot shows a typed query listing **four**
+"Kavitha Ramesh" rows that the query does not match, one row highlighted "Rohini · Selected",
+and the confirm sentence beneath it naming a third member, "Divya Balakrishnan".
+
+**Root cause** — The rows were drawn as `results.map(o => <PickerChoice key={o.label} …>)`. The
+register holds two live members called "Kavitha Ramesh" (RF-000105 and RF-000106), so two React
+children carried ONE key. React's documented answer to a duplicate key is children "duplicated
+and/or omitted": on re-render after a keystroke it reconciled rows against the wrong options,
+leaving stale rows on screen and painting one member's label over another member's props. The
+staged value was a member id and was correct throughout — only the row drawn over it was not.
+
+Not a search bug, though it was reported as one. `usePickerQuery` filtered correctly; the list
+that survived the filter was rendered from the wrong children.
+
+**Fix** — `pickerKey(option, index)` — the option's `value` (a member id, unique by
+construction) when it has one, `label#index` when it does not. Applied at BOTH call sites,
+`SearchPicker` and `AnchoredPicker`. The picker also now carries her email address on the row
+and in the query, so two same-named members are distinguishable to the person as well as to
+React.
+
+**Files** — `src/components/pickerSearch.ts` (new), `src/components/pickerSearch.test.ts` (new),
+`src/components/Sheet.tsx`, `app/course/[id].tsx`
+
+**How to verify** — `npx tsx --test src/components/pickerSearch.test.ts`; *"two members sharing
+a name are two different rows"* asserts `pickerKey` separates them. Against the shipped
+expression the two keys were both the string `Kavitha Ramesh`.
+
+**Recurrence risk** — Every `.map()` over rows keyed by a display string. A name, a course name,
+a branch label — none of them is an identity, and the failure only appears once two rows
+collide, which is data-dependent and therefore absent from every fixture.
+
+**Prevention** — The key decision is a named, tested function rather than an expression inside
+JSX, so the next picker inherits it. `Sheet.tsx:96` had ALREADY recorded that labels stopped
+being unique and had moved `onSelect` onto `value` for exactly this reason — the note was right
+and the key was simply left behind. A note is not a guard.
+
+**Process check** — **Yes.** The earlier change that introduced `value` because "two members can
+share a name" fixed the selection path and left the render path keyed on the label. Nothing in
+the process asks "you just declared this field non-unique — what else is keyed on it?". Worth a
+`/framework-update`: when a change declares a field non-unique, sweep every use of that field as
+an identity, not just the one that prompted it.
+
+---
+
 ## RC-023 — A rule the database enforced and the form had never heard of
 **Date:** 07-Sep-2026 · **Severity:** S2 · **Modules:** `app/course/edit.tsx`, `src/data/message.ts`, `src/data/repository.ts`
 
