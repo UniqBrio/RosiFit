@@ -15,7 +15,9 @@ import { supabase, isConfigured } from '../lib/supabase';
 import { authLookup } from './api';
 import { phoneDigits } from './signin';
 import { cleanAlias, aliasProblem, aliasSaveError, MERGE_FAILED } from './alias';
+import { sentenceOpening } from './refusalCase';
 import type { Period } from './period';
+import { SUBJECT_MIN, SUBJECT_MAX, BODY_MIN, COURSE_NAME_MIN, COURSE_NAME_MAX } from './message';
 import { bucketFixture, type BucketMetrics } from './buckets';
 import type { SentMap } from './sent';
 import { currentSchedules, today } from './schedule';
@@ -50,6 +52,29 @@ function fail(context: string, error: { message?: string } | null): never {
       ? 'RosiFit could not reach the academy database. Check the connection and try again — nothing has been changed.'
       : `${context}. Nothing has been changed.`
   );
+}
+
+/**
+ * Whether a failure message is the ENGINE talking rather than this product.
+ *
+ * The write translators below deliberately pass a refusal through when the
+ * database wrote it for a person to read — "she has an email address of her
+ * own", "still runs 3 courses", the date a completed session blocks. That
+ * decision is sound and is kept. What it could not tell apart was a sentence
+ * somebody wrote and a sentence Postgres generated, so a CHECK constraint
+ * arrived in the dialog verbatim: `new row for relation "course_communication"
+ * violates check constraint "course_communication_subject_check"`. CP-003 is
+ * explicit that this must never happen. RC-023.
+ *
+ * Shapes only — Postgres' own wording for a violated constraint, a failed cast
+ * or a missing column. A hand-raised RAISE matches none of them and still
+ * passes through untouched.
+ */
+const ENGINE_WORDING =
+  /violates (check|unique|foreign key|not-null|exclusion) constraint|new row for relation|duplicate key value|null value in column|invalid input syntax|value too long for type|column .* does not exist/i;
+
+function personReadable(message: string, fallback: string): string {
+  return ENGINE_WORDING.test(message) ? fallback : (message || fallback);
 }
 
 // -------------------------------------------------------------------- auth
@@ -339,9 +364,10 @@ export type CourseInput = {
   frequency: number | null;
 };
 
-/** RLS and the CHECK constraints answer in Postgres' words. These are the
- *  three a person can actually act on, so they are translated; anything else
- *  keeps the database's own message rather than a guess at what it meant. */
+/** RLS and the CHECK constraints answer in Postgres' words. These are the ones
+ *  a person can actually act on, so they are translated; anything else keeps
+ *  the database's own message rather than a guess at what it meant -- unless
+ *  the database GENERATED it, which personReadable() tells apart (CP-003). */
 function courseWriteError(error: { code?: string; message?: string } | null): string {
   const code = error?.code ?? '';
   const message = error?.message ?? '';
@@ -354,7 +380,10 @@ function courseWriteError(error: { code?: string; message?: string } | null): st
   if (/default_end_time|courses_check/.test(message)) {
     return 'The end time must be after the start time. Nothing has been saved.';
   }
-  return `${message || 'The course could not be saved'}. Nothing has been saved.`;
+  if (/courses_name_check/.test(message)) {
+    return `A course name needs between ${COURSE_NAME_MIN} and ${COURSE_NAME_MAX} characters. Nothing has been saved.`;
+  }
+  return `${personReadable(message, 'The course could not be saved')}. Nothing has been saved.`;
 }
 
 export async function createCourse(input: CourseInput): Promise<Course> {
@@ -478,7 +507,7 @@ export async function deleteCourse(id: string): Promise<CourseDeletion> {
     if (/only the super admin|not writable/i.test(error.message)) {
       throw new Error('Only the super admin can delete a course, and only while the subscription is active. Nothing has been changed.');
     }
-    throw new Error(`${error.message}. Nothing has been changed.`);
+    throw new Error(`${personReadable(error.message, 'The course could not be deleted')}. Nothing has been changed.`);
   }
   coursesChanged();
 
@@ -601,8 +630,10 @@ export async function fetchBranchUsage(): Promise<BranchUsage[]> {
 }
 
 /** RLS and the two constraints 0019 adds answer in Postgres' own words.
- *  These are the ones a person can act on; anything else keeps the
- *  database's message rather than a guess at what it meant. */
+ *  These are the ones a person can act on; anything else keeps the database's
+ *  message rather than a guess at what it meant -- unless the database was
+ *  generating it rather than writing it, which is what personReadable() tells
+ *  apart (CP-003, RC-023). */
 function branchWriteError(error: { code?: string; message?: string } | null, verb: string): string {
   const code = error?.code ?? '';
   const message = error?.message ?? '';
@@ -620,7 +651,7 @@ function branchWriteError(error: { code?: string; message?: string } | null, ver
   if (/length\(btrim/.test(message)) {
     return 'A branch needs a name of at least two characters. Nothing has been changed.';
   }
-  return `${message || 'The branch could not be saved'}. Nothing has been changed.`;
+  return `${personReadable(message, 'The branch could not be saved')}. Nothing has been changed.`;
 }
 
 export async function createBranch(name: string): Promise<void> {
@@ -748,7 +779,7 @@ function offeringWriteError(error: { code?: string; message?: string } | null): 
   if (code === '23505' || /offerings_unique_live/.test(message)) {
     return 'This course already runs at that branch. Edit that offering instead of adding a second one.';
   }
-  return `${message || 'The offering could not be saved'}. Nothing has been saved.`;
+  return `${personReadable(message, 'The offering could not be saved')}. Nothing has been saved.`;
 }
 
 export async function createOffering(input: OfferingInput): Promise<string> {
@@ -809,7 +840,7 @@ export async function setOfferingSchedule(
   });
   if (error) {
     console.error('setOfferingSchedule:', error.message);
-    throw new Error(`${error.message || 'The schedule could not be saved'}. Nothing has been saved.`);
+    throw new Error(`${personReadable(error.message ?? '', 'The schedule could not be saved')}. Nothing has been saved.`);
   }
   coursesChanged();
 }
@@ -957,7 +988,20 @@ function courseSaveError(error: { code?: string; message?: string } | null): str
     // than a sentence written here that has to guess at it.
     return `${message}. Nothing has been saved.`;
   }
-  return `${message || 'The course could not be saved'}. Nothing has been saved.`;
+  /* The wording bounds (0021). The FORM refuses to offer Save without these
+     now (app/course/edit.tsx), so reaching them means something got past it --
+     a course saved by another route, or a bound that moved. Either way the
+     person reads the rule rather than the constraint carrying it. RC-023. */
+  if (/course_communication_subject_check/.test(message)) {
+    return `The subject needs between ${SUBJECT_MIN} and ${SUBJECT_MAX} characters, or none at all to use the template's. Nothing has been saved.`;
+  }
+  if (/courses_name_check/.test(message)) {
+    return `A course name needs between ${COURSE_NAME_MIN} and ${COURSE_NAME_MAX} characters. Nothing has been saved.`;
+  }
+  if (/course_communication_body_text_check/.test(message)) {
+    return `The message needs at least ${BODY_MIN} characters, or none at all to use the template's. Nothing has been saved.`;
+  }
+  return `${personReadable(message, 'The course could not be saved')}. Nothing has been saved.`;
 }
 
 /**
@@ -1577,7 +1621,7 @@ function holidayWriteError(error: { code?: string; message?: string } | null, ve
   if (/length\(btrim/.test(message)) {
     return 'A holiday needs a name of at least two characters. Nothing has been changed.';
   }
-  return `${message || 'The holiday could not be saved'}. Nothing has been changed.`;
+  return `${personReadable(message, 'The holiday could not be saved')}. Nothing has been changed.`;
 }
 
 export async function fetchHolidays(): Promise<Holiday[]> {
@@ -1753,10 +1797,21 @@ export type MemberInput = {
  * somebody else, the subscription that has expired. So the database's own
  * words are kept and only the guarantee is added; inventing a friendlier
  * sentence here would be a second place for the rule to drift.
+ *
+ * A constraint violation is not one of those refusals. Nobody wrote it, and it
+ * names a relation and a constraint rather than anything the person can act on
+ * — personReadable() is what separates the two (CP-003, RC-023).
+ *
+ * Kept, but not kept verbatim in one respect: those sentences are raised
+ * lowercase, as Postgres messages are, and what the dialog shows is a
+ * sentence. sentenceOpening() raises the first letter and nothing else, so
+ * "the display name … already belongs to another member" arrives at the
+ * banner reading as the academy's answer rather than as a leaked fragment
+ * (requests/2026-09-07-display-name-refusal-clears-and-case.md).
  */
 function memberWriteError(error: { message?: string } | null): string {
   const message = (error?.message ?? '').trim();
-  return `${message || 'The member could not be saved'}. Nothing has been saved.`;
+  return `${sentenceOpening(personReadable(message, 'The member could not be saved'))}. Nothing has been saved.`;
 }
 
 export async function createMember(input: MemberInput): Promise<{ id: string }> {
@@ -2056,7 +2111,7 @@ export async function mergeMemberInto(strayId: string, targetId: string):
     // merge_member_into's own RAISE messages are written for an operator --
     // "she has an email address of her own", "not on the register" -- so they
     // are passed through rather than replaced by a generic failure.
-    throw new Error(error.message || MERGE_FAILED);
+    throw new Error(personReadable(error.message ?? '', MERGE_FAILED));
   }
   membersChanged();
   const result = (data ?? {}) as { display_name?: string; attendance_moved?: number };

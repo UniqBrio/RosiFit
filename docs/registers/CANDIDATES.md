@@ -33,6 +33,7 @@ The third filter is this register itself: the sighting count.
 | ID | Candidate rule (domain-free wording) | Source app · date | Sightings | Status |
 |---|---|---|---|---|
 | CAND-001 | "A table with more than three columns must let the user choose which columns show and in what order, and must remember the choice. A column the table is unreadable without is reorderable but never hideable." | academies-dashboard · 30-Aug-2026 | n=1 | **PROMOTED → CP-21, v1.3.0** — *owner override of the n=2 rule, recorded deliberately (see note below)* |
+| CAND-003 | "A form that writes a column carrying a store-level constraint must state that constraint's rule itself, before it offers Save. A rule enforced only where the data lands is a rule the user meets as the store's own error message — and the store's message names a relation and a constraint, not anything the person can act on." | RosiFit · 07-Sep-2026 | n=1 | **PARKED (n=1)** — RC-023 |
 | CAND-002 | "A form that can be opened on an EXISTING record decides create-vs-edit from the route, never from the result of its own lookup, and answers loading, failed and missing before it renders. A lookup that has not answered yet and one that answered "no such record" are not the create case." | RosiFit · 06-Sep-2026 | n=1 | **PARKED (n=1)** — RC-021 |
 | CAND-000 | *(example)* "A list that can be reordered must persist the order through the same code path that displays it — two paths drift." | — | — | *(template row — replace on first real entry)* |
 

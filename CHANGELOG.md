@@ -1,5 +1,53 @@
 # Changelog
 
+## Unreleased — Welcome a new member: the branch fills itself, and typing is enough
+
+**A course that runs at one branch no longer asks you to choose it.** The Branch row offers
+the branches the chosen course actually runs at, and when there is exactly one it is filled in
+for you — the row shows the branch instead of *Choose a branch*, and **Add Member** stops
+waiting on a picker with a single line in it. Two or more branches are still a real choice and
+still open blank; a course that runs nowhere yet still says so.
+
+**It never moves anyone.** On **Edit member** the branch already on her record is left exactly
+as it is, even when her course no longer runs there — the branch is only filled into an empty
+field, which on that form means after you change her course. The row is still a picker: tap it
+and the list opens as before.
+
+**A display name or an email address now counts as soon as you move on.** Both rows sit beside
+a **+ Add** button, and the typed value used to reach her record only if you pressed it — type
+an address, move to the next field, and the form had quietly kept nothing, right up to a Save
+that discarded it. Leaving the field now adds it, exactly as the button does.
+
+**Exactly as the button does, including the refusals.** A malformed address is still refused
+with *That does not look like an address* and left in the box for you to fix, a display name
+already on her record is still refused, the first address is still the primary one, and
+leaving the field *by* pressing **+ Add** adds it once. **+ Add** and Enter both still work —
+this is a third way in, not a replacement.
+
+## Unreleased — Add a course: the wording is checked before Save, not by the database after it
+
+**Editing a course's Subject or Message and saving no longer ends in a database error.** A
+subject cut to one or two characters used to leave the Add a course dialog offering **Add
+Course**, and pressing it returned *new row for relation "course_communication" violates check
+constraint "course_communication_subject_check"* — a sentence nobody outside the code can act
+on. The limits were real and had always been there; the form had simply never been told them.
+
+**Now the form says so while you type.** A subject needs at least 3 characters and at most 200,
+a message at least 10, and a course name between 2 and 80. Fall outside any of them and the
+wording card says which, in words, and the footer under **Add Course** says the same — the card
+scrolls a long way above the button, so the reason is in both places. Add Course stays off until
+it is fixed.
+
+**Leaving a box empty is still allowed and still means the same thing:** the course uses its
+template's wording, exactly as **Reset** does. Nothing about what is saved has changed, and no
+wording already stored was touched.
+
+**Where a failure does still come from the database, it now arrives as a sentence.** Saving a
+course, branch, offering, holiday, schedule or member no longer forwards a raw database message
+to the screen. The refusals actually written for a person to read — *she has an email address of
+her own*, *still runs 3 courses*, the date a completed session blocks — are unchanged and still
+shown word for word.
+
 ## Unreleased — Add a course: arrows on the detail chips, so every name can be reached
 
 **The rows of details you can tap into the wording now have a left and a right arrow.** There

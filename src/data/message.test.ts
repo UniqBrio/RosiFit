@@ -9,7 +9,10 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fillTokens, unknownTokens, MESSAGE_TOKENS, insertToken } from './message';
+import {
+  fillTokens, unknownTokens, MESSAGE_TOKENS, insertToken,
+  wordingProblem, SUBJECT_MAX, BODY_MIN, courseNameProblem, COURSE_NAME_MAX,
+} from './message';
 import type { Member } from './mock';
 
 const member = (over: Partial<Member> = {}): Member => ({
@@ -185,4 +188,79 @@ test('what the chips insert is exactly what the sender can fill', () => {
   const all = MESSAGE_TOKENS.reduce(
     (acc, t) => insertToken(acc.text, t.token, -1, -1), { text: '', caret: 0 });
   assert.deepEqual(unknownTokens(all.text), []);
+});
+
+/**
+ * The wording's length bounds — appended for RC-023.
+ *
+ * Reported as: editing the email template in Add a course and saving gave
+ * `new row for relation "course_communication" violates check constraint
+ * "course_communication_subject_check"`. The form collected a subject it had
+ * no rule for; migration 0021 had the rule and nothing else did.
+ */
+test('a subject shorter than the database accepts is refused before Save', () => {
+  // The reported case. 0021: between 3 and 200 characters.
+  assert.match(String(wordingProblem('Hi', 'Hello there, we missed you this week.')), /subject/i);
+  assert.match(String(wordingProblem('H', 'Hello there, we missed you this week.')), /subject/i);
+});
+
+test('the shortest subject the database accepts is accepted here too', () => {
+  assert.equal(wordingProblem('Yes', 'Hello there, we missed you this week.'), null);
+});
+
+test('a subject longer than the database accepts is refused before Save', () => {
+  assert.match(String(wordingProblem('x'.repeat(SUBJECT_MAX + 1), 'Hello there, we missed you.')),
+    /subject/i);
+  assert.equal(wordingProblem('x'.repeat(SUBJECT_MAX), 'Hello there, we missed you.'), null);
+});
+
+test('whitespace is not length — the database trims before it counts, so this does', () => {
+  // btrim() in the constraint. A subject of three spaces is empty to Postgres.
+  assert.match(String(wordingProblem('  a  ', 'Hello there, we missed you this week.')), /subject/i);
+});
+
+test('a body shorter than the database accepts is refused before Save', () => {
+  assert.match(String(wordingProblem('We missed you', 'Too short')), /message/i);
+  assert.equal(wordingProblem('We missed you', 'x'.repeat(BODY_MIN)), null);
+});
+
+test('blank is not a problem — it means the course follows its template', () => {
+  // saveCourse sends `subject.trim() || null`, and NULL is what makes Reset
+  // work (0021). Refusing an empty box would block a legal save.
+  assert.equal(wordingProblem('', ''), null);
+  assert.equal(wordingProblem('   ', '   '), null);
+  assert.equal(wordingProblem('', 'Hello there, we missed you this week.'), null);
+  assert.equal(wordingProblem('We missed you', ''), null);
+});
+
+test('both wrong reports the subject first, because it is the field above', () => {
+  assert.match(String(wordingProblem('Hi', 'short')), /subject/i);
+});
+
+test('the sentence says what to do, not which constraint refused it', () => {
+  // CP-003: the person never reads an engine string. This is the sentence the
+  // form shows INSTEAD of the one the database would have raised.
+  const tooShort = String(wordingProblem('Hi', 'Hello there, we missed you this week.'));
+  const tooLong = String(wordingProblem('x'.repeat(SUBJECT_MAX + 1), 'Hello there, we missed you.'));
+  for (const said of [tooShort, tooLong]) {
+    assert.doesNotMatch(said, /constraint|relation|course_communication|violates/i);
+  }
+  // Each sentence names the bound it broke and nothing else — being told
+  // "between 3 and 200" when you typed two characters is arithmetic homework.
+  assert.match(tooShort, /3/);
+  assert.match(tooLong, /200/);
+});
+
+test('a course name longer than the database accepts is refused before Save', () => {
+  // `courses.name` is `between 2 and 80` (0005); the form checked >= 2 only,
+  // so the upper half was enforced for the first time by courses_name_check.
+  assert.equal(courseNameProblem('Gentle Recovery Yoga'), null);
+  assert.equal(courseNameProblem('x'.repeat(COURSE_NAME_MAX)), null);
+  assert.match(String(courseNameProblem('x'.repeat(COURSE_NAME_MAX + 1))), /course name/i);
+  assert.match(String(courseNameProblem('x')), /course name/i);
+});
+
+test('an empty course name is left to the form to report, not said twice', () => {
+  assert.equal(courseNameProblem(''), null);
+  assert.equal(courseNameProblem('   '), null);
 });

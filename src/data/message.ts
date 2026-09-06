@@ -146,3 +146,78 @@ export function insertToken(
   const middle = `${lead}${token}${trail}`;
   return { text: before + middle + after, caret: before.length + middle.length };
 }
+
+// ------------------------------------------------------- the wording's bounds
+/**
+ * What `course_communication` will accept (0021), stated where the FORM can
+ * obey it.
+ *
+ * These numbers already existed, in exactly one place: a CHECK constraint in
+ * migration 0021, pinned by `supabase/tests/15_course_communication.sql` ("a
+ * two-character subject is refused"). The rule was specified and tested at the
+ * database and was invisible from the form that collects the field, so the
+ * first thing that enforced it was the INSERT -- after Save had been offered,
+ * pressed, and refused in Postgres' own words. Restated here, not moved: the
+ * constraint stays the last line of defence, this is the first.
+ *
+ * BLANK IS LEGAL and is not a length failure. NULL means "use the template's"
+ * (0021's column comment), and `saveCourse` sends `subject.trim() || null` --
+ * so an empty box is a course that follows its template, which is what Reset
+ * writes too. Only wording that EXISTS has to be long enough to send.
+ */
+/** `courses.name` (0005). Here beside the wording bounds because they are read
+ *  together — every one of them is a rule the Add-a-course form must obey
+ *  before it offers Save, and the form is where they were all missing. */
+export const COURSE_NAME_MIN = 2;
+export const COURSE_NAME_MAX = 80;
+
+export const SUBJECT_MIN = 3;
+export const SUBJECT_MAX = 200;
+export const BODY_MIN = 10;
+
+/**
+ * Why this wording cannot be saved, in the words the person needs — or `null`
+ * when it can.
+ *
+ * Takes the OVERRIDE, never what the box displays. A course that has not been
+ * reworded shows its template's words and saves nothing, so judging the
+ * template's length here would refuse a save the database would have accepted.
+ */
+export function wordingProblem(subject: string, body: string): string | null {
+  const s = String(subject ?? '').trim();
+  const b = String(body ?? '').trim();
+
+  // Subject first: it is the field above, and reporting both at once gives a
+  // person two things to fix and no order to fix them in.
+  if (s.length > 0 && s.length < SUBJECT_MIN) {
+    return `The subject needs at least ${SUBJECT_MIN} characters, or leave it empty to use the template's.`;
+  }
+  if (s.length > SUBJECT_MAX) {
+    return `The subject is ${s.length} characters — it can be at most ${SUBJECT_MAX}.`;
+  }
+  if (b.length > 0 && b.length < BODY_MIN) {
+    return `The message needs at least ${BODY_MIN} characters, or leave it empty to use the template's.`;
+  }
+  return null;
+}
+
+/**
+ * Why this course name cannot be saved — or `null` when it can.
+ *
+ * The same defect as wordingProblem() on the field above it: `courses.name` is
+ * `between 2 and 80` (0005) and the form checked only the lower half, so an
+ * over-long name was refused as `courses_name_check` after Save. Empty is
+ * reported by the form's own "A course name is required", not here, so this
+ * stays silent on it rather than giving one field two required messages.
+ */
+export function courseNameProblem(name: string): string | null {
+  const n = String(name ?? '').trim();
+  if (n.length === 0) return null;
+  if (n.length < COURSE_NAME_MIN) {
+    return `A course name needs at least ${COURSE_NAME_MIN} characters.`;
+  }
+  if (n.length > COURSE_NAME_MAX) {
+    return `The course name is ${n.length} characters — it can be at most ${COURSE_NAME_MAX}.`;
+  }
+  return null;
+}

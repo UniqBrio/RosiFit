@@ -32,6 +32,10 @@
 - [ ] Loading always terminates, including on a forced error.
 - [ ] The failure path was **exercised**, not assumed.
 - [ ] Writes are idempotent against every unique constraint on the tables they touch.
+- [ ] **Every CHECK constraint on a column this change's form writes is stated by the form,
+      before Save — not discovered by the INSERT after it.** A rule that lives only in a
+      migration is invisible from the screen that has to obey it, and the person meets it as
+      Postgres' own words (RC-023).
 - [ ] Multi-step writes go through one transaction.
 - [ ] A save is proved against the **data**, never the toast.
 

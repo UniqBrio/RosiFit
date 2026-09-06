@@ -1,0 +1,67 @@
+RC-023 — fail-first evidence
+requests/2026-09-07-course-communication-subject-check.md
+Recorded 07-Sep-2026. Pre-fix tree: HEAD 31f64cf.
+
+================================================================================
+1. src/data/courseWordingGate.test.ts — against the REAL pre-fix tree
+================================================================================
+The spec takes COURSE_WORDING_SPEC_ROOT so it can be replayed against an earlier
+tree. `app/course/edit.tsx` and `src/data/repository.ts` were exported from
+HEAD (31f64cf) into a scratch root and the spec pointed at it. No injection:
+this is the shipped code that produced the report.
+
+  git show HEAD:app/course/edit.tsx      > $ROOT/app/course/edit.tsx
+  git show HEAD:src/data/repository.ts   > $ROOT/src/data/repository.ts
+  COURSE_WORDING_SPEC_ROOT=$ROOT npx tsx --test src/data/courseWordingGate.test.ts
+
+  ok 1 - the spec is looking at a real tree
+  not ok 2 - the course form refuses to OFFER a save the database will refuse
+    error: 'the save gate must include the wording problem, or Save is offered
+            for wording the CHECK constraint rejects'
+  not ok 3 - the form measures the override, not the words on screen
+    error: 'the gate must judge the override that is saved, not the text displayed'
+  not ok 4 - the reason is stated where the person is typing AND at the button
+    error: 'the wording card must state the problem beside the field'
+  not ok 5 - a constraint that still fires is answered in words, not in Postgres
+    error: 'the subject constraint must map to a sentence'
+  # tests 5 | # pass 1 | # fail 4
+
+After the fix, same command against the working tree: 5/5 pass.
+
+================================================================================
+2. src/data/message.test.ts — injected defect, reverted
+================================================================================
+The bounds did not exist before this change, so the pre-fix behaviour was
+reconstructed by returning `null` from both wordingProblem() and
+courseNameProblem() — which is exactly what the form did: validate nothing.
+
+  npx tsx --test src/data/message.test.ts
+
+  not ok 26 - a subject shorter than the database accepts is refused before Save
+              The input did not match the regular expression /subject/i. Input: 'null'
+  not ok 28 - a subject longer than the database accepts is refused before Save
+  not ok 29 - whitespace is not length — the database trims before it counts, so this does
+  not ok 30 - a body shorter than the database accepts is refused before Save
+  not ok 32 - both wrong reports the subject first, because it is the field above
+  not ok 33 - the sentence says what to do, not which constraint refused it
+  not ok 34 - a course name longer than the database accepts is refused before Save
+  # tests 35 | # pass 28 | # fail 7
+
+Injection reverted; 35/35 pass.
+
+================================================================================
+3. NOT OBSERVED — what this evidence does not cover
+================================================================================
+NOT OBSERVED FAILING: the dialog itself, in a browser, in either theme. There is
+no Playwright or other browser driver in this project and adding one for a bug
+fix is an unrequested dependency (CLAUDE.md: verify every dependency before
+installing). The rendered block reuses the shape, tokens and testID convention
+of the not-a-token warning that already ships four lines below it in the same
+card, and `npm run check:contrast` passes 2840/2840 pairs in both themes — but
+neither is the same as having looked at it. The manual walk is written out in
+RC-023's "How to verify".
+
+NOT OBSERVED: the constraint firing after the fix. It is now unreachable from
+this form by construction, which is the point; the courseSaveError() branches
+that answer it are asserted by source (courseWordingGate.test.ts test 5), not by
+a live refusal.

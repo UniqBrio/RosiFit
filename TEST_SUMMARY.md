@@ -77,6 +77,118 @@ exit 1
 
 _Merge blocked. Every FAIL above must resolve. No partial merges._
 
+---
+
+## Gate run - 2026-09-06 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-06 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+
+### Fail-first - RC-023, the course wording bounds (new this run)
+
+The wiring spec was replayed against the REAL pre-fix tree (HEAD 31f64cf), not an
+injection: 4 of its 5 cases fail on the shipped code that produced the report. The
+bounds spec was reconstructed by injection, since the functions did not exist before.
+Full transcript in `.evidence/course-wording-bounds.txt`.
+
+```
+FAIL-FIRST: src/data/courseWordingGate.test.ts - run with COURSE_WORDING_SPEC_ROOT
+pointed at app/course/edit.tsx and src/data/repository.ts exported from HEAD 31f64cf.
+Produced: not ok 2 - the course form refuses to OFFER a save the database will refuse;
+not ok 3 - the form measures the override, not the words on screen;
+not ok 4 - the reason is stated where the person is typing AND at the button;
+not ok 5 - a constraint that still fires is answered in words, not in Postgres.
+1 of 5 passed (the tree-exists guard). 5/5 after the fix.
+
+FAIL-FIRST: src/data/message.test.ts - wordingProblem() and courseNameProblem()
+forced to `return null`, which is exactly what the form did before this change:
+validate nothing. Produced 7 failures, each "did not match /subject/i" (or
+/message/i, /course name/i) against Input: 'null' - 26, 28, 29, 30, 32, 33, 34.
+Injection reverted; 35/35 green.
+
+NOT OBSERVED FAILING: the dialog in a browser, either theme. No browser driver in
+this project and adding one for a bug fix is an unrequested dependency. Stated as a
+limit, not a pass - see .evidence/course-wording-bounds.txt section 3.
+```
+
+Registry delta, verified against the files: `src/data/message.test.ts` 25 -> 35
+(+10), `src/data/courseWordingGate.test.ts` new at 5. Suite 501 -> 516.
+
+---
 
 ### Fail-first - src/components/chipScroll.test.ts (new this run)
 

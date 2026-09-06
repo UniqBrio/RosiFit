@@ -10,7 +10,9 @@ import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../../src/theme/tokens';
 import { DAY_NAMES } from '../../src/data/mock';
-import { fillTokens, unknownTokens, insertToken } from '../../src/data/message';
+import {
+  fillTokens, unknownTokens, insertToken, wordingProblem, courseNameProblem,
+} from '../../src/data/message';
 import { TokenChips } from '../../src/components/TokenChips';
 import { clampThreshold, MIN_THRESHOLD, MAX_THRESHOLD } from '../../src/data/followup';
 import {
@@ -170,7 +172,21 @@ export default function CourseEdit() {
   const overridden = subject !== null || body !== null;
 
   const branch = branchList.find(b => b.id === branchId) ?? null;
-  const valid = name.trim().length >= 2 && days.length > 0 && !!branchId && !!sender && !!templateId;
+  /* Judged on the OVERRIDE, not on what the boxes show. A course that has not
+     been reworded displays its template's words and saves NULL, so measuring
+     the template here would refuse a save the database accepts. */
+  const wording = wordingProblem(subject ?? '', body ?? '');
+  /* The field above the wording, and the same defect: `courses.name` is
+     `between 2 and 80` (0005) and this gate checked only the lower half, so an
+     over-long name was refused by courses_name_check after Save. */
+  const nameProblem = courseNameProblem(name);
+  /* Both belong in `valid` and not only beside their fields: these bounds are
+     enforced by CHECK constraints, so a Save offered without them is a Save the
+     database answers in its own words. `length >= 2` still carries the EMPTY
+     name -- courseNameProblem stays silent on it so one field is not given two
+     required messages. RC-023. */
+  const valid = name.trim().length >= 2 && !nameProblem && days.length > 0 && !!branchId
+    && !!sender && !!templateId && !wording;
 
   const dangerInk = theme.isDark ? STATUS.absent.fgDark : STATUS.absent.fgLight;
   const okInk = theme.isDark ? STATUS.present.fgDark : STATUS.present.fgLight;
@@ -237,7 +253,12 @@ export default function CourseEdit() {
     || message.state === 'error';
 
   const hint = !name.trim() ? 'A course name is required'
+    : nameProblem ? nameProblem
     : days.length === 0 ? 'Select at least one frequency day'
+    // Said at the footer as well as beside the field: the wording card scrolls
+    // far above the button, and a Save that is off for no stated reason is the
+    // same dead end as the refusal it replaces.
+    : wording ? wording
     : `${branch?.name ?? '—'} · ${days.length}/week · ${threshold} ${rule === 'week' ? 'weekly' : 'consecutive'}`;
 
   return (
@@ -550,6 +571,22 @@ export default function CourseEdit() {
                   </Muted>
                 )}
               </View>
+
+              {wording ? (
+                <View accessibilityLiveRegion="polite"
+                  style={{
+                    flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.md,
+                    padding: SPACE.md, borderRadius: RADIUS.md,
+                    backgroundColor: statusSurface(dangerInk).bg,
+                    borderWidth: 1, borderColor: statusSurface(dangerInk).border,
+                  }}>
+                  <Icon name="error" size={17} color={dangerInk} />
+                  <Text testID="course-wording-problem"
+                    style={{ flex: 1, fontSize: 11.5, lineHeight: 17, color: theme.fg }}>
+                    {wording}
+                  </Text>
+                </View>
+              ) : null}
 
               {stray.length ? (
                 <View accessibilityLiveRegion="polite"

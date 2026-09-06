@@ -59,6 +59,92 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-023 — A rule the database enforced and the form had never heard of
+**Date:** 07-Sep-2026 · **Severity:** S2 · **Modules:** `app/course/edit.tsx`, `src/data/message.ts`, `src/data/repository.ts`
+
+**Symptom** — reported as *"In add course form on editing email template and saving course this
+error is appearing"*, with the dialog showing: **"Something went wrong / `new row for relation
+"course_communication" violates check constraint "course_communication_subject_check"`. Nothing
+has been saved."** The course was not created.
+
+**Root cause** — Two layers, and the second is why the first was unreadable.
+
+*Why the save failed:* `course_communication.subject` is `null or length(btrim(subject)) between
+3 and 200` (migration 0021). That rule was specified once, as a CHECK constraint, and pinned by
+`supabase/tests/15_course_communication.sql` — which asserts in as many words that *"a
+two-character subject is refused"*. **The form that collects the subject encoded none of it.**
+`valid` in `app/course/edit.tsx` gated on name, weekdays, branch, sender and template and said
+nothing about the wording it also collects, so the first thing in the system to enforce the
+rule was the INSERT — after Save had been offered, enabled, and pressed. Editing the wording is
+the only way to reach it: an untouched course saves `NULL` and a chip-inserted token is always
+long enough, which is exactly why the report says *on editing email template*.
+
+*Why the person read Postgres:* `courseSaveError()` ended by interpolating the server's own
+`message` straight into the sentence it showed. The
+translators in `src/data/repository.ts` deliberately pass a refusal through when the database
+wrote it **for a person** — "she has an email address of her own", "still runs 3 courses", the
+date a completed session blocks — and that decision is sound. What none of them could tell apart
+was a sentence somebody wrote from a sentence Postgres generated, so a constraint violation was
+forwarded to the dialog verbatim. CP-003 says never a raw engine string; seven translators ended
+in one.
+
+This is RC-015's shape one level over: **a rule that lives in exactly one place, invisible from
+where it has to be obeyed.** There it was a design divergence recorded only in a comment; here it
+is a validation rule recorded only in a constraint.
+
+**Fix** — The bounds are restated where the form can read them (`SUBJECT_MIN/MAX`, `BODY_MIN`,
+`COURSE_NAME_MIN/MAX` in `src/data/message.ts`) and `wordingProblem()` / `courseNameProblem()`
+turn them into the sentence a person needs. The form's `valid` consumes them, so Save is not
+offered for wording the database will refuse, and the reason is stated twice — beside the field
+and at the footer hint, because the wording card scrolls far above the button and a Save
+disabled for no stated reason is the same dead end as the refusal it replaced.
+
+Restated, **not moved**: the constraint stays the last line of defence. If it ever fires anyway,
+`courseSaveError()` now maps `course_communication_subject_check`,
+`course_communication_body_text_check` and `courses_name_check` to sentences, and
+`personReadable()` intercepts engine wording at every translator's fall-through — hand-raised
+`RAISE` messages match none of its shapes and still pass through untouched, so the deliberate
+policy above survives intact.
+
+**Files** — `src/data/message.ts`, `src/data/message.test.ts`, `src/data/courseWordingGate.test.ts`
+(new), `app/course/edit.tsx`, `src/data/repository.ts`.
+
+**How to verify** — Add a course, open **Edit** on the wording card, cut the subject to two
+characters. Save must be **disabled**, the card must say *"The subject needs at least 3
+characters, or leave it empty to use the template's."* and the footer must say the same. Clear
+the subject entirely: Save is enabled again — empty means the course follows its template
+(0021), which is what Reset writes. Paste 201 characters: refused, and the sentence names 200.
+In JS: `npx tsx --test src/data/message.test.ts src/data/courseWordingGate.test.ts` — 40 cases.
+
+**Recurrence risk** — The defect class is **a database rule the form that feeds it does not
+encode**, and it is not confined to this form. Swept by listing every text-length CHECK in
+`supabase/migrations/` (`grep -rn "length(btrim" supabase/migrations/`) and reading every
+`const valid` in `app/`. **Six sites, three fixed here** — the course subject, body and name, all
+three in the one `valid` expression this defect was reported against. The other three are live
+and unfixed, deliberately, as outside the reported defect; each is recorded as TD-028 in `TECH_DEBT.md`
+with the exact bound it is missing: `app/branches.tsx` and `app/holiday.tsx` (no upper bound
+against `between 2 and 80`), `app/member/edit.tsx` and `app/staff/add.tsx` (gate on
+`length > 0` against `between 2 and 120` / `2 and 80`). The member and staff RPCs raise their own
+worded refusals, so those two currently fail *readably* — which is why they are debt and not a
+second S2.
+
+A second observation, recorded rather than fixed because it is outside the reported defect
+(TD-029): clearing the subject box saves `NULL` and silently returns the course to its
+template's subject, while the preview above shows it blank.
+
+**Prevention** — Prose rule, in `checklists/DEFINITION_OF_DONE.md`: **a CHECK constraint on a
+column a form writes is a rule that form must state before Save, not after.** No rung yet — one
+is feasible (parse the length CHECKs out of `supabase/migrations/` and assert a matching bound
+exists in the form that writes the column) and is proposed as a framework candidate rather than
+built here, because it needs a column→form map this repo does not have.
+
+**Process check** — **Yes.** `supabase/tests/15_course_communication.sql` asserted the exact
+input that broke the form, and passed, for as long as the form has existed. The DB suite proved
+the constraint refuses a two-character subject; nothing ever asked whether anything *upstream*
+knew that. See the close-out.
+
+---
+
 ## RC-022 — Sign out landed on the signed-out Overview, not on the number field
 **Date:** 06-Sep-2026 · **Severity:** S2 · **Modules:** `app/(tabs)/more.tsx`, `app/profile.tsx`, `app/forgot-pin.tsx`, `app/register.tsx`, `src/data/access.ts`
 
