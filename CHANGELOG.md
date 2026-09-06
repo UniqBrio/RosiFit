@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased — Add a course: arrows on the detail chips, so every name can be reached
+
+**The rows of details you can tap into the wording now have a left and a right arrow.** There
+are thirteen — *Her first name, Her full name, Course, Branch, Period from, Period to,
+Sessions due, Sessions made, Sessions missed, Attendance %, Missed in a row, Last present,
+Academy* — and at the dialog's width the row showed five with nothing saying it continued:
+no scrollbar, no arrows, only a drag nobody thinks to try. The arrows move the row a page at
+a time, keeping a chip from the previous view so you never lose your place, and tapping the
+right arrow enough times always reaches *Academy*.
+
+**They are never decorative.** The arrow at the end it points at goes dim and stops
+responding, so an arrow that can be tapped always does something; and on a width wide enough
+for every chip to fit, neither arrow appears at all. Dragging the row sideways still works
+exactly as before — the arrows are a second way in, not a replacement. No detail was added,
+renamed or reordered: the thirteen are the same thirteen the send function builds.
+
 ## Unreleased — Add a course: the wording opens on its preview
 
 **The Wording for this course card now opens showing only the preview.** Under *Message

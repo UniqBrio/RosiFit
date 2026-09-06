@@ -1,4 +1,107 @@
 
+## Gate run - 2026-09-06 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-06 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+
+### Fail-first - src/components/chipScroll.test.ts (new this run)
+
+Run against three injected defects, each reverted; the clean module is 9/9 green before and
+after. Full transcript in `.evidence/token-chips-arrows.txt`.
+
+```
+FAIL-FIRST: src/components/chipScroll.test.ts - `measured()` forced to return true, so an
+unmeasured width of 0 counts as a real measurement (TD-021's mistake, pointed the other way).
+Produced: not ok 1 - an unmeasured row has no arrows (true !== false), and
+not ok 2 - a nonsense measurement is treated as no measurement.
+
+FAIL-FIRST: src/components/chipScroll.test.ts - `chipStep` reduced to a plain
+`viewportWidth - CHIP_OVERLAP` with no floor. Produced: not ok 7 - a narrow row still
+advances by a useful amount (12 !== 30, a 12px move per tap on a 160px row). This defect
+does NOT fail test 9; stated because it is the honest limit of that test's reach.
+
+FAIL-FIRST: src/components/chipScroll.test.ts - `nextChipOffset` returned unclamped.
+Produced: not ok 8 - the arrows clamp to the row rather than running off it, and
+not ok 9 - tapping right reaches the last chip, at every width (width 240 stops short:
+960 !== 930).
+```
+
+---
+
 ## Gate run - 2026-09-05 - VERDICT: FAIL
 
 Steps: 5 pass, 5 fail, 1 blocked.

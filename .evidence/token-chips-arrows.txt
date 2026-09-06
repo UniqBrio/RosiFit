@@ -1,0 +1,82 @@
+Built-page evidence - arrows on the detail chip rows
+Recorded 07-Sep-2026 for requests/2026-09-07-token-chips-arrows.md
+
+The .harness/ scripts are Linux-only, so this was run the way this machine can
+run it: `npm run export` (expo export --platform web), the dist/ tree served
+statically on a fresh port, and Playwright 1.63 driving the BUILT page at
+/course/edit. Both themes forced through the stored preference
+(`rosifit.theme.mode`) - Chromium's colorScheme alone does NOT switch this app
+and a first pass that used it measured the dark theme twice.
+
+FAIL-FIRST, observed rather than asserted. src/components/chipScroll.test.ts
+was run against three injected defects, each reverted after; the clean module
+runs 9/9 green before and after.
+
+  1. `measured()` returns true unconditionally - an unmeasured 0 read as a real
+     width, which is TD-021's mistake pointed the other way: two dead arrows on
+     every row before onLayout fires.
+       not ok 1 - an unmeasured row has no arrows - zero is not a width
+         Expected values to be strictly equal: true !== false
+       not ok 2 - a nonsense measurement is treated as no measurement
+
+  2. `chipStep` is a plain `viewportWidth - CHIP_OVERLAP`, with no floor.
+       not ok 7 - a narrow row still advances by a useful amount
+         Expected values to be strictly equal: 12 !== 30
+     (On a 160px row that is a 12px move per tap.) Honest note: this defect
+     does NOT fail test 9 - 12px still reaches the end inside the 100-tap
+     guard. Test 7 is the only thing standing between it and shipping.
+
+  3. `nextChipOffset` returns `at + direction * chipStep(...)` unclamped.
+       not ok 8 - the arrows clamp to the row rather than running off it
+       not ok 9 - tapping right reaches the last chip, at every width
+         width 240 stops short: 960 !== 930
+     The arrow's disabled state and the row's real position stop agreeing -
+     the row is at its end and the arrow still says there is more.
+
+9 specs, part of the 493 the gate runs.
+
+BEHAVIOUR, on the built page. Widths 360 / 480 / 1400, dark and light. Chip row
+content is 1313px wide in every case; the visible width is what changes.
+
+  480 dark   view 280  offsets 0 -> 232 -> 464 -> 696 -> 928 -> 1033 (5 taps)
+  480 light  view 280  same
+  360 dark   view 160  offsets 0 -> 112 -> ... -> 1120 -> 1153 (11 taps)
+  1400 light view 392  offsets 0 -> 344 -> 688 -> 921 (3 taps)
+
+Every run: the last offset equals scrollWidth - clientWidth exactly (the row
+lands flush, never short), "Academy" - the thirteenth name - is on screen at
+the end, and tapping left the same number of times returns to offset 0. Each
+tap keeps roughly one chip of the previous view, so no name is skipped over.
+
+ENDS. At offset 0 the left arrow carries aria-disabled="true" and is not
+pressable; at the far end the right arrow does, and the left is live. Measured
+paint of the pair at both ends:
+
+  dark  disabled: border rgba(255,255,255,0.12)  glyph rgb(138,124,134)
+  dark  live:     border rgba(255,255,255,0.28)  glyph rgb(255,255,255)
+  light disabled: border rgba(28,10,23,0.14)     glyph rgb(110,90,104)
+  light live:     border rgba(28,10,23,0.42)     glyph rgb(28,10,23)
+
+So the state is carried by the disabled attribute and by pressability, not by
+colour alone (guardrail 3). chevron_left / chevron_right both already resolve -
+check:icons reports 75/75.
+
+MUST NOT CHANGE, re-checked on the built page: tapping a chip after scrolling
+the row to its far end still inserts, correctly spaced - the subject read
+"We missed you this week, {{first_name}} {{academy_name}}" after tapping
+Academy. Dragging the row sideways still works (the programmatic scroll in the
+first pass moved it). The two rows scroll independently - the screenshot at the
+end has the subject row on "Missed in a row / Last present / Academy" and the
+message row still on "Her first name". All thirteen testIDs unchanged.
+
+NOT COVERED ON THE BUILT PAGE: the width at which every chip fits and no arrows
+render. The row is 1313px and the dialog caps well below that, so that width
+does not exist in this form - it is covered by the spec
+("a row that fits gets no arrows") only. Stated rather than implied.
+
+COST, stated plainly: the arrows take 100px of the row, so at 480px the row
+shows three chips where it showed five. That is the trade the request makes -
+five names with nothing saying there are more was the reported problem.
+
+Gate: npm run check green (typecheck, 493 unit specs, 2840/2840 contrast pairs,
+75/75 icons). audit:all reports no new violation in any of its six checks.
