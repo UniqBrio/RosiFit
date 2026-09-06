@@ -6,6 +6,7 @@ import { useTheme } from '../src/theme/ThemeProvider';
 import { useToast } from '../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS } from '../src/theme/tokens';
 import { useIdentity, signOut, type Identity } from '../src/data/session';
+import { useGoToSignIn } from '../src/components/useGoToSignIn';
 import { useAcademyDetails } from '../src/data/hooks';
 import { ShellScreen } from '../src/components/AppShell';
 
@@ -47,11 +48,14 @@ function ProfileBody() {
   const { identity, loading, signedOut } = useIdentity();
   const academy = useAcademyDetails(forced);
 
+  const toSignIn = useGoToSignIn();
   const leave = async () => {
     // The session has to actually END. Replacing the route on its own left a
     // live session behind, so re-opening the app walked straight back in.
+    // The root Stack is then RESET to sign-in rather than sent to '/', the
+    // pathname Overview shares (RC-022).
     await signOut();
-    router.replace('/');
+    toSignIn();
   };
 
   if (loading) {
@@ -67,7 +71,7 @@ function ProfileBody() {
           title="You are signed out"
           body="Your session has ended. Sign in with your mobile number and PIN to see your profile."
           action="Sign in"
-          onAction={() => router.replace('/')} />
+          onAction={toSignIn} />
       </Screen>
     );
   }

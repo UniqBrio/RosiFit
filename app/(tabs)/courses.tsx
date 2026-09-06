@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { View, Text, Pressable, TextInput } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useState, useEffect } from 'react';
+import { View, Text, Pressable, TextInput, useWindowDimensions } from 'react-native';
+import { useRouter, useLocalSearchParams, type Href } from 'expo-router';
 import { Screen, Label, Button, Skeleton, EmptyState, ErrorState } from '../../src/components/ui';
 import { ScreenHeader } from '../../src/components/AppShell';
 import { Icon } from '../../src/components/Icon';
@@ -37,6 +37,18 @@ export default function Courses() {
   const [branchOpen, setBranchOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const { identity } = useIdentity();
+
+  /**
+   * Same first-render rule as app/course/[id].tsx: the server renders with a
+   * width of 0 and the browser would render with the real one, and that
+   * mismatch makes React throw the tree away and remount it. So the first
+   * render uses 0 on both sides and the measured width takes over after
+   * mount. Below 768 the header's actions no longer fit beside the title.
+   */
+  const { width } = useWindowDimensions();
+  const [measured, setMeasured] = useState(false);
+  useEffect(() => { setMeasured(true); }, []);
+  const compact = (measured ? width : 0) < 768;
 
   const enrolledIn = (name: string) => (followUp.data?.members ?? []).filter(m => m.course === name).length;
 
@@ -94,6 +106,47 @@ export default function Courses() {
   }, 0);
   const headline = coursesHeadline(all.length, branchCount, needFollowUp);
 
+  /** One of the header's action buttons. Compact (36pt) beside the title;
+   *  on a phone each grows to share the row and keeps a 44pt touch height. */
+  const action = (testID: string, label: string, a11y: string, icon: string, to: Href,
+    look: { bg: string; border?: string; ink: string }) => (
+    <Pressable key={testID} testID={testID}
+      onPress={() => router.push(to)}
+      accessibilityRole="button" accessibilityLabel={a11y}
+      style={({ pressed }) => ({
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+        height: compact ? 44 : 36, paddingHorizontal: 12, borderRadius: 11,
+        flexGrow: compact ? 1 : 0, flexBasis: compact ? 140 : undefined,
+        backgroundColor: look.bg,
+        borderWidth: look.border ? 1 : 0, borderColor: look.border,
+        opacity: pressed ? 0.8 : 1,
+      })}>
+      <Icon name={icon} size={17} color={look.ink} />
+      <Text style={{ fontSize: 12, fontWeight: '800', color: look.ink }}>{label}</Text>
+    </Pressable>
+  );
+
+  /* ADDING PEOPLE from the workspace, not only from inside one course. Both
+     screens offer the same pair -- the course detail has them under its
+     Members heading, where the course is already decided; here neither is,
+     so both open asking which course she joins.
+     OWNER-ONLY, as the reference has it: a file of forty members is the shape
+     of the register. Hidden for staff rather than disabled -- a disabled
+     button asks a question the person cannot answer -- and the RPC refuses
+     them anyway, so the deep route is gated too. */
+  const actions = (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: SPACE.sm }}>
+      {identity?.isSuperAdmin ? action('courses-add-member', 'Add Member', 'Add a member',
+        'person_add', '/member/edit',
+        { bg: statusSurface(theme.accentInk).bg, border: statusSurface(theme.accentInk).border, ink: theme.accentInk }) : null}
+      {identity?.isSuperAdmin ? action('courses-bulk-import', 'Bulk Import', 'Bulk import members from a file',
+        'upload_file', '/member/import',
+        { bg: theme.surface, border: theme.lineStrong, ink: theme.fg }) : null}
+      {action('courses-add', 'Add Course', 'Add a course', 'add', '/course/edit',
+        { bg: theme.accent, ink: theme.onAccent })}
+    </View>
+  );
+
   if (courses.state === 'loading') return <Screen><Skeleton lines={4} /></Screen>;
   if (courses.state === 'error') {
     return (
@@ -110,92 +163,18 @@ export default function Courses() {
           landing screen -- the workspace where a course is opened, its
           register uploaded and its weekly review run. The course list is how
           you get at all of that, not the subject of the screen. */}
+      {/* THE SCREEN'S ACTIONS, together in its header. Add Course, Add Member
+          and Bulk Import are the three ways a person comes here to put
+          something on the register, so they sit as one group beside the
+          title. Add Member and Bulk Import used to be a row of their own
+          between the search box and the list; the requester asked for them
+          next to Add Course (2026-09-06).
+          On a phone the three do not fit beside a two-line title, so the
+          group drops under it as a full-width row that wraps: buttons grow
+          to share the line, and whichever does not fit takes the next one. */}
       <ScreenHeader title="Attendance" subtitle={headline}
-        right={
-          <Pressable testID="courses-add"
-            onPress={() => router.push('/course/edit')}
-            accessibilityRole="button" accessibilityLabel="Add a course"
-            style={({ pressed }) => ({
-              flexDirection: 'row', alignItems: 'center', gap: 5,
-              height: 36, paddingHorizontal: 12, borderRadius: 11,
-              backgroundColor: theme.accent, opacity: pressed ? 0.8 : 1,
-            })}>
-            <Icon name="add" size={17} color={theme.onAccent} />
-            <Text style={{ fontSize: 12, fontWeight: '800', color: theme.onAccent }}>Add Course</Text>
-          </Pressable>
-        } />
-
-      {/* The canvas puts a branch chip in this header. Without it the only way
-          to see one branch's courses was to read every course's offering
-          lines and filter by eye. Hidden when the academy runs one branch:
-          a filter with a single choice is furniture. */}
-      {branchOptions.length > 2 ? (
-        <DropdownRow open={branchOpen} style={{ marginTop: SPACE.md }}>
-          <DropdownField label="Branch" value={branch} open={branchOpen}
-            highlight={branch !== ALL_BRANCHES}
-            testID="courses-branch-field"
-            onPress={() => setBranchOpen(o => !o)} />
-          {branchOpen ? (
-            <DropdownPanel>
-              <DropdownList options={branchOptions.map(label => ({ label }))} value={branch}
-                testID="courses-branch"
-                onSelect={l => { setBranch(l); setBranchOpen(false); }} />
-            </DropdownPanel>
-          ) : null}
-        </DropdownRow>
-      ) : null}
-
-      <View style={{
-        flexDirection: 'row', alignItems: 'center', gap: SPACE.md, marginTop: SPACE.md,
-        height: 46, borderRadius: RADIUS.md, backgroundColor: theme.surface,
-        borderWidth: 1, borderColor: theme.lineStrong, paddingHorizontal: 13,
-      }}>
-        <Icon name="search" size={19} color={theme.muted} />
-        <TextInput value={query} onChangeText={setQuery} placeholder="Search courses"
-          placeholderTextColor={theme.muted} accessibilityLabel="Search courses"
-          style={{ flex: 1, color: theme.fgStrong, fontSize: 13.5, fontWeight: '600' }} />
-      </View>
-
-      {/* ADDING PEOPLE, from the workspace rather than only from inside one
-          course. Both screens offer the same pair -- the course detail has
-          them under its Members heading, where the course is already decided;
-          here neither is, so both open asking which course she joins.
-          They sit under the search box and above the list because that is
-          where a person who came here to add somebody is already looking,
-          and neither is a filter of what follows. */}
-      {/* OWNER-ONLY, as the reference has it: a file of forty members is the
-          shape of the register. Hidden for staff rather than disabled -- a
-          disabled button asks a question the person cannot answer -- and the
-          RPC refuses them anyway, so the deep route is gated too. */}
-      {identity?.isSuperAdmin ? (
-      <View style={{ flexDirection: 'row', gap: SPACE.md, marginTop: SPACE.md }}>
-        <Pressable testID="courses-add-member"
-          onPress={() => router.push('/member/edit')}
-          accessibilityRole="button" accessibilityLabel="Add a member"
-          style={({ pressed }) => ({
-            flex: 1, minHeight: 46, borderRadius: RADIUS.md,
-            flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-            backgroundColor: statusSurface(theme.accentInk).bg,
-            borderWidth: 1, borderColor: statusSurface(theme.accentInk).border,
-            opacity: pressed ? 0.7 : 1,
-          })}>
-          <Icon name="person_add" size={18} color={theme.accentInk} />
-          <Text style={{ fontSize: 12.5, fontWeight: '800', color: theme.accentInk }}>Add Member</Text>
-        </Pressable>
-        <Pressable testID="courses-bulk-import"
-          onPress={() => router.push('/member/import')}
-          accessibilityRole="button" accessibilityLabel="Bulk import members from a file"
-          style={({ pressed }) => ({
-            flex: 1, minHeight: 46, borderRadius: RADIUS.md,
-            flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-            backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
-            opacity: pressed ? 0.7 : 1,
-          })}>
-          <Icon name="upload_file" size={18} color={theme.fg} />
-          <Text style={{ fontSize: 12.5, fontWeight: '800', color: theme.fg }}>Bulk Import</Text>
-        </Pressable>
-      </View>
-      ) : null}
+        right={compact ? undefined : actions} />
+      {compact ? <View style={{ marginTop: -SPACE.xs, marginBottom: SPACE.md }}>{actions}</View> : null}
 
       {all.length === 0 && (
         <EmptyState

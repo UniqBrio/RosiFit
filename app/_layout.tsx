@@ -43,6 +43,10 @@ function Nav() {
           a staff account that reaches one anyway -- a typed URL, a stale
           bookmark -- to the Attendance workspace. It renders nothing. */}
       <AdminRouteGuard />
+      {/* Sign out RESETS this Stack to `index` (useGoToSignIn, RC-022). It
+          reaches this navigator as expo-router's `useNavigation('/')` -- not
+          the container's root, which is an internal navigator that does not
+          know a route called `index` and drops the reset without a word. */}
       <Stack screenOptions={{
         headerStyle: { backgroundColor: theme.shell },
         headerTitleStyle: { color: theme.fgStrong, fontWeight: '800' },

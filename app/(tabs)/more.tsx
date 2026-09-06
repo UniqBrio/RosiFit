@@ -8,6 +8,7 @@ import { SPACE, RADIUS, TAP_MIN, STATUS } from '../../src/theme/tokens';
 import { SUPPORT_PHONE } from '../../src/data/mock';
 import { useBranchUsage, useStaff } from '../../src/data/hooks';
 import { useIdentity, signOut } from '../../src/data/session';
+import { useGoToSignIn } from '../../src/components/useGoToSignIn';
 import { homeHref } from '../../src/data/access';
 
 type Item = {
@@ -56,12 +57,14 @@ export default function More() {
   const branchCount = count(branches.data?.length);
   const staffCount = count(staff.data?.length);
 
+  const toSignIn = useGoToSignIn();
   const leave = async () => {
     // Signing out has to end the SESSION, not just the route. Replacing the
     // route alone left a live session behind and the next launch walked
-    // straight back in as the previous account.
+    // straight back in as the previous account. And the route is RESET, not
+    // replaced with '/': from in here that pathname is Overview (RC-022).
     await signOut();
-    router.replace('/');
+    toSignIn();
   };
 
   const accentName = isCustom ? 'custom' : (accents.find(a => a.key === accentKey)?.label ?? '');
@@ -144,7 +147,7 @@ export default function More() {
           title="You are signed out"
           body="Your session has ended. Sign in with your mobile number and PIN to reach your account and settings."
           action="Sign in"
-          onAction={() => router.replace('/')} />
+          onAction={toSignIn} />
       </Screen>
     );
   }

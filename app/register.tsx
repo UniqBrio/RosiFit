@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useGoToSignIn } from '../src/components/useGoToSignIn';
 import { Screen, Muted, Label, Button } from '../src/components/ui';
 import { Field } from '../src/components/Field';
 import { Icon } from '../src/components/Icon';
@@ -29,6 +30,7 @@ export default function Register() {
   const { theme } = useTheme();
   const { flash } = useToast();
   const router = useRouter();
+  const toSignIn = useGoToSignIn();
   // Carried from the sign-in screen when the number turned out to have no
   // account, so she never types it twice -- and so the number she is
   // registering is provably the one she tried to sign in with.
@@ -208,7 +210,7 @@ export default function Register() {
             back to, so this is the only Back there is. */}
         <Button label="Back" variant="secondary"
           testID="register-back-to-signin"
-          onPress={() => router.replace('/')}
+          onPress={toSignIn}
           style={{ flex: 1 }} />
         <Button label="Register & issue PIN"
           onPress={submit} disabled={!valid} style={{ flex: 2 }} />

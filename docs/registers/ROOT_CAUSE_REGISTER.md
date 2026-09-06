@@ -59,6 +59,67 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-022 — Sign out landed on the signed-out Overview, not on the number field
+**Date:** 06-Sep-2026 · **Severity:** S2 · **Modules:** `app/(tabs)/more.tsx`, `app/profile.tsx`, `app/forgot-pin.tsx`, `app/register.tsx`, `src/data/access.ts`
+
+**Symptom** — reported as *"on clicking signout its going to some other screen instead it shoud
+go to enter number screen"*. More → Sign out ended the session and then showed the **Overview**
+tab's "You are signed out" card, still inside the academy shell with the Home · Reports · More
+pill under it, instead of *Welcome back* with the mobile-number field.
+
+**Root cause** — two screens answer to the pathname `/`: the sign-in screen (`app/index.tsx`)
+and the Overview tab (`app/(tabs)/index.tsx`). `router.replace('/')` has to pick one, and
+expo-router's config sorter (`getRouteConfigSorter` in `fork/getStateFromPath-forks.js`) breaks
+the tie in favour of the route that shares the caller's current **group** — so from any screen
+under `(tabs)` the href `/` means Overview. Sign out on More was written as `router.replace('/')`,
+the same call the pre-session screens use from the root stack, where the tie goes the other way.
+The session did end (`supabase.auth.signOut()` was awaited); only the destination was wrong,
+which is why the card on arrival said *You are signed out* rather than showing a stale account.
+Both roles are affected equally, because the tie-break is about position, not permission — which
+matches the report having no selectivity.
+
+**Fix** — the sign-in screen is no longer named by its pathname anywhere. `src/data/access.ts`
+carries `SIGN_IN_ROUTE` and `signInRootState()` (the root Stack on its first route, `index`,
+and nothing else), and one hook, `src/components/useGoToSignIn.ts`, resets the root navigation
+container to that state. A reset has no tie to break, and it also empties the stack — which is
+what ending a session should mean: the browser's Back cannot step into the shell afterwards.
+Sign out (More, profile) calls it after `signOut()`; the signed-out "Sign in" cards and every
+*Back to sign in* call it directly.
+
+**Sweep** — every `router.replace('/')` / `router.push('/')` under `app/`, found by
+`grep -rn "replace('/')\|push('/')" app` (7 hits, 4 files): `(tabs)/more.tsx` ×2 (Sign out; the
+signed-out card's Sign in — both inside the group, both wrong), `profile.tsx` ×2, `forgot-pin.tsx`
+×2 and `register.tsx` ×1 (root-stack screens where the tie happened to fall the right way; changed
+so that there is one way to reach sign-in, not a correct way and a lucky one). The two
+`router.navigate('/')` on More's back arrow are NOT in the pattern: there `/` is meant to be
+Overview, and the tie-break is what makes it so.
+
+**Files** — `src/data/access.ts`, `src/components/useGoToSignIn.ts` (new), `app/(tabs)/more.tsx`,
+`app/profile.tsx`, `app/forgot-pin.tsx`, `app/register.tsx`, `src/data/signInRoute.test.ts` (new
+spec), `.evidence/sign-in-route-fail-first.txt`.
+
+**How to verify** — `npx tsx --test src/data/signInRoute.test.ts` (2 tests; the second scans
+every screen under `app/` and fails on a `replace`/`push` to `'/'`). In the app: sign in, More,
+Sign out — *Welcome back* with the number field, no pill; the browser's Back stays on it. Walked
+against a fixtures-mode `expo export` build on 06-Sep-2026 (see TEST_SUMMARY).
+
+**Recurrence risk** — every new screen that wants "back to sign-in" will reach for the
+pathname, because `/` is what the sign-in screen looks like it is called. The spec above holds
+every screen under `app/` shut by scanning the source, so the next one fails at `npm run check`.
+The class is wider than sign-in: **any** two routes sharing a pathname across a group boundary
+resolve by position, and `homeMatch()` in `access.ts` already documents Overview's half of it.
+
+**Prevention rule** — the sign-in screen is reached by `useGoToSignIn()` only; never by an href.
+Rung: `src/data/signInRoute.test.ts`, in `npm run test:unit`.
+
+**Process check** — no. The request was scoped, the screen was read, and the call it used was
+the one every sibling screen used; only the router's tie-break, which lives in a vendored fork
+inside `node_modules`, told them apart. A reachability question ("does the destination this
+routes to actually succeed?", RC-013) asked at the gate would have walked Sign out, but that
+question is already on the register and this fix adds the rung it lacked.
+
+---
+
 ## RC-021 — "not loaded yet" and "not on the register" both rendered as the ADD form
 **Date:** 06-Sep-2026 · **Severity:** S1 · **Modules:** `app/member/edit.tsx`, `app/course/edit.tsx`, `app/offering/edit.tsx`
 

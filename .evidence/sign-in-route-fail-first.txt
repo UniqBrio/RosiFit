@@ -1,0 +1,74 @@
+# Fail-first evidence: src/data/signInRoute.test.ts run against the tree at b9525dd (working tree, 06-Sep-2026),
+# BEFORE signInRootState existed in src/data/access.ts and before any screen was changed.
+# Command: npx tsx --test src/data/signInRoute.test.ts
+
+  TAP version 13
+  # Subtest: the sign-in screen is the root Stack on its first route, and nothing else
+  not ok 1 - the sign-in screen is the root Stack on its first route, and nothing else
+    ---
+    duration_ms: 4.1049
+    type: 'test'
+    location: 'C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\src\\data\\signInRoute.test.ts:19:1'
+    failureType: 'testCodeFailure'
+    error: '(0 , import_access.signInRootState) is not a function'
+    code: 'ERR_TEST_FAILURE'
+    name: 'TypeError'
+    stack: |-
+      TestContext.<anonymous> (C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\src\data\signInRoute.test.ts:20:17)
+      Test.runInAsyncScope (node:async_hooks:214:14)
+      Test.run (node:internal/test_runner/test:1047:25)
+      Test.start (node:internal/test_runner/test:944:17)
+      startSubtestAfterBootstrap (node:internal/test_runner/harness:296:17)
+    ...
+  # Subtest: no screen replaces or pushes the bare pathname "/" to reach sign-in
+  not ok 2 - no screen replaces or pushes the bare pathname "/" to reach sign-in
+    ---
+    duration_ms: 23.2456
+    type: 'test'
+    location: 'C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\src\\data\\signInRoute.test.ts:34:1'
+    failureType: 'testCodeFailure'
+    error: |-
+      sign-in reached by pathname in: C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\app\(tabs)\more.tsx, C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\app\forgot-pin.tsx, C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\app\profile.tsx, C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\app\register.tsx
+      + actual - expected
+      
+      + [
+      +   'C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\app\\(tabs)\\more.tsx',
+      +   'C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\app\\forgot-pin.tsx',
+      +   'C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\app\\profile.tsx',
+      +   'C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\app\\register.tsx'
+      + ]
+      - []
+      
+    code: 'ERR_ASSERTION'
+    name: 'AssertionError'
+    expected:
+    actual:
+      0: 'C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\app\\(tabs)\\more.tsx'
+      1: 'C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\app\\forgot-pin.tsx'
+      2: 'C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\app\\profile.tsx'
+      3: 'C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\app\\register.tsx'
+    operator: 'deepStrictEqual'
+    stack: |-
+      TestContext.<anonymous> (C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\src\data\signInRoute.test.ts:41:10)
+      Test.runInAsyncScope (node:async_hooks:214:14)
+      Test.run (node:internal/test_runner/test:1047:25)
+      Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+      Test.postRun (node:internal/test_runner/test:1173:19)
+      Test.run (node:internal/test_runner/test:1101:12)
+      async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+    ...
+  1..2
+  # tests 2
+  # suites 0
+  # pass 0
+  # fail 2
+  # cancelled 0
+  # skipped 0
+  # todo 0
+  # duration_ms 1222.4431
+
+# Addendum (same day, second cause): the FIRST hook used the container's resetRoot. The walk on the fixtures
+# export showed it doing nothing (URL stayed /more, no error): expo-router's container root is an internal
+# navigator with no route called `index`, so the reset was refused silently. The hook now dispatches the
+# reset to the app's own Stack (useNavigation('/')); a Stack `id` was tried first and rejected by the
+# types (id?: undefined on expo-router's Stack). Proof of the second fix is the dev-server walk in TEST_SUMMARY.

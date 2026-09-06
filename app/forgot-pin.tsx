@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { View, Text } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useGoToSignIn } from '../src/components/useGoToSignIn';
 import { Screen, H2, Body, Muted, Label, Button } from '../src/components/ui';
 import { Field } from '../src/components/Field';
 import { Icon } from '../src/components/Icon';
@@ -31,6 +32,7 @@ export default function ForgotPin() {
   const { theme } = useTheme();
   const { flash } = useToast();
   const router = useRouter();
+  const toSignIn = useGoToSignIn();
   const { phone } = useLocalSearchParams<{ phone?: string }>();
 
   const [questions, setQuestions] = useState<SecurityQuestion[]>(
@@ -157,7 +159,7 @@ export default function ForgotPin() {
           </Muted>
           <Button testID="forgot-pin-requested-back" label="Back to sign in"
             style={{ marginTop: SPACE.xl, alignSelf: 'stretch' }}
-            onPress={() => router.replace('/')} />
+            onPress={toSignIn} />
         </View>
       </Screen>
     );
@@ -192,7 +194,7 @@ export default function ForgotPin() {
             onPress={() => flash(`Calling ${SUPPORT_PHONE}`)} />
           <Button testID="forgot-pin-staff-back" label="Back to sign in" variant="secondary"
             style={{ marginTop: SPACE.sm, alignSelf: 'stretch' }}
-            onPress={() => router.replace('/')} />
+            onPress={toSignIn} />
         </View>
       </Screen>
     );

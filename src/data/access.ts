@@ -67,3 +67,20 @@ const ADMIN_ONLY = ['/staff', '/audit'];
 export function isAdminOnlyPath(path: string): boolean {
   return ADMIN_ONLY.some(p => path === p || path.startsWith(`${p}/`));
 }
+
+/**
+ * THE SIGN-IN SCREEN IS NEVER NAMED BY ITS PATHNAME.
+ *
+ * Its pathname is '/', and so is Overview's (`(tabs)/index`). expo-router
+ * breaks that tie in favour of the group the caller is already in, so
+ * `router.replace('/')` from any tab screen lands on the signed-out Overview
+ * -- which is what Sign out under More did (RC-022). Signing out, and every
+ * "Back to sign in", is instead a RESET of the root Stack to this one route:
+ * no tie to break, and nothing left on the stack to come back to, which is
+ * also what ending a session should mean.
+ */
+export const SIGN_IN_ROUTE = 'index' as const;
+
+export function signInRootState(): { index: 0; routes: { name: typeof SIGN_IN_ROUTE }[] } {
+  return { index: 0, routes: [{ name: SIGN_IN_ROUTE }] };
+}
