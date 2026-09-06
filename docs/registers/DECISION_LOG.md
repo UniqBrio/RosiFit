@@ -23,7 +23,7 @@
 | 014 | [The member code is retired; the column is kept](../decisions/006-member-code-retired.md) | Accepted | 04-Sep-2026 | |
 | 015 | [A rolled-back rehearsal against production, when the harness cannot run](../decisions/007-production-rollback-rehearsal.md) | Accepted | 04-Sep-2026 | |
 | 016 | [Continue validates the number, and the enumeration oracle is accepted](../decisions/008-continue-validates-the-number.md) | Accepted | 05-Sep-2026 | |
-| 017 | [The attendance upload and its match review are dialogs, not pages](../decisions/009-upload-and-match-are-dialogs.md) | Accepted | 05-Sep-2026 | amended 06-Sep-2026: `member/import` came off the exclusion list — its premise (“reached from More”) was never true |
+| 017 | [The attendance upload and its match review are dialogs, not pages](../decisions/009-upload-and-match-are-dialogs.md) | Accepted | 05-Sep-2026 | amended 06-Sep-2026: `member/import` came off the exclusion list — its premise (“reached from More”) was never true; amended again the same day: `member/[id]`, one member’s record, is a dialog over the list she was tapped on (`requests/2026-09-06-member-detail-as-popup.md`) |
 | 018 | [A member's Active/Inactive is STORED, and it is the engine's own `members.status`](../decisions/010-member-status-is-stored-not-derived.md) | Accepted | 05-Sep-2026 | |
 | 019 | [A detail is TAPPED into the wording, not typed](../decisions/011-inserting-a-detail-into-the-wording.md) | Accepted | 05-Sep-2026 | |
 | 020 | [The send draft picks its recipients, and marks who has already had one](../decisions/012-send-picks-recipients.md) | Accepted | 06-Sep-2026 | |
