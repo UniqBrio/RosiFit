@@ -1,6 +1,9 @@
 # ADR-023 — The Overview drops "Not expected" and the scope tabs, and gains a mark per question
 
-**Status:** Accepted
+**Status:** Accepted — **amended by ADR-026 (06-Sep-2026):** the course and period marks
+this record chose (a dot plot on a shared axis, a line over time) were replaced by small
+rings on the requester's instruction. The two removals below, and the member section's
+ranked bars, stand.
 **Date:** 06-Sep-2026 · **Deciders:** repo owner (request), this session (implementation)
 
 ## Context

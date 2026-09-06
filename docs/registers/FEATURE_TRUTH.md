@@ -84,7 +84,8 @@ altogether. Added on 03-Sep: `branches` and `course/[id]`.
 ### Dashboard — `app/(tabs)/index.tsx`
 **Last confirmed:** 06-Sep-2026
 
-**As of 06-Sep the Overview is three filters, one ring and three sections.** The
+**As of 06-Sep the Overview is three filters, one ring and three sections, two to a row
+from a 768px window (`TWO_UP_MIN` in `app/(tabs)/index.tsx`), stacked below it.** The
 "Academy wise / Branch wise" tab pair is gone: academy-wide IS the branch filter with
 nothing ticked, so the tabs were a second control for one fact and could be set to
 disagree with the filter beside them. The `scope` they wrote to is gone from
@@ -106,13 +107,21 @@ what was actually expected of the members counted, so a member due at four who c
 times reads 100% rather than 67%. `distribution()` in `src/data/followup.ts`, ✅ held by
 11 assertions in `src/data/distribution.test.ts`.
 
-**Three sections, three marks, one set of numbers:**
+**Three sections, two marks, one set of numbers** (the course and period marks changed on
+06-Sep-2026 at the requester's instruction — ADR-026,
+`requests/2026-09-06-overview-two-per-row-donuts.md`):
 
 | Section | Mark | Why that mark |
 |---|---|---|
 | Based on member | ranked horizontal bars, lowest first, 6 shown | the length is a session VOLUME, which is what decides who to chase |
-| Based on course | dots on one shared 0–100% axis | a course is a RATE; position on a common scale is read in one glance |
-| Based on period | a line over the period's own sub-ranges | time, where the SHAPE is the finding |
+| Based on course | a small ring per course — Present against Absent, the percentage in the hole (`AttendanceRings`) | the requester asked for donuts; a ring that means what the Attendance ring means is one mark to learn, not three |
+| Based on period | a small ring per sub-range, the same component | as above; a sub-range that expected nothing is a dash on an empty track, never 0% |
+
+Until 06-Sep the course section was a dot plot on one shared 0–100% axis and the period
+section a line over the sub-ranges (ADR-023, amended). Both components left the tree with
+their replacement; `git log` has them. ✅ held by 5 specs in
+`src/components/overviewGrid.test.ts` (one grid, rings fed the report rows, the old marks
+gone, words and glyphs beside every colour).
 
 | Capability | Status | Notes |
 |---|---|---|
@@ -123,11 +132,11 @@ times reads 100% rather than 67%. `distribution()` in `src/data/followup.ts`, �
 | Follow-up count | ◻ | Derived from the member list and the saved rule (DR-1), never a stored second list |
 
 **Rules and validations** — every figure on the screen is counted from ONE member list,
-narrowed once. The period line asks the same `member_period_metrics` the ring asks, once
-per sub-range, over ranges that join up with no gap and no overlap — so the points sum
-back to the ring instead of answering a second question with a second number
+narrowed once. The period rings ask the same `member_period_metrics` the ring asks, once
+per sub-range, over ranges that join up with no gap and no overlap — so the rings sum
+back to the big ring instead of answering a second question with a second number
 (`src/data/buckets.ts`, ✅ `src/data/buckets.test.ts`). A sub-range that expected nothing
-breaks the line rather than plotting zero. Every chart's caption is generated from the
+is a dash rather than 0%. Every chart's caption is generated from the
 same selection the figures are counted from, so a label and a number cannot describe
 different populations.
 

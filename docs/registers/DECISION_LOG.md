@@ -29,9 +29,10 @@
 | 020 | [The send draft picks its recipients, and marks who has already had one](../decisions/012-send-picks-recipients.md) | Accepted | 06-Sep-2026 | |
 | 021 | [The import resolves itself, and “add display name” became a real merge](../decisions/013-import-resolves-itself-and-the-merge-is-real.md) | Accepted | 06-Sep-2026 | reverses the blocking half of C-79 |
 | 022 | [The file imports on the pick, and the instructor is never a member](../decisions/014-the-file-imports-on-the-pick.md) | Accepted | 06-Sep-2026 | retires the last of C-79's blocking rule; supersedes the “Not a member” chip from 021 |
-| 023 | [The Overview drops "Not expected" and the scope tabs, and gains a mark per question](../decisions/015-overview-drops-not-expected-and-the-scope-tabs.md) | Accepted | 06-Sep-2026 | departs from the canvas’ Overview |
+| 023 | [The Overview drops "Not expected" and the scope tabs, and gains a mark per question](../decisions/015-overview-drops-not-expected-and-the-scope-tabs.md) | Accepted | 06-Sep-2026 | departs from the canvas’ Overview; amended by 026 — the course and period marks are rings now, the removals stand |
 | 024 | [The calendar sizes itself and hangs under the field, in every place a date is chosen](../decisions/016-the-date-picker-hangs-under-the-field.md) | Accepted | 06-Sep-2026 | |
 | 025 | [Her status is a FIELD on the edit form, written by Save](../decisions/017-member-status-on-the-edit-form-applies-on-save.md) | Accepted | 06-Sep-2026 | extends 018 — a second control, the same write path, a different mechanism |
+| 026 | [The Overview's sections sit two to a row, and course and period are rings](../decisions/018-overview-sections-two-up-and-rings.md) | Accepted | 06-Sep-2026 | amends 023 — replaces its course and period marks on the requester's instruction |
 
 Status: `Proposed` · `Accepted` · `Superseded by NNN` · `Deprecated`
 

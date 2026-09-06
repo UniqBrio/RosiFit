@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { useEffect, useState } from 'react';
+import { View, Text, Pressable, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen, H2, Muted, Skeleton, ErrorState } from '../../src/components/ui';
 import { Icon } from '../../src/components/Icon';
@@ -9,8 +9,7 @@ import {
 import { PeriodPanel, periodFieldValue } from '../../src/components/PeriodFilter';
 import { Donut } from '../../src/components/Donut';
 import { AttendanceBars, AttendanceBarsLegend } from '../../src/components/AttendanceBars';
-import { AttendanceDots } from '../../src/components/AttendanceDots';
-import { AttendanceTrend } from '../../src/components/AttendanceTrend';
+import { AttendanceRings } from '../../src/components/AttendanceRings';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { SPACE, RADIUS, TAP_MIN } from '../../src/theme/tokens';
 import { useFollowUp, useFilterOptions, useBucketMetrics } from '../../src/data/hooks';
@@ -27,7 +26,8 @@ import { useAdminRedirect } from '../../src/components/AdminOnly';
 
 /**
  * The Overview: three filters, and the academy's attendance told four ways
- * -- a ring, a ranking, a rate plot and a trend -- from ONE member list.
+ * -- a ring, a ranking, and a ring per course and per sub-range -- from ONE
+ * member list, two sections to a row where the width allows.
  *
  * WHAT THIS SCREEN USED TO BE
  * An "Academy wise / Branch wise" tab pair, a Branch field that only appeared
@@ -48,31 +48,43 @@ import { useAdminRedirect } from '../../src/components/AdminOnly';
  *   the old ring's denominator. See src/data/followup.ts for why removing it
  *   costs a reduced-schedule member nothing.
  *
- * WHY EACH SECTION DRAWS A DIFFERENT MARK
- * Three sections asking three different questions, so three forms rather than
- * one form repeated:
+ * WHICH MARK EACH SECTION DRAWS
  *   - BY MEMBER is a ranking, and the bar's LENGTH is a volume -- a member due
  *     at ten sessions draws a longer bar than one due at three, which is the
  *     point when you are deciding who to chase.
- *   - BY COURSE is a rate. Four courses on one shared 0-100% axis are read by
- *     POSITION, in a single glance down the column, instead of by comparing
- *     four lengths.
- *   - BY PERIOD is time, and the shape is the finding. A line makes "Thursday
- *     fell off" something you see; a row of bars makes it something you work
- *     out.
+ *   - BY COURSE and BY PERIOD are small rings: each course, and each
+ *     sub-range of the period, drawn exactly as the Attendance ring draws the
+ *     whole. They were a dot plot on a shared axis and a line over time
+ *     (ADR-023); the requester asked for donuts instead
+ *     (requests/2026-09-06-overview-two-per-row-donuts.md, ADR-026), and one
+ *     mark that means one thing everywhere on the screen is easier to read at
+ *     a glance than three marks each with an axis to learn.
+ *
+ * WHY THE SECTIONS SIT TWO TO A ROW
+ * Four sections stacked full-width on a desktop was a long scroll of one
+ * chart at a time -- the member bars alone filled the window in the
+ * requester's screenshot. Two per row puts the whole picture in one screen
+ * where the width allows; below TWO_UP_MIN they stack as before.
  *
  * WHY FOUR CHARTS DO NOT REOPEN THE DRIFT THE OLD DASHBOARD HAD
  * The dashboard this screen replaced was cut back to one chart because its
  * hero, its list and its week table each counted the SAME figure from a
  * DIFFERENT query. These four do the opposite: the ring, the member bars and
- * the course dots are three groupings of one narrowed member list, and the
- * trend is that same query (member_period_metrics) over consecutive
- * sub-ranges that partition the period exactly -- so the points sum back to
- * the ring. Every section answers a different question with a different mark,
- * and none of them can disagree about the answer.
+ * the course rings are three groupings of one narrowed member list, and the
+ * period rings are that same query (member_period_metrics) over consecutive
+ * sub-ranges that partition the period exactly -- so they sum back to the
+ * ring. No section computes a total of its own, so none of them can disagree
+ * about the answer.
  */
 
 type FilterKind = 'course' | 'period' | 'branch';
+
+/**
+ * The window width at which the sections go two to a row: the same 768 the
+ * Attendance tab's header uses to keep its actions beside the title. Below
+ * it a phone gets the stack it always had.
+ */
+const TWO_UP_MIN = 768;
 
 export default function Home() {
   const { theme } = useTheme();
@@ -85,6 +97,15 @@ export default function Home() {
   // Only one dropdown is out at a time: two overlapping panels have no
   // honest z-order, and the one underneath is unreachable.
   const [open, setOpen] = useState<FilterKind | null>(null);
+  // Same first-render rule as app/(tabs)/courses.tsx: the server renders
+  // with a width of 0 and the browser would render with the real one, and
+  // that mismatch makes React throw the tree away and remount it. So the
+  // first render is the stack on both sides and the measured width takes
+  // over after mount.
+  const { width } = useWindowDimensions();
+  const [measured, setMeasured] = useState(false);
+  useEffect(() => { setMeasured(true); }, []);
+  const twoUp = (measured ? width : 0) >= TWO_UP_MIN;
 
   // The period the filters name IS the period the queries run over, so no
   // chart can quietly cover a different range from its own label (C-84). A
@@ -136,11 +157,6 @@ export default function Home() {
   // member and course bars are two groupings of it, and the period bars are
   // the same members' figures per sub-range (C-84/85/86/87).
   const { attended, missed } = distribution(members);
-  // The ring's percentage, computed ONCE and handed to the trend as its
-  // reference line -- so the flat line and the number in the ring are the
-  // same value rather than two roundings of it.
-  const overallPct = attended + missed === 0
-    ? null : Math.round((attended / (attended + missed)) * 100);
   const flaggedHere = (followUp.data?.flagged ?? []).filter(m => matchesSelection(m, selection));
 
   const memberRows = attentionFirst(reportRows(members, 'Members'));
@@ -239,9 +255,21 @@ export default function Home() {
     <Screen>
       {controls}
 
+      {/* The four sections share ONE grid: two to a row from TWO_UP_MIN,
+          stacked below it, and the same gap either way. Each card sits in a
+          Cell that is half the row's width; the row's negative side margin
+          and the cell's side padding are how two 50% cells keep a gap
+          without a pixel width that a scrollbar could push over the edge. */}
+      <View testID="home-sections" style={{
+        marginTop: SPACE.lg, rowGap: SPACE.md,
+        flexDirection: twoUp ? 'row' : 'column', flexWrap: twoUp ? 'wrap' : 'nowrap',
+        marginHorizontal: twoUp ? -SPACE.md / 2 : 0,
+      }}>
+
       {/* ------------------------------------------------ the whole picture */}
+      <Cell twoUp={twoUp}>
       <View style={{
-        marginTop: SPACE.lg, padding: 18, borderRadius: RADIUS.lg,
+        flex: 1, padding: 18, borderRadius: RADIUS.lg,
         backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
       }}>
         <H2>Attendance</H2>
@@ -264,9 +292,10 @@ export default function Home() {
             onPress={() => router.push('/(tabs)/weekly')} testID="home-flagged" />
         </View>
       </View>
+      </Cell>
 
       {/* ------------------------------------- by member: a ranked bar list */}
-      <Card>
+      <Cell twoUp={twoUp}><Card>
         <SectionHead title="Based on member" icon="person"
           caption={memberRows.length === 0 ? '' : memberRows.length > MEMBER_ROWS_SHOWN
             ? `Lowest attendance first · ${MEMBER_ROWS_SHOWN} of ${memberRows.length} shown, all of them on Reports`
@@ -281,23 +310,23 @@ export default function Home() {
             <View style={{ marginTop: SPACE.md }}><AttendanceBarsLegend /></View>
           </View>
         )}
-      </Card>
+      </Card></Cell>
 
-      {/* ------------------------------- by course: rates on one shared axis */}
-      <Card>
+      {/* ---------------------------------------- by course: a ring per course */}
+      <Cell twoUp={twoUp}><Card>
         <SectionHead title="Based on course" icon="menu_book"
-          caption={courseRows.length === 0 ? '' : 'Where each course sits on the same scale'} />
+          caption={courseRows.length === 0 ? '' : 'Present and absent, course by course'} />
         {courseRows.length === 0 ? (
           <Muted style={{ marginTop: SPACE.sm }}>No course matches these filters.</Muted>
         ) : (
           <View style={{ marginTop: SPACE.md }}>
-            <AttendanceDots rows={courseRows} testID="home-by-course" />
+            <AttendanceRings rows={courseRows} testID="home-by-course" />
           </View>
         )}
-      </Card>
+      </Card></Cell>
 
-      {/* ------------------------------------ by period: the shape over time */}
-      <Card>
+      {/* ------------------------------------ by period: a ring per sub-range */}
+      <Cell twoUp={twoUp}><Card>
         <SectionHead title="Based on period" icon="date_range"
           caption={`${periodLabel}, split into ${periodRows.length || 'no'} ${periodRows.length === 1 ? 'part' : 'parts'}`} />
         {buckets.state === 'loading' ? (
@@ -313,10 +342,11 @@ export default function Home() {
           </Muted>
         ) : (
           <View style={{ marginTop: SPACE.md }}>
-            <AttendanceTrend rows={periodRows} overall={overallPct} testID="home-by-period" />
+            <AttendanceRings rows={periodRows} testID="home-by-period" />
           </View>
         )}
-      </Card>
+      </Card></Cell>
+      </View>
 
       {/* the charts read the same numbers as the report -- there is no
           separate calculation anywhere (C-87) */}
@@ -379,13 +409,25 @@ function SectionHead({ title, icon, caption }: { title: string; icon: string; ca
   );
 }
 
+/** One slot of the sections grid: half the row when two-up, the whole row
+ *  when stacked. The card inside fills it, so two cards in one row are the
+ *  same height. */
+function Cell({ children, twoUp }: { children: React.ReactNode; twoUp: boolean }) {
+  return (
+    <View style={{
+      width: twoUp ? '50%' : '100%',
+      paddingHorizontal: twoUp ? SPACE.md / 2 : 0,
+    }}>{children}</View>
+  );
+}
+
 /** One section's card. The three sections draw different marks inside it, so
  *  what they share is the frame and nothing else. */
 function Card({ children }: { children: React.ReactNode }) {
   const { theme } = useTheme();
   return (
     <View style={{
-      marginTop: SPACE.md, padding: 16, borderRadius: RADIUS.lg,
+      flex: 1, padding: 16, borderRadius: RADIUS.lg,
       backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
     }}>{children}</View>
   );

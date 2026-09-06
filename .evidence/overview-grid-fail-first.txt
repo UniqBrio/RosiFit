@@ -1,0 +1,108 @@
+# Fail-first evidence: src/components/overviewGrid.test.ts run against the tree at 2b4c516,
+# BEFORE app/(tabs)/index.tsx was changed and before AttendanceRings.tsx existed (06-Sep-2026).
+# Four of five specs fail, as they must. Command: npx tsx --test src/components/overviewGrid.test.ts
+
+TAP version 13
+# Subtest: the spec is looking at a real tree
+ok 1 - the spec is looking at a real tree
+  ---
+  duration_ms: 1.0833
+  type: 'test'
+  ...
+# Subtest: the four sections sit in one grid that goes two-up by width
+not ok 2 - the four sections sit in one grid that goes two-up by width
+  ---
+  duration_ms: 0.9842
+  type: 'test'
+  location: 'C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\src\\components\\overviewGrid.test.ts:37:1'
+  failureType: 'testCodeFailure'
+  error: 'app/(tabs)/index.tsx: the four sections are not wrapped in one grid (home-sections).'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\src\components\overviewGrid.test.ts:39:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+  ...
+# Subtest: Based on course and Based on period are rings, fed the report rows
+not ok 3 - Based on course and Based on period are rings, fed the report rows
+  ---
+  duration_ms: 0.4543
+  type: 'test'
+  location: 'C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\src\\components\\overviewGrid.test.ts:47:1'
+  failureType: 'testCodeFailure'
+  error: 'app/(tabs)/index.tsx: the ring component is not imported.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\src\components\overviewGrid.test.ts:49:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: the dot plot and the line are gone, not kept as a second way
+not ok 4 - the dot plot and the line are gone, not kept as a second way
+  ---
+  duration_ms: 0.4132
+  type: 'test'
+  location: 'C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\src\\components\\overviewGrid.test.ts:57:1'
+  failureType: 'testCodeFailure'
+  error: 'app/(tabs)/index.tsx: still imports the dot plot or the trend line.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\src\components\overviewGrid.test.ts:59:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+not ok 5 - a ring is never a colour alone, and nothing expected is a dash
+  ---
+  duration_ms: 0.3106
+  type: 'test'
+  location: 'C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\src\\components\\overviewGrid.test.ts:67:1'
+  failureType: 'testCodeFailure'
+  error: 'src/components/AttendanceRings.tsx is missing'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\src\components\overviewGrid.test.ts:68:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 1
+# fail 4
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 363.338
