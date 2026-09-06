@@ -11,9 +11,8 @@ import { SPACE, RADIUS, STATUS, statusSurface, type StatusKey } from '../../src/
 import { DAY_NAMES, ruleSentence, AVATAR_TINTS, initials, type Member, type MemberStatus } from '../../src/data/mock';
 import { useCourses, useFollowUp, useAttendance } from '../../src/data/hooks';
 import { weekStart, iso, label as periodLabel } from '../../src/data/period';
-import { deleteCourse, setMemberStatus, mergeMemberInto, dataSource } from '../../src/data/repository';
+import { setMemberStatus, mergeMemberInto, dataSource } from '../../src/data/repository';
 import { MERGE_FAILED } from '../../src/data/alias';
-import { useIdentity } from '../../src/data/session';
 import { ALL_BRANCHES } from '../../src/state/academy';
 import { ShellScreen } from '../../src/components/AppShell';
 
@@ -95,18 +94,14 @@ function CourseDetailBody() {
 
   const courses = useCourses(forced);
   const followUp = useFollowUp(forced);
-  const { identity } = useIdentity();
 
   const [weekOffset, setWeekOffset] = useState(0);
   const [branch, setBranch] = useState<string>(ALL_BRANCHES);
   const [branchOpen, setBranchOpen] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
   // Roster search. It filters what this screen DRAWS and nothing else -- no
   // refetch, no scope change: the branch filter above is what narrows the
-  // query, and the delete confirmation still counts every enrolled member.
+  // query.
   const [query, setQuery] = useState('');
 
   // The week being shown, as a Period -- the shape useAttendance takes, so
@@ -221,29 +216,6 @@ function CourseDetailBody() {
 
 
 
-  const remove = async () => {
-    if (!course || deleting) return;
-    setConfirmDelete(false);
-    setDeleting(true);
-    setFailure(null);
-    try {
-      const result = await deleteCourse(course.id);
-      if (result.alreadyDeleted) {
-        flash(`${course.name} was already deleted`, 'warn');
-      } else {
-        flash(dataSource === 'live'
-          ? `${course.name} deleted, ${result.sessionsKept} completed ${result.sessionsKept === 1 ? 'session' : 'sessions'} kept`
-          : `${course.name} deleted on this device only. The academy database is not configured.`,
-          dataSource === 'live' ? 'ok' : 'warn');
-      }
-      router.back();
-    } catch (err) {
-      setFailure(err instanceof Error ? err.message : 'The course could not be deleted. Nothing has been changed.');
-    } finally {
-      setDeleting(false);
-    }
-  };
-
   if (courses.state === 'loading') {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: theme.bg }}
@@ -303,9 +275,8 @@ function CourseDetailBody() {
             was reachable only from a day that happened to be awaiting; Add
             Member was a full-width bar pinned below the strip. They are the
             three things a person opens this screen to do, so they are one
-            group, in one place. Nothing else moved: the delete stays
-            super-admin only and stays an icon, so it never reads as a fourth
-            primary action. */}
+            group, in one place. Deleting a course is not one of them: that
+            lives on the Courses tab, so this header carries no trash icon. */}
         <DeepBackground style={{
           paddingHorizontal: SPACE.lg, paddingTop: SPACE.sm, paddingBottom: SPACE.md,
         }}>
@@ -336,21 +307,6 @@ function CourseDetailBody() {
                   flex: 1, minWidth: 0, fontSize: 26, fontWeight: '800',
                   color: theme.onAccent, letterSpacing: -0.5, lineHeight: 30,
                 }}>{course.name}</Text>
-
-                {identity?.isSuperAdmin ? (
-                  <Pressable testID="course-delete" onPress={() => setConfirmDelete(true)}
-                    accessibilityRole="button" accessibilityLabel={`Delete ${course.name}`}
-                    hitSlop={6}
-                    style={({ pressed }) => ({
-                      width: 34, height: 34, borderRadius: RADIUS.md,
-                      alignItems: 'center', justifyContent: 'center',
-                      backgroundColor: theme.deepControl,
-                      borderWidth: 1, borderColor: theme.deepControlLine,
-                      opacity: pressed ? 0.7 : 1,
-                    })}>
-                    <Icon name="delete" size={18} color={theme.onAccent} />
-                  </Pressable>
-                ) : null}
               </View>
 
               {/* Indented to the title, not the arrow, so the two read as one
@@ -717,31 +673,8 @@ function CourseDetailBody() {
               WEEKLY REVIEW HAD NO OTHER ROUTE and now has none: /weekly is
               reachable only by URL. Recorded rather than quietly accepted --
               see TECH_DEBT TD-014, which this joins. */}
-
-          {/* A refused delete is shown rather than flashed away: the course is
-              still there and the person has to be able to read why. */}
-          {failure ? (
-            <View style={{ marginTop: SPACE.lg }}>
-              <ErrorState message={failure} onRetry={() => setFailure(null)} />
-            </View>
-          ) : null}
         </View>
       </ScrollView>
-
-      {/* The confirmation states what SURVIVES as well as what goes. The whole
-          point of the promise is that attendance history is not rewritten. */}
-      <ConfirmDialog
-        open={confirmDelete}
-        onClose={() => setConfirmDelete(false)}
-        title={`Delete ${course.name}?`}
-        body={`${scoped.length === 0
-          ? 'Nobody is enrolled.'
-          : `${scoped.length} ${scoped.length === 1 ? 'member is' : 'members are'} enrolled, and their enrolment ends today.`} `
-          + 'Their attendance history stays: every completed session and every record of who was there is untouched. '
-          + `The course, its ${course.offerings.length} ${course.offerings.length === 1 ? 'offering' : 'offerings'} and every session still to come are removed. Recorded in the audit log.`}
-        cancelLabel="Cancel"
-        confirmLabel={deleting ? 'Deleting…' : 'Delete'}
-        onConfirm={() => { void remove(); }} />
     </>
   );
 }
