@@ -59,6 +59,152 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-026 — A keypad sized in percentages beside a flex gap fitted two keys, not three
+**Date:** 07-Sep-2026 · **Severity:** S2 · **Modules:** `app/index.tsx`, `app/set-pin.tsx`,
+`src/components/keypadGrid.ts`, `src/data/nav.ts`
+
+**Symptom** — "for enter pin screen only two number boxes appearing in a row in mobile view";
+and on Change your PIN, "its overlappping enter pin fields" — the four PIN boxes drawn on top
+of the keys. Reported for both staff login and super admin login, with a screenshot.
+
+**Root cause** — Both keypads sized a key as a PERCENTAGE of the row (`width: '31.5%'`) while
+also putting a flex `gap: 10` between keys. A flex line breaks on widths PLUS gaps, so three
+keys need `3 × 31.5% + 2 × 10px`, which only fits once the row is ~364px wide. Sign-in's card
+leaves `viewport − 40` and set-pin's Screen leaves `viewport − 32`, so every phone from 320 to
+393 got two keys to a row, and `flexGrow: 1` stretched the pair to full width — which is why a
+wrap read as a design choice. The overlap was the SAME cause two steps on: two-up makes the pad
+six rows instead of four (374px, not 246px), and that extra height squeezed the `flex: 1`
+region above it below its own content, so the content spilled over the keys instead of being
+clipped. Measured: the overlap appears at exactly the widths that wrap and nowhere else.
+
+**Fix** — The gutter is now PADDING INSIDE each cell rather than a gap between them, in one
+shared module both screens import. Padding takes no part in the line-breaking sum, so the only
+question a line asks is whether three cells of `33.3333%` fit in `100%` — true at every width,
+with no measurement, no breakpoint and no first-render mismatch. It is the idiom
+`app/(tabs)/index.tsx` (`Cell`) and `src/components/DateTimePicker.tsx` (the month and day
+grids) already use. Separately, set-pin's top region became a `ScrollView` so no future height
+can overlap the pad, and the PIN boxes moved OUT of it — on a 320×568 phone the prose alone
+fills the scrollable part, and dots you must scroll to find are no better than dots under the
+keys.
+
+**Also fixed here, same screens** — set-pin decided where to go after a successful change from
+`?for=self`, a flag that records WHO ASKED rather than whether anything was pushed, and
+answered with `router.back()`. Profile arrives by `push` so back worked; sign-in's
+`must_change_pin` path and forgot-pin arrive by `replace`, which leaves an empty stack, and
+`back()` on an empty stack is a no-op — so every FIRST login, staff and super admin alike,
+accepted the new PIN and then sat on the PIN screen. The caller now names the arrival
+(`?for=first`) and `afterPinChange()` in `src/data/nav.ts` resolves it to the role's dashboard.
+The registration button also read "Register & issue PIN" for a screen on which she CHOOSES one;
+it now reads "Register & set PIN".
+
+**Files** — `src/components/keypadGrid.ts` (new), `src/components/keypadGrid.test.ts` (new),
+`src/data/pinReturn.test.ts` (new), `app/index.tsx`, `app/set-pin.tsx`, `app/forgot-pin.tsx`,
+`app/register.tsx`, `src/data/nav.ts`.
+
+**How to verify** — `npm run test:unit`; `keypadGrid.test.ts` asserts three columns fit at
+320/360/375/390/393/412/430px for both screens' content widths, and that the row carries NO
+horizontal gap. In a built app (`npm run export`) open `/set-pin?for=self` at 320×568 and
+360×640: four rows of three, and the PIN boxes clear of the pad. For the navigation, open
+`/set-pin?for=first` directly (no history behind it) and complete a PIN — it must land on a
+dashboard, not stay on `/set-pin`.
+
+**Recurrence risk** — The class is "percentage width on a child of a wrapping row that also
+has a gap". Swept with `grep -rn "flexWrap" app src --include=*.tsx` (14 sites) crossed with
+`grep -rnE "width: '[0-9]+(\.[0-9]+)?%'" app src --include=*.tsx` (10 sites). Exactly two sites
+had both — the two keypads, both fixed here. Two more already use the correct idiom and are
+the reference for it: `app/(tabs)/index.tsx:263` (two-up grid, negative margin + padded `Cell`)
+and `src/components/DateTimePicker.tsx:205,241` (month and day grids, `width: '25%'` with
+`padding` and no gap). The remaining eleven wrap CONTENT-sized chips and pills, which have no
+fixed column count to break.
+
+**Prevention** — `rung: src/components/keypadGrid.test.ts`. The arithmetic is asserted against
+the shipped values at seven phone widths, and one assertion fails outright if a `columnGap`
+returns to the row. The module is the single source both screens import, so a fix cannot land
+on one keypad while its twin ships broken — which is the specific way this defect survived.
+
+**Process check** — Yes. Nothing in the pipeline renders a screen at a phone width: the
+contrast and icon rungs read tokens, and the route checks in `.harness/` do not run on this
+machine (Linux-only). The fault was visible at 412px and above, which is where it would have
+been previewed, and invisible below — so review at desktop width could not have caught it.
+Flagged for `/framework-update`: the gate has no narrow-viewport render check.
+
+---
+
+## RC-025 — the wait RC-021 added was never lifted, so Edit course seeded nothing at all
+**Date:** 07-Sep-2026 · **Severity:** S2 · **Modules:** `app/course/edit.tsx`
+
+**Symptom** — *"on clicking edit course icon the form is opening with empty values fix the
+bug"*. The screenshot shows the dialog headed **Edit course · hhhhh** — so the course was
+found and named — over a blank **Course name** placeholder, **Choose a branch**, a frequency
+row reading **Required** with no day lit, and **A course name is required** under an unusable
+**Save Changes**.
+
+The same blank Edit form RC-021 was reported as, one day later, by the fix for it.
+
+**Root cause** — the seeding effect bails on a value React cannot see change. RC-021 taught it
+to WAIT for the course and its saved rules — `const ready = … && !recordPending` — but
+`recordPending` reads `courses.state` and `followUp.state`, and the dependency array carried
+neither, nor `recordPending` itself:
+
+```ts
+}, [seeded, message.state, branches.state, templates.state, senders.state, course]);
+```
+
+So when the four listed queries and `courses` had landed and `followUp` had not, the effect
+ran, bailed, and was never scheduled again: `followUp` arriving changes nothing the array
+lists, and `course` is the same object from the same array. The `seeded` latch — deliberately
+never reset, so a refetch cannot overwrite a keystroke — then held the form empty for good.
+`useFollowUp` awaits `fetchMembers` and `fetchRules` together and `useCourses` awaits one
+query, so followUp landing last is the ordinary case, not the rare one.
+
+**What the previous attempt missed** (correction round 2) — RC-021 diagnosed the three-way
+`null` correctly and fixed WHEN the form may seed. It did not ask what makes the effect run
+again once its new condition is satisfied, and the change is invisible in review because the
+guard it added and the array it did not touch are eight lines apart. Its rung,
+`src/components/editDialog.test.ts`, checks that the form ANSWERS loading, failed and missing —
+all three of which this defect answers correctly. Nothing was watching whether the form ever
+leaves the state those answers describe.
+
+**Fix** — `recordPending` is in the dependency array. The effect now re-runs when the wait
+ends and seeds from the course that has arrived. The `ready` gate, the latch, and everything
+RC-021 added are unchanged: this restores the run RC-021 assumed it already had.
+
+**Files** — `app/course/edit.tsx`, `src/components/seedGateDeps.test.ts` (new spec),
+`.evidence/seed-gate-deps-fail-first.txt`.
+
+**How to verify** — `npx tsx --test src/components/seedGateDeps.test.ts` (3 tests). In the app:
+open a course's pencil from the Attendance tab; the dialog must show that course's name, its
+branch and its lit weekday chips, with **Save Changes** live. `/course/edit?id=<a real
+id>&state=loading` must still be a skeleton with no footer, and `/course/edit` with no id must
+still read **Add a course** with nothing filled but the sole branch.
+
+**Recurrence risk** — high, and not from carelessness: a readiness gate is naturally written as
+a derived `const`, which reads as one name while it depends on two. Swept every `useEffect` in
+`app/` and `src/` — 26 effects — extracting each body's early-return guards and comparing their
+identifiers against its dependency array (`scripts`-free scan, comments stripped so prose could
+not satisfy it). Twenty reads were flagged and nineteen are module constants (`Platform.OS`,
+`isConfigured`), string-literal comparisons, or variables created inside the effect body. This
+was the only site. The two latched seeding forms — `app/course/edit.tsx` and
+`app/member/edit.tsx` — are both named in the new spec; `app/member/edit.tsx` was already
+correct, because the one value it bails on, `existing`, is in its array.
+
+**Prevention** — a seeding effect must be re-runnable by everything it bails on, gates reached
+through a derived `const` included. Rung:
+`src/components/seedGateDeps.test.ts`, in `npm run test:unit`.
+
+**Process check** — Yes, and the framework was NOT changed for it. A fix that adds a wait to an
+effect without touching that effect's dependency array is a mechanical hazard with a mechanical
+answer, and Track C closed RC-021 with a rung that asserted the three answers the form gives
+without ever asking whether the form leaves them. `/promote` ran on the class: it clears the
+domain-word test (**CAND-004**, no business noun in the rule; the lexicon has no entries to
+grep against, so that filter was judged by inspection) and parks at **n=1**, one app, which is
+where `/framework-update` sends an n=1 promotion back to. The lesson is therefore held at the
+cheapest level the rule budget allows — an automated check in this app,
+`src/components/seedGateDeps.test.ts` — and the framework gains nothing until a second app
+sights the same class. No `VERSION` bump, and none is owed.
+
+---
+
 ## RC-024 — Two members with one name were two React children with one key
 **Date:** 07-Sep-2026 · **Severity:** S2 · **Modules:** `src/components/Sheet.tsx`, `src/components/pickerSearch.ts`, `app/course/[id].tsx`
 
