@@ -536,10 +536,25 @@ export default function CourseEdit() {
                   backgroundColor: theme.surface2, borderWidth: 1, borderColor: theme.lineStrong,
                 }} />
 
-              {/* Said ONCE, in front of the first chip row, and by example.
+              {/* scope="subject": her name, and the rest behind More. A subject
+                  is read in a list at one glance -- the figures are what the
+                  MESSAGE is for, and offering them here is what produced
+                  "We missed you this week, {{first_name}} {{member_name}}".
+
+                  It sits DIRECTLY under the subject box, with nothing between
+                  them. The explanation used to hold that gap, and a row of
+                  chips floating a paragraph away from the field above it and a
+                  field below it read as belonging to neither. */}
+              <TokenChips label="Add to the subject" testIDPrefix="course-subject-token"
+                scope="subject" onInsert={insertIntoSubject} />
+
+              {/* Said ONCE, after the first chip row, and by example.
                   "It becomes a code" is abstract; showing the code beside what
-                  it turns into is what a non-technical reader can act on. */}
-              <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.md }}>
+                  it turns into is what a non-technical reader can act on. It
+                  trails the row it explains -- and stays closer to it than to
+                  the Message label below -- so it reads as a note on the chips
+                  rather than a heading for the next field. */}
+              <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.sm }}>
                 <Icon name="info" size={15} color={theme.dim} />
                 <Muted style={{ flex: 1 }}>
                   Tap a detail to add it. It appears as {'{{first_name}}'} while you write, and
@@ -547,12 +562,6 @@ export default function CourseEdit() {
                   she will actually read.
                 </Muted>
               </View>
-              {/* scope="subject": her name, and the rest behind More. A subject
-                  is read in a list at one glance -- the figures are what the
-                  MESSAGE is for, and offering them here is what produced
-                  "We missed you this week, {{first_name}} {{member_name}}". */}
-              <TokenChips label="Add to the subject" testIDPrefix="course-subject-token"
-                scope="subject" onInsert={insertIntoSubject} />
 
               <Label style={{ marginTop: SPACE.md }}>Message</Label>
               <TextInput
