@@ -90,9 +90,13 @@ existing keys, so the condition is assertable rather than inferred.
 
 A second, quieter defect surfaced in the same screenshot: the chip row offered all thirteen
 tokens at once, and tapping along it produced `RosiFit Academy Main — 0 —` — every token resolved
-exactly as designed and the message was worse for each one. The row now opens on the **seven** the
-seeded template already uses and keeps the six figures behind one `6 more` chip. The list is
-**split, never shortened** — wording already written with `{{attendance_pct}}` still resolves.
+exactly as designed and the message was worse for each one. Each row now opens on what the seeded
+template already uses in the field it sits under — **seven** beside the message, and **her first
+name alone** beside the subject, where the reporter's own box had come out as
+`We missed you this week, {{first_name}} {{member_name}}`. A subject is read in a list at one
+glance; the figures are what the message is for. Both rows end in a `More` chip that opens all
+thirteen, so the list is **split, never shortened** — wording already written with
+`{{attendance_pct}}` still resolves everywhere.
 
 **Files** — `supabase/migrations/0040_save_course_schedule_only_when_days_change.sql`,
 `supabase/tests/16_save_course.sql`, `src/data/message.ts`, `src/data/message.test.ts`,

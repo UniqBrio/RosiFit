@@ -532,8 +532,12 @@ export default function CourseEdit() {
                   she will actually read.
                 </Muted>
               </View>
+              {/* scope="subject": her name, and the rest behind More. A subject
+                  is read in a list at one glance -- the figures are what the
+                  MESSAGE is for, and offering them here is what produced
+                  "We missed you this week, {{first_name}} {{member_name}}". */}
               <TokenChips label="Add to the subject" testIDPrefix="course-subject-token"
-                onInsert={insertIntoSubject} />
+                scope="subject" onInsert={insertIntoSubject} />
 
               <Label style={{ marginTop: SPACE.md }}>Message</Label>
               <TextInput
@@ -550,7 +554,7 @@ export default function CourseEdit() {
                 }} />
 
               <TokenChips label="Add to the message" testIDPrefix="course-body-token"
-                onInsert={insertIntoBody} />
+                scope="message" onInsert={insertIntoBody} />
               </>) : null}
 
               {/* The preview is the point. This wording is authored once and

@@ -35,8 +35,9 @@ import type { Member } from './mock';
  * while "Sessions due" alone is not enough for somebody who cannot see the
  * field it sits under.
  *
- * `everyday` is which of the thirteen the chip row OFFERS before it is asked
- * for more.
+ * `everyday` and `subjectLine` are which of the thirteen each chip row OFFERS
+ * before it is asked for more. THE TWO ROWS ARE NOT THE SAME ROW, because the
+ * two fields are not the same field.
  *
  * WHY THE LIST IS SPLIT AND NOT SHORTENED
  * All thirteen are real -- each one is a key the Edge Function builds, and the
@@ -50,32 +51,51 @@ import type { Member } from './mock';
  * message was worse for each one. Thirteen equally-weighted chips read as
  * thirteen suggestions.
  *
- * `everyday: true` is exactly the seven the academy's own default template
- * uses (0009) -- the ones that make a follow-up read as a follow-up. The other
- * six are figures, and a figure belongs in a message only when somebody
- * deliberately went looking for it. They are one tap away, never gone.
+ * THE MESSAGE, `everyday: true` -- exactly the seven the academy's own default
+ * template uses in its BODY (0009). The other six are figures, and a figure
+ * belongs in a message only when somebody deliberately went looking for it.
+ *
+ * THE SUBJECT, `subjectLine: true` -- her first name, and nothing else. Same
+ * rule, read against the seeded SUBJECT, which is
+ * "We missed you this week, {{first_name}}" and uses one token. That is not a
+ * coincidence of the seed: a subject line is read in a list, at one glance,
+ * next to thirty others. A period, a branch and two session counts do not fit
+ * there and do not help there -- they are what the message is FOR. Offering
+ * them beside the subject box invited exactly that, and
+ * "We missed you this week, {{first_name}} {{member_name}}" is what it got.
+ *
+ * Neither row LOSES anything. Both end in one More chip that opens the full
+ * thirteen, so a subject that genuinely wants to name the course is one tap
+ * away -- it is simply no longer suggested.
  */
 export const MESSAGE_TOKENS: {
-  token: string; means: string; chip: string; everyday: boolean;
+  token: string; means: string; chip: string;
+  /** offered on the MESSAGE row before the More chip */
+  everyday: boolean;
+  /** offered on the SUBJECT row before the More chip */
+  subjectLine: boolean;
 }[] = [
-  { token: '{{first_name}}', means: 'her first name', chip: 'Her first name', everyday: true },
-  { token: '{{member_name}}', means: 'her full name', chip: 'Her full name', everyday: false },
-  { token: '{{course_name}}', means: 'the course', chip: 'Course', everyday: true },
-  { token: '{{branch_name}}', means: 'the branch', chip: 'Branch', everyday: false },
-  { token: '{{period_from}}', means: 'start of the period', chip: 'Period from', everyday: true },
-  { token: '{{period_to}}', means: 'end of the period', chip: 'Period to', everyday: true },
-  { token: '{{expected_sessions}}', means: 'sessions she was due at', chip: 'Sessions due', everyday: true },
-  { token: '{{attended_sessions}}', means: 'sessions she made', chip: 'Sessions made', everyday: true },
-  { token: '{{missed_sessions}}', means: 'sessions she missed', chip: 'Sessions missed', everyday: false },
-  { token: '{{attendance_pct}}', means: 'her attendance', chip: 'Attendance %', everyday: false },
-  { token: '{{consecutive_missed}}', means: 'missed in a row', chip: 'Missed in a row', everyday: false },
-  { token: '{{last_attendance_date}}', means: 'when she was last present', chip: 'Last present', everyday: false },
-  { token: '{{academy_name}}', means: 'the academy', chip: 'Academy', everyday: true },
+  { token: '{{first_name}}', means: 'her first name', chip: 'Her first name', everyday: true, subjectLine: true },
+  { token: '{{member_name}}', means: 'her full name', chip: 'Her full name', everyday: false, subjectLine: false },
+  { token: '{{course_name}}', means: 'the course', chip: 'Course', everyday: true, subjectLine: false },
+  { token: '{{branch_name}}', means: 'the branch', chip: 'Branch', everyday: false, subjectLine: false },
+  { token: '{{period_from}}', means: 'start of the period', chip: 'Period from', everyday: true, subjectLine: false },
+  { token: '{{period_to}}', means: 'end of the period', chip: 'Period to', everyday: true, subjectLine: false },
+  { token: '{{expected_sessions}}', means: 'sessions she was due at', chip: 'Sessions due', everyday: true, subjectLine: false },
+  { token: '{{attended_sessions}}', means: 'sessions she made', chip: 'Sessions made', everyday: true, subjectLine: false },
+  { token: '{{missed_sessions}}', means: 'sessions she missed', chip: 'Sessions missed', everyday: false, subjectLine: false },
+  { token: '{{attendance_pct}}', means: 'her attendance', chip: 'Attendance %', everyday: false, subjectLine: false },
+  { token: '{{consecutive_missed}}', means: 'missed in a row', chip: 'Missed in a row', everyday: false, subjectLine: false },
+  { token: '{{last_attendance_date}}', means: 'when she was last present', chip: 'Last present', everyday: false, subjectLine: false },
+  { token: '{{academy_name}}', means: 'the academy', chip: 'Academy', everyday: true, subjectLine: false },
 ];
 
-/** The seven offered first. Order is MESSAGE_TOKENS' order, which is the
- *  sender's -- so the two lists stay readable side by side (see the spec). */
+/** What the MESSAGE row offers first. Order is MESSAGE_TOKENS' order, which is
+ *  the sender's -- so the two lists stay readable side by side (see the spec). */
 export const EVERYDAY_TOKENS = MESSAGE_TOKENS.filter(t => t.everyday);
+
+/** What the SUBJECT row offers first: her name. See the note above. */
+export const SUBJECT_TOKENS = MESSAGE_TOKENS.filter(t => t.subjectLine);
 
 export type MessageContext = {
   member: Member;

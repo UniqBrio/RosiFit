@@ -10,7 +10,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  fillTokens, unknownTokens, MESSAGE_TOKENS, EVERYDAY_TOKENS, insertToken,
+  fillTokens, unknownTokens, MESSAGE_TOKENS, EVERYDAY_TOKENS, SUBJECT_TOKENS, insertToken,
   wordingProblem, SUBJECT_MAX, BODY_MIN, courseNameProblem, COURSE_NAME_MAX,
 } from './message';
 import type { Member } from './mock';
@@ -305,6 +305,47 @@ test('the six behind the More chip still fill — hidden is not unknown', () => 
   const rest = MESSAGE_TOKENS.filter(t => !t.everyday);
   assert.equal(rest.length, 6);
   const all = rest.reduce(
+    (acc, t) => insertToken(acc.text, t.token, -1, -1), { text: '', caret: 0 });
+  assert.deepEqual(unknownTokens(all.text), []);
+  assert.ok(!fillTokens(all.text, ctx()).includes('{{'));
+});
+
+/**
+ * The subject row is not the message row — appended 07-Sep-2026.
+ *
+ * Reported: "for subject her name is enough, no need of so many variables —
+ * it can be only in the content." The subject box had come out as
+ * "We missed you this week, {{first_name}} {{member_name}}", which is the
+ * chip row's doing: it offered the same seven beside both fields, and a
+ * subject is read in a list at one glance beside thirty others.
+ */
+test('the subject row opens on her name alone', () => {
+  assert.deepEqual(SUBJECT_TOKENS.map(t => t.token), ['{{first_name}}']);
+});
+
+test('the subject row matches the seeded SUBJECT, as the message row matches the body', () => {
+  // 0009's default subject. One rule applied to two fields, not two rules --
+  // "what the academy's own template already uses" is what decides both.
+  const seededSubject = 'We missed you this week, {{first_name}}';
+  const used = new Set(seededSubject.match(/\{\{\w+\}\}/g) ?? []);
+  assert.deepEqual(SUBJECT_TOKENS.map(t => t.token).sort(), [...used].sort());
+});
+
+test('the subject opens on FEWER than the message, and both are subsets', () => {
+  // The relationship that has to hold whichever way the lists are edited: a
+  // subject offering more than the message would invert the whole point.
+  assert.ok(SUBJECT_TOKENS.length < EVERYDAY_TOKENS.length);
+  for (const t of SUBJECT_TOKENS) {
+    assert.ok(MESSAGE_TOKENS.includes(t), `${t.token} is not in the full list`);
+  }
+});
+
+test('every token the subject row hides is still reachable and still fills', () => {
+  // The More chip opens the FULL thirteen on both rows, so nothing became
+  // unreachable from the subject — it stopped being suggested there.
+  const behindMore = MESSAGE_TOKENS.filter(t => !SUBJECT_TOKENS.includes(t));
+  assert.equal(behindMore.length, 12);
+  const all = behindMore.reduce(
     (acc, t) => insertToken(acc.text, t.token, -1, -1), { text: '', caret: 0 });
   assert.deepEqual(unknownTokens(all.text), []);
   assert.ok(!fillTokens(all.text, ctx()).includes('{{'));

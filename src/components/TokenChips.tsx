@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
 import { SPACE, RADIUS, TAP_MIN } from '../theme/tokens';
-import { MESSAGE_TOKENS, EVERYDAY_TOKENS } from '../data/message';
+import { MESSAGE_TOKENS, EVERYDAY_TOKENS, SUBJECT_TOKENS } from '../data/message';
 import { Icon } from './Icon';
 import { chipScroll, nextChipOffset } from './chipScroll';
 
@@ -39,21 +39,32 @@ import { chipScroll, nextChipOffset } from './chipScroll';
  * a token can be inserted many times or not at all, and there is nothing here
  * that is "on".
  *
- * SEVEN FIRST, THIRTEEN ON REQUEST
+ * A FEW FIRST, THIRTEEN ON REQUEST
  * Offering all thirteen at once turned out to be its own defect. Somebody who
  * opened this to change a sentence read the row as thirteen suggestions and
  * tapped along it, and the wording came out as "RosiFit Academy Main — 0 —":
  * every token resolved exactly as designed, and the message was worse for each
- * one. The row now opens on the seven the academy's default template already
- * uses -- the ones that make a follow-up read as a follow-up -- and the six
- * figures sit behind one more chip.
+ * one.
+ *
+ * SO THE TWO ROWS NO LONGER OFFER THE SAME THINGS, because the two fields are
+ * not the same field. `scope` says which row this is:
+ *
+ *   'message' opens on the seven the academy's default template uses in its
+ *             body -- the ones that make a follow-up read as a follow-up.
+ *   'subject' opens on her first name, and nothing else. A subject is read in
+ *             a list, at one glance, beside thirty others; a period and two
+ *             session counts neither fit there nor help there. Offering them
+ *             beside the subject box is what produced
+ *             "We missed you this week, {{first_name}} {{member_name}}".
+ *
+ * The rest sit behind one More chip on both rows.
  *
  * NOTHING IS REMOVED, and that is the difference between this and shortening
  * the list. Wording already written with `{{attendance_pct}}` still resolves
  * everywhere; the token is simply not pressed on somebody who did not ask for
- * it. The count of what is hidden is ON the chip ("6 more details"), so the
- * row still says out loud that it continues -- which is the belief this
- * component exists to correct.
+ * it. The count of what is hidden is ON the chip -- "12 more" beside the
+ * subject, "6 more" beside the message -- so each row still says out loud that
+ * it continues, which is the belief this component exists to correct.
  *
  * WHY THE ARROWS
  * Listing the details fixed only half of the problem. The row is a horizontal
@@ -69,11 +80,13 @@ import { chipScroll, nextChipOffset } from './chipScroll';
  * Dragging the row still works exactly as before -- the arrows are a second
  * way in, not a replacement.
  */
-export function TokenChips({ label, onInsert, testIDPrefix }: {
+export function TokenChips({ label, onInsert, testIDPrefix, scope }: {
   /** names the field these insert into -- read aloud, and never hidden state */
   label: string;
   onInsert: (token: string) => void;
   testIDPrefix: string;
+  /** which field's row this is -- it decides what is offered before More */
+  scope: 'subject' | 'message';
 }) {
   const { theme } = useTheme();
   const row = useRef<ScrollView>(null);
@@ -85,8 +98,9 @@ export function TokenChips({ label, onInsert, testIDPrefix }: {
   // Starts closed on every open of the form. A row that remembered would show
   // thirteen chips to the next person for a reason they never saw.
   const [showAll, setShowAll] = useState(false);
-  const shown = showAll ? MESSAGE_TOKENS : EVERYDAY_TOKENS;
-  const hidden = MESSAGE_TOKENS.length - EVERYDAY_TOKENS.length;
+  const opensWith = scope === 'subject' ? SUBJECT_TOKENS : EVERYDAY_TOKENS;
+  const shown = showAll ? MESSAGE_TOKENS : opensWith;
+  const hidden = MESSAGE_TOKENS.length - opensWith.length;
 
   const { overflows, canLeft, canRight } = chipScroll(offset, content, view);
 

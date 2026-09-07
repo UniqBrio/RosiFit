@@ -19,16 +19,24 @@ saves on its own. Changing the days themselves is still refused on a day already
 in the same words, because that one really is a change to what was expected — and it names the
 date you can start from.
 
-**The details you can add to a message are seven, not thirteen.** *Her first name*, *Course*,
-*Period from*, *Period to*, *Sessions due*, *Sessions made* and *Academy* — the seven the
-academy's own template already uses. The other six are figures: her full name, the branch,
-sessions missed, attendance %, missed in a row and last present. They sit behind a **6 more**
-chip at the end of the row.
+**The two rows of details no longer offer the same things, because the two fields are not the
+same field.**
 
-Nothing was taken away. Wording already written with any of the six still reads exactly as it did,
-in the preview and in the inbox. The row simply stopped putting thirteen equally-weighted
-suggestions in front of somebody who came to change a sentence — tapping along it produced lines
-like *"RosiFit Academy Main — 0 —"*, every detail correct and the message worse for each one.
+- **Beside the subject: her first name.** That is the whole row. A subject is read in a list, at
+  one glance, next to thirty others — a period, a branch and two session counts neither fit
+  there nor help there. Offering them there is what produced
+  *"We missed you this week, {{first_name}} {{member_name}}"*.
+- **Beside the message: seven.** *Her first name*, *Course*, *Period from*, *Period to*,
+  *Sessions due*, *Sessions made* and *Academy* — the seven the academy's own template already
+  uses. The other six are figures: her full name, the branch, sessions missed, attendance %,
+  missed in a row, last present.
+
+Both rows end in one **More** chip that opens all thirteen, so a subject that genuinely wants to
+name the course is one tap away. Nothing was taken away — wording already written with any of
+them reads exactly as it did, in the preview and in the inbox. The rows simply stopped putting
+thirteen equally-weighted suggestions in front of somebody who came to change a sentence; tapping
+along one produced lines like *"RosiFit Academy Main — 0 —"*, every detail correct and the
+message worse for each one.
 
 ## Unreleased — A member card tells you where she stands; it does not ask you to say
 
