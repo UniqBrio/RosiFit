@@ -1,0 +1,59 @@
+FAIL-FIRST — src/components/seedGateDeps.test.ts (final spec) replayed against the PRE-FIX tree
+Pre-fix tree: working tree at 1c3d45b, app/ and src/ copied out with
+app/course/edit.tsx's dependency array put back to its pre-fix form (no `recordPending`).
+Command: SEED_GATE_SPEC_ROOT=<that tree> npx tsx --test src/components/seedGateDeps.test.ts
+
+ok 1 - the spec is looking at a real tree
+not ok 2 - a seeding effect can be re-run by everything it bails on
+  error: 'app/course/edit.tsx: the seeding effect waits on `courses.state` (reached through `recordPending`), and neither is in its dependency array. It bails while that read says "not yet", React never schedules it again, and the latch stays unset -- so every field on the form stays empty for good.'
+ok 3 - the latch that makes seeding once-only is never reset
+# tests 3
+# pass 2
+# fail 1
+
+AFTER THE FIX — same spec, the real tree
+ok 1 - the spec is looking at a real tree
+ok 2 - a seeding effect can be re-run by everything it bails on
+ok 3 - the latch that makes seeding once-only is never reset
+# tests 3
+# pass 3
+# fail 0
+
+--------------------------------------------------------------------------
+IN THE APP — the defect reproduced in a browser, and the fix watched to clear
+--------------------------------------------------------------------------
+`expo export --platform web` with EXPO_PUBLIC_SUPABASE_URL / _ANON_KEY unset,
+so the fixtures answer. Route: /course/edit?id=c1 (Prenatal Flow, Coimbatore,
+Mon/Wed/Fri), Chromium, theme forced through the app's own stored mode
+(localStorage `rosifit.theme.mode`), both themes, full-page screenshots.
+
+FIXTURES AS THEY STAND — the race does NOT appear:
+  pre-fix   dark  name "Prenatal Flow"  branch "Coimbatore"
+  pre-fix   light name "Prenatal Flow"  branch "Coimbatore"
+  post-fix  dark  name "Prenatal Flow"  branch "Coimbatore"
+  post-fix  light name "Prenatal Flow"  branch "Coimbatore"
+Every fixture read resolves inside one task, so React commits `courses` and
+`followUp` landing together and the effect's one scheduled run finds both
+ready. The defect needs the two to land in DIFFERENT commits — which is what
+a network gives it, and what the requester has.
+
+WITH THE LIVE PROJECT'S LATENCY INJECTED — 400ms added to the fixture member
+fetch alone (`fetchMembers`, the read `useFollowUp` waits on), so `followUp`
+lands after `courses`, exactly as two round-trips do against Supabase. The
+injection was reverted after the two builds; `src/data/repository.ts` is
+byte-identical to its pre-injection state.
+
+  pre-fix   dark   name ""  branch "<empty: Choose a branch>"
+                   hint "At least one day is required — with none, nothing is
+                         expected of anyone."
+  pre-fix   light  name ""  branch "<empty: Choose a branch>"   (same)
+        --> the requester's screenshot, reproduced: "Edit course · <name>"
+            over a blank form and an unusable Save.
+
+  post-fix  dark   name "Prenatal Flow"  branch "Coimbatore"
+                   hint "Coimbatore · 3/week · 3 weekly"
+  post-fix  light  name "Prenatal Flow"  branch "Coimbatore"   (same)
+        --> name, branch, Mon/Wed/Fri lit, the saved trigger (3 weekly), the
+            sender and the template all seeded; Save Changes live.
+
+Screenshots kept: .evidence/edit-course-blank-{before,after}-{dark,light}.png

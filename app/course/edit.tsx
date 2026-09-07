@@ -162,7 +162,13 @@ export default function CourseEdit() {
     setSubject(message.data?.source === 'course' ? message.data.subject : null);
     setBody(message.data?.source === 'course' ? message.data.body : null);
     setSeeded(true);
-  }, [seeded, message.state, branches.state, templates.state, senders.state, course]);
+    // `recordPending` is here because the gate above BAILS on it. It reads
+    // `courses.state` and `followUp.state`, and with neither listed the
+    // effect that waited for the course's rules was never scheduled again
+    // once they landed -- so the wait RC-021 added became a permanent one,
+    // and the Edit form stayed as blank as it was before that fix (RC-025).
+  }, [seeded, message.state, branches.state, templates.state, senders.state,
+      recordPending, course]);
 
   const template = templateList.find(t => t.id === templateId) ?? null;
   // What the box shows: the course's own words where it has any, otherwise
@@ -283,7 +289,7 @@ export default function CourseEdit() {
           message="That course is no longer on the list. It may have been removed since this screen was opened." />
       ) : (
         <>
-            <Field label="Course name" required value={name} onChange={setName}
+            <Field label="Course name" autoFocus required value={name} onChange={setName}
               placeholder="e.g. Gentle Recovery Yoga" />
 
             <DropdownRow open={open === 'branch'}>
