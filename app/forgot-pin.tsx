@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react';
 import { View, Text } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useGoToSignIn } from '../src/components/useGoToSignIn';
-import { Screen, H2, Body, Muted, Label, Button } from '../src/components/ui';
+import { Screen, H2, Body, Muted, Label, Button, Skeleton } from '../src/components/ui';
 import { Field } from '../src/components/Field';
 import { Icon } from '../src/components/Icon';
 import { useTheme } from '../src/theme/ThemeProvider';
 import { useToast } from '../src/components/Toast';
 import { SPACE, RADIUS, STATUS, statusSurface } from '../src/theme/tokens';
-import { SECURITY_QUESTIONS, SUPPORT_PHONE } from '../src/data/mock';
+import { SECURITY_QUESTIONS } from '../src/data/mock';
 import { isConfigured } from '../src/lib/supabase';
 import { recoveryQuestions, recoveryVerify, pinResetRequest, type SecurityQuestion } from '../src/data/api';
 import { setRecoveryToken } from '../src/data/pending';
@@ -49,7 +49,16 @@ export default function ForgotPin() {
   // questions are the SUPER ADMIN's recovery and hers alone -- only she
   // answered any at registration, and only super_admin_recovery has rows. A
   // staff PIN is reset by the academy admin, so that is what she is told.
-  const [stage, setStage] = useState<'asking' | 'locked' | 'passed' | 'staff' | 'requested'>('asking');
+  //
+  // 'checking' is the FIRST stage whenever there is a lookup to wait for.
+  // Until 07-Sep-2026 the stage started at 'asking', so a staff member saw a
+  // fully rendered security-question form -- built from the seeded fixture
+  // questions -- for as long as recovery-check took to answer, and then had it
+  // replaced. Two screens for one tap, the first of them a form she was never
+  // going to be allowed to fill in. Nothing is claimed until the answer is in.
+  const [stage, setStage] = useState<'checking' | 'asking' | 'locked' | 'passed' | 'staff' | 'requested'>(
+    isConfigured && phone ? 'checking' : 'asking'
+  );
   const [sending, setSending] = useState(false);
 
   const ink = (k: keyof typeof STATUS) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
@@ -57,7 +66,13 @@ export default function ForgotPin() {
   useEffect(() => {
     if (!isConfigured || !phone) return;
     recoveryQuestions(phone)
-      .then(({ questions: list }) => { if (list.length >= 2) setQuestions(list.slice(0, 2)); })
+      .then(({ questions: list }) => {
+        if (list.length >= 2) setQuestions(list.slice(0, 2));
+        // Asked only once the questions on screen are HERS. A short list means
+        // the fixtures stand, which is the pre-existing behaviour, not a new
+        // failure -- but the form still only appears now.
+        setStage('asking');
+      })
       .catch((err: unknown) => {
         const text = err instanceof Error ? err.message : '';
         // recovery-check answers this for any number that is not the academy
@@ -67,7 +82,11 @@ export default function ForgotPin() {
         // staff member was invited to answer questions she had never been
         // asked and could never pass. She gets her own screen instead.
         if (/not registered as the academy admin/i.test(text)) { setStage('staff'); return; }
+        // Any other failure is the network, not the account: she is still the
+        // academy admin as far as anything here knows, so she gets the form
+        // with the reason above it rather than a dead screen.
         setMessage(text || null);
+        setStage('asking');
       });
   }, [phone]);
 
@@ -137,6 +156,22 @@ export default function ForgotPin() {
     }
   };
 
+  // One screen while the account is looked up, then the RIGHT screen. It says
+  // what is happening rather than showing a form-shaped placeholder, because a
+  // form-shaped placeholder is the thing being fixed.
+  if (stage === 'checking') {
+    return (
+      <Screen>
+        <View style={{ alignItems: 'center', paddingTop: SPACE.xxl }}>
+          <Muted style={{ textAlign: 'center' }}>Checking how your PIN is reset…</Muted>
+          <View style={{ alignSelf: 'stretch', marginTop: SPACE.lg }}>
+            <Skeleton lines={3} />
+          </View>
+        </View>
+      </Screen>
+    );
+  }
+
   if (stage === 'requested') {
     const okInk = ink('present');
     return (
@@ -189,9 +224,6 @@ export default function ForgotPin() {
             disabled={sending}
             style={{ marginTop: SPACE.xl, alignSelf: 'stretch' }}
             onPress={() => void askAdmin()} />
-          <Button testID="forgot-pin-staff-call" label="Call the academy instead" variant="secondary"
-            style={{ marginTop: SPACE.sm, alignSelf: 'stretch' }}
-            onPress={() => flash(`Calling ${SUPPORT_PHONE}`)} />
           <Button testID="forgot-pin-staff-back" label="Back to sign in" variant="secondary"
             style={{ marginTop: SPACE.sm, alignSelf: 'stretch' }}
             onPress={toSignIn} />
@@ -216,8 +248,11 @@ export default function ForgotPin() {
           <Body style={{ marginTop: SPACE.sm, textAlign: 'center' }}>
             {message ?? 'Recovery is closed for 30 minutes. Your PIN has not changed and nobody has been signed in.'}
           </Body>
-          <Button label="Call the academy instead" style={{ marginTop: SPACE.xl, alignSelf: 'stretch' }}
-            onPress={() => flash(`Calling ${SUPPORT_PHONE}`)} />
+          {/* The lockout is 30 minutes and nothing on this screen shortens it,
+              so the only honest action is to leave. */}
+          <Button testID="forgot-pin-locked-back" label="Back to sign in"
+            style={{ marginTop: SPACE.xl, alignSelf: 'stretch' }}
+            onPress={toSignIn} />
         </View>
       </Screen>
     );
@@ -239,7 +274,7 @@ export default function ForgotPin() {
             Set a new PIN now. Your old one stopped working the moment you passed this check.
           </Body>
           <Button label="Choose a new PIN" style={{ marginTop: SPACE.xl, alignSelf: 'stretch' }}
-            onPress={() => router.replace('/set-pin?for=self')} />
+            onPress={() => router.replace('/set-pin?for=first')} />
         </View>
       </Screen>
     );
@@ -271,7 +306,7 @@ export default function ForgotPin() {
           {questions[ix].text}
         </Text>
         <View style={{ marginTop: SPACE.md }}>
-          <Field label="Your answer" required value={answer} onChange={v => { setAnswer(v); setWrong(false); }}
+          <Field label="Your answer" autoFocus required value={answer} onChange={v => { setAnswer(v); setWrong(false); }}
             placeholder="Your answer"
             error={wrong
               ? (message ?? `That does not match. ${2 - tries} attempt${2 - tries === 1 ? '' : 's'} left before recovery closes.`)
@@ -282,8 +317,8 @@ export default function ForgotPin() {
 
       <Button label={busy ? 'Checking…' : ix === 1 ? 'Check and continue' : 'Next question'} onPress={() => void submit()}
         disabled={!answer.trim() || busy} style={{ marginTop: SPACE.lg }} />
-      <Button label="Can't remember — call the academy" variant="secondary"
-        onPress={() => flash(`Calling ${SUPPORT_PHONE}`)} style={{ marginTop: SPACE.sm }} />
+      <Button testID="forgot-pin-back" label="Back to sign in" variant="secondary"
+        onPress={toSignIn} style={{ marginTop: SPACE.sm }} />
 
       <Muted style={{ marginTop: SPACE.lg, textAlign: 'center' }}>
         Your answers were recorded when your account was created. Nobody at RosiFit can read them back —

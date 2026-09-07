@@ -1,0 +1,60 @@
+not ok 7 - both keypads draw from this module, so they cannot drift apart
+  ---
+  duration_ms: 1.0624
+  type: 'test'
+  location: 'C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\src\\components\\keypadGrid.test.ts:95:1'
+  failureType: 'testCodeFailure'
+  error: 'app/index.tsx: the keypad does not import src/components/keypadGrid.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\src\components\keypadGrid.test.ts:98:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+
+--- and the arithmetic, against the values the pre-fix tree ships ---
+Both app/index.tsx and app/set-pin.tsx: key `width: '31.5%'`, row `gap: 10`.
+  columnsThatFit(360 - 40, '31.5%', 10) === 2   (sign-in card, 360px phone)
+  columnsThatFit(360 - 32, '31.5%', 10) === 2   (set-pin Screen, 360px phone)
+Three keys need a row of >= 363.64px; no phone below ~404px viewport gives one.
+Confirmed visually by the requester's screenshot of Change your PIN: six rows
+of two keys, and the four PIN boxes drawn over keys 1-4.
+
+=========================================================================
+MEASURED IN A REAL BROWSER (expo export -> chromium, boundingBox, not pixels)
+=========================================================================
+
+LAYOUT -- rows of keys, and whether anything overlaps the pad
+  PRE   ENTER PIN  @360px  rows=2/2/2/2/2/2
+  PRE   ENTER PIN  @390px  rows=2/2/2/2/2/2
+  PRE   ENTER PIN  @412px  rows=3/3/3/3          <- only here did it work
+  PRE   CHANGE PIN @360px  rows=2/2/2/2/2/2  overlap=+37px
+  PRE   CHANGE PIN @390px  rows=2/2/2/2/2/2  overlap=+21px
+  PRE   CHANGE PIN @412px  rows=3/3/3/3      overlap=-107px (clear)
+  PRE   CHANGE PIN 320x568 rows=6            overlap=+271px
+  PRE   CHANGE PIN 360x640 rows=6            overlap=+177px
+
+  The overlap appears at exactly the widths that wrap, and only there.
+  That is the causal link: one root cause, both symptoms.
+
+  POST  320x568 / 360x600 / 360x640 / 390x844 / 412x915
+        rows=3/3/3/3 at every one; PIN boxes visible and CLEAR of the pad
+        at every one; pad inside the viewport; gutters even and flush
+        (edges 16..304 on a 320 screen -- Screen padding is SPACE.lg 16).
+  POST  ENTER PIN 360x640, light AND dark: rows=3/3/3/3, edges 20..340.
+
+NAVIGATION -- where set-pin goes once the PIN is accepted
+  PRE   arrive with no back entry, complete the PIN -> landed=/set-pin
+        STUCK, exactly as reported.
+  POST  arrive as ?for=first, complete the PIN      -> landed=/
+        The dashboard.
+  BOTH  Profile -> Change My PIN (a real push)      -> returned=/profile
+        Correct before and after, which is why only first login stuck.

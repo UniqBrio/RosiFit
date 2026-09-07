@@ -1,0 +1,41 @@
+PIN-reset notification never reached the academy admin — fail-first evidence
+07-Sep-2026, live project lhpzhkzbnquwjljmbylo, PostgREST.
+
+CLAIM UNDER TEST
+  fetchNotifications (src/data/repository.ts) selected
+    pin_reset_requests?select=id,requested_at,app_users!inner(name)
+  and pin_reset_requests carries TWO foreign keys into app_users:
+    pin_reset_requests_app_user_id_fkey  (app_user_id -> app_users.id)
+    pin_reset_requests_resolved_by_fkey  (resolved_by  -> app_users.id)
+  so the embed is ambiguous and PostgREST refuses the WHOLE request. The
+  catch in fetchNotifications logs it and returns the other kinds, which is
+  why the bell rang for uploads and never once for a locked-out staff member.
+
+BEFORE (the shipped selector)
+  $ curl "$URL/rest/v1/pin_reset_requests?select=id,requested_at,app_users!inner(name)&resolved_at=is.null"
+  {"code":"PGRST201",
+   "details":[
+     {"cardinality":"many-to-one","embedding":"pin_reset_requests with app_users",
+      "relationship":"pin_reset_requests_app_user_id_fkey using pin_reset_requests(app_user_id) and app_users(id)"},
+     {"cardinality":"many-to-one","embedding":"pin_reset_requests with app_users",
+      "relationship":"pin_reset_requests_resolved_by_fkey using pin_reset_requests(resolved_by) and app_users(id)"}],
+   "hint":"Try changing 'app_users' to one of the following: 'app_users!pin_reset_requests_app_user_id_fkey', 'app_users!pin_reset_requests_resolved_by_fkey'.",
+   "message":"Could not embed because more than one relationship was found for 'pin_reset_requests' and 'app_users'"}
+
+  Note it is PGRST201, not an empty list. The read failed at PLANNING, before
+  RLS and before the grant, so it failed identically for the academy admin.
+
+AFTER (the FK named, and the embed left outer)
+  $ curl "$URL/rest/v1/pin_reset_requests?select=id,requested_at,app_users!pin_reset_requests_app_user_id_fkey(name)&resolved_at=is.null"
+  {"code":"42501","message":"permission denied for table pin_reset_requests", ...}
+
+  Sent with the ANON key, which 0034 revokes on purpose — so 42501 is the
+  correct answer and it is the proof: the query now gets past planning to the
+  grant check. The academy admin is `authenticated`, holds the grant, and
+  satisfies pin_reset_requests_read (using: is_super_admin(), confirmed
+  present on the live project), so the same query returns her rows.
+
+NOT CHANGED
+  No migration, no policy, no grant, no Edge Function. The table, the write
+  path (2 rows present in prod) and the resolve-on-rotation in pin-issue /
+  pin-reset were all already correct. Only the client's selector was wrong.

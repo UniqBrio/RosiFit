@@ -138,7 +138,7 @@ export default function Register() {
         <Label>Your details</Label>
       </View>
       <View style={{ marginTop: SPACE.md }}>
-        <Field label="Full name" required value={name} onChange={setName} placeholder="e.g. Priya Menon" />
+        <Field label="Full name" autoFocus required value={name} onChange={setName} placeholder="e.g. Priya Menon" />
         {/* "Academy you administer" was removed: the academy is RosiFit by
             default, and the field's value was never sent anywhere. */}
         <Field label="Mobile number" required value={phone} onChange={setPhone} prefix="+91"
@@ -212,7 +212,7 @@ export default function Register() {
           testID="register-back-to-signin"
           onPress={toSignIn}
           style={{ flex: 1 }} />
-        <Button label="Register & issue PIN"
+        <Button label="Register & set PIN"
           onPress={submit} disabled={!valid} style={{ flex: 2 }} />
       </View>
 

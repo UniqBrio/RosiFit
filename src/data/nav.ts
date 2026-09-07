@@ -1,4 +1,5 @@
 import type { Href } from 'expo-router';
+import { homeHref } from './access';
 /**
  * Where "back" goes, when router.back() cannot answer.
  *
@@ -37,4 +38,36 @@ export function safeBackTarget(from: unknown, fallback: Href): Href {
   // what a `?from=` query carried, and this function's whole job is to
   // decide whether that string is a route the app may follow.
   return IN_APP.test(v) ? (v as Href) : fallback;
+}
+
+/* ------------------------------------------------------- after a PIN change
+ * The same principle as safeBackTarget above, applied to set-pin: the caller
+ * names how it arrived, because the screen cannot tell.
+ *
+ * set-pin used to decide from `?for=self` -- a flag that records WHO ASKED --
+ * and answer with router.back(). Two arrivals both said 'self':
+ *
+ *   Profile      router.push  -> a screen is behind this one; back is right.
+ *   sign-in      router.replace -> NOTHING is behind this one.
+ *
+ * router.back() with an empty stack is a no-op, so the second arrival showed
+ * "PIN updated" and then stayed exactly where it was. That was every first
+ * login, staff and super admin alike, and it is why the fix is a distinct
+ * value rather than a cleverer guess: only the caller knows whether it
+ * pushed.
+ */
+
+/** Nothing was pushed, so there is nowhere to pop to -- go somewhere real. */
+export type PinDestination = 'back' | Href;
+
+/**
+ * Where set-pin goes once the new PIN is accepted.
+ *
+ * `'back'` ONLY for the arrival that genuinely pushed. Everything else --
+ * including an arrival this function does not recognise -- resolves to a
+ * dashboard, because a wrong dashboard is a tap from the right one and a
+ * back() into an empty stack is a dead end.
+ */
+export function afterPinChange(who: string | undefined, isSuperAdmin: boolean): PinDestination {
+  return who === 'self' ? 'back' : homeHref(isSuperAdmin);
 }

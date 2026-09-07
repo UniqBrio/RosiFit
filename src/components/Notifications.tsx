@@ -22,9 +22,9 @@ import { actionableCount, type Notification } from '../data/notifications';
  * WHY THE COUNT IS NOT A BADGE OF UNREAD
  * There is no read state anywhere -- no table, no column, no per-device
  * store. A badge that never clears is worse than no badge, so the number
- * counts what is still ACTIONABLE: sessions awaiting upload. A finished send
- * is in the list to be read, and it is not counted, because there is nothing
- * to do about it.
+ * counts what is still ACTIONABLE: sessions awaiting upload, and staff who
+ * cannot sign in until their PIN is reset. A finished send is in the list to
+ * be read, and it is not counted, because there is nothing to do about it.
  */
 
 /** Each kind's own ink, icon and word. Colour is never the only signal. */
@@ -82,7 +82,7 @@ export function NotificationsSheet({ open, onClose, feed }:
       {state === 'ready' && list.length > 0 ? (
         <>
           <Muted style={{ marginBottom: SPACE.md }}>
-            {`${list.length} ${list.length === 1 ? 'item' : 'items'} · the ones awaiting upload are the ones still to act on`}
+            {`${list.length} ${list.length === 1 ? 'item' : 'items'} · the ones still to act on are first`}
           </Muted>
           <View style={{ gap: 9 }}>
             {list.map(n => {
@@ -145,9 +145,13 @@ export function NotificationBell({ onPress, feed }:
   return (
     <Pressable testID="shell-notifications" onPress={onPress}
       accessibilityRole="button"
+      // Counted, not named: actionableCount covers sessions awaiting upload AND
+      // staff locked out waiting on a PIN, so a label that says "awaiting
+      // upload" reads out the wrong thing the moment a PIN reset is in the
+      // tray. The kind of each entry is spoken on the entry itself.
       accessibilityLabel={actionable === 0
-        ? 'Notifications, nothing awaiting upload'
-        : `Notifications, ${actionable} session${actionable === 1 ? '' : 's'} awaiting upload`}
+        ? 'Notifications, nothing needs you'
+        : `Notifications, ${actionable} thing${actionable === 1 ? '' : 's'} still to act on`}
       style={({ pressed }) => ({
         width: TAP_MIN, height: TAP_MIN, borderRadius: TAP_MIN / 2,
         alignItems: 'center', justifyContent: 'center',

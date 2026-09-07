@@ -11,6 +11,7 @@ import { authLogin, adoptSession } from '../src/data/api';
 import { groupPhone, phoneDigits, isCompletePhone, needsRegistration, continueDestination } from '../src/data/signin';
 import { isRegisteredNumber } from '../src/data/repository';
 import { homeHref } from '../src/data/access';
+import { keypadRow, keypadCell } from '../src/components/keypadGrid';
 
 /** '1'..'9', clear-entry, '0', backspace -- the canvas' 3-column layout */
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'ce', '0', 'del'] as const;
@@ -104,8 +105,12 @@ export default function SignIn() {
       // to '/(tabs)' would be taken off Overview a moment later by the guard
       // there; landing her on Attendance is the same destination without the
       // hop. `kind` is the server's word for it, not a guess from the number.
+      // 'first', not 'self': this is a REPLACE, so set-pin has nothing behind
+      // it to go back to. It said 'self', set-pin answered with router.back(),
+      // and back() with an empty stack does nothing -- every first login, both
+      // roles, stuck on the PIN screen once the new PIN was accepted.
       router.replace(result.user?.must_change_pin
-        ? '/set-pin?for=self'
+        ? '/set-pin?for=first'
         : homeHref(result.user?.kind !== 'staff'));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'That did not work. Try again.';
@@ -230,7 +235,9 @@ export default function SignIn() {
                     placeholder="98765 43210" placeholderTextColor={theme.muted}
                     style={{
                       flex: 1, color: theme.fgStrong, fontSize: 17, fontWeight: '600', letterSpacing: 1,
-                      outlineWidth: 0,
+                      // `outlineWidth: 0` alone does not remove it: the style stays
+                      // `auto`, and an auto outline is drawn whatever its width says.
+                      outlineWidth: 0, outlineStyle: 'solid',
                     }} />
                 </View>
                 {/* ONE button. The account list and the "only RosiFit staff
@@ -306,26 +313,31 @@ export default function SignIn() {
                   </View>
                 </View>
 
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                {/* Three to a row at EVERY width -- the gutter is padding
+                    inside each cell, never a gap between them, because a gap
+                    joins the line-breaking sum and that is what put two keys
+                    on a row here. src/components/keypadGrid.ts. */}
+                <View testID="signin-keypad" style={keypadRow}>
                   {KEYS.map(k => (
-                    <Pressable key={k} testID={`signin-key-${k}`} onPress={() => press(k)}
-                      accessibilityRole="button"
-                      accessibilityLabel={k === 'del' ? 'Delete last digit' : k === 'ce' ? 'Clear entry' : k}
-                      style={({ pressed }) => ({
-                        // three to a row, gaps included
-                        width: '31.5%', flexGrow: 1, height: 56, borderRadius: RADIUS.lg,
-                        alignItems: 'center', justifyContent: 'center',
-                        backgroundColor: pressed ? theme.control : theme.surface,
-                        borderWidth: 1, borderColor: theme.line,
-                      })}>
-                      <Text style={{
-                        fontSize: k === 'ce' ? 15 : 21, fontWeight: '700',
-                        color: k === 'ce' || k === 'del' ? theme.muted : theme.fgStrong,
-                        fontVariant: ['tabular-nums'],
-                      }}>
-                        {k === 'del' ? '⌫' : k === 'ce' ? 'CE' : k}
-                      </Text>
-                    </Pressable>
+                    <View key={k} style={keypadCell}>
+                      <Pressable testID={`signin-key-${k}`} onPress={() => press(k)}
+                        accessibilityRole="button"
+                        accessibilityLabel={k === 'del' ? 'Delete last digit' : k === 'ce' ? 'Clear entry' : k}
+                        style={({ pressed }) => ({
+                          height: 56, borderRadius: RADIUS.lg,
+                          alignItems: 'center', justifyContent: 'center',
+                          backgroundColor: pressed ? theme.control : theme.surface,
+                          borderWidth: 1, borderColor: theme.line,
+                        })}>
+                        <Text style={{
+                          fontSize: k === 'ce' ? 15 : 21, fontWeight: '700',
+                          color: k === 'ce' || k === 'del' ? theme.muted : theme.fgStrong,
+                          fontVariant: ['tabular-nums'],
+                        }}>
+                          {k === 'del' ? '⌫' : k === 'ce' ? 'CE' : k}
+                        </Text>
+                      </Pressable>
+                    </View>
                   ))}
                 </View>
 
