@@ -192,6 +192,40 @@ Run **Track B** ([workflows/enhance.md](../workflows/enhance.md)) with this requ
   header. If the resolution happens in the edge function,
   `commit_csv_import` may need no re-issue at all.
 
+## WHAT SHIPPED, and the two corrections on the way (07-Sep-2026, same day)
+
+The batch design above — one hidden `course_offerings` row per Meet code —
+was built, applied to production as 0039, and **withdrawn the same day**
+before a single file went through it. Two clarifications from the requester
+changed the model:
+
+1. *"meeting code can be different for members ... today different, tomorrow
+   different, but same members"* — a code cannot identify a group, so
+   binding one to an offering would have made a new group every day and left
+   anyone who missed a day never marked absent.
+2. *"on each member there are 3 statuses: present, absent, yet to mark. Show
+   yet to mark only if for today's date no csv file is uploaded. If the user
+   uploads a csv, mark everyone in the file present and the rest absent. When
+   they upload again, check the members marked absent: if they are in that
+   file, mark them present. Same flow goes on."* and, separately, *"members
+   already marked as present should not be affected by a new file upload —
+   only it updates attendance of members who are absent."*
+
+**What is live** (`0042_override_scoped_by_meeting_code`, `csv-import` v11):
+one session per course per day, exactly as 0007 always had it. The first file
+marks its people present and everyone else due absent; each later file flips
+its own people from absent to present and touches nothing else. The meeting
+code has one job: 0037's override — which reverted everyone an earlier file
+marked — now reaches only rows written by an earlier file carrying **the same
+code**, so a corrected export still corrects itself and a second meeting's
+file never erases the first. "Yet to mark" is a day with no file: a reading,
+not a stored status. No groups, no enrolment moves, no schedule, no cron.
+
+The two 0039 functions are dropped; `course_offerings.meet_code` and its
+indexes remain, NULL everywhere (TD-041). Verified against production with a
+rolled-back run: file A → Chitra absent; file B → Asha still present, Chitra
+present, nobody reverted; corrected A' → Bhavani absent, Chitra untouched.
+
 ## OPEN QUESTIONS FOR B3 (none of these were answered — do not fill them in)
 
 1. **Silent auto-create, or a confirm line?** The collision recorded under

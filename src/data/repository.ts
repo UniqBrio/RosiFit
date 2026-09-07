@@ -282,14 +282,7 @@ export async function fetchCourses(): Promise<Course[]> {
     supabase.from('courses')
       .select('id, name, default_start_time, default_end_time, default_frequency')
       .is('deleted_at', null).order('name'),
-    // THE COURSE'S OWN OFFERING ONLY (0039). A course that runs several
-    // meetings a day carries one hidden offering per Meet code, created by the
-    // upload from the file's own evidence. They are registers, not courses:
-    // showing them here would list "Postnatal · Coimbatore" six times in the
-    // picker, and enrolling a member from this list could put her in one
-    // meeting rather than in the course.
-    supabase.from('course_offerings').select('id, course_id, branch_id')
-      .is('deleted_at', null).is('meet_code', null),
+    supabase.from('course_offerings').select('id, course_id, branch_id').is('deleted_at', null),
     supabase.from('branches').select('id, name').is('deleted_at', null),
     supabase.from('offering_schedules').select('offering_id, weekdays, effective_from, effective_to'),
   ]);
@@ -745,12 +738,9 @@ export async function fetchOfferings(courseId: string): Promise<OfferingDetail[]
   }
 
   const [offeringsRes, branchesRes, schedulesRes] = await Promise.all([
-    // The course's own offering only — see fetchCourses (0039). This screen
-    // edits an offering's branch, times and days; a meeting group has none of
-    // those to edit, and its days come from the files that arrive.
     supabase.from('course_offerings')
       .select('id, branch_id, start_time, end_time')
-      .eq('course_id', courseId).is('deleted_at', null).is('meet_code', null),
+      .eq('course_id', courseId).is('deleted_at', null),
     supabase.from('branches').select('id, name').is('deleted_at', null),
     supabase.from('offering_schedules')
       .select('offering_id, weekdays, effective_from, effective_to'),
