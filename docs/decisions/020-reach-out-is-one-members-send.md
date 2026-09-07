@@ -1,6 +1,6 @@
 # 020 — Reach out sends to the member whose record is open
 
-**Status:** Accepted · **Date:** 07-Sep-2026
+**Status:** Accepted · **ADR 028** · **Date:** 07-Sep-2026
 **Request:** `requests/2026-09-07-reach-out-already-sent-and-rule-label.md`
 
 ## Context
