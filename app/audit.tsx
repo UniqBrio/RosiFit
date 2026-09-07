@@ -13,6 +13,7 @@ import { resolvePeriod, type PeriodChoice } from '../src/data/period';
 import { ALL_BRANCHES } from '../src/state/academy';
 import { useAudit, useRemarks, useFilterOptions } from '../src/data/hooks';
 import { addRemark, REMARK_MAX } from '../src/data/repository';
+import type { Remark } from '../src/data/mock';
 import { toCsv } from '../src/data/csvFormat';
 import { swipeHint } from '../src/components/tableScroll';
 import { downloadCsv } from '../src/data/csv';
@@ -79,11 +80,15 @@ import {
  * dropped the column names, which is exactly the labelling the reader was
  * looking for. */
 const COLS = [
-  { key: 'what', label: 'What changed',   flex: 2.7 },
-  { key: 'was',  label: 'Previous value', flex: 1.9 },
-  { key: 'now',  label: 'New value',      flex: 1.9 },
-  { key: 'who',  label: 'Modified by',    flex: 1.5 },
-  { key: 'when', label: 'Modified at',    flex: 1.6 },
+  { key: 'what',    label: 'What changed',   flex: 2.6 },
+  { key: 'was',     label: 'Previous value', flex: 1.5 },
+  { key: 'now',     label: 'New value',      flex: 1.5 },
+  { key: 'who',     label: 'Modified by',    flex: 1.3 },
+  { key: 'when',    label: 'Modified at',    flex: 1.4 },
+  /* LAST, and last on purpose. A remark is written after reading the row,
+   * so it sits at the end of the row it is about -- and being last means
+   * adding it pushed no existing column sideways. */
+  { key: 'remarks', label: 'Remarks',        flex: 2.5 },
 ] as const;
 
 /**
@@ -91,7 +96,7 @@ const COLS = [
  * sideways -- five columns squeezed into 358pt is five unreadable columns,
  * and a table nobody can read is not a table.
  */
-const TABLE_MIN = 760;
+const TABLE_MIN = 980;
 
 /**
  * One row of the table: ONE changed field, carrying the entry it belongs to.
@@ -110,6 +115,8 @@ type Line = {
   to: string | null;
   /** true on the first line of an entry — the one that heads it */
   first: boolean;
+  /** true on the last line of an entry — where the entry can sign off */
+  last: boolean;
 };
 
 function toLines(entries: PlainEntry[]): Line[] {
@@ -118,12 +125,13 @@ function toLines(entries: PlainEntry[]): Line[] {
     if (entry.changes.length === 0) {
       // An action that recorded no field changes is still something somebody
       // did. It gets a line rather than vanishing.
-      lines.push({ key: entry.id, entry, label: null, from: null, to: null, first: true });
+      lines.push({ key: entry.id, entry, label: null, from: null, to: null, first: true, last: true });
       continue;
     }
     entry.changes.forEach((c, i) => lines.push({
       key: `${entry.id}-${i}-${c.label}`,
-      entry, label: c.label, from: c.from, to: c.to, first: i === 0,
+      entry, label: c.label, from: c.from, to: c.to,
+      first: i === 0, last: i === entry.changes.length - 1,
     }));
   }
   return lines;
@@ -166,8 +174,16 @@ function AuditBody() {
   const [searching, setSearching] = useState(false);
   const [category, setCategory] = useState<AuditCategory | 'all'>('all');
 
+  /**
+   * The remark being written, and the ROW it belongs to.
+   *
+   * One composer, not fifty: `composingFor` holds the id of the single entry
+   * open for annotation, so opening a second closes the first. Fifty rows
+   * each holding their own draft would keep half-written notes alive behind
+   * a filter change, and the reader would have no way to see they were there.
+   */
+  const [composingFor, setComposingFor] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
-  const [composing, setComposing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -207,6 +223,20 @@ function AuditBody() {
   };
 
   const entries = useMemo(() => data ?? [], [data]);
+
+  /** Remarks by the entry they are about. A free-standing remark (entryId
+   *  null -- everything written before 0044) belongs to no row and is not
+   *  listed here; it is still stored, and still readable in the table it
+   *  lives in. */
+  const remarksFor = useMemo(() => {
+    const byEntry = new Map<string, Remark[]>();
+    for (const r of remarks.data ?? []) {
+      if (r.entryId === null) continue;
+      const list = byEntry.get(r.entryId);
+      if (list) list.push(r); else byEntry.set(r.entryId, [r]);
+    }
+    return byEntry;
+  }, [remarks.data]);
   /** One clock for the whole render: fifty rows asking the OS the time
    *  separately can straddle midnight and disagree about "Today". */
   const now = useMemo(() => new Date(), [entries]);
@@ -265,12 +295,13 @@ function AuditBody() {
   const canSave = draft.trim().length > 0 && !tooLong && !saving;
 
   const saveRemark = async () => {
-    if (!canSave) return;
+    if (!canSave || composingFor === null) return;
     setSaving(true);
     setSaveError(null);
     try {
-      await addRemark(draft);
+      await addRemark(draft, composingFor);
       setDraft('');
+      setComposingFor(null);
       flash('Remark added');
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'The remark could not be saved.');
@@ -346,6 +377,107 @@ function AuditBody() {
     </View>
   );
 
+  /**
+   * What sits in the Remarks column: the notes already written about this
+   * entry, and the way to add one.
+   *
+   * The composer opens IN the cell rather than in a dialog, because the
+   * reason for writing a remark is the row beside it -- a dialog would cover
+   * the change the note is about. One row is open at a time.
+   *
+   * Append-only is stated BEFORE anything is typed rather than after it is
+   * saved: the note cannot be edited or deleted once it is in, and somebody
+   * should know that while they are still choosing their words.
+   */
+  const remarksCell = (r: PlainEntry) => {
+    const mine = remarksFor.get(r.id) ?? [];
+    const open = composingFor === r.id;
+    return (
+      <View>
+        {mine.map(m => (
+          <View key={m.id} testID={`audit-remark-${m.id}`} style={{ marginBottom: 6 }}>
+            <Text style={{ fontSize: 11.5, color: theme.fgStrong, lineHeight: 16 }}>{m.body}</Text>
+            <Text style={{ fontSize: 10, color: theme.muted, marginTop: 2 }}>
+              {m.who} · {whenText(m.when, now)}
+            </Text>
+          </View>
+        ))}
+
+        {open ? (
+          <View>
+            <TextInput
+              value={draft} onChangeText={setDraft} multiline autoFocus
+              placeholder="Why was this done?"
+              placeholderTextColor={theme.muted}
+              accessibilityLabel={`Write a remark about ${r.title}`}
+              selectionColor={theme.accent}
+              style={{
+                minHeight: 54, borderWidth: 1, borderRadius: RADIUS.sm,
+                borderColor: saveError ? theme.danger : theme.accent,
+                backgroundColor: theme.surface2, color: theme.fgStrong,
+                fontSize: 12, paddingHorizontal: 8, paddingVertical: 6,
+                textAlignVertical: 'top', outlineWidth: 0, outlineStyle: 'solid',
+              }} />
+            {saveError ? (
+              <Text accessibilityLiveRegion="polite"
+                style={{ fontSize: 10.5, color: theme.danger, marginTop: 4 }}>{saveError}</Text>
+            ) : tooLong ? (
+              <Text accessibilityLiveRegion="polite"
+                style={{ fontSize: 10.5, color: theme.danger, marginTop: 4 }}>
+                {draft.trim().length} of {REMARK_MAX} characters
+              </Text>
+            ) : (
+              <Text style={{ fontSize: 10, color: theme.muted, marginTop: 4 }}>
+                Saved for good — a remark cannot be edited or deleted.
+              </Text>
+            )}
+            <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
+              <Pressable testID={`audit-remark-save-${r.id}`}
+                onPress={() => void saveRemark()} disabled={!canSave}
+                accessibilityRole="button" accessibilityLabel="Save this remark"
+                style={({ pressed }) => ({
+                  minHeight: 28, paddingHorizontal: 10, borderRadius: RADIUS.sm,
+                  alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: canSave ? theme.accent : theme.control,
+                  opacity: pressed ? 0.8 : 1,
+                })}>
+                <Text style={{
+                  fontSize: 11, fontWeight: '800',
+                  color: canSave ? theme.onAccent : theme.muted,
+                }}>{saving ? 'Saving…' : 'Save'}</Text>
+              </Pressable>
+              <Pressable testID={`audit-remark-cancel-${r.id}`}
+                onPress={() => { setComposingFor(null); setDraft(''); setSaveError(null); }}
+                accessibilityRole="button" accessibilityLabel="Discard this remark"
+                style={({ pressed }) => ({
+                  minHeight: 28, paddingHorizontal: 10, borderRadius: RADIUS.sm,
+                  alignItems: 'center', justifyContent: 'center',
+                  borderWidth: 1, borderColor: theme.lineStrong,
+                  opacity: pressed ? 0.8 : 1,
+                })}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: theme.fg }}>Cancel</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : (
+          <Pressable testID={`audit-remark-add-${r.id}`}
+            onPress={() => { setComposingFor(r.id); setDraft(''); setSaveError(null); }}
+            accessibilityRole="button"
+            accessibilityLabel={`Add a remark about ${r.title}`}
+            style={({ pressed }) => ({
+              flexDirection: 'row', alignItems: 'center', gap: 4,
+              minHeight: 26, opacity: pressed ? 0.7 : 1,
+            })}>
+            <Icon name="add" size={13} color={theme.accentInk} />
+            <Text style={{ fontSize: 11, fontWeight: '700', color: theme.accentInk }}>
+              {mine.length ? 'Add another' : 'Add remark'}
+            </Text>
+          </Pressable>
+        )}
+      </View>
+    );
+  };
+
   const tableRow = (l: Line) => {
     const r = l.entry;
     return (
@@ -391,6 +523,16 @@ function AuditBody() {
               No field values recorded
             </Text>
           )}
+
+          {/* What the summary left out, on the LAST line of the entry so it
+              reads as a footnote to the whole act. The log promises nothing
+              is hidden; a row that quietly prints one of six fields would
+              break that promise without ever saying so. */}
+          {l.last && r.hiddenCount > 0 ? (
+            <Text style={{ marginLeft: 21, marginTop: 5, fontSize: 10.5, color: theme.dim }}>
+              +{r.hiddenCount} more {r.hiddenCount === 1 ? 'field' : 'fields'} recorded, not shown
+            </Text>
+          ) : null}
         </View>
 
         {/* "Nothing before" is a creation; "cleared" is a value taken away.
@@ -414,6 +556,12 @@ function AuditBody() {
             ? <Text style={{ fontSize: 11.5, color: theme.muted }}>{r.when}</Text>
             : null}
         </View>
+
+        {/* REMARKS. Only on the first line of an entry, like the actor and
+            the time: a remark is about the ACT, not about one of the fields
+            it changed, and repeating it down three continuation lines would
+            read as three separate notes. */}
+        <View style={cell(5)}>{l.first ? remarksCell(r) : null}</View>
       </View>
     );
   };
@@ -508,83 +656,6 @@ function AuditBody() {
           );
         })}
       </ScrollView>
-    </View>
-  );
-
-  const remarksSection = (
-    <View testID="audit-remarks" style={{
-      marginTop: SPACE.xl, padding: SPACE.lg, borderRadius: RADIUS.lg,
-      backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
-    }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-        <Icon name="sticky_note_2" size={18} color={theme.accentInk} />
-        <Label>Remarks</Label>
-      </View>
-      <Muted style={{ marginTop: SPACE.sm }}>
-        Your own notes, in your own words — why something was changed, what to watch for next
-        week. They sit beside the log and never alter it. Like the log, a remark cannot be
-        edited or deleted once saved, and everyone who can open this page can read it.
-      </Muted>
-
-      <View style={{
-        marginTop: SPACE.lg,
-        borderWidth: 1, borderRadius: RADIUS.md, paddingHorizontal: SPACE.lg, paddingVertical: SPACE.md,
-        borderColor: saveError ? theme.danger : composing ? theme.accent : theme.lineStrong,
-        backgroundColor: theme.surface2, minHeight: 96,
-      }}>
-        <TextInput
-          value={draft} onChangeText={setDraft} multiline
-          placeholder="Add a remark…"
-          placeholderTextColor={theme.muted}
-          accessibilityLabel="Add a remark"
-          onFocus={() => setComposing(true)} onBlur={() => setComposing(false)}
-          selectionColor={theme.accent}
-          style={{ flex: 1, color: theme.fgStrong, fontSize: 14, minHeight: 68,
-            textAlignVertical: 'top', outlineWidth: 0, outlineStyle: 'solid' }} />
-      </View>
-
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.md, marginTop: SPACE.md }}>
-        <View style={{ flex: 1 }}>
-          {saveError ? (
-            <Text accessibilityLiveRegion="polite" style={{ fontSize: 12, color: theme.danger }}>
-              {saveError}
-            </Text>
-          ) : tooLong ? (
-            <Text accessibilityLiveRegion="polite" style={{ fontSize: 12, color: theme.danger }}>
-              {draft.trim().length} of {REMARK_MAX} characters — a little too long to save.
-            </Text>
-          ) : draft.trim().length > REMARK_MAX - 200 ? (
-            <Muted>{draft.trim().length} of {REMARK_MAX} characters</Muted>
-          ) : null}
-        </View>
-        <Button testID="audit-remark-add" label={saving ? 'Saving…' : 'Add remark'}
-          onPress={saveRemark} disabled={!canSave} />
-      </View>
-
-      <View style={{ marginTop: SPACE.lg }}>
-        {remarks.state === 'loading' && <Skeleton lines={2} />}
-
-        {remarks.state === 'error' && (
-          <ErrorState onRetry={remarks.retry}
-            message={remarks.error ?? 'The remarks could not be loaded. Nothing has been changed.'} />
-        )}
-
-        {remarks.state === 'ready' && (remarks.data ?? []).length === 0 && (
-          <Muted>No remarks yet. The first one goes in the box above.</Muted>
-        )}
-
-        {remarks.state === 'ready' && (remarks.data ?? []).map((r, i) => (
-          <View key={r.id} testID={`audit-remark-${r.id}`} style={{
-            paddingTop: i === 0 ? 0 : SPACE.md, marginTop: i === 0 ? 0 : SPACE.md,
-            borderTopWidth: i === 0 ? 0 : 1, borderTopColor: theme.line,
-          }}>
-            <Text style={{ fontSize: 13.5, color: theme.fgStrong, lineHeight: 20 }}>{r.body}</Text>
-            <Text style={{ fontSize: 11.5, color: theme.muted, marginTop: 5 }}>
-              {r.who} · {whenText(r.when, now)}
-            </Text>
-          </View>
-        ))}
-      </View>
     </View>
   );
 
@@ -691,9 +762,26 @@ function AuditBody() {
         );
       }
 
+      /* The remarks load has no section of its own any more, so its failure
+       * is reported here. Without this the column renders empty on an error
+       * and reads as "no remarks" -- which is a different, and false,
+       * statement about the record. */
+      if (remarks.state === 'error') {
+        children.push(
+          <View key="remark-error" style={{ marginTop: SPACE.md }}>
+            <ErrorState onRetry={remarks.retry}
+              message={remarks.error ?? 'The remarks could not be loaded. The log above is unaffected.'} />
+          </View>,
+        );
+      }
+
       children.push(
         <Muted key="foot" style={{ marginTop: SPACE.md }}>
           One line per changed field; the lines under a heading are the same act.
+          A record being CREATED lists only the fields that name it — everything else it
+          was born with is still recorded, and the count of what is not printed is shown
+          on the row. Remarks are your own words about a change: they sit in the last
+          column, beside the change they are about, and cannot be edited or deleted.
           “Nothing before” is a record being created, “cleared” is a value taken away, and a
           dash means the record a value pointed at is no longer there. On a narrow screen the
           table scrolls sideways and the header follows it.
@@ -705,8 +793,6 @@ function AuditBody() {
       );
     }
   }
-
-  children.push(<View key="remarks">{remarksSection}</View>);
 
   children.push(
     <View key="never" style={{

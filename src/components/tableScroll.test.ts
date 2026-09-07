@@ -57,9 +57,12 @@ const TABLE_MIN = Number(source.match(/const TABLE_MIN = (\d+);/)?.[1]);
 const PHONE = 358;   // 390pt phone less the screen's SPACE.lg padding
 const DESKTOP = 1100;
 
-test('the audit table still has the five columns this hint names', () => {
+test('the audit table still has the six columns this hint names', () => {
+  // Remarks joined them when the requester asked for the notes to live in
+  // the table rather than in a section below it. It is LAST, so adding it
+  // pushed no existing column sideways.
   assert.deepEqual(COLS.map(c => c.label), [
-    'What changed', 'Previous value', 'New value', 'Modified by', 'Modified at',
+    'What changed', 'Previous value', 'New value', 'Modified by', 'Modified at', 'Remarks',
   ]);
   assert.equal(Number.isFinite(TABLE_MIN) && TABLE_MIN > 0, true);
 });
@@ -80,11 +83,18 @@ test('on a phone at rest it names every column that is off the right edge', () =
   const h = swipeHint(COLS, 0, PHONE, TABLE_MIN);
   assert.equal(h.overflows, true);
   assert.deepEqual(h.left, []);
-  // "What changed" is 2.7/9.6 of 760 = 214pt and fits; "Previous value" ends
-  // at 364pt and does not, so it is named along with the three behind it.
-  assert.deepEqual(h.right, ['Previous value', 'New value', 'Modified by', 'Modified at']);
-  assert.equal(h.text,
-    'Swipe the table sideways for Previous value, New value, Modified by and Modified at');
+  // Nothing has been scrolled past yet, so every column the phone cannot show
+  // in full is ahead of the reader -- which is all of them but the first.
+  // Derived from COLS rather than typed out, so a re-weighting changes what
+  // this asserts instead of merely breaking it.
+  const total = COLS.reduce((sum, c) => sum + c.flex, 0);
+  const firstFits = (COLS[0].flex / total) * TABLE_MIN <= PHONE;
+  assert.equal(firstFits, true,
+    'the first column stopped fitting a phone - the hint would now name every column');
+  assert.deepEqual(h.right, COLS.slice(1).map(c => c.label));
+  const ahead = COLS.slice(1).map(c => c.label);
+  const spoken = `${ahead.slice(0, -1).join(', ')} and ${ahead[ahead.length - 1]}`;
+  assert.equal(h.text, `Swipe the table sideways for ${spoken}`);
 });
 
 test('a column half on screen is named, because half a value cannot be read', () => {

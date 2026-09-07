@@ -548,6 +548,25 @@ export const AUDIT: AuditEntry[] = [
   // appears and the defect is visible without a live project.
   { id: 'a6', who: 'System', whoKind: 'anon', when: auditAt(0, 16, 7),
     action: 'auth.login_succeeded', entity: 'app_user', subject: null, branch: null, changes: [] },
+  // A CREATION, carrying every column members (0006) is born with. The screen
+  // prints the one that identifies her and says it left five behind -- the
+  // requester asked for "only name of member and email".
+  { id: 'a7', who: 'Rosi Owner', whoKind: 'super_admin', when: auditAt(0, 9, 12),
+    action: 'member.insert', entity: 'member', subject: 'Anitha Raman', branch: 'Coimbatore',
+    changes: [
+      { field: 'full_name', old: null, new: 'Anitha Raman' },
+      { field: 'member_code', old: null, new: 'RF-0148' },
+      { field: 'status', old: null, new: 'active' },
+      { field: 'joined_on', old: null, new: '2026-09-07' },
+      { field: 'notes', old: null, new: 'Referred by Divya' },
+      { field: 'created_by', old: null, new: 'Rosi Owner' }] },
+  // Her address, on its own entry, naming the member it belongs to.
+  { id: 'a8', who: 'Rosi Owner', whoKind: 'super_admin', when: auditAt(0, 9, 12),
+    action: 'member_email.insert', entity: 'member_email', subject: 'Anitha Raman', branch: 'Coimbatore',
+    changes: [
+      { field: 'member_id', old: null, new: 'Anitha Raman' },
+      { field: 'email', old: null, new: 'anitha.r@gmail.com' },
+      { field: 'is_primary', old: null, new: 'true' }] },
 ];
 
 // ---------------------------------------------------------------- remarks
@@ -560,6 +579,12 @@ export const AUDIT: AuditEntry[] = [
 export type Remark = {
   id: string;
   body: string;
+  /**
+   * The audit entry this remark is about, or null for a free-standing one.
+   * Null is every remark written before 0044 moved them into the table; the
+   * screen no longer offers a way to make a new one.
+   */
+  entryId: string | null;
   /** who wrote it */
   who: string;
   /** ISO 8601 */
@@ -567,8 +592,12 @@ export type Remark = {
 };
 
 export const REMARKS: Remark[] = [
-  { id: 'r1', who: 'Rosi Owner', when: auditAt(1, 19, 5),
+  // Attached to a3, the entry that shows those thresholds changing -- which
+  // is the whole point of the move: the note sits beside its own change.
+  { id: 'r1', who: 'Rosi Owner', when: auditAt(1, 19, 5), entryId: 'a3',
     body: 'Lowered the Prenatal Yoga thresholds after the Saturday batch moved — expect more follow-ups for a fortnight.' },
+  { id: 'r2', who: 'Priya Menon', when: auditAt(0, 10, 40), entryId: 'a1',
+    body: 'She goes by Shazia on the call, so the register matches what the tutor hears.' },
 ];
 
 // --------------------------------------------------------------- sessions

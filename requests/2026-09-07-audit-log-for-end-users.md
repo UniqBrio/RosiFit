@@ -85,7 +85,49 @@ Run **Track B** ([workflows/enhance.md](../workflows/enhance.md)) with this requ
     · Custom range), mounted the way Reports and Attendance mount it.
   - **Branch.** The branch list from `fetchFilterOptions`, local to this screen.
 
-- CORRECTION ROUND: 2 on this surface.
+- CORRECTION ROUND: 3 on this surface.
+
+- ROUND 3 (8 Sep 2026, requester’s exact words): *"the remarks should be in table as last
+  column not under setting there itself user add remarks and show mimal info such as member
+  added show only name of member and email thats it"*
+
+  **This REVERSES Q5, and the reversal is the point — not a miss.** Q5 above reads "Taken:
+  free-standing — the requester said ‘another section’", and the CLASSIFICATION NOTE says in
+  as many words that if remarks were wanted "attached to individual entries" it "should be
+  re-filed as NEW". The requester has now asked for exactly that. It is taken here rather
+  than re-filed because the surface, the table and the audience are the same one this file
+  has covered for three rounds, and splitting it would put half of one screen’s behaviour in
+  a second ledger.
+
+  **Two changes, both to what the table shows:**
+  1. **Remarks is the sixth and LAST column.** Last so that adding it moved none of the five
+     columns the reader already knows. The composer opens IN the row, not in a dialog — a
+     dialog would cover the change the note is about. One row open at a time. The
+     standalone section is removed. Storage: migration **0044** adds a NULLABLE
+     `audit_log_id` to `audit_remarks`; NULL is a free-standing remark, which is every
+     remark written under 0043, so nothing already saved is moved or reinterpreted.
+     `audit_logs` gains nothing and stays exactly as immutable as 0004 made it — the
+     reference points from the remark TO the entry, never the other way.
+  2. **A CREATION prints only the fields that identify it**, and states the count it left
+     out (`+5 more fields recorded, not shown`). Updates and deletions are untouched: there
+     the changed fields ARE the news and hiding one would hide the change the log exists to
+     report. The search haystack keeps the WHOLE record — summarising a display is not the
+     same as shortening a record.
+
+  **The one thing the requester asked for that the database cannot give as one row.**
+  "member added show only name of member and email" — a member’s email is not on the
+  member. It lives in `member_emails` (0006, C-73: several addresses, exactly one primary),
+  so adding a member writes TWO audit entries. They stay two: folding them into one row
+  would invent a record the database never wrote, on the one screen whose whole promise is
+  that it reports what was written. Each is now a single line, and the email entry names
+  the member it belongs to, so the pair reads as "name and email" without either row
+  claiming to be the other. Flagged rather than silently approximated.
+
+  **Still open.** 0044 is written and NOT applied — CLAUDE.md requires the raw SQL shown and
+  an explicit go-ahead first, and the local-harness rehearsal it also requires still cannot
+  run on this machine (no psql, no Docker — TD-048). Until 0044 is applied, the Remarks
+  column reads and writes nothing on the live project: `fetchRemarks` returns rows whose
+  `audit_log_id` does not exist and the insert is rejected.
 
 - ROUND 2 (7 Sep 2026, requester's exact words): *"the audit log in mobile view should
   also be in table format and where is remarks section new value previous value

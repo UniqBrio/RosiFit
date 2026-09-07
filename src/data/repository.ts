@@ -1410,7 +1410,7 @@ export async function fetchRemarks(): Promise<Remark[]> {
   if (!isConfigured) return [...REMARKS].sort((a, b) => b.when.localeCompare(a.when));
 
   const { data, error } = await supabase.from('audit_remarks')
-    .select('id, created_at, body, author_app_user_id')
+    .select('id, created_at, body, author_app_user_id, audit_log_id')
     .order('created_at', { ascending: false }).limit(100);
   if (error) {
     if (isMissingTable(error)) throw new Error(REMARKS_NOT_READY);
@@ -1419,6 +1419,7 @@ export async function fetchRemarks(): Promise<Remark[]> {
 
   const rows = (data ?? []) as {
     id: number; created_at: string; body: string; author_app_user_id: string | null;
+    audit_log_id: number | null;
   }[];
   const authorIds = [...new Set(rows.map(r => r.author_app_user_id).filter(Boolean))] as string[];
   const authors = authorIds.length
@@ -1431,6 +1432,10 @@ export async function fetchRemarks(): Promise<Remark[]> {
     body: r.body,
     who: r.author_app_user_id ? (authorName.get(r.author_app_user_id) ?? 'Unknown') : 'System',
     when: r.created_at,
+    // Stringified to match AuditEntry.id, which the screen keys rows by.
+    // A bigint and its decimal string are the same entry; comparing one to
+    // the other silently matches nothing, and the column just looks empty.
+    entryId: r.audit_log_id === null ? null : String(r.audit_log_id),
   }));
 }
 
@@ -1440,7 +1445,7 @@ export async function fetchRemarks(): Promise<Remark[]> {
  * value, for the same reason `audit_log_as` is denied to clients (RC-011) —
  * a client that could name its own author could sign somebody else's name.
  */
-export async function addRemark(body: string): Promise<void> {
+export async function addRemark(body: string, entryId: string): Promise<void> {
   const text = body.trim();
   if (text === '') throw new Error('A remark needs some words in it. Nothing has been saved.');
   if (text.length > REMARK_MAX) {
@@ -1450,13 +1455,20 @@ export async function addRemark(body: string): Promise<void> {
   if (!isConfigured) {
     REMARKS.push({
       id: `r${REMARKS.length + 1}-${Date.now()}`,
-      body: text, who: 'Rosi Owner', when: new Date().toISOString(),
+      body: text, who: 'Rosi Owner', when: new Date().toISOString(), entryId,
     });
     remarksChanged();
     return;
   }
 
-  const { error } = await supabase.from('audit_remarks').insert({ body: text });
+  /* The AUTHOR is still not sent -- the column defaults to
+   * current_app_user_id() and the insert policy refuses any other value
+   * (RC-011). The ENTRY is sent, because only the client knows which row the
+   * reader was looking at when she wrote it. It is a reference to an
+   * immutable row, so naming the wrong one writes a misfiled note, never a
+   * changed audit entry. */
+  const { error } = await supabase.from('audit_remarks')
+    .insert({ body: text, audit_log_id: Number(entryId) });
   if (error) {
     if (isMissingTable(error)) throw new Error(REMARKS_NOT_READY);
     console.error('addRemark:', error.message);

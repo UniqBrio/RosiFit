@@ -438,12 +438,63 @@ export function actorRole(kind: string | null | undefined): string | null {
   }
 }
 
+/* ------------------------------------------- what a CREATION is worth saying
+ * A record being created has no previous values, so the trigger reports every
+ * column it was born with. Printed in full, "Member added" became six lines --
+ * Name, Member code, Status, Joined on, Notes, Added by -- of which one is the
+ * answer to "who was added". The requester asked for the opposite: "member
+ * added show only name of member and email thats it".
+ *
+ * So a creation prints the fields that IDENTIFY the thing, and says how many
+ * it left out. An UPDATE is untouched: there the changed fields ARE the news,
+ * and dropping one would hide the change the log exists to report.
+ *
+ * A member's email is not on the member. It lives in member_emails (0006,
+ * C-73: several addresses, exactly one primary), so adding a member writes TWO
+ * entries. They stay two entries -- folding them into one would invent a
+ * record the database never wrote -- but each is now one line, and the email
+ * entry names the member it belongs to, so the pair reads as the requester's
+ * "name and email" without either row claiming to be the other.
+ */
+const CREATION_ESSENTIALS: Record<string, readonly string[]> = {
+  member: ['full_name'],
+  member_email: ['member_id', 'email'],
+  member_alias: ['member_id', 'alias_display'],
+  member_enrollment: ['member_id', 'offering_id'],
+  member_schedule: ['member_id', 'weekdays'],
+  course: ['name'],
+  offering: ['course_id', 'branch_id'],
+  offering_schedule: ['offering_id', 'weekdays'],
+  session: ['occurred_on'],
+  attendance: ['member_id', 'present'],
+  holiday: ['from_date', 'to_date'],
+  branch: ['name'],
+  app_user: ['name', 'role_label'],
+  email_template: ['title'],
+  course_communication: ['course_id', 'subject'],
+  follow_up_config: ['weekly_threshold', 'consecutive_threshold'],
+  course_follow_up_config: ['course_id', 'weekly_threshold'],
+};
+
+/**
+ * The entity a CREATION created, or null when the action is not a creation.
+ * Split from the right for the same reason actionTitle does it: the entity
+ * itself can contain a dot (`auth.mobile_changed.insert`).
+ */
+export function creationEntity(action: string): string | null {
+  const cut = action.lastIndexOf('.');
+  if (cut <= 0) return null;
+  return action.slice(cut + 1) === 'insert' ? action.slice(0, cut) : null;
+}
+
 /* ---------------------------------------------------------------- the whole
  * One recorded entry, entirely in words. This is what the screen renders;
  * nothing downstream of here reads a code.
  */
 export type PlainChange = {
   label: string;
+  /** the column it came from, kept so a creation can be filtered by it */
+  field: string;
   /** what it was. null when there was nothing there before. */
   from: string | null;
   /** what it is now. null when it was cleared. */
@@ -465,6 +516,13 @@ export type PlainEntry = {
   /** ISO, kept so the row can be searched and sorted on the real value */
   at: string;
   changes: PlainChange[];
+  /**
+   * Fields the entry RECORDED and this row does not print -- always 0 on an
+   * update, and on a creation the columns that are not identifying. Shown as
+   * a line under the values, because a log that quietly summarises is a log
+   * that has stopped being complete, and this screen promises it is.
+   */
+  hiddenCount: number;
   /** everything above, lower-cased, for the search box to match on */
   haystack: string;
 };
@@ -490,19 +548,34 @@ export function toPlain(
     // normally happen (the trigger only records a real difference) but a
     // hand-written entry can carry one, and a blank line reads as a defect.
     if (from === null && to === null) continue;
-    changes.push({ label: fieldLabel(c.field), from, to });
+    changes.push({ label: fieldLabel(c.field), from, to, field: c.field });
   }
+
+  /* A creation keeps only its identifying fields (see CREATION_ESSENTIALS).
+   * Two guards, because a summary that empties a row is worse than a long
+   * one: an entity with no list keeps everything, and a list that matches
+   * nothing recorded keeps everything too. */
+  const essentials = CREATION_ESSENTIALS[creationEntity(entry.action) ?? ""];
+  const kept = essentials
+    ? changes.filter(c => essentials.includes(c.field))
+    : changes;
+  const shown = kept.length > 0 ? kept : changes;
+  const hiddenCount = changes.length - shown.length;
 
   const when = whenText(entry.when, now);
   const haystack = [
     title, entry.subject ?? '', entry.branch ?? '', entry.who, role ?? '', when,
+    // The HAYSTACK stays the whole record, not the summary. The row prints
+    // what identifies the change; the search still reaches everything the
+    // entry actually holds, which is the difference between summarising a
+    // display and shortening the record.
     ...changes.flatMap(c => [c.label, c.from ?? '', c.to ?? '']),
   ].join(' ').toLowerCase();
 
   return {
     id: entry.id, title, subject: entry.subject, branch: entry.branch ?? null, category,
     icon: categoryIcon(category),
-    who: entry.who, role, when, at: entry.when, changes, haystack,
+    who: entry.who, role, when, at: entry.when, changes: shown, hiddenCount, haystack,
   };
 }
 

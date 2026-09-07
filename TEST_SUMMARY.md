@@ -1,3 +1,19 @@
+FAIL-FIRST: src/components/auditRemarksColumn.test.ts - 7 of 7 failed against a tree
+  rebuilt from HEAD (git show HEAD:app/audit.tsx, HEAD:src/data/repository.ts, and 0044
+  deliberately absent), driven through the spec’s own REMARKS_COLUMN_SPEC_ROOT. Remarks
+  was not a column, the standalone section was still mounted, the composer was not keyed
+  to a row, addRemark took no entry, the repository neither sent nor read audit_log_id,
+  nothing reported a remarks load failure, and the migration did not exist.
+
+FAIL-FIRST: src/data/auditMinimalCreation.test.ts - 3 of 10 failed with the summary
+  disabled (toPlain returning "changes" and "hiddenCount: 0" instead of "shown"): “a member
+  added prints her name and nothing else” (got 6 fields, wanted 1), “her email arrives on
+  its own entry” (got 3, wanted 2), and “the search still reaches a value the row does not
+  print” (the note was still on display, so the row was not summarising at all). The other
+  seven passed BY DESIGN - they assert the summary must NOT reach an update, a delete, an
+  unmapped entity, or empty a row, and disabling it cannot break those. Defect reverted and
+  all 10 pass.
+
 <!-- MULTIPLE CSV FILES FOR ONE COURSE ON ONE DAY
      (requests/2026-09-07-multiple-files-same-course-same-day.md).
      Same four FAILs and one BLOCKED this repo has carried since 02-Sep-2026,
@@ -242,6 +258,46 @@ NOT OBSERVED FAILING: src/components/reportsPeriodFilter.test.ts,
      spec passes and that each file maps to a request file in requests/. It
      did NOT design, review or hand-test the six features it did not build.
      The commit messages say which session's work each one is. -->
+
+## Gate run - 2026-09-07 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
 
 ## Gate run - 2026-09-07 - VERDICT: FAIL
 

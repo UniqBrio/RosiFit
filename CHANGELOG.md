@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased — Remarks move into the table, and a new record lists only what names it
+
+**Your remarks now sit in the log itself, in a last column beside the change they are
+about.** They used to be a separate list at the bottom of the page, which meant a note
+explaining why a threshold moved sat several screens away from the row showing it move.
+Press *Add remark* on any row, write the reason, and it stays on that row. As before, a
+remark cannot be edited or deleted once saved, and the screen says so before you type
+rather than after. Only one row is open for writing at a time.
+
+Remarks written before this change are still stored and still yours; they simply belong to
+no particular row, and the page no longer offers a way to write another of that kind.
+
+**A record being created no longer prints every column it was born with.** *Member added*
+listed six lines — name, member code, status, joined on, notes, added by — when the answer
+to "who was added" is the first of them. It now prints the fields that name the thing and
+says how many it left out, so nothing is quietly dropped: *+5 more fields recorded, not
+shown*. Everything is still recorded, still exported and still findable by search.
+
+A member’s email address is not stored on the member, so adding her writes two entries —
+one for her, one for the address. Both are now one line each, and the address entry names
+the member it belongs to. Edits and deletions are untouched: there the changed fields are
+the news, and every one of them still shows.
+
 ## Unreleased — A member can be marked inactive from a date, not just from now
 
 **A member is active today and leaving at the end of next month.** The register had two ways
