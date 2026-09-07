@@ -53,6 +53,73 @@ Full output: `.evidence/picker-verified-domain-fail-first.txt`.
      against production right now reaches a person who never asked for it.
      Recorded beside the destination table in that register. -->
 
+<!-- FOLLOW-UP SEND TEST SEED (supabase/seed_followup_test.sql + teardown).
+     Same four FAILs and one BLOCKED carried since 02-Sep-2026, all missing
+     runners, none caused by this change (TD-001..004, TD-006). Substitute
+     rungs green: typecheck clean, unit specs pass, 2840/2840 contrast,
+     75/75 icons.
+
+     NOT RUN. Neither script has been executed anywhere. psql is absent on
+     this machine so the harness cannot run them, and the production write
+     was REFUSED at the tool boundary. Production is unchanged: Shazia still
+     has one absence and a streak of 1, and UniqBotz Infotech still has no
+     email and no enrolment.
+
+     What WAS verified, read-only against production, is the arithmetic the
+     seed depends on. Shazia is absent 2026-09-04 and present 09-02 and
+     08-31, so current_streak_for -- which counts the run before the most
+     recent PRESENT -- puts her at 1. Four more absences after 09-02 take her
+     to exactly 5, which is why the seed writes four and not five. Postnatal
+     is weekly_enabled threshold 1; Prenatal is consecutive_enabled
+     threshold 4. So the two members are flagged by DIFFERENT rules and one
+     send exercises both halves of effective_follow_up_config.
+
+     MIGRATION NUMBER COLLISION, carried for a human: 0038 is used TWICE --
+     0038_repoint_stale_course_senders.sql (mine, already APPLIED to the live
+     project under that name) and 0038_staff_write_access.sql from a parallel
+     session in this shared worktree. Not resolved here because renumbering
+     an applied migration is wrong and the other file is not mine to move. -->
+
+## Gate run - 2026-09-07 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
 ## Gate run - 2026-09-07 - VERDICT: FAIL
 
 Steps: 6 pass, 4 fail, 1 blocked.
