@@ -60,24 +60,36 @@ click confirm override thats all"*. So `importAsk()` returns one question carryi
 | what is true | title | confirm button |
 |---|---|---|
 | the file is for another day | `This file is from Mon 31 Aug` (round 3's words, byte for byte) | `Import for Mon 31 Aug` |
-| the day already has a register | `Mon 31 Aug already has a register` | `Confirm override` |
-| both | `This file overrides the Mon 31 Aug register` | `Confirm override` |
+| the day already has a register | `Mon 31 Aug already has a register` | `Override the Mon 31 Aug register` |
+| both | `This file overrides the Mon 31 Aug register` | `Override the Mon 31 Aug register` |
 
 The clash-only wording is unchanged from what shipped. It was approved, and re-writing a string
 nobody asked about is a product change nobody approved.
+
+**The day is on the button, not only in the panel.** The requester's word for this control is
+"confirm override", and round 3's rule is that the confirm names the day it writes to
+(`Import for Sun 30 Aug`) — because the button is the one control she actually presses and the
+day is the thing she could be wrong about. `Override the Mon 31 Aug register` is both.
 
 ### 3. The register is made to MATCH the file (0037)
 
 `commit_csv_import` gains three statements. After the rows are written, for the session the
 import landed in:
 
-- a row an **earlier file** wrote, for somebody **expected**, whom this file does not name →
+- a row an **earlier file** wrote, for somebody **due**, whom this file does not name →
   back to `absent`;
-- the same for somebody **never expected** (an `extra`) → the row is soft-deleted, because
+- the same for somebody **not due** (an `extra`) → the row is soft-deleted, because
   `absent_must_be_expected` (0008) forbids marking her absent and is right to: she was never due,
   and "not expected, not there" is no row at all;
 - the upsert now carries `import_id`, without which "a row this import did not write" cannot be
   asked.
+
+**Due is asked LIVE**, from `expected_members_for_session`, never read off the row's own
+`expected` column. That column is what was true when a file wrote the row, and enrolments move
+between one file and its correction: reconciling against the stale copy soft-deletes the row of
+a member enrolled since — who IS due — and leaves her with no record at all, which is worse than
+the stale `present` it was trying to fix. The revert rewrites `expected` as well, because
+`absent_must_be_expected` is a statement about the row and the two have to agree.
 
 ### 4. Except a mark a person made by hand
 
@@ -86,6 +98,14 @@ exists precisely because the file was wrong about her. An import silently revert
 be a file overruling the person who corrected it, invisibly. So the override skips any row with
 `corrected_at`, and any row no file wrote, and the dialog says so before she agrees:
 **"Marks you made by hand on the roster are kept."**
+
+That sentence is unqualified, so it needs BOTH halves, and the second was missing from the
+first draft of `0037`: the two reconciliation statements skip her, **and the upsert keeps her
+status where the corrected file names her again**. Without the second, a member somebody marked
+absent by hand — because the file was wrong about her — is put back to `present` by the next
+export, silently, since she is named and so appears in no count. The file's own evidence
+(minutes, the spelling it used, which file wrote last) is still recorded against her; only the
+status is hers.
 
 ### 5. What it did is reported
 

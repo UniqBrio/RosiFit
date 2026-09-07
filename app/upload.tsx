@@ -6,7 +6,7 @@ import { Icon } from '../src/components/Icon';
 import { useTheme } from '../src/theme/ThemeProvider';
 import { useToast } from '../src/components/Toast';
 import { SPACE, RADIUS, STATUS, statusSurface } from '../src/theme/tokens';
-import { MATCH_ROWS } from '../src/data/mock';
+import { MATCH_ROWS, IMPORTED_DAYS } from '../src/data/mock';
 import { usePendingSessions, useCourses } from '../src/data/hooks';
 import type { PendingSession } from '../src/data/repository';
 import { isConfigured } from '../src/lib/supabase';
@@ -137,20 +137,12 @@ type Staged = {
   preview: PreviewResult | null;
   /** the completed import already covering this day, when there is one */
   supersedes: Supersedes;
-};
-
-/**
- * The days the FIXTURES say already have a register, and the file that put it
- * there. `supersedes` is a fact only the server holds, so without this the
- * override ask was undemonstrable offline -- exactly the reason PENDING_SESSIONS
- * carries a `date` at all (mock.ts).
- *
- * Both days are ones MONTH_DAYS already reports as `completed`, and neither is
- * one of the two days AWAITING a file (22 and 23 Aug): a day cannot be both.
- */
-const FIXTURE_IMPORTED: Record<string, string> = {
-  '2026-08-18': 'meet_18-08_prenatal-flow.csv',
-  '2026-08-20': 'meet_20-08_postnatal-core.csv',
+  /**
+   * Names Meet wrote more than once, counted once. Carried rather than
+   * recomputed: the commit used to re-parse the whole file to recover them,
+   * which is a second full parse of the largest input this app handles.
+   */
+  duplicates: string[];
 };
 
 /** ISO day -> "Sun 31 Aug", the way every other date on this screen reads */
@@ -242,7 +234,11 @@ function UploadBody() {
    * Asking her to make it again is where she picks the wrong one.
    */
   useEffect(() => {
-    if (!scope.preselect || session) return;
+    // ONLY WHILE SHE IS STILL CHOOSING. usePendingSessions can answer late,
+    // and this used to call setPhase('pick') whenever it did -- knocking her
+    // out of a question she was in the middle of answering and discarding the
+    // ask with it.
+    if (!scope.preselect || session || phase !== 'choose') return;
     setSession(scope.preselect);
     setTarget({
       offering_id: scope.preselect.offering_id,
@@ -250,7 +246,10 @@ function UploadBody() {
       branch: scope.preselect.meta.split(' · ')[0] ?? '',
     });
     setPhase('pick');
-  }, [scope.preselect, session]);
+    // `phase` is a dependency, not just a guard: an effect that defers on a
+    // condition must be able to run AGAIN when that condition changes, or the
+    // deferral is permanent and nothing can observe that it was (RC-025).
+  }, [scope.preselect, session, phase]);
 
   /**
    * The offerings she can upload for: every branch of every course, narrowed
@@ -330,10 +329,11 @@ function UploadBody() {
       let staged: Staged;
       if (!isConfigured) {
         // No project configured: the fixtures answer, and they answer at once.
-        const name = FIXTURE_IMPORTED[day];
+        const name = IMPORTED_DAYS[day];
         staged = {
           day, preview: null,
           supersedes: name ? { file_name: name, completed_at: `${day}T12:00:00Z` } : null,
+          duplicates: [...new Set(dedupeRows(parseMeetCsv(source.text).rows).duplicates)],
         };
       } else {
         // NOT folded into the line above, deliberately. Reaching here with no
@@ -361,7 +361,10 @@ function UploadBody() {
           // file describes: one person, one session, one day.
           rows: deduped.rows,
         });
-        staged = { day, preview, supersedes: preview.supersedes ?? null };
+        staged = {
+          day, preview, supersedes: preview.supersedes ?? null,
+          duplicates: [...new Set(deduped.duplicates)],
+        };
       }
 
       /**
@@ -432,7 +435,7 @@ function UploadBody() {
         imported: result.present_or_extra,
         dropped: preview.dropped_names ?? [],
         staff: preview.staff_names ?? [],
-        duplicates: [...new Set(dedupeRows(parseMeetCsv(source.text).rows).duplicates)],
+        duplicates: staged.duplicates,
         supersedes: staged.supersedes?.file_name ?? null,
         // Absent until the migration that returns it is applied, which is why
         // it is read defensively rather than assumed.
@@ -647,7 +650,7 @@ function UploadBody() {
                 params too -- otherwise the picker would reopen on the one
                 session she is trying to get away from. */}
             <Pressable testID="upload-change-session" onPress={() => {
-                setSession(null); setTarget(null);
+                setSession(null); setTarget(null); setAsk(null);
                 setFile(null); setOutcome(null); setFailure(null); setPhase('choose');
                 router.replace('/upload');
               }}
@@ -869,6 +872,7 @@ function UploadBody() {
           <Button testID="upload-another" label="Upload another file" variant="secondary"
             style={{ marginTop: SPACE.sm }}
             onPress={() => {
+              setAsk(null);
               setFile(null); setOutcome(null); setFailure(null); setPhase('pick');
             }} />
         </View>

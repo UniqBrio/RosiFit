@@ -575,6 +575,23 @@ export const PENDING_SESSIONS = [
     label: 'Sat 23 Aug · Postnatal Core 8:00 am' },
 ];
 
+/**
+ * Days that ALREADY have a register, and the file that put it there.
+ *
+ * Here for the same reason PENDING_SESSIONS carries a `date`: the upload
+ * screen asks before it REPLACES a register (0037), and which file already
+ * covers a day is a fact only the server holds — so offline, the one question
+ * the dialog exists to ask could never be reached. CP-001 is why it is in this
+ * module and not in the screen: one place decides what the fixtures say.
+ *
+ * Both days are ones MONTH_DAYS already reports as `completed`, and neither is
+ * one of the two AWAITING a file above — a day cannot be both.
+ */
+export const IMPORTED_DAYS: Record<string, string> = {
+  '2026-08-18': 'meet_18-08_prenatal-flow.csv',
+  '2026-08-20': 'meet_20-08_postnatal-core.csv',
+};
+
 // ------------------------------------------------------- attendance list
 /**
  * One row per member per session — the fact the Attendance tab lists, and
@@ -608,6 +625,23 @@ export type AttendanceRow = {
  * would show an empty list under every period a person is likely to pick —
  * which reads as "no attendance", not as "no fixtures".
  */
+/**
+ * Attendance marked by hand while the app is on fixtures.
+ *
+ * The generator below RE-DERIVES its rows on every call, so a chip that
+ * writes into the array it returns changes nothing anybody reads again. This
+ * map is the offline store: `${member_id}|${date}` -> what a person marked,
+ * applied as an overlay at the end of the generator. Without it the offline
+ * mode is the lie RC-008 records — a control that reports a change and shows
+ * the old value the moment the week is reloaded.
+ */
+export const MANUAL_MARKS = new Map<string, AttendanceStatus>();
+
+export function markFixtureAttendance(
+  memberId: string, date: string, status: AttendanceStatus): void {
+  MANUAL_MARKS.set(`${memberId}|${date}`, status);
+}
+
 export function attendanceFixture(from: string, to: string): AttendanceRow[] {
   const rows: AttendanceRow[] = [];
   const start = new Date(`${from}T00:00:00`);
@@ -631,6 +665,31 @@ export function attendanceFixture(from: string, to: string): AttendanceRow[] {
       });
     });
   }
+
+  // The overlay. A mark can CHANGE a generated row, and it can add one the
+  // generator never made -- a Tuesday, or a member the seed left out -- which
+  // is why it is applied here rather than by editing rows in place.
+  for (const [key, status] of MANUAL_MARKS) {
+    const [memberId, date] = key.split('|');
+    if (date < from || date > to) continue;
+    const member = MEMBERS.find(m => m.id === memberId);
+    if (!member) continue;
+    const existing = rows.find(r => r.member_id === memberId && r.date === date);
+    if (existing) {
+      existing.status = status;
+      existing.expected = status !== 'extra';
+      if (status === 'absent') existing.minutes = null;
+      continue;
+    }
+    rows.push({
+      id: `${date}-${memberId}`, member_id: memberId, member: member.name,
+      course: member.course, branch: member.branch, date,
+      time: member.course === 'Postnatal Core' ? '08:00' : '18:00',
+      status, expected: status !== 'extra',
+      minutes: status === 'absent' ? null : 45,
+    });
+  }
+
   return rows.sort((a, b) => (a.date === b.date ? a.member.localeCompare(b.member) : b.date.localeCompare(a.date)));
 }
 

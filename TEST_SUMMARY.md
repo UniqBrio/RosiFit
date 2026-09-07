@@ -83,7 +83,7 @@ _Merge blocked. Every FAIL above must resolve. No partial merges._
 >
 > DATABASE: `0037_import_override.sql` re-issues `commit_csv_import` from 0026
 > so "override" is true, with `supabase/tests/29_import_override.sql`
-> (17 assertions). **NEITHER HAS BEEN RUN.** There is no `psql` and no
+> (**28 assertions** after the review pass). **NEITHER HAS BEEN RUN.** There is no `psql` and no
 > PostgreSQL 16 on this machine, so `bash db/harness/test.sh` cannot execute --
 > the constraint standing since 0032. The migration is NOT APPLIED and
 > `csv-import` is still not deployed: until both land, the dialog's ask is

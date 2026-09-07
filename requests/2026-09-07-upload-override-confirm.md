@@ -271,7 +271,7 @@ logging it; every one is stated below, so a wrong answer is visible rather than 
 - **`supabase/migrations/0037_import_override.sql`** — `commit_csv_import` re-issued from 0026
   with the reconciliation, `import_id` carried on the upsert (without which "a row this import
   did not write" is unaskable), an audit row, and the three counts.
-- **`supabase/tests/29_import_override.sql`** — 17 assertions, unrun.
+- **`supabase/tests/29_import_override.sql`** — 28 assertions, unrun.
 - ADR 027 (`docs/decisions/019-…`), DECISION_LOG row 027, FEATURE_TRUTH amended, CHANGELOG,
   TD-035/036/037.
 
@@ -328,3 +328,66 @@ logging it; every one is stated below, so a wrong answer is visible rather than 
 | Changelog in the user's language | done |
 | Tier stated | **T1** — behaviour change on one shipped surface, no new capability and no pricing, contract or support-facing surface. Outputs: the changelog entry, the amended FEATURE_TRUTH and RBAC rows, and the deployment note in TD-035 |
 | Would a correct process have caught this? | **Partly, and it is worth saying.** Round 3 built the clash dialog and nothing asked whether the day it wrote to already held a register — no gate covers "the message describes the write, but not what the write destroys". Not raised as a framework failure: the requester never asked for it in round 3 either, so the honest answer is that this is round 4 of a widening ask, not a step that was skipped. **The half that WOULD have been caught:** TD-036 — the contrast gate measures status inks on opaque surfaces while every status panel draws them on a tint of themselves, and only a composited DOM measurement found it. That is a rung with a hole in it, and it is a `/promote` candidate. |
+
+### Review pass — 07-Sep-2026
+
+`code-reviewer` and `copy-gate-reviewer` (review matrix, scoped run). Both reported; the
+findings below were APPLIED, and the ones that were not are named with a reason.
+
+**Copy gate — 3 findings, all applied.**
+- `overrideSummary()`'s removed clause read *"2 records for somebody who was never expected"* —
+  plural records, singular somebody, and "record" is the mechanism's noun for a person. Now
+  *"2 people who were not expected and are not in this file are off the register."* A plural
+  case was added to the spec, which had only covered n=1.
+- The new preview-failure fallback said *"The file could not be read against the register"* — a
+  mechanism nobody outside the code has words for. It now uses the sentence the commit's own
+  catch already shipped, which deletes a new string instead of adding one.
+- The confirm button was `Confirm override`, which dropped the DAY from the one control she
+  presses — exactly the case (3 Sep opened, an 18 Aug file) round 3 put the day on the button
+  for. Now `Override the ‹day› register`: the requester's word AND round 3's rule.
+
+**Code review — 2 correctness holes in `0037`, both applied, and both were invisible without
+being able to run a query.**
+- **A member could be left with NO record at all.** The reconciliation keyed on the row's own
+  `expected` column, which is what was true when a FILE wrote it. A member enrolled between one
+  file and its correction still carried `expected = false` from her `extra` row, so the absent
+  sweep's `do nothing` skipped her and the removal then soft-deleted her — she is due, and the
+  register simply lost her. Both statements now key on `expected_members_for_session`, asked
+  LIVE and once, and the revert rewrites `expected` so the row agrees with itself. The same fix
+  closes the mirror case: a member whose enrolment ENDED is now removed rather than marked
+  absent, so an override cannot put her on the follow-up list for a class she left.
+- **"Marks you made by hand are kept" was false for anyone the new file NAMES.** Only the two
+  reconciliation statements skipped `corrected_at`; the upsert did not. Somebody marked absent
+  by hand — because the file was wrong about her — was put straight back to `present` by the
+  next export, silently, since a named row appears in no count. The upsert now keeps her status
+  and she is counted in `kept_by_hand`. The file's evidence (minutes, spelling, which file wrote
+  last) is still recorded; only the status is hers.
+- `kept_by_hand` counted rows the override could never have moved — a mark no file ever wrote
+  (`import_id is null`) was reported as "kept" from an override that had no claim on it. Now
+  counted over exactly the rows that would have moved.
+- The audit row was skipped when only `kept_by_hand` was non-zero, so a re-upload that moved
+  nothing BECAUSE every candidate was hand-marked left no record. Now logged.
+- `FIXTURE_IMPORTED` was a fixture table living inside the screen — a fresh CP-001 breach on top
+  of the pre-existing `isConfigured` branch. Moved to `src/data/mock.ts` as `IMPORTED_DAYS`.
+- The preselect effect could knock her out of the ask with a late `usePendingSessions` answer.
+  Guarded on `phase === 'choose'` — and `phase` is in the dependency list, not only the guard,
+  because a deferral nothing can lift is RC-025 / CAND-004's exact shape.
+- `setAsk(null)` added to both reset handlers (not reachable today; `phase` and `ask` are only
+  ever set together, which is why it is worth writing down rather than relying on).
+- The CSV was parsed twice per import — once in `stage()` and again in `commit()` to recover the
+  duplicate names. `duplicates` now travels on `Staged`.
+- `29_import_override.sql` grew from 17 to **28 assertions**: the hand mark no file wrote, a
+  hand mark on somebody the new file names, an `extra` who became expected between the two
+  files, the reverted row's `import_id`, and the session counts after an override — which is
+  where a member losing her record actually shows up. The tautological
+  `absent_must_be_expected` assertion is kept (it costs nothing) but is no longer the only
+  structural check.
+- ADR 019 was corrected: its table still gave the old button label, and it now states the
+  live-expectation rule and the upsert half of the hand-mark rule.
+
+**Not applied, with reasons.** Actor-less audit rows from the two new UPDATEs (RC-011's shape) —
+the upsert already had this property under `0026`, so it is not a regression and fixing it means
+changing `audit_row_change`, which every table shares. The double `import_id` guard on the
+reconciliation was confirmed sufficient, not redundant. The reviewer's note that the ask can be
+skipped by a server answering `supersedes: null` is the un-deployed state already recorded in
+TD-035, not a defect in this diff.

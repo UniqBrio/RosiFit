@@ -17,26 +17,35 @@
 --   visitor who was never in the class -- and she was the one row the
 --   correction could not reach.
 --
--- WHAT THIS ADDS, and it is three statements
+-- WHAT THIS ADDS
 --   1. The upsert now carries `import_id`, so a row says which FILE last
 --      wrote it. Without that, "not written by this import" is unaskable and
 --      the reconciliation below cannot tell last week's row from this one's.
---   2. Anybody EXPECTED whose row an earlier file wrote, and this file does
---      not name, goes back to `absent`.
---   3. Anybody NOT expected in the same position -- an 'extra' -- has her row
+--   2. Anybody DUE whose row an earlier file wrote, and this file does not
+--      name, goes back to `absent`.
+--   3. Anybody NOT due in the same position -- an 'extra' -- has her row
 --      soft-deleted. `absent_must_be_expected` (0008) forbids marking her
 --      absent, and it is right: she was never due. A file that does not name
 --      her is saying she was not there, and "not expected, not present" is
 --      no row at all.
 --
+--   DUE IS ASKED LIVE, from expected_members_for_session, never read off the
+--   `expected` column. That column is what was true when a file wrote the
+--   row, and enrolments move between one file and its correction: reconciling
+--   against the stale copy deletes the row of a member enrolled since -- who
+--   IS due -- and leaves her with no record at all, which is worse than the
+--   stale present it was trying to fix.
+--
 -- WHAT IT REFUSES TO TOUCH, deliberately
---   * A ROW SOMEBODY MARKED BY HAND. set_attendance (0035) stamps
---     `corrected_at` when a person disagrees with the register, and 0035
---     exists precisely because the file was wrong about her. A later import
---     silently reverting that would be the file overruling the person who
---     corrected it -- invisibly, which is the worst kind. The upload dialog
---     says so before she confirms: "Marks you made by hand on the roster are
---     kept."
+--   * A ROW SOMEBODY MARKED BY HAND, whether or not this file names her.
+--     set_attendance (0035) stamps `corrected_at` when a person disagrees
+--     with the register, and 0035 exists precisely because the file was wrong
+--     about her. A later import reverting that would be the file overruling
+--     the person who corrected it -- silently, which is the worst kind. Both
+--     halves are needed: the two statements below skip her, AND the upsert
+--     keeps her status where the corrected file names her again. The upload
+--     dialog says so before she confirms: "Marks you made by hand on the
+--     roster are kept."
 --   * A ROW NO FILE WROTE (`import_id is null`) -- the same case seen from
 --     the other side: a mark that arrived by hand and was never in a file.
 --   * `attendance_unique_live` and `absent_must_be_expected` -- neither is
@@ -74,6 +83,11 @@ declare
   v_has_primary   boolean;
   v_new_email     text;
   v_present_ids   uuid[] := '{}';
+  -- who is due at this session, asked ONCE and asked LIVE. The `expected`
+  -- column on a row is what was true when a file wrote it; enrolments move
+  -- between one file and its correction, and reconciling against the stale
+  -- copy is how a member ends up with no record at all.
+  v_expected_ids  uuid[] := '{}';
   v_new_members   int := 0;
   v_skipped       int := 0;
   -- what replacing an existing register moved (0037)
@@ -226,7 +240,19 @@ begin
       values (v_session_id, v_member_id, v_status, v_expected,
               nullif(v_row->>'minutes', '')::int, v_alias_display, p_import_id, p_actor)
       on conflict (session_id, member_id) where deleted_at is null do update set
-        status = excluded.status, minutes_in_call = excluded.minutes_in_call,
+        -- A MARK SOMEBODY MADE BY HAND SURVIVES A FILE THAT NAMES HER, which
+        -- is the half of the rule the two statements below cannot reach.
+        -- set_attendance (0035) exists because the file was wrong about her:
+        -- she joined from another device, or Meet listed somebody who never
+        -- came. Letting the next export put that back would be the file
+        -- overruling the person who corrected it -- and silently, because she
+        -- is named, so nothing on the result screen would mention her.
+        -- The file's own evidence (minutes, the spelling it used, which file
+        -- wrote last) is still recorded; only the STATUS is hers.
+        status = case when public.attendance_records.corrected_at is not null
+                      then public.attendance_records.status
+                      else excluded.status end,
+        minutes_in_call = excluded.minutes_in_call,
         raw_display_name = excluded.raw_display_name,
         -- 0037: WHICH FILE last wrote this row. It was left at the first
         -- file's id, so a re-import could not tell a row it had just written
@@ -252,44 +278,69 @@ begin
   --
   -- Counted before it is changed, and counted separately from what is left
   -- alone, because the result screen reports all three.
+  -- WHO IS DUE, live. Everything below reconciles against this rather than
+  -- against the `expected` column a previous file stamped on the row.
+  select coalesce(array_agg(em.member_id), '{}') into v_expected_ids
+    from public.expected_members_for_session(v_session_id) em;
+
   -- Only the rows the override WOULD have moved: a hand mark that already
-  -- agrees with what the file implies was never "kept" from anything, and
+  -- agrees with what the file says was never "kept" from anything, and
   -- reporting it would inflate the number a person is asked to trust.
   select count(*) into v_kept_by_hand
     from public.attendance_records a
    where a.session_id = v_session_id and a.deleted_at is null
      and a.corrected_at is not null
-     and not (a.member_id = any (v_present_ids))
-     and (a.status <> 'absent' or not a.expected);
+     and (
+       -- NAMED by this file, and her mark disagrees with it. A named row is
+       -- written present or extra, so 'absent' is the whole of the
+       -- disagreement -- and the upsert above is what let it stand.
+       (a.member_id = any (v_present_ids) and a.status = 'absent')
+       -- NOT named, and the two statements below would have moved her but
+       -- for the mark. A row no file ever wrote is not "kept" from an
+       -- override either: it was never in reach of one.
+       or (not (a.member_id = any (v_present_ids))
+           and a.import_id is not null
+           and a.import_id <> p_import_id
+           and (case when a.member_id = any (v_expected_ids)
+                     then a.status <> 'absent' else true end))
+     );
 
-  -- SHE WAS DUE, an earlier file said present, this one does not name her.
+  -- SHE IS DUE, an earlier file said present, this one does not name her.
+  --
+  -- `expected` is REWRITTEN as well as read: the row may carry what was true
+  -- when the first file landed, and absent_must_be_expected (0008) is a
+  -- statement about the row, so the two have to agree.
   with reverted as (
     update public.attendance_records a
        set status           = 'absent',
+           expected         = true,
            minutes_in_call  = null,
            raw_display_name = null,
            import_id        = p_import_id
      where a.session_id = v_session_id
        and a.deleted_at is null
        and a.status <> 'absent'
-       and a.expected                       -- absent_must_be_expected (0008)
-       and a.corrected_at is null           -- a person's mark outranks a file
-       and a.import_id is not null          -- and so does a mark no file wrote
-       and a.import_id <> p_import_id       -- an earlier file's row, not this one's
+       and a.member_id = any (v_expected_ids)   -- due TODAY, not when a file said so
+       and a.corrected_at is null               -- a person's mark outranks a file
+       and a.import_id is not null              -- and so does a mark no file wrote
+       and a.import_id <> p_import_id           -- an earlier file's row, not this one's
        and not (a.member_id = any (v_present_ids))
     returning 1)
   select count(*) into v_reverted from reverted;
 
-  -- SHE WAS NEVER DUE ('extra'), and this file does not name her either. She
-  -- cannot be marked absent -- absent_must_be_expected forbids it and is
-  -- right -- so the row goes. Soft, like every delete here: audit_logs and
-  -- the row itself both survive.
+  -- SHE IS NOT DUE, and this file does not name her either. She cannot be
+  -- marked absent -- absent_must_be_expected forbids it and is right, she was
+  -- never expected -- so the row goes. Soft, like every delete here:
+  -- audit_logs and the row itself both survive.
+  --
+  -- Keyed on the LIVE answer, so a member enrolled since the first file is
+  -- never deleted here: she is due, so the statement above owns her.
   with removed as (
     update public.attendance_records a
        set deleted_at = now()
      where a.session_id = v_session_id
        and a.deleted_at is null
-       and not a.expected
+       and not (a.member_id = any (v_expected_ids))
        and a.corrected_at is null
        and a.import_id is not null
        and a.import_id <> p_import_id
@@ -297,7 +348,7 @@ begin
     returning 1)
   select count(*) into v_removed from removed;
 
-  if v_reverted > 0 or v_removed > 0 then
+  if v_reverted > 0 or v_removed > 0 or v_kept_by_hand > 0 then
     perform public.audit_log_as(p_actor, 'csv_import.overrode_register', 'session', v_session_id::text,
       '[]'::jsonb,
       jsonb_build_object('import_id', p_import_id, 'reverted', v_reverted,
@@ -335,6 +386,8 @@ grant execute on function public.commit_csv_import(uuid, uuid, jsonb) to service
 comment on function public.commit_csv_import(uuid, uuid, jsonb) is
   'Applies a staged CSV import in one transaction. A second file for a day already imported '
   'REPLACES that day''s register (0037): rows an earlier file wrote and this file does not name '
-  'go back to absent, or are soft-deleted when the member was never expected. A row a person '
-  'marked by hand (set_attendance, 0035 -- corrected_at) is never reverted, and neither is one '
-  'no file wrote. Returns overridden.{reverted, removed, kept_by_hand}.';
+  'go back to absent, or are soft-deleted when the member is not due -- asked live from '
+  'expected_members_for_session, never read off the row''s own `expected` column. A row a person '
+  'marked by hand (set_attendance, 0035 -- corrected_at) keeps its status whether or not this '
+  'file names her, and so does a row no file wrote. Returns '
+  'overridden.{reverted, removed, kept_by_hand}.';
