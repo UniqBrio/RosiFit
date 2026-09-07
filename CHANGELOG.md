@@ -1,5 +1,70 @@
 # Changelog
 
+## Unreleased — RosiFit installs like an app
+
+**It has called itself a PWA since the day it was written, and it could not be installed.**
+
+There was no install button in Chrome, none in Edge, and nothing under iOS Safari's Share
+menu, on any device. The reason turned out to be one silent thing: the PWA settings in
+`app.json` — the app name, the tint, the standalone display mode — belong to a build pipeline
+this app stopped using. The current one never reads them. They looked exactly like working
+configuration and produced nothing at all: no manifest, no icons, no head tags.
+
+**Now it installs.** On Android and on desktop Chrome and Edge the browser offers to install
+it; on an iPhone, Share → Add to Home Screen gives it a real home-screen icon. It opens in its
+own window with no browser chrome, tinted in the RosiFit deep purple, under the academy's own
+crest rather than a placeholder.
+
+**Opened without a signal, it opens honestly.** The app itself will load with no connection —
+but it does not pretend to have your data. Every screen says it could not reach the server and
+that nothing was changed, exactly as it does today on a dropped connection. Attendance,
+members and courses are never served from a cache: a register that looks completely normal
+while it is quietly showing yesterday is worse than one that admits it cannot reach the
+server. Working offline for real is a bigger feature, and a separate one.
+
+**Updates arrive on the next launch,** never mid-session — nothing gets swapped underneath you
+while you are half way through marking a register.
+
+## Unreleased — You stay signed in until you sign out
+
+**The session was never being lost. The screen never asked whether it had one.**
+
+Opening the RosiFit URL asked for a mobile number and a 4-digit PIN every single time — on a
+reload, in a new tab, after closing the browser. The cause was not the session: GoTrue has
+persisted it since the client was written, its refresh token is a row in the database, and it
+survives the tab, the window and the process. The cause is that `/` is both the sign-in screen
+and the app's start URL, and it rendered the number field **unconditionally**, over a session
+that was live the whole time.
+
+**Now it asks first.** And it asks the *server*, not the browser — finding a token in
+storage proves nothing, so GoTrue refreshes the session and the identity is then read back
+through the database under its own row-level policies, which can only answer for the account
+the presented credential actually belongs to. A confirmed session goes straight to the shell
+that account has; a first PIN is still owed before anything else, exactly as on a fresh login.
+
+**How long you stay in: until you sign out.** The lifetime is a setting on the Supabase
+project, not a number in this codebase — changing it takes effect for every device at once,
+with no deploy. A client that decided when its own credential had expired would be a client
+deciding it was still valid, which is the thing this change exists to stop.
+
+**Signing out is now about the device you are on.** It revoked *every* session the account
+held anywhere, so signing out of the academy laptop at closing time also signed you out of
+your own phone. Both are real server-side revocations; only the reach has changed. Resetting
+a PIN still signs out every device, which is the one place that is the point.
+
+**A session that outlives the browser does not outlive the account.** A disabled account met
+that check on the way in, when the way in was the only door — it is asked again on the way
+back, and a disabled account's session is ended rather than politely refused.
+
+**If the server cannot be reached, nothing is thrown away.** Offline you get the sign-in
+screen, and your stored session is left untouched, so the next time the app reaches the server
+you are back in without typing a PIN.
+
+*The HttpOnly cookie the request asked for is not here, and the reason is written down rather
+than left implicit: this app is a static export with no server on its own origin, and its API
+is on another domain — so such a cookie would be third-party and dead on iOS. See ADR-031
+and TD-042.*
+
 ## Unreleased — Changing what a course says no longer asks to change when it runs
 
 **Rewording a course's message saves again.** Opening *Wording for this course*, tapping a detail

@@ -1,0 +1,62 @@
+PWA installability — measured in Chromium against the built dist/, 07-Sep-2026
+Harness: expo export, dist/ served over http with Vercel's cleanUrls, playwright chromium.
+
+serving dist/ at http://127.0.0.1:52147
+
+PASS  Chromium parses the manifest with no errors — http://127.0.0.1:52147/manifest.webmanifest
+PASS  manifest name — RosiFit
+PASS  manifest display is standalone — standalone
+PASS  manifest start_url — /
+PASS  manifest icons include 192 and 512 — 192x192/any, 512x512/any, 512x512/maskable
+PASS  icon /icon-192.png serves 200 — 200 image/png
+PASS  icon /icon-512.png serves 200 — 200 image/png
+PASS  icon /icon-maskable-512.png serves 200 — 200 image/png
+PASS  service worker activates — activated
+PASS  the worker controls the page after a reload — true
+PASS  start_url navigation answers while offline — 200
+PASS  the offline document is the real app shell, not a stub — {"root":true,"hydrate":true,"manifest":true}
+PASS  an unvisited route falls back to the shell offline — 200
+PASS  a cross-origin API request is NOT served from cache offline — {"served":false}
+PASS  no console errors on load
+
+15/15 checks passed
+
+=== hydration / both themes, WITH app/+html.tsx ===
+FAIL  light /            root children=1 manifest=/manifest.webmanifest tint=#5C0F63 apple=true HYDRATION: pageerror: Minified React error #418; visit https://react.dev/errors/418?args[]=text&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+FAIL  light /members     root children=1 manifest=/manifest.webmanifest tint=#5C0F63 apple=true HYDRATION: pageerror: Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+FAIL  light /courses     root children=1 manifest=/manifest.webmanifest tint=#5C0F63 apple=true HYDRATION: pageerror: Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+FAIL  light /reports     root children=1 manifest=/manifest.webmanifest tint=#5C0F63 apple=true HYDRATION: pageerror: Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+FAIL  light /attendance  root children=1 manifest=/manifest.webmanifest tint=#5C0F63 apple=true HYDRATION: pageerror: Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+FAIL  light /weekly      root children=1 manifest=/manifest.webmanifest tint=#5C0F63 apple=true HYDRATION: pageerror: Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+FAIL  light /more        root children=1 manifest=/manifest.webmanifest tint=#5C0F63 apple=true HYDRATION: pageerror: Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+PASS  light /register    root children=1 manifest=/manifest.webmanifest tint=#5C0F63 apple=true
+FAIL  dark  /            root children=1 manifest=/manifest.webmanifest tint=#5C0F63 apple=true HYDRATION: pageerror: Minified React error #418; visit https://react.dev/errors/418?args[]=text&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+FAIL  dark  /members     root children=1 manifest=/manifest.webmanifest tint=#5C0F63 apple=true HYDRATION: pageerror: Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+FAIL  dark  /courses     root children=1 manifest=/manifest.webmanifest tint=#5C0F63 apple=true HYDRATION: pageerror: Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+FAIL  dark  /reports     root children=1 manifest=/manifest.webmanifest tint=#5C0F63 apple=true HYDRATION: pageerror: Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+FAIL  dark  /attendance  root children=1 manifest=/manifest.webmanifest tint=#5C0F63 apple=true HYDRATION: pageerror: Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+FAIL  dark  /weekly      root children=1 manifest=/manifest.webmanifest tint=#5C0F63 apple=true HYDRATION: pageerror: Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+FAIL  dark  /more        root children=1 manifest=/manifest.webmanifest tint=#5C0F63 apple=true HYDRATION: pageerror: Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+PASS  dark  /register    root children=1 manifest=/manifest.webmanifest tint=#5C0F63 apple=true
+
+14 route/theme combinations failed
+
+=== the same routes on a build made WITHOUT app/+html.tsx (baseline) ===
+FAIL  light /            root children=1 manifest=null tint=null apple=false HYDRATION: pageerror: Minified React error #418; visit https://react.dev/errors/418?args[]=text&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+FAIL  light /members     root children=1 manifest=null tint=null apple=false HYDRATION: pageerror: Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+FAIL  light /courses     root children=1 manifest=null tint=null apple=false HYDRATION: pageerror: Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+FAIL  light /reports     root children=1 manifest=null tint=null apple=false HYDRATION: pageerror: Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+FAIL  light /attendance  root children=1 manifest=null tint=null apple=false HYDRATION: pageerror: Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+FAIL  light /weekly      root children=1 manifest=null tint=null apple=false HYDRATION: pageerror: Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+FAIL  light /more        root children=1 manifest=null tint=null apple=false HYDRATION: pageerror: Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+PASS  light /register    root children=1 manifest=null tint=null apple=false
+FAIL  dark  /            root children=1 manifest=null tint=null apple=false HYDRATION: pageerror: Minified React error #418; visit https://react.dev/errors/418?args[]=text&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+FAIL  dark  /members     root children=1 manifest=null tint=null apple=false HYDRATION: pageerror: Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+FAIL  dark  /courses     root children=1 manifest=null tint=null apple=false HYDRATION: pageerror: Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+FAIL  dark  /reports     root children=1 manifest=null tint=null apple=false HYDRATION: pageerror: Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+FAIL  dark  /attendance  root children=1 manifest=null tint=null apple=false HYDRATION: pageerror: Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+FAIL  dark  /weekly      root children=1 manifest=null tint=null apple=false HYDRATION: pageerror: Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+FAIL  dark  /more        root children=1 manifest=null tint=null apple=false HYDRATION: pageerror: Minified React error #418; visit https://react.dev/errors/418?args[]=HTML&args[]= for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+PASS  dark  /register    root children=1 manifest=null tint=null apple=false
+
+14 route/theme combinations failed

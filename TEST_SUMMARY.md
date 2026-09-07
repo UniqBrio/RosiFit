@@ -80,6 +80,100 @@ Full output: `.evidence/picker-verified-domain-fail-first.txt`.
      session in this shared worktree. Not resolved here because renumbering
      an applied migration is wrong and the other file is not mine to move. -->
 
+FAIL-FIRST: src/pwa/manifest.test.ts - all 7 cases observed failing, by
+  injecting each defect the spec claims to catch and reverting. Full transcript:
+  .evidence/pwa-fail-first.txt. Eleven injections, eleven named failures:
+
+    manifest loses its maskable icon        -> "the icon set covers what installability actually requires"
+    manifest drops to display:browser       -> "the manifest carries every member an install depends on"
+    an icon declares a size it is not       -> "every icon the manifest names exists, and is the size it claims"
+    manifest points at a missing icon       -> "/icon-180.png is named in the manifest but ... does not exist"
+    theme_color drifts off the token        -> "the built page and the manifest disagree about theme_color"
+    root document loses the manifest link   -> "no manifest link"
+    root document stops registering the SW  -> "the worker is never registered"
+    a colour literal returns to the head    -> "theme-color must come from the token module"
+    worker intercepts cross-origin requests -> "cross-origin requests must pass through"
+    worker intercepts writes                -> "a write must never be intercepted"
+    worker adds skipWaiting()               -> "no skipWaiting(): a new build activates on next launch"
+
+  Two of these were ALSO observed failing for real, before any injection: the
+  skipWaiting guard fired on the worker's own explanatory comment (narrowed to
+  match the call), and the theme-color case failed while the tag still carried
+  a hex literal -- which is what npm run audit:colors blocked on, and why the
+  tag now reads ACCENTS instead. The spec also fails wholesale against the
+  pre-change tree (ENOENT on public/manifest.webmanifest).
+
+<!-- INSTALLABLE PWA (requests/2026-09-07-installable-pwa.md, RUN_installable-pwa.md).
+     THIS note heads the run below it; the 0038 note above belongs to the run
+     that was newest before this one.
+
+     Same four FAILs and one BLOCKED this repo has carried since 02-Sep-2026,
+     every one a MISSING RUNNER, none caused by this change: G1/G2/G3 want
+     design/tokens.json (ADR 001, TD-001..TD-003); G6 wants eslint (TD-004);
+     G8 wants test:functional (TD-006) and its log is empty, exactly as TD-006
+     describes. Substitute rungs green: typecheck clean, 663 unit specs pass
+     (7 of them new), 2840/2840 contrast, 75/75 icons, G4 no hard-coded
+     colours PASS -- which this change had to earn, the theme-color meta tag
+     now reading ACCENTS rather than restating the hex.
+
+     G8 IS THE ONE CLASS THIS CHANGE ACTUALLY EXERCISED. The gate cannot run
+     it, so it was run by hand and the evidence is committed:
+     .evidence/pwa-installability.txt -- 15/15 checks in Chromium against the
+     built dist/, covering the manifest as Chromium itself parses it, the
+     worker activating and taking control, an offline navigation to the start
+     URL and to an unvisited route, and the guardrail that a cross-origin API
+     request is NOT served from cache offline.
+
+     NOT FIXED, AND NOT CAUSED HERE: React #418 fires on 7 of the 8 primary
+     routes in both themes. Proven pre-existing by exporting a second build
+     with app/+html.tsx removed and driving the same 16 route/theme
+     combinations -- byte-identical failures. TD-043; a /bug of its own.
+
+     ALSO NOT MINE: npm run audit:testids is BLOCKED on app/forgot-pin.tsx
+     (scores 2 against a baseline of 4). Reproduced with this change's only
+     app/ file removed from the tree. A file this change never touched, in a
+     worktree several sessions share. -->
+
+## Gate run - 2026-09-07 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
 ## Gate run - 2026-09-07 - VERDICT: FAIL
 
 Steps: 6 pass, 4 fail, 1 blocked.

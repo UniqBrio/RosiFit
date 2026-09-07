@@ -1,0 +1,40 @@
+  manifest loses its maskable icon
+      -> FAILED: the icon set covers what installability actually requires
+  manifest drops to display:browser
+      -> FAILED: the manifest carries every member an install depends on
+  an icon declares a size it is not
+      -> FAILED: every icon the manifest names exists, and is the size it claims; the icon set covers what installability actually requires
+         "Chromium requires a 192x192 icon"
+  the manifest points at an icon that does not exist
+      -> FAILED: every icon the manifest names exists, and is the size it claims
+         "/icon-180.png is named in the manifest but public\\icon-180.png does not exist"
+  theme_color drifts off the token
+      -> FAILED: the manifest colours are theme tokens, not literals of their own (CP-008); the exported document carries the manifest and the right tint
+         "the built page and the manifest disagree about theme_color"
+  the root document loses the manifest link
+      -> FAILED: the root document links the manifest and registers the worker on every page
+         "no manifest link"
+  the root document stops registering the worker
+      -> FAILED: the root document links the manifest and registers the worker on every page
+         "the worker is never registered"
+  a colour literal returns to the root document
+      -> FAILED: the root document links the manifest and registers the worker on every page
+         "theme-color must come from the token module"
+  the worker starts intercepting cross-origin requests
+      -> FAILED: the worker never becomes a second source for member data (guardrail 1)
+         "cross-origin requests must pass through — Supabase is a different origin"
+  the worker starts intercepting writes
+      -> FAILED: the worker never becomes a second source for member data (guardrail 1)
+         "a write must never be intercepted"
+  the worker adds skipWaiting()
+      -> FAILED: the worker never becomes a second source for member data (guardrail 1)
+         "no skipWaiting(): a new build activates on next launch, not mid-session"
+
+git status after revert (staged-only expected):
+A  app/+html.tsx
+A  public/icon-192.png
+A  public/icon-512.png
+A  public/icon-maskable-512.png
+A  public/manifest.webmanifest
+A  public/sw.js
+
