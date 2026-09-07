@@ -4,6 +4,8 @@ import { useLocalSearchParams } from 'expo-router';
 import { Screen, Muted, Skeleton, EmptyState, ErrorState } from '../../src/components/ui';
 import { ScreenHeader } from '../../src/components/AppShell';
 import { Icon } from '../../src/components/Icon';
+import { DropdownRow, DropdownField, DropdownPanel } from '../../src/components/Dropdown';
+import { PeriodPanel, periodFieldValue } from '../../src/components/PeriodFilter';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS, onStatusFill } from '../../src/theme/tokens';
@@ -46,6 +48,11 @@ export default function Reports() {
   // that changed with the scope, so the report claimed a range nobody chose
   // and no query had run over.
   const [period, setPeriod] = useState<PeriodChoice>({ key: 'This month' });
+  // The line above was the intent; the control itself was never mounted, so
+  // `setPeriod` had no call site and the report stayed pinned to whatever
+  // calendar month it opened on -- while the subtitle went on naming that
+  // range as though somebody had chosen it. This opens the panel that sets it.
+  const [periodOpen, setPeriodOpen] = useState(false);
   const range = resolvePeriod(period);
 
   const followUp = useFollowUp(forced, range);
@@ -105,6 +112,34 @@ export default function Reports() {
             <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.accentInk }}>Export</Text>
           </Pressable>
         ) : undefined} />
+
+      {/* The date filter. It is the SAME control Overview and Attendance
+          carry -- one PeriodPanel, so the four named ranges and the custom
+          one mean the same thing on every screen that has a period (CP-012).
+          Reports was the only screen holding a period it could not be asked
+          to change.
+
+          It sits ABOVE the branch below, so it renders in the loading, error
+          and empty states as well as the ready one. That is the whole point
+          of putting it here: "Nothing to report yet" for a month somebody did
+          not pick, with no way to pick another, is a dead end -- and it is
+          the state a filter is most needed in. */}
+      <DropdownRow open={periodOpen} style={{ marginTop: SPACE.md }}>
+        <View style={{ flexDirection: 'row' }}>
+          <DropdownField
+            testID="reports-filter-period"
+            label="Period" value={periodFieldValue(period)}
+            open={periodOpen}
+            onPress={() => setPeriodOpen(o => !o)} />
+        </View>
+
+        {periodOpen ? (
+          <DropdownPanel maxHeight={430}>
+            <PeriodPanel testID="reports-period" choice={period}
+              onChange={setPeriod} onDone={() => setPeriodOpen(false)} />
+          </DropdownPanel>
+        ) : null}
+      </DropdownRow>
 
       <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.md }}>
         {REPORT_SCOPES.map(s => {

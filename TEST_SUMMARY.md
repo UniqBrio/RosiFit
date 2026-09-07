@@ -134,6 +134,83 @@ FAIL-FIRST: src/pwa/manifest.test.ts - all 7 cases observed failing, by
      app/ file removed from the tree. A file this change never touched, in a
      worktree several sessions share. -->
 
+NOT OBSERVED FAILING: src/components/reportsPeriodFilter.test.ts,
+  src/components/memberCardAttendanceReadOnly.test.ts, src/data/sessionRestore.test.ts -
+  written by PARALLEL SESSIONS in this shared worktree, and committed here by a
+  different session on the repo owner's instruction to commit all outstanding
+  work. Their pre-change state cannot be reconstructed without reverting files
+  those sessions may still be writing to, so no fail-first run was attempted.
+  Recorded as the honest negative rather than dressed up as evidence this
+  session does not have. All three PASS on the tree as committed (7, 7 and 18
+  cases); whichever session authored each one owns its fail-first record.
+
+<!-- COMMIT-ALL SWEEP, 07-Sep-2026. This run covers the whole working tree at
+     the moment the repo owner asked for every outstanding change to be
+     committed to main: six features built by parallel sessions plus the PWA
+     work, landed as seven commits that share THIS gate run.
+
+     Same four FAILs and one BLOCKED this repo has carried since 02-Sep-2026,
+     every one a MISSING RUNNER, none caused by any change in the sweep:
+     G1/G2/G3 want design/tokens.json (ADR 001, TD-001..TD-003); G6 wants
+     eslint (TD-004); G8 wants test:functional (TD-006).
+
+     Substitute rungs, run on the combined tree immediately before committing:
+     typecheck clean (tsc --noEmit, both projects), 663 unit specs pass with 0
+     failures, 2840/2840 contrast pairs, 75/75 icons, G4 no hard-coded colours
+     PASS, G9 addressability PASS, G11 wide tables PASS.
+
+     NOT OBSERVED, and stated rather than implied: none of the .sql specs in
+     supabase/tests/ were executed. This machine has no PostgreSQL 16, so
+     db/harness/test.sh cannot run at all (TD-010, TD-033) -- which means
+     0038, 0039 and 0041 and their specs are committed UNREHEARSED. They are
+     also unapplied. Committing a migration is not applying one, and none of
+     them has been near production.
+
+     REVIEW STATE: this session verified that the tree typechecks, that every
+     spec passes and that each file maps to a request file in requests/. It
+     did NOT design, review or hand-test the six features it did not build.
+     The commit messages say which session's work each one is. -->
+
+## Gate run - 2026-09-07 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
 ## Gate run - 2026-09-07 - VERDICT: FAIL
 
 Steps: 6 pass, 4 fail, 1 blocked.
