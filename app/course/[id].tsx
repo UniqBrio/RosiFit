@@ -12,7 +12,7 @@ import { SPACE, RADIUS, STATUS, statusSurface, type StatusKey } from '../../src/
 import { DAY_NAMES, ruleSentence, AVATAR_TINTS, initials, primaryEmail, type Member, type MemberStatus } from '../../src/data/mock';
 import { useCourses, useFollowUp, useAttendance } from '../../src/data/hooks';
 import { weekStart, iso, label as periodLabel } from '../../src/data/period';
-import { setMemberStatus, mergeMemberInto, setAttendance, dataSource } from '../../src/data/repository';
+import { setMemberStatus, mergeMemberInto, dataSource } from '../../src/data/repository';
 import { dayAttendance, dayInWords, type DayState } from '../../src/data/dayAttendance';
 import type { AttendanceRow } from '../../src/data/mock';
 import type { ScreenState } from '../../src/data/useScreenState';
@@ -53,24 +53,16 @@ function dayLabel(dayIso: string): string {
     { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
-/** The three chips, in the order the requester listed them. `state` is which
- *  one is true; a chip is a CONTROL only for the two that can be chosen. */
+/** The three readings, in the order the requester listed them. `state` is
+ *  which one is true. None of the three is a control (ADR-023): the register
+ *  is written by the uploaded session file and this row reports it. The
+ *  unmarked reading carries its own tone and word at render, because it
+ *  stands for two different facts -- see the block that draws it. */
 const CHIPS: { state: DayState; word: string; icon: string; tone: StatusKey | null }[] = [
   { state: 'present',  word: 'Present',      icon: 'check',                   tone: 'present' },
   { state: 'absent',   word: 'Absent',       icon: 'close',                   tone: 'absent'  },
   { state: 'unmarked', word: 'Yet to mark',  icon: 'radio_button_unchecked',  tone: null      },
 ];
-
-/** KL-003: Pressable binds Enter and not Space, so Space scrolls the page
- *  instead of picking the chip under the caret. Same helper, same reason, as
- *  the Status radios on app/member/edit.tsx. */
-const spaceSelects = (pick: () => void) => ({
-  onKeyDown: (e: { nativeEvent: { key: string }; preventDefault: () => void }) => {
-    if (e.nativeEvent.key !== ' ') return;
-    e.preventDefault();
-    pick();
-  },
-}) as object;
 
 type DayCell = {
   iso: string;
@@ -815,35 +807,11 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
   // "Add display name to existing member" -- open, and mid-save.
   const [linking, setLinking] = useState(false);
   const [linkingSave, setLinkingSave] = useState(false);
-  // Which chip is being written, or null. It disables the group rather than
-  // filling anything: the chip moves when the WRITE resolves and the week is
-  // re-read, never on the tap (RC-008, RC-017 -- both in these files).
-  const [marking, setMarking] = useState<'present' | 'absent' | null>(null);
 
-  /** Where she stands on the selected day, and which chips may be tapped. */
+  /** Where she stands on the selected day -- read here, never written. */
   const day = dayIso
     ? dayAttendance({ rows, member, dayIso, weekdays, todayIso: iso(new Date()) })
     : null;
-
-  const mark = async (chosen: 'present' | 'absent') => {
-    if (marking || !dayIso) return;
-    setMarking(chosen);
-    const first = member.name.split(' ')[0];
-    const when = dayLabel(dayIso);
-    try {
-      const result = await setAttendance(member.id, dayIso, chosen);
-      const said = result.status === 'extra' ? 'present (extra)' : result.status;
-      flash(dataSource === 'live'
-        ? `${first} is marked ${said} on ${when}`
-        : `${first} is marked ${said} on ${when} on this device only. The academy database is not configured.`,
-        dataSource === 'live' ? 'ok' : 'warn');
-    } catch (err) {
-      flash(err instanceof Error ? err.message
-        : 'Her attendance was not changed. Nothing has been saved.', 'warn');
-    } finally {
-      setMarking(null);
-    }
-  };
 
   const applyStatus = async () => {
     if (saving) return;
@@ -964,90 +932,82 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
         </Pressable>
       </View>
 
-      {/* ------------------------------------------------- attendance chips
+      {/* ------------------------------------------------ attendance status
           Present · Absent · Yet to mark, for the day the strip has selected.
+
+          THREE READINGS OF ONE FACT, NOT THREE CONTROLS (ADR-023). The
+          register is written by the uploaded session file and by nothing
+          else, so this row reports what that file said and offers no way to
+          disagree with it. It reverses the tap half of ADR-021 on the
+          requester's word: "they are not button they are just status ...
+          dont make is clickable and manual action".
+
           Their own row, for the reason the two buttons below have one: three
-          controls squeezed in beside an avatar, a pill and an edit button
+          labels squeezed in beside an avatar, a pill and an edit button
           truncate, and the WORD is half of what a status carries (DR-3).
 
-          The chip fills when the WRITE RESOLVES and the week is re-read --
-          never on the tap. RC-008 and RC-017 are both "the app reported
-          something it had not done", both in these files, and a register
-          that fills in a chip it failed to save is that defect again.
-
-          "Yet to mark" is a STATE, not a control: clearing an attendance
-          record is a hole in the register rather than a correction, and the
-          mistake it would fix is fixed by tapping the other chip. */}
+          Which one is filled:
+            a row was uploaded    -> Present or Absent, exactly as recorded
+            expected, no row yet  -> Yet to mark, in the same amber the day
+                                     strip's own cell for that day carries
+            not expected, no row  -> Not expected. "Yet to mark" there would
+                                     promise an upload that is never coming,
+                                     for a session that does not run. */}
       {attendanceState === 'error' ? (
         <Text style={{ fontSize: 11, color: theme.dim, marginTop: 11 }}>
           Her attendance for this week could not be loaded.
         </Text>
       ) : attendanceState === 'loading' ? (
-        // 44 + 4, the exact height the chip row occupies once it lands, so
-        // the card does not jump under the reader when the week arrives.
+        // 44 + 4, the exact height the row occupies once it lands, so the
+        // card does not jump under the reader when the week arrives.
         <View style={{ height: 44, marginTop: 4 }} />
       ) : day && dayIso ? (
-        <View accessibilityRole="radiogroup"
-          accessibilityLabel={`Attendance for ${member.name} on ${dayInWords(dayIso)}`}
-          // marginTop 4, not 11: each chip carries 7pt of its own padding
+        <View
+          // Not a radiogroup, and no radios inside it: a reader that
+          // announces three choices invites a tap that has nowhere to go.
+          // One label on the group states where she stands, in a sentence.
+          accessibilityLabel={`Attendance for ${member.name} on ${dayInWords(dayIso)}: ${
+            day.state === 'present' ? 'present'
+              : day.state === 'absent' ? 'absent'
+              : day.expected ? 'yet to be marked'
+              : 'not expected'
+          }`}
+          // marginTop 4, not 11: each reading carries 7pt of its own padding
           // above, so the gap a reader sees under the name block is the same
           // 11pt the no-email action row leaves.
           style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: SPACE.sm, marginTop: 4 }}>
           {CHIPS.map(chip => {
             const on = day.state === chip.state;
-            // A chip is a control only when it is not already the answer and
-            // the day allows it. "Yet to mark" is never one.
-            const usable = !on && (chip.state === 'present' ? day.canPresent
-              : chip.state === 'absent' ? day.canAbsent : false);
-            const tone = chip.tone ? STATUS[chip.tone] : null;
-            const ink = !on ? theme.muted
-              : tone ? (theme.isDark ? tone.fgDark : tone.fgLight)
-              : theme.dim;
+            // The third reading stands for two different facts, and it says
+            // which of them it is rather than wearing one word for both.
+            const missing = chip.state === 'unmarked' && !day.expected;
+            // `awaiting` is the tone the strip already uses one line above
+            // for "the session ran and no file has arrived" -- the same fact
+            // this reading carries, so it wears the same colour.
+            const tone = missing ? STATUS.none : chip.tone ? STATUS[chip.tone] : STATUS.awaiting;
+            const ink = on ? (theme.isDark ? tone.fgDark : tone.fgLight) : theme.muted;
             const box = on ? statusSurface(ink) : null;
-            const said = chip.state === 'present'
-              ? `Mark ${member.name} present on ${dayInWords(dayIso)}`
-              : chip.state === 'absent'
-              ? `Mark ${member.name} absent on ${dayInWords(dayIso)}`
-              : `${member.name} has no attendance recorded for ${dayInWords(dayIso)}`;
             return (
-              <Pressable key={chip.state}
+              <View key={chip.state}
                 testID={`course-member-attendance-${chip.state}-${member.id}`}
-                onPress={() => { if (chip.state !== 'unmarked') void mark(chip.state); }}
-                disabled={!usable || marking !== null}
-                {...(usable ? spaceSelects(() => { if (chip.state !== 'unmarked') void mark(chip.state); }) : {})}
-                accessibilityRole="radio"
-                // aria-checked, not accessibilityState: react-native-web 0.21
-                // drops the latter entirely (KL-002), so a reader would
-                // announce all three chips as unpicked.
-                aria-checked={on}
-                aria-disabled={!usable}
-                // The reason a chip cannot be used is said HERE rather than
-                // withheld: a control that is simply missing teaches nobody
-                // why marking her absent on a Tuesday is not a thing.
-                accessibilityLabel={!usable && !on && day.reason ? `${said}. ${day.reason}` : said}
-                // The TOUCH TARGET is the Pressable and the PILL is the box
-                // inside it. hitSlop is what every other 30pt control on this
-                // screen uses to reach the 44pt minimum, and hitSlop does
-                // nothing on react-native-web -- measured on the built page,
-                // by clicking 5pt outside a chip and watching nothing happen
-                // (KL-004). 7pt of padding above and below is the same 44pt,
-                // in the one currency this platform actually spends.
-                style={({ pressed }) => ({
-                  paddingVertical: 7,
-                  opacity: marking === chip.state ? 0.6
-                    : !usable && !on ? 0.45
-                    : pressed ? 0.6 : 1,
-                })}>
+                // 7pt above and below is what this row measured when these
+                // were touch targets. Kept, so making them inert did not
+                // move every card -- but at FULL opacity, not the 0.45 a
+                // disabled control was allowed: these are static text now,
+                // and static text has to clear 4.5:1 (DR-2).
+                style={{ paddingVertical: 7 }}>
                 <View style={{
                   flexDirection: 'row', alignItems: 'center', gap: 4,
                   minHeight: 30, paddingHorizontal: 8, borderRadius: RADIUS.pill,
                   backgroundColor: box ? box.bg : 'transparent',
                   borderWidth: 1, borderColor: box ? box.border : theme.line,
                 }}>
-                  <Icon name={chip.icon} size={13} color={ink} />
-                  <Text style={{ fontSize: 9.5, fontWeight: '800', color: ink }}>{chip.word}</Text>
+                  <Icon name={missing ? tone.icon : chip.icon} size={13} color={ink} />
+                  <Text style={{ fontSize: 9.5, fontWeight: '800', color: ink }}>
+                    {missing ? tone.word : chip.word}
+                  </Text>
                 </View>
-              </Pressable>
+              </View>
             );
           })}
         </View>
