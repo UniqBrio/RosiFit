@@ -1,0 +1,40 @@
+FAIL-FIRST EVIDENCE - add member form, 2026-09-07
+requests/2026-09-07-add-member-single-branch-default.md
+requests/2026-09-07-add-member-commit-draft-on-blur.md
+
+Both specs replayed against app/member/edit.tsx at HEAD (418629b), via the
+*_SPEC_ROOT overrides the specs carry. The NEW-BEHAVIOUR tests fail there and
+pass on the change; the tests that pass in BOTH columns are the regression
+guards (the picker still opens, + Add and Enter still add, every refusal still
+lives inside addAlias/addEmail) -- those are meant to hold either side.
+
+--- BEFORE: addMemberBranchDefault.test.ts against HEAD ---
+ok 1 - the spec is looking at a real tree
+not ok 2 - a single branch option is the default
+not ok 3 - the default never overwrites a branch already chosen
+ok 4 - the branch row is still a picker, not a locked field
+# tests 4
+# pass 2
+# fail 2
+
+--- BEFORE: addMemberDraftCommit.test.ts against HEAD ---
+ok 1 - the spec is looking at a real tree
+not ok 2 - leaving the field commits the draft, on both rows
+ok 3 - blur is not a laxer way in than + Add
+ok 4 - + Add and Enter still work
+# tests 4
+# pass 3
+# fail 1
+
+--- AFTER: both specs against the working tree ---
+ok 1 - the spec is looking at a real tree
+ok 2 - a single branch option is the default
+ok 3 - the default never overwrites a branch already chosen
+ok 4 - the branch row is still a picker, not a locked field
+ok 5 - the spec is looking at a real tree
+ok 6 - leaving the field commits the draft, on both rows
+ok 7 - blur is not a laxer way in than + Add
+ok 8 - + Add and Enter still work
+# tests 8
+# pass 8
+# fail 0

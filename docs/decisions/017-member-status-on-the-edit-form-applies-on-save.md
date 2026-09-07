@@ -74,8 +74,30 @@ was built.
   and back would make a paused member `'inactive'`. Offering a third word
   would invent a distinction the engine does not make: `follow_up_candidates()`
   passes `'active'` and nothing else.
-- The Add form does not ask. `create_member` (0016) inserts `'active'`, and a
-  form that is welcoming somebody has no reason to raise the question.
+- ~~The Add form does not ask. `create_member` (0016) inserts `'active'`, and a
+  form that is welcoming somebody has no reason to raise the question.~~
+  **AMENDED 07-Sep-2026** — the requester asked for the opposite: *"While
+  adding member show active and inactive toggle by default it should be
+  active"* (`requests/2026-09-07-add-member-status-toggle-default-active.md`).
+  The Add form now SHOWS the status — a toggle drawn on, reading Active, with
+  the word and the icon the Edit rows use — and still does not ASK: it is not
+  pickable, and the same sentence names Edit as where to turn it off
+  (confirmed when the question was put directly: *"toggle on by default, on
+  edit they can toggle off"*).
+
+  So the mechanism decided above is untouched. `create_member` still inserts
+  `'active'` and still takes no status, `set_member_status` (0031) is still
+  the only write, and no second write joins the create — which is precisely
+  why this control states rather than offers: a create that landed while a
+  status write was refused would leave a member on the register in the state
+  the form had just claimed she was not in. That is the partial failure this
+  ADR had to describe for Edit, and Edit at least has her record to reconcile
+  against.
+
+  What was wrong in the bullet is its premise, not its logic. A form welcoming
+  somebody DOES raise the question — silently, by saying nothing about the
+  column that decides whether the academy ever writes to her. Answering it
+  cost one sentence and a shape; leaving it unasked cost a correction round.
 
 ## Options rejected, and why they may come back
 

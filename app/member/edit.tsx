@@ -16,6 +16,7 @@ import { DAY_NAMES, type MemberStatus } from '../../src/data/mock';
 import { memberWeekdays, openingDays } from '../../src/data/memberDays';
 import { useCourses, useMembers } from '../../src/data/hooks';
 import { createMember, updateMember, setMemberStatus } from '../../src/data/repository';
+import { namesADisplayName } from '../../src/data/refusalCase';
 
 const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -48,9 +49,19 @@ const spaceSelects = (pick: () => void) => ({
   },
 }) as object;
 
+/**
+ * The Active row's own words, named because TWO states of this form now show
+ * them: the Edit pick below, and the Add form's toggle, which states the
+ * status the create is about to write instead of offering a choice. One
+ * source, so the two can never drift into calling one status two things.
+ */
+const ACTIVE_CHOICE = {
+  value: 'active' as MemberStatus, label: 'Active', icon: 'check_circle',
+  meaning: 'In the follow-up rule',
+};
+
 const STATUS_CHOICES: { value: MemberStatus; label: string; icon: string; meaning: string }[] = [
-  { value: 'active', label: 'Active', icon: 'check_circle',
-    meaning: 'In the follow-up rule' },
+  ACTIVE_CHOICE,
   { value: 'inactive', label: 'Inactive', icon: 'pause_circle',
     meaning: 'Left out of the follow-up rule' },
 ];
@@ -189,6 +200,31 @@ export default function MemberEdit() {
   const branchOptions = chosenCourse?.offerings.map(o => o.branch) ?? [];
   const offering = chosenCourse?.offerings.find(o => o.branch === branch) ?? null;
 
+  /**
+   * One option is not a choice -- it is the answer, so the form gives it.
+   *
+   * A course that runs at a single branch still charged two taps for a row
+   * with one line in it, and until they were spent `offering` was null, Add
+   * Member stayed disabled and the hint asked for a branch the form could
+   * already name (requests/2026-09-07-add-member-single-branch-default.md).
+   *
+   * Only ever into an EMPTY branch. On the Edit form her stored branch seeds
+   * first and is never written over -- a member enrolled where her course no
+   * longer runs keeps what her record says, and this default would otherwise
+   * move her silently. `seeded` is that ordering, held explicitly: while an
+   * edit is still waiting for her record, nothing is defaulted into it.
+   *
+   * Two or more options are left blank, deliberately: filling one of several
+   * is picking for her. Zero options are left blank too -- there is nothing
+   * to fill, and the row still says the course runs nowhere yet.
+   */
+  const soleBranch = branchOptions.length === 1 ? branchOptions[0] : null;
+  useEffect(() => {
+    if (!soleBranch || branch) return;
+    if (editing && !seeded) return;
+    setBranch(soleBranch);
+  }, [soleBranch, branch, editing, seeded]);
+
   const ink = (k: keyof typeof STATUS) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
 
   // Her name and an address are the fields of HERS the save needs (C-70/C-73;
@@ -260,12 +296,40 @@ export default function MemberEdit() {
     setSeededDays(seedKey);
   }, [seedKey, seededDays, courseDays, ownDays]);
 
+  /**
+   * When the refusal is about a display name, the answer to it is to change
+   * that name -- so the moment she starts changing it, the sentence on screen
+   * is about a value the form no longer holds. It sat there accusing "ani"
+   * while "anit" was being typed into the box above it
+   * (requests/2026-09-07-display-name-refusal-clears-and-case.md).
+   *
+   * Cleared on all three gestures that change the name, because they are one
+   * act: typing in the draft, committing a draft as a row, and removing a
+   * row. Clearing on the keystroke but not on the removal would leave the
+   * likeliest fix of all -- taking the clashing name off -- staring at the
+   * refusal it just resolved.
+   *
+   * ONLY when it is about a display name. This one banner holds whichever
+   * refusal came back -- an address already on somebody else, days the course
+   * does not run, a subscription that is not writable -- and dismissing an
+   * address clash because a display name was typed would take an unrelated
+   * refusal off the screen before it had been read. That is the request read
+   * literally: it asked for THIS message to go, not for the banner to empty.
+   *
+   * It clears the DISPLAY, not the fact. The database is still the thing that
+   * decides, and Save asks it again; nothing here marks the name as free.
+   */
+  const clearRefusal = () => setRefusal(r => (r && namesADisplayName(r) ? null : r));
+
+  const changeAliasDraft = (v: string) => { clearRefusal(); setAliasDraft(v); };
+
   const addAlias = () => {
     const a = aliasDraft.trim();
     if (!a) return;
     if (aliases.some(x => x.toLowerCase() === a.toLowerCase())) {
       flash('That display name is already on her record', 'warn'); return;
     }
+    clearRefusal();
     setAliases(p => [...p, a]); setAliasDraft('');
   };
 
@@ -436,7 +500,7 @@ export default function MemberEdit() {
           message="That member is not on the register. She may have been removed since this screen was opened." />
       ) : (
         <>
-      <Field label="Her name" required value={name} onChange={setName} placeholder="e.g. Anitha Rajesh" />
+      <Field label="Her name" autoFocus required value={name} onChange={setName} placeholder="e.g. Anitha Rajesh" />
 
       <Label required>Course</Label>
       <PickRow testID="member-course" icon="school" value={course || 'Choose a course'} muted={!course}
@@ -532,6 +596,73 @@ export default function MemberEdit() {
         </>
       ) : null}
 
+      {/* --------------------------------------------- status (ADD state)
+          "While adding member show active and inactive toggle by default it
+          should be active if they want to set as inactive they can cliq on
+          edit and det as inactive"
+          (requests/2026-09-07-add-member-status-toggle-default-active.md).
+
+          The toggle SHOWS her status; it does not set it. The requester put
+          the setting on Edit in the same sentence, and asked for it again
+          when the question was put directly -- "toggle on by default, on
+          edit they can toggle off". The mechanism agrees: create_member
+          (0016) inserts 'active' and takes no status, so a pickable control
+          here would need a SECOND write after the create, and a create that
+          lands while that write is refused leaves a member on the register
+          in the state the form just said she was not in -- the partial
+          failure ADR-025 has to describe for Edit, imported into the one
+          form where nothing exists to reconcile it against yet.
+
+          Shown-and-fixed makes no claim it cannot keep: it states what the
+          create is about to do, which is the one thing this form knows for
+          certain. It supersedes ADR-025's "The Add form does not ask" -- and
+          it still does not ask. It answers.
+
+          Only on a pure ADD. An edit still fetching her record shows nothing,
+          exactly as before: her stored status is not in hand, and 'Active'
+          there would be a guess about somebody who may be inactive. */}
+      {!editing ? (
+        <>
+          <Label style={{ marginTop: SPACE.xl }}>Status</Label>
+          <Muted style={{ marginTop: 4 }}>
+            She is added active, so the follow-up rule reaches her. To make her inactive, add
+            her first, then open her record and use Edit.
+          </Muted>
+          <View testID="member-status-add" style={{
+            flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
+            minHeight: TAP_MIN, padding: SPACE.md, borderRadius: RADIUS.md,
+            marginTop: SPACE.md, backgroundColor: theme.surface,
+            borderWidth: 1, borderColor: theme.line,
+          }}>
+            {/* The toggle, drawn ON. Its two colours are the Active pair this
+                file already renders text with, so nothing unmeasured enters
+                the build (guardrail 2), and both resolve per theme. */}
+            <View style={{
+              width: 40, height: 24, borderRadius: 12, padding: 2,
+              justifyContent: 'center', alignItems: 'flex-end',
+              backgroundColor: statusSurface(ink('present')).bg,
+              borderWidth: 1, borderColor: statusSurface(ink('present')).border,
+            }}>
+              <View style={{
+                width: 18, height: 18, borderRadius: 9,
+                backgroundColor: ink('present'),
+              }} />
+            </View>
+            {/* The knob's position is not what says Active -- the word and
+                the icon beside it do, in both themes (guardrail 3). */}
+            <Icon name={ACTIVE_CHOICE.icon} size={17} color={ink('present')} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 13.5, fontWeight: '700', color: theme.fgStrong }}>
+                {ACTIVE_CHOICE.label}
+              </Text>
+              <Text style={{ fontSize: 10.5, marginTop: 2, color: theme.muted }}>
+                {ACTIVE_CHOICE.meaning}
+              </Text>
+            </View>
+          </View>
+        </>
+      ) : null}
+
       {/* ------------------------------------------------ aliases (C-71) */}
       <Label style={{ marginTop: SPACE.xl }}>Google Meet display names</Label>
       <Muted style={{ marginTop: 4 }}>
@@ -548,7 +679,7 @@ export default function MemberEdit() {
             <Icon name="badge" size={17} color={theme.accentInk} />
             <Text style={{ flex: 1, fontSize: 13.5, fontWeight: '700', color: theme.fgStrong }}>{a}</Text>
             <Pressable testID={`member-alias-remove-${a}`}
-              onPress={() => setAliases(p => p.filter(x => x !== a))}
+              onPress={() => { clearRefusal(); setAliases(p => p.filter(x => x !== a)); }}
               accessibilityRole="button" accessibilityLabel={`Remove display name ${a}`}
               style={{ minHeight: TAP_MIN / 2, justifyContent: 'center' }}>
               <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.muted }}>Remove</Text>
@@ -556,7 +687,7 @@ export default function MemberEdit() {
           </View>
         ))}
       </View>
-      <AddRow testID="member-alias" value={aliasDraft} onChange={setAliasDraft}
+      <AddRow testID="member-alias" value={aliasDraft} onChange={changeAliasDraft}
         placeholder="e.g. Anitha R" onAdd={addAlias} />
 
       {/* -------------------------------------------------- emails (C-73) */}
@@ -747,6 +878,28 @@ function PickRow({ icon, value, onPress, muted, testID, anchorRef }:
   );
 }
 
+/**
+ * A draft beside a + Add button -- and LEAVING the field is a third way to
+ * press it.
+ *
+ * The typed value used to become a real entry on exactly two gestures, the
+ * button and Enter. Someone who typed her address and moved to the next
+ * field had, as far as this form was concerned, entered no address at all:
+ * the text sat in the draft, `emails.length > 0` stayed false, and Save
+ * discarded it without a word
+ * (requests/2026-09-07-add-member-commit-draft-on-blur.md).
+ *
+ * `onBlur` runs the SAME handler, so blur adds nothing the button would not
+ * have added: the same trim, the same duplicate and address-shape refusals,
+ * the same "first address is primary". A refusal keeps the text in the box
+ * and flashes, which is the point -- committing a malformed address on the
+ * way past would be worse than the tap it replaces.
+ *
+ * Leaving the field BY pressing + Add still adds once. Blur runs first (the
+ * press begins with a pointer-down that takes focus off the input), commits
+ * and clears the draft; the button's handler then sees an empty draft, and
+ * both handlers return on an empty draft before doing anything at all.
+ */
 function AddRow({ value, onChange, placeholder, onAdd, testID }:
   { value: string; onChange: (v: string) => void; placeholder: string;
     onAdd: () => void; testID: string }) {
@@ -756,7 +909,7 @@ function AddRow({ value, onChange, placeholder, onAdd, testID }:
       <TextInput testID={`${testID}-input`}
         value={value} onChangeText={onChange} placeholder={placeholder}
         placeholderTextColor={theme.muted} accessibilityLabel={placeholder}
-        onSubmitEditing={onAdd}
+        onSubmitEditing={onAdd} onBlur={onAdd}
         style={{
           flex: 1, minHeight: TAP_MIN + 2, borderRadius: RADIUS.md, paddingHorizontal: SPACE.lg,
           backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,

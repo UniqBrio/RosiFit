@@ -1,0 +1,83 @@
+Fail-first evidence — requests/2026-09-07-display-name-refusal-clears-and-case.md
+=================================================================================
+Recorded 07-Sep-2026.
+
+THE ASK
+  1. "As soon as user started changing the display name, remove this message
+     from display" — the refusal banner in the add/edit member dialog.
+  2. "the display name ... " >> "The display name ..." — a case-sensitive
+     correction of the opening word.
+
+-------------------------------------------------------------------- half 1
+Spec: src/components/memberRefusalClears.test.ts  (source-reading, like
+addMemberDraftCommit.test.ts beside it — there is no component harness here)
+
+Run against the PRE-CHANGE form (HEAD:app/member/edit.tsx copied to a scratch
+root, MEMBER_REFUSAL_SPEC_ROOT pointed at it):
+
+    ok 1     - the spec is looking at a real tree
+    not ok 2 - typing in the display-name box clears the refusal
+    not ok 3 - committing a display name clears the refusal
+    not ok 4 - removing a display name clears the refusal
+    not ok 5 - only a refusal ABOUT a display name is cleared
+    ok 6     - the refusal is not cleared by the fields the request did not name
+    ok 7     - the save still clears the refusal it is about to replace
+    # tests 7 · pass 3 · fail 4
+
+Four fail, and they are the four the request asks for. Cases 6 and 7 pass on
+BOTH sides deliberately — they are the guard half of the spec, pinning what
+must NOT start happening (a refusal cleared by touching her address, a save
+running underneath the previous attempt's sentence), so passing before and
+after is what they are for.
+
+Case 5 was added after the code review. The first cut of this change cleared
+the banner unconditionally, and the banner holds whichever refusal came back
+— so typing a display name would have dismissed a half-read ADDRESS clash.
+The request asked for THIS message to go, not for the banner to empty.
+
+Run against the change:
+
+    # tests 7 · pass 7 · fail 0
+
+-------------------------------------------------------------------- half 2
+Spec: src/data/refusalCase.test.ts
+
+Fail-first is structural: `sentenceOpening` and src/data/refusalCase.ts did not
+exist before this change, so the spec could not resolve its import — there was
+no way to write a failing assertion against a module that was absent. The
+honest form of the evidence is the six cases themselves, four of which are
+about what must NOT change (the quoted name keeps its case, an
+already-written sentence is untouched, twice is the same as once, a message
+opening on a quote or a digit comes back as it was).
+
+    # tests 10 · pass 10 · fail 0
+
+Four of those ten are namesADisplayName(), added after the code review: the
+two display-name refusals a member write can raise (0026/0027 and 0011's
+alias trigger) are recognised, and the six that SHARE the banner — an address
+clash, wrong days, the wrong branch, a locked subscription, an over-long name,
+a status failure — are not.
+
+-------------------------------------------------------------------- not run
+The banner itself was NOT rendered in a browser, and this is why: it appears
+only when a write RPC refuses. The static export runs on fixtures, and the
+offline createMember path (src/data/repository.ts) never refuses a duplicate
+display name — it pushes the member into the fixture list. So there is no
+build reachable from this machine in which the banner can be provoked. The
+banner's own markup, tokens and both-theme behaviour are untouched by this
+change; what changed is when it is cleared, and one letter of its text.
+
+------------------------------------------------------------------- reviews
+code-reviewer      REQUEST CHANGES — three findings, all three actioned:
+                   (1) setMemberStatus is a SIXTH translator writing into
+                       this same banner on this same screen; now wrapped too.
+                   (2) the clear was unconditional over a banner that holds
+                       more than display-name refusals; now gated.
+                   (3) TD-030 claimed the freeze rule held byte-for-byte,
+                       which is untrue of /member/import; row corrected.
+copy-gate-reviewer APPROVE — enumerated every refusal that can reach
+                   memberWriteError and confirmed all open on a lowercase
+                   common word; flagged that 0032's merge refusal opens with
+                   the MEMBER'S OWN NAME and must never be routed through it
+                   (a member recorded as "ani" would be misquoted as "Ani").
+                   It is not routed through it; a comment now says so.

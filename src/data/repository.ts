@@ -21,6 +21,7 @@ import { SUBJECT_MIN, SUBJECT_MAX, BODY_MIN, COURSE_NAME_MIN, COURSE_NAME_MAX } 
 import { bucketFixture, type BucketMetrics } from './buckets';
 import type { SentMap } from './sent';
 import { currentSchedules, today } from './schedule';
+import { isoWeekday, storedStatus, dayInWords } from './dayAttendance';
 import {
   NOTIFICATION_LIMIT, orderNotifications,
   awaitingNotification, sentNotification, excludedNotification, pinResetNotification,
@@ -29,6 +30,7 @@ import {
 import {
   MEMBERS, COURSE_LIST, GLOBAL_RULE, COURSE_RULES, TEMPLATES, STAFF, AUDIT,
   BRANCHES, COURSES, MONTH_DAYS, PENDING_SESSIONS, WEEK_ROWS, attendanceFixture,
+  MANUAL_MARKS, markFixtureAttendance,
   HOLIDAYS, HOLIDAY_PREVIEW, SENDERS, COURSE_MESSAGES,
   type Member, type MemberStatus, type Course, type FollowUpRule, type Template, type Staff,
   type StaffAccess, type AuditEntry, type SessionDay, type WeekRow,
@@ -1378,8 +1380,20 @@ export async function fetchNotifications(): Promise<Notification[]> {
     // so for a staff member this is simply empty rather than forbidden -- no
     // branch on role is needed here, and none should be: the database is the
     // one place that decision belongs.
+    // The FK is NAMED. pin_reset_requests has TWO foreign keys into app_users
+    // -- app_user_id (who asked) and resolved_by (who answered) -- so a bare
+    // `app_users(...)` embed is ambiguous and PostgREST refuses the whole
+    // request with PGRST201 rather than picking one. That refusal is why this
+    // tray entry never appeared for anybody: the read failed every time, the
+    // catch below logged it, and the admin saw a bell with no PIN reset in it
+    // however many staff were locked out.
+    //
+    // Not `!inner`, either. An inner embed DROPS a request whose app_users row
+    // is not readable, which is the opposite of what the mapping below is
+    // written for -- it falls back to 'A staff member' precisely so somebody
+    // locked out is still shown when her name cannot be read.
     supabase.from('pin_reset_requests')
-      .select('id, requested_at, app_users!inner(name)')
+      .select('id, requested_at, app_users!pin_reset_requests_app_user_id_fkey(name)')
       .is('resolved_at', null)
       .order('requested_at', { ascending: false }).limit(NOTIFICATION_LIMIT),
   ]);
@@ -1808,6 +1822,13 @@ export type MemberInput = {
  * "the display name … already belongs to another member" arrives at the
  * banner reading as the academy's answer rather than as a leaked fragment
  * (requests/2026-09-07-display-name-refusal-clears-and-case.md).
+ *
+ * That is safe for every refusal that reaches HERE — create_member (0026),
+ * update_member (0027) and the bulk import (0029) all raise sentences opening
+ * on a common word. It would NOT be safe for the merge refusal (0032), which
+ * opens by interpolating the member's own name: a woman recorded as "ani"
+ * would be shown as "Ani", a quiet misquote of her record. mergeMemberInto
+ * translates its own refusal for that reason and must stay off this function.
  */
 function memberWriteError(error: { message?: string } | null): string {
   const message = (error?.message ?? '').trim();
@@ -2160,7 +2181,14 @@ export async function setMemberStatus(id: string, status: MemberStatus):
   });
   if (error || !data) {
     console.error('setMemberStatus:', error?.message ?? 'no row returned');
-    throw new Error(`${(error?.message ?? '').trim() || 'Her status could not be changed'}. Nothing has been saved.`);
+    // Raised into the SAME banner on the SAME form as memberWriteError's
+    // refusals (app/member/edit.tsx) -- the status pick sits inside the edit
+    // dialog. set_member_status (0031) raises lowercase like every other RPC,
+    // so without this the one banner opens two ways depending on which half
+    // of the form was refused, which is the very thing this change was asked
+    // to fix (requests/2026-09-07-display-name-refusal-clears-and-case.md).
+    // The missing personReadable() guard here is TD-030, not this change.
+    throw new Error(`${sentenceOpening((error?.message ?? '').trim() || 'Her status could not be changed')}. Nothing has been saved.`);
   }
 
   // Her eligibility for follow-up moves with it, and the flagged set is
@@ -2168,4 +2196,99 @@ export async function setMemberStatus(id: string, status: MemberStatus):
   // the dashboard count, the weekly list and the send draft, all of them.
   membersChanged();
   return { changed: Boolean((data as { changed?: boolean }).changed) };
+}
+
+/* ------------------------------------------------ marking attendance by hand
+ *
+ * A counter every mounted useAttendance reads, bumped by every attendance
+ * write. Not a cache: nothing is stored here, it only says "ask again".
+ * Without it, a chip that filled and a week strip that still said "awaiting
+ * upload" would be two answers to one question on one screen.
+ */
+const attendanceListeners = new Set<() => void>();
+
+export function onAttendanceChanged(listener: () => void): () => void {
+  attendanceListeners.add(listener);
+  return () => { attendanceListeners.delete(listener); };
+}
+
+function attendanceChanged(): void {
+  for (const listener of attendanceListeners) listener();
+}
+
+/**
+ * MARKING one member present or absent on one day.
+ *
+ * WHY AN RPC and not a write on the table
+ * `authenticated` holds only SELECT on attendance_records, deliberately: the
+ * anon key is compiled into the bundle, and the guarantee that a stolen one
+ * cannot forge attendance is what that grant buys (guardrail 4, and RC-007
+ * is the incident where every narrow grant turned out to be a no-op). 0035
+ * is a SECURITY DEFINER function that re-checks the caller and keeps four
+ * things out of the client's hands: whether she was expected, whether the
+ * day's session exists, what the register said before somebody disagreed
+ * with it, and which app_users row the actor is.
+ *
+ * `status` is what the PERSON chose. What is stored may be 'extra' — she
+ * turned up when nobody expected her — and that is the server's decision,
+ * not this function's.
+ */
+export async function setAttendance(
+  memberId: string, date: string, status: 'present' | 'absent',
+): Promise<{ changed: boolean; status: AttendanceStatus }> {
+  if (!isConfigured) {
+    // Offline the fixture IS the store. The same two rules the RPC applies,
+    // through the same derivation the chips used to decide what to offer —
+    // a second answer here is how the offline mode starts telling a
+    // different story from the live one.
+    const member = MEMBERS.find(m => m.id === memberId);
+    if (!member) throw new Error('That member is not on the register. Nothing has been saved.');
+    const offering = COURSE_LIST.find(c => c.name === member.course)
+      ?.offerings.find(o => o.branch === member.branch);
+    const schedule = member.weekdays ?? offering?.weekdays ?? [];
+    const expected = schedule.includes(isoWeekday(date));
+    if (status === 'absent' && !expected) {
+      throw new Error(`${member.name} was not expected on ${dayInWords(date)}. `
+        + 'Mark her present and it is recorded as extra.');
+    }
+    const stored = storedStatus(status, expected);
+    const changed = MANUAL_MARKS.get(`${memberId}|${date}`) !== stored;
+    markFixtureAttendance(memberId, date, stored);
+    attendanceChanged();
+    membersChanged();
+    return { changed, status: stored };
+  }
+
+  const { data, error } = await supabase.rpc('set_attendance', {
+    p_member_id: memberId,
+    p_date: date,
+    p_status: status,
+  });
+  if (error || !data) {
+    console.error('setAttendance:', error?.message ?? 'no row returned');
+    // 0035 may not be applied yet. PostgREST answers a missing function with
+    // PGRST202 and Postgres with 42883, and both arrive here as a sentence
+    // about a schema cache — which tells the person nothing about what to do
+    // and reads as a fault of theirs. Naming it is the honest answer, and it
+    // is a different fact from "the write was refused".
+    const code = (error as { code?: string } | null)?.code ?? '';
+    if (code === 'PGRST202' || code === '42883') {
+      throw new Error('The academy database cannot record attendance by hand yet — '
+        + 'migration 0035 has not been applied. Nothing has been saved.');
+    }
+    throw new Error(`${sentenceOpening((error?.message ?? '').trim()
+      || 'Her attendance could not be changed')}. Nothing has been saved.`);
+  }
+
+  const result = data as { changed?: boolean; status?: AttendanceStatus };
+  // The week strip and the roster both read attendance; her Missed and
+  // consecutive figures come from member_period_metrics and member_stats,
+  // which the RPC has just recomputed. Both are revalidated, or the screen
+  // shows a chip that moved beside numbers that did not.
+  attendanceChanged();
+  membersChanged();
+  return {
+    changed: Boolean(result.changed),
+    status: (result.status as AttendanceStatus) ?? status,
+  };
 }

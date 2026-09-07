@@ -1,0 +1,32 @@
+FAIL-FIRST — src/components/addMemberStatusShown.test.ts
+requests/2026-09-07-add-member-status-toggle-default-active.md
+07-Sep-2026
+
+Run against HEAD's app/member/edit.tsx (the Add form with no status block),
+via ADD_MEMBER_STATUS_SPEC_ROOT. 4 of 6 fail. Test 5 passes BEFORE and AFTER
+on purpose: it guards the Edit form's pick, which this change must not touch.
+
+ok 1 - the spec is looking at a real tree
+not ok 2 - the Add form shows a status, and it is Active
+  error: 'the Add form has no status block gated on !editing'
+not ok 3 - the Add block is gated on the ADD state, not on a missing record
+  error: 'the gate must be !editing -- !existing also matches an edit mid-fetch'
+not ok 4 - the Add toggle cannot write the column
+  error: 'the Add form has no status block gated on !editing'
+ok 5 - the Edit form keeps its own pick, untouched
+not ok 6 - one source for the Active words
+  error: 'the Active row must be a named constant both states read'
+# tests 6
+# pass 2
+# fail 4
+
+AFTER the change, same spec against the working tree:
+ok 1 - the spec is looking at a real tree
+ok 2 - the Add form shows a status, and it is Active
+ok 3 - the Add block is gated on the ADD state, not on a missing record
+ok 4 - the Add toggle cannot write the column
+ok 5 - the Edit form keeps its own pick, untouched
+ok 6 - one source for the Active words
+# tests 6
+# pass 6
+# fail 0
