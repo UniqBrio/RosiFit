@@ -1,4 +1,118 @@
 
+<!-- 0038: REPOINT EIGHT PRODUCTION COURSES OFF THE UNVERIFIED DOMAINS.
+     Same four FAILs and one BLOCKED this repo has carried since 02-Sep-2026,
+     every one a MISSING RUNNER, none caused by this change: G1/G2/G3 want
+     `design/tokens.json` (ADR 001, TD-001..TD-003); G6 wants eslint (TD-004);
+     G8 wants `test:functional` (TD-006). Substitute rungs green -- typecheck
+     clean, unit specs pass, 2840/2840 contrast, 75/75 icons.
+
+     NOT OBSERVED FAILING: supabase/tests/30_verified_course_senders.sql -
+     `psql` is absent on this machine, so `db/harness/test.sh` cannot run at
+     all and NO .sql spec in this repo can be executed here. Stated as the
+     honest negative rather than dressed up.
+
+     What WAS verified, and it is the substantive part: the guard predicate
+     0038 refuses to apply on was run READ-ONLY against the live project over
+     the same 8 probe values the spec uses. 4 CAUGHT (both retired fixture
+     addresses, both look-alike domains), 4 PASSED (both verified addresses,
+     the `Name <addr>` display form, the spaced `Name < addr >` form).
+     Writing that spec is what caught the guard's FIRST version, which used a
+     bare CONTAINS and waved through support@getfit.rosifit.com.example.net --
+     a different domain that contains a verified one.
+
+     The production data state driving all of this was measured, not assumed:
+     9 courses configured, 8 on addresses SES will refuse. See TD-016. -->
+
+FAIL-FIRST: src/data/courseFromAddress.test.ts - 3 cases appended, guarding the
+class of defect 0038 cleans up. With SENDERS restored to the fixture addresses
+that were live until 418629b, 2 of the 3 fail ("every address the picker offers
+is under a VERIFIED domain", "no retired fixture address is still on offer").
+The third passes in BOTH states, correctly and on purpose: it asserts that
+support@rosifit.com is SHAPE-VALID and would be handed straight to SES, which
+is a fact about the retired address itself and is why the eight rows needed a
+migration rather than a code-side catch. 12/12 pass on the fixed tree.
+Full output: `.evidence/picker-verified-domain-fail-first.txt`.
+
+## Gate run - 2026-09-07 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-07 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
 ## Gate run - 2026-09-07 - VERDICT: FAIL
 
 Steps: 6 pass, 4 fail, 1 blocked.

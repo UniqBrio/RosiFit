@@ -89,3 +89,55 @@ test('every address the course form OFFERS is one this rule accepts', () => {
     assert.ok(choice.ok && choice.from === s, `${s} survives the choice`);
   }
 });
+
+// ---------------------------------------------------------------------------
+// The class of defect 0038 exists to clean up, guarded going forward.
+//
+// For as long as the picker existed it offered support@rosifit.com and
+// support@ravisfit.com, and nine courses were configured through it. Eight
+// stored an address under a domain that is not a verified SES identity. That
+// was harmless only because send-followups ignored the column; the moment it
+// stopped ignoring it, those eight became failed sends.
+//
+// chooseFromAddress cannot catch this and is not the place to try -- see the
+// assertion below. The picker is.
+
+const VERIFIED_DOMAINS = ['getfit.rosifit.com', 'getfit.ravisfit.com'];
+const RETIRED = ['support@rosifit.com', 'support@ravisfit.com'];
+
+function domainOf(address: string): string {
+  const bare = address.match(/<\s*([^<>]+?)\s*>/)?.[1] ?? address;
+  return bare.slice(bare.lastIndexOf('@') + 1).toLowerCase();
+}
+
+test('every address the picker offers is under a VERIFIED domain', () => {
+  // The regression guard. An address added to SENDERS whose domain nobody
+  // verified in SES would be selectable, storable, and would fail every
+  // message for that course -- and the course form would have shown it with a
+  // "verified" label while doing so.
+  for (const s of SENDERS) {
+    assert.ok(VERIFIED_DOMAINS.includes(domainOf(s)),
+      `${s} is under a domain verified in SES (got ${domainOf(s)})`);
+  }
+});
+
+test('no retired fixture address is still on offer', () => {
+  for (const dead of RETIRED) {
+    assert.ok(!SENDERS.includes(dead), `${dead} is no longer offered`);
+  }
+});
+
+test('the retired addresses are SHAPE-VALID, which is exactly why 0038 is needed', () => {
+  // The uncomfortable one, and the reason this cannot be fixed in code alone.
+  // support@rosifit.com is a perfectly well-formed address. chooseFromAddress
+  // ACCEPTS it and hands it to SES, which refuses it -- because the sending
+  // domain is not verified, and that is not knowable from the string. Nothing
+  // in this repo can tell the two apart, so the eight stored rows had to be
+  // repointed by a migration rather than caught at send time.
+  for (const dead of RETIRED) {
+    const choice = chooseFromAddress(dead, 'support@getfit.rosifit.com');
+    assert.ok(choice.ok, `${dead} passes the shape check`);
+    assert.ok(choice.ok && choice.from === dead, 'and would be handed straight to SES');
+    assert.ok(!VERIFIED_DOMAINS.includes(domainOf(dead)), 'while its domain is not verified');
+  }
+});

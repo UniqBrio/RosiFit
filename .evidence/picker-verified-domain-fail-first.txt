@@ -1,0 +1,8 @@
+FAIL-FIRST: src/data/courseFromAddress.test.ts (3 cases appended 07-Sep-2026)
+Pre-fix SENDERS restored to the fixture addresses that were live until 418629b.
+
+not ok 10 - every address the picker offers is under a VERIFIED domain
+not ok 11 - no retired fixture address is still on offer
+# tests 12
+# pass 10
+# fail 2
