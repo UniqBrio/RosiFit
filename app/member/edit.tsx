@@ -90,13 +90,13 @@ export default function MemberEdit() {
   const { theme } = useTheme();
   const { flash } = useToast();
   const router = useRouter();
-  // `name` PREFILLS the add form. It is how "Add as new member" on a
-  // no-email card opens this dialog already carrying the display name the
-  // register knows her by, instead of asking somebody to retype a name that
-  // is on the screen they just came from. Ignored when `id` is present --
-  // an existing member's name comes from her record, never from a URL.
-  const { id, state: forced, name: prefill } = useLocalSearchParams<
-    { id?: string; state?: string; name?: string }>();
+  // NO NAME COMES FROM THE URL. A `name` param used to prefill the ADD form
+  // for "Add as new member" on a no-email card; that button now opens HER
+  // record by id, because she is already on the register and the create path
+  // gave her a twin (07-Sep-2026). A name on the query string has no other
+  // caller, and leaving the door open is how the twin comes back.
+  const { id, state: forced } = useLocalSearchParams<
+    { id?: string; state?: string }>();
 
   /**
    * WHICH form this is, decided by the ROUTE and by nothing else.
@@ -138,7 +138,7 @@ export default function MemberEdit() {
   const courses = useCourses();
   const courseList = courses.data ?? [];
 
-  const [name, setName] = useState(existing?.name ?? (editing ? '' : prefill ?? ''));
+  const [name, setName] = useState(existing?.name ?? '');
   const [course, setCourse] = useState(existing?.course ?? '');
   const [branch, setBranch] = useState(existing?.branch ?? '');
   // Today, on the ADD form only. Almost every member is entered on the day

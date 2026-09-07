@@ -1019,6 +1019,20 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
           the register under a different display name. The two buttons are
           those two answers, and each says which one it is.
 
+          BOTH RESOLVE THE ROW THAT IS ON SCREEN. She is already a member --
+          the import created her record and enrolled her (0024, 0037), which
+          is the whole reason this card can be drawn at all. So "add as new
+          member" means COMPLETE HER RECORD, and it opens hers by id.
+
+          It used to open the ADD form prefilled with her name, which created
+          a SECOND member: the new one had the address, the stray kept the
+          attendance, and this section still listed her afterwards -- the
+          requester's report on 07-Sep-2026, "i added nitha as new member
+          then the record should be removed from no email section but its
+          still their". A member with no address is exactly the thing the
+          edit form refuses to save (C-73), so adding the address there is
+          what takes her out of this group -- one member, one record.
+
           They sit on their own row rather than beside the status pill: both
           labels are sentences, and squeezed in beside an avatar and a pill
           they truncate to "Add as..." / "Add display..." -- two buttons that
@@ -1027,9 +1041,9 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
         <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: 11 }}>
           <Pressable testID={`course-member-add-new-${member.id}`}
             onPress={() => router.push({
-              pathname: '/member/edit', params: { name: member.name } })}
+              pathname: '/member/edit', params: { id: member.id } })}
             accessibilityRole="button"
-            accessibilityLabel={`Add ${member.name} as a new member`}
+            accessibilityLabel={`Add ${member.name} as a new member — her details, with the email the follow-up rule needs`}
             style={({ pressed }) => ({
               flex: 1, minHeight: 34, borderRadius: RADIUS.sm,
               flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
