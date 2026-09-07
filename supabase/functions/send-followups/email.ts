@@ -5,7 +5,11 @@
 
 import { unquoteSecret, isFromAddress } from '../_shared/from-address.ts';
 
-export type EmailMessage = { to: string; subject: string; text: string };
+/** `from` is the address THIS message goes out as, which since 07-Sep-2026
+ *  varies per course (chooseFromAddress). Optional so a caller with no opinion
+ *  still gets the provider's configured default -- but send-followups always
+ *  passes one, and records the one it passed. */
+export type EmailMessage = { to: string; subject: string; text: string; from?: string };
 export type EmailResult = { ok: boolean; providerMessageId?: string; error?: string };
 
 export interface EmailProvider {
@@ -18,7 +22,12 @@ export interface EmailProvider {
 export class DevEmailProvider implements EmailProvider {
   readonly name = 'dev';
   send(msg: EmailMessage): Promise<EmailResult> {
-    console.log(`[dev-email] to=${msg.to} subject=${JSON.stringify(msg.subject)}\n${msg.text}\n---`);
+    // `from` is logged because the dev provider is what the harness's
+    // end-to-end send verification reads, and the sender now varies per
+    // course -- a log that omits it cannot show the right one was chosen.
+    console.log(
+      `[dev-email] from=${msg.from ?? '(provider default)'} to=${msg.to} `
+      + `subject=${JSON.stringify(msg.subject)}\n${msg.text}\n---`);
     return Promise.resolve({ ok: true, providerMessageId: `dev-${crypto.randomUUID()}` });
   }
 }
@@ -84,7 +93,10 @@ export class SesEmailProvider implements EmailProvider {
   readonly name = 'ses';
   constructor(
     private region: string, private accessKeyId: string,
-    private secretAccessKey: string, private fromAddress: string,
+    private secretAccessKey: string,
+    /** The DEFAULT sender: SES_FROM_ADDRESS. Reached only by a message that
+     *  names no `from` of its own -- a course never configured with one. */
+    private fromAddress: string,
     /** SES configuration set, if the account uses one. Optional: it turns on
      *  SES's own open/bounce/complaint tracking and changes nothing here when
      *  absent. */
@@ -94,7 +106,7 @@ export class SesEmailProvider implements EmailProvider {
   async send(msg: EmailMessage): Promise<EmailResult> {
     try {
       const res = await sesSendEmail(this.region, this.accessKeyId, this.secretAccessKey, {
-        FromEmailAddress: this.fromAddress,
+        FromEmailAddress: msg.from ?? this.fromAddress,
         ...(this.configSet ? { ConfigurationSetName: this.configSet } : {}),
         Destination: { ToAddresses: [msg.to] },
         Content: {
@@ -135,7 +147,14 @@ export class SesEmailProvider implements EmailProvider {
  * project before anyone noticed the mismatch. Accepting both costs one
  * `??` and removes a class of silent misconfiguration.
  */
-export function resolveEmailProvider(): { provider: EmailProvider; problems: string[] } {
+export function resolveEmailProvider(): {
+  provider: EmailProvider;
+  problems: string[];
+  /** SES_FROM_ADDRESS, handed back so the caller can RECORD which address a
+   *  message used when it fell back to it. Undefined when the provider could
+   *  not be built, and for the dev provider, which has no sender at all. */
+  defaultFrom?: string;
+} {
   // unquoteSecret, not just trim: a value set through a shell keeps its
   // wrapping quote characters, and every consumer below sees them as content.
   const env = (...names: string[]): string | undefined => {
@@ -178,6 +197,7 @@ export function resolveEmailProvider(): { provider: EmailProvider; problems: str
     return {
       provider: new SesEmailProvider(region!, accessKeyId!, secretAccessKey!, from!, configSet),
       problems: [],
+      defaultFrom: from!,
     };
   }
   // EMAIL_PROVIDER is no longer the switch. Four complete AWS values ARE the

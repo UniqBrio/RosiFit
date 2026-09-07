@@ -64,3 +64,56 @@ const FROM_SHAPE = new RegExp(
 export function isFromAddress(value: string): boolean {
   return FROM_SHAPE.test(value);
 }
+
+/**
+ * WHICH address a given message goes out as.
+ *
+ * Until 07-Sep-2026 there was nothing to decide: `send-followups` called SES
+ * with `SES_FROM_ADDRESS` and never looked at anything else, so the From Email
+ * ID picked in the course form was STORED BY `save_course` AND NEVER USED. An
+ * academy that set one course to its second address watched every message from
+ * that course go out as the first one, with nothing anywhere reporting a
+ * difference -- the send said SENT and it was telling the truth about delivery
+ * while being wrong about the sender.
+ *
+ * So the course's own address wins where it has one, and the secret is the
+ * fallback for a course that has never been configured. That is the same
+ * "the course's own where it has any, the deployment's where it has not"
+ * shape `effective_course_message` already uses for wording, stated here for
+ * the sender.
+ *
+ * REFUSING RATHER THAN QUIETLY SUBSTITUTING. A stored address that is not an
+ * address comes back `ok: false`, and the caller excludes that recipient
+ * naming it. Falling back to the secret would be the worse answer: the send
+ * would succeed, the academy would be told it sent, and the course's
+ * deliberate choice of sender would have been discarded silently -- which is
+ * the exact defect this function exists to end. The caller still records the
+ * address it used on every message, so "which address did this go out as" is
+ * answerable per message rather than inferred from a secret's current value.
+ *
+ * WHAT THIS CANNOT CHECK. Shape only. Whether SES will ACCEPT the address --
+ * whether its domain is a verified identity in the sending region -- is not
+ * knowable here and is not guessed at: SES answers that at send time and its
+ * refusal is recorded in `failure_reason`, per message.
+ */
+export type FromChoice =
+  /** `from` is undefined ONLY on the dev provider, which has no sender at all.
+   *  Every SES path reaches this with SES_FROM_ADDRESS in hand, because
+   *  resolveEmailProvider refuses to build the provider without it. */
+  | { ok: true; from: string | undefined; source: 'course' | 'default' }
+  | { ok: false; badValue: string };
+
+export function chooseFromAddress(
+  courseFrom: string | null | undefined,
+  defaultFrom: string | undefined,
+): FromChoice {
+  const stored = (courseFrom ?? '').trim();
+  // No row, or a row from before the course was ever configured: the
+  // deployment's own address. Not an error -- most courses are this.
+  if (!stored) return { ok: true, from: defaultFrom, source: 'default' };
+  // Deliberately NOT unquoteSecret'd. That strips quotes a SHELL left on a
+  // secrets field; this value came from a form and a picker, and a quote in
+  // it is content, not packaging.
+  if (!isFromAddress(stored)) return { ok: false, badValue: stored };
+  return { ok: true, from: stored, source: 'course' };
+}

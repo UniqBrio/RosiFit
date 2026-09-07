@@ -1,0 +1,27 @@
+FAIL-FIRST: src/data/courseFromAddress.test.ts
+Date: 2026-09-07
+
+Pre-fix behaviour reconstructed by injecting the original defect into
+chooseFromAddress -- an unconditional early return of the deployment
+default, which is exactly what send-followups did: it called SES with
+FromEmailAddress: SES_FROM_ADDRESS and never read course_communication.
+
+Result: 7 of 9 assertions FAILED.
+
+not ok 1 - a course's own address is what it sends as
+not ok 2 - a course that picked the deployment's own address still says so
+ok 3 - a course with no communication row falls back to the deployment
+not ok 4 - surrounding whitespace on a stored address does not change the choice
+not ok 5 - a stored value that is not an address is REFUSED, never substituted
+not ok 6 - the display form survives, because SES accepts it
+ok 7 - with no default configured, an unconfigured course yields no sender
+not ok 8 - a course's address still works when the deployment has none
+not ok 9 - every address the course form OFFERS is one this rule accepts
+# tests 9
+# pass 2
+# fail 7
+
+The 2 that PASSED are the two fallback cases -- a course with no row, and
+a course with no row on a deployment with no default. They pass under the
+defect because falling back is the correct answer for them, which is what
+makes the other 7 meaningful rather than a spec that fails at anything.

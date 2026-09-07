@@ -50,6 +50,75 @@ _Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
+<!-- A COURSE SENDS FROM ITS OWN CONFIGURED ADDRESS (course_communication
+     .from_email now reaches SES). The four FAILs and one BLOCKED below are
+     the SAME ones this repo has carried since 02-Sep-2026, and each is a
+     MISSING RUNNER, not a failing check: G1/G2/G3 want `design/tokens.json`,
+     which RosiFit does not have because colour lives in `src/theme/tokens.ts`
+     (ADR 001, TD-001..TD-003); G6 wants eslint, not installed (TD-004); G8
+     wants a `test:functional` script, which does not exist (TD-006).
+
+     Substitute rungs, all green for this change: `npm run check` --
+     typecheck clean, 597/597 unit specs (9 new, `courseFromAddress.test.ts`),
+     2840/2840 contrast pairs, 75/75 icons -- plus `audit:colors` and
+     `audit:testids`, no new violations.
+
+     NOT COVERED BY ANY RUNG, and stated rather than implied:
+     `supabase/tests/28_message_from_email.sql` HAS NEVER BEEN EXECUTED.
+     `psql` is absent on this machine, so `db/harness/test.sh` cannot run at
+     all, and migration `0036` has been applied nowhere. The Edge Function
+     change is proven only through the pure rule it delegates to
+     (`chooseFromAddress`), never end to end against a database.
+     Recorded as a verdict, not passed off as one. -->
+
+FAIL-FIRST: src/data/courseFromAddress.test.ts - 7 of its 9 assertions fail
+against the pre-fix behaviour, reconstructed by injecting the original defect
+into `chooseFromAddress` (an unconditional early return of the deployment
+default, which is precisely what `send-followups` did). The 2 that still pass
+are the two fallback cases, where falling back IS the right answer -- which is
+what makes the other 7 evidence rather than a spec that fails at anything.
+Full output: `.evidence/course-sender-fail-first.txt`.
+
+## Gate run - 2026-09-07 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
 ## Gate run - 2026-09-06 - VERDICT: FAIL
 
 Steps: 6 pass, 4 fail, 1 blocked.

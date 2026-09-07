@@ -7,6 +7,7 @@ import { json, errorJson, HttpError } from '../_shared/response.ts';
 import { adminClient } from '../_shared/db.ts';
 import { requireCaller } from '../_shared/authz.ts';
 import { resolveEmailProvider } from './email.ts';
+import { chooseFromAddress } from '../_shared/from-address.ts';
 
 function renderTemplate(tpl: string, vars: Record<string, string>): string {
   return tpl.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] ?? `{{${k}}}`);
@@ -43,7 +44,7 @@ Deno.serve(async (req) => {
     // fails. This is the same 503-naming-the-fix shape PIN_PEPPER already
     // uses (CP-006), and doing it here means a refused send leaves nothing
     // behind to explain.
-    const { provider, problems } = resolveEmailProvider();
+    const { provider, problems, defaultFrom } = resolveEmailProvider();
     if (problems.length > 0) {
       throw new HttpError(503,
         `Email is not configured, so nothing was sent. ${problems.join('; ')}. `
@@ -81,6 +82,21 @@ Deno.serve(async (req) => {
       .in('id', branchIds.length ? branchIds : [zeroUuid]);
     const courseNameById = new Map((courses ?? []).map(c => [c.id as string, c.name as string]));
     const branchNameById = new Map((branches ?? []).map(b => [b.id as string, b.name as string]));
+
+    // THE COURSE'S OWN SENDER (07-Sep-2026). course_communication.from_email is
+    // what the From Email ID picker in the course form writes, and until now
+    // nothing read it back: every message went out as SES_FROM_ADDRESS whatever
+    // the course said. Read here, per course, in one query -- not per member,
+    // which would be one round trip per recipient for a value shared by all of
+    // them. A course with no row keeps the deployment's address.
+    const { data: courseComms, error: ccErr } = await admin.from('course_communication')
+      .select('course_id, from_email').in('course_id', courseIds.length ? courseIds : [zeroUuid]);
+    // Loud, not silent. A failed read here is indistinguishable from "no course
+    // has its own sender", and that reads as success while sending every
+    // message from the wrong address -- the same shape as the discarded
+    // destructure that made fetchSenders always fall back (TD-016).
+    if (ccErr) throw new HttpError(500, "Could not load the courses' sender addresses, so nothing was sent.");
+    const fromByCourse = new Map((courseComms ?? []).map(c => [c.course_id as string, c.from_email as string]));
 
     const { data: emails } = await admin.from('member_emails')
       .select('member_id, email, status').eq('is_primary', true).in('member_id', memberIds).is('deleted_at', null);
@@ -134,12 +150,26 @@ Deno.serve(async (req) => {
       const offering = enroll ? offeringById.get(enroll.offering_id as string) : undefined;
       const courseName = offering ? (courseNameById.get(offering.course_id as string) ?? '—') : '—';
       const branchName = offering ? (branchNameById.get(offering.branch_id as string) ?? '—') : '—';
+      const fromChoice = chooseFromAddress(
+        offering ? fromByCourse.get(offering.course_id as string) : null, defaultFrom);
+      // Pulled out of the union here rather than read through `fromChoice`
+      // below: the recipient is excluded via `exclusionReason`, which narrows
+      // nothing about this value, and `undefined` is the honest answer for
+      // both an unusable address and the dev provider's absent one.
+      const fromAddress = fromChoice.ok ? fromChoice.from : undefined;
       const metric = metricsByMember.get(id) ?? { expected: 0, attended: 0, missed: 0, attendance_pct: null };
       const stat = statsByMember.get(id);
       const emailRow = emailByMember.get(id);
 
       let exclusionReason: string | null = null;
-      if (!emailRow) exclusionReason = 'No email on file';
+      // The SENDER is checked before the recipient is: a course whose stored
+      // from-address is not an address cannot mail anybody, and saying so names
+      // the course to fix rather than the member.
+      if (!fromChoice.ok) {
+        exclusionReason =
+          `${courseName} sends from "${fromChoice.badValue}", which is not an email address. `
+          + 'Set a valid From Email ID on the course.';
+      } else if (!emailRow) exclusionReason = 'No email on file';
       else if (emailRow.status === 'bounced') exclusionReason = 'Primary email has bounced';
       else if (emailRow.status === 'unsubscribed') exclusionReason = 'Unsubscribed';
       else if (emailRow.status === 'complained') exclusionReason = 'Marked as spam previously';
@@ -162,6 +192,7 @@ Deno.serve(async (req) => {
         await admin.from('email_messages').insert({
           batch_id: batch.id, member_id: id, to_email: emailRow?.email ?? null,
           subject, variables: vars, status: 'excluded', exclusion_reason: exclusionReason,
+          from_email: fromAddress ?? null,
         });
         results.push({ member_id: id, name: member.full_name, status: 'excluded', reason: exclusionReason });
         excluded++;
@@ -170,9 +201,14 @@ Deno.serve(async (req) => {
 
       const { data: msgRow } = await admin.from('email_messages').insert({
         batch_id: batch.id, member_id: id, to_email: emailRow!.email, subject, variables: vars, status: 'sending',
+        // RECORDED, not inferred. The sender now varies per course, so "which
+        // address did this go out as" stops being answerable from the current
+        // value of a secret and has to be written down per message.
+        from_email: fromAddress ?? null,
       }).select('id').single();
 
-      const result = await provider.send({ to: emailRow!.email as string, subject, text });
+      const result = await provider.send({
+        to: emailRow!.email as string, subject, text, from: fromAddress });
 
       if (result.ok) {
         await admin.from('email_messages').update({
