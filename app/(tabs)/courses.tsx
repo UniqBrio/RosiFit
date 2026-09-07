@@ -11,7 +11,6 @@ import { SPACE, RADIUS, STATUS, statusSurface } from '../../src/theme/tokens';
 import { ruleSentence, AVATAR_TINTS, initials } from '../../src/data/mock';
 import { useCourses, useFollowUp } from '../../src/data/hooks';
 import { courseSummary, coursesHeadline } from '../../src/data/course';
-import { useIdentity } from '../../src/data/session';
 import { ALL_BRANCHES } from '../../src/state/academy';
 import { ConfirmDialog } from '../../src/components/Sheet';
 import { deleteCourse, dataSource } from '../../src/data/repository';
@@ -36,7 +35,6 @@ export default function Courses() {
   const [branch, setBranch] = useState<string>(ALL_BRANCHES);
   const [branchOpen, setBranchOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const { identity } = useIdentity();
 
   /**
    * Same first-render rule as app/course/[id].tsx: the server renders with a
@@ -130,18 +128,19 @@ export default function Courses() {
      screens offer the same pair -- the course detail has them under its
      Members heading, where the course is already decided; here neither is,
      so both open asking which course she joins.
-     OWNER-ONLY, as the reference has it: a file of forty members is the shape
-     of the register. Hidden for staff rather than disabled -- a disabled
-     button asks a question the person cannot answer -- and the RPC refuses
-     them anyway, so the deep route is gated too. */
+     BOTH ROLES, since 0038. Add Member and Bulk Import were owner-only on the
+     reasoning that a file of forty members is the shape of the register; the
+     repo owner overruled it on 07-Sep-2026 -- staff run the register, so staff
+     fill it (requests/2026-09-07-staff-write-access.md). The RPCs moved with
+     the buttons, which is the half that actually decides. */
   const actions = (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: SPACE.sm }}>
-      {identity?.isSuperAdmin ? action('courses-add-member', 'Add Member', 'Add a member',
+      {action('courses-add-member', 'Add Member', 'Add a member',
         'person_add', '/member/edit',
-        { bg: statusSurface(theme.accentInk).bg, border: statusSurface(theme.accentInk).border, ink: theme.accentInk }) : null}
-      {identity?.isSuperAdmin ? action('courses-bulk-import', 'Bulk Import', 'Bulk import members from a file',
+        { bg: statusSurface(theme.accentInk).bg, border: statusSurface(theme.accentInk).border, ink: theme.accentInk })}
+      {action('courses-bulk-import', 'Bulk Import', 'Bulk import members from a file',
         'upload_file', '/member/import',
-        { bg: theme.surface, border: theme.lineStrong, ink: theme.fg }) : null}
+        { bg: theme.surface, border: theme.lineStrong, ink: theme.fg })}
       {action('courses-add', 'Add Course', 'Add a course', 'add', '/course/edit',
         { bg: theme.accent, ink: theme.onAccent })}
     </View>
@@ -281,16 +280,14 @@ export default function Courses() {
                   testID={`courses-edit-${c.id}`}
                   hint={`Edit ${c.name}`}
                   onPress={() => router.push({ pathname: '/course/edit', params: { id: c.id } })} />
-                {/* Deleting a course is the super admin's, and only while the
-                    subscription is writable -- the predicate delete_course
-                    (0020) re-checks. Hiding it from staff beats offering a tap
-                    that answers with a refusal. */}
-                {identity?.isSuperAdmin ? (
-                  <CardAction icon="delete" tint={dangerInk}
-                    testID={`courses-delete-${c.id}`}
-                    hint={`Delete ${c.name}`}
-                    onPress={() => setConfirmDelete(c)} />
-                ) : null}
+                {/* Deleting a course is any active user's since 0038, and
+                    still only while the subscription is writable -- the
+                    predicate delete_course re-checks both. It was the super
+                    admin's alone until 07-Sep-2026. */}
+                <CardAction icon="delete" tint={dangerInk}
+                  testID={`courses-delete-${c.id}`}
+                  hint={`Delete ${c.name}`}
+                  onPress={() => setConfirmDelete(c)} />
                 {/* The chevron is its OWN target, not decoration inside the
                     card button: the card opens the course, the chevron opens
                     that course's roster. Two destinations, so two controls --

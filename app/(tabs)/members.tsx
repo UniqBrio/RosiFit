@@ -14,6 +14,8 @@ import {
 } from '../../src/data/mock';
 import { useFollowUp, useFilterOptions } from '../../src/data/hooks';
 import { rosterScope } from '../../src/data/course';
+import { ConfirmDialog } from '../../src/components/Sheet';
+import { deleteMember, dataSource } from '../../src/data/repository';
 
 type Filter = 'all' | 'nomail' | 'follow' | 'coimbatore';
 
@@ -56,9 +58,37 @@ export default function Members() {
   const scopedTo = rosterScope((filters.data?.courses ?? []).slice(1), courseName);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
+  const [confirmRemove, setConfirmRemove] = useState<Member | null>(null);
+  const [removing, setRemoving] = useState(false);
 
   const members = useMemo(() => data?.members ?? [], [data]);
   const rules = data?.rules;
+
+  /**
+   * The roster's bin, behind a real deletion. It used to answer
+   * `flash('Removing X needs a confirmation')` -- which was accurate and was
+   * the whole implementation, the same shape delete_course was in before
+   * 0020. delete_member (0038) is the write; this is the question that has to
+   * be asked first, because a deletion is not undoable from the app.
+   */
+  const remove = async (member: Member) => {
+    setConfirmRemove(null);
+    setRemoving(true);
+    try {
+      const result = await deleteMember(member.id);
+      const first = member.name.split(' ')[0];
+      flash(result.alreadyDeleted
+        ? `${first} had already been removed`
+        : dataSource === 'live'
+        ? `${first} removed, ${result.attendanceKept} attendance ${result.attendanceKept === 1 ? 'record' : 'records'} kept`
+        : `${first} removed on this device only. The academy database is not configured.`,
+        result.alreadyDeleted || dataSource !== 'live' ? 'warn' : 'ok');
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'She could not be removed. Nothing has been changed.', 'warn');
+    } finally {
+      setRemoving(false);
+    }
+  };
 
   /** Everyone in the course, before the search box and the chips narrow it --
    *  so the subtitle counts the roster, not the current filter. */
@@ -217,10 +247,27 @@ export default function Members() {
             <MemberCard key={m.id} member={m} index={i}
               onOpen={() => router.push(`/member/${m.id}`)}
               onEdit={() => router.push({ pathname: '/member/edit', params: { id: m.id } })}
-              onRemove={() => flash(`Removing ${m.name.split(' ')[0]} needs a confirmation`, 'warn')} />
+              onRemove={() => setConfirmRemove(m)} />
           ))}
         </View>
       )}
+
+      {/* The confirmation states what SURVIVES as well as what goes, exactly
+          as the course one does: delete_member (0038) leaves every attendance
+          record she has, because that is the academy's record of what
+          happened on a day rather than hers. */}
+      <ConfirmDialog
+        open={confirmRemove !== null}
+        onClose={() => setConfirmRemove(null)}
+        title={confirmRemove ? `Remove ${confirmRemove.name}?` : ''}
+        body={confirmRemove
+          ? `She comes off the register and off every follow-up list, and her enrolment in ${confirmRemove.course} ends today. `
+            + 'Her attendance history stays: every session she was marked at is untouched. '
+            + 'Her email address is freed for whoever holds it next. Recorded in the audit log.'
+          : ''}
+        cancelLabel="Cancel"
+        confirmLabel={removing ? 'Removing…' : 'Remove'}
+        onConfirm={() => { if (confirmRemove) void remove(confirmRemove); }} />
     </Screen>
   );
 }

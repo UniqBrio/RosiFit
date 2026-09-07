@@ -282,7 +282,14 @@ export async function fetchCourses(): Promise<Course[]> {
     supabase.from('courses')
       .select('id, name, default_start_time, default_end_time, default_frequency')
       .is('deleted_at', null).order('name'),
-    supabase.from('course_offerings').select('id, course_id, branch_id').is('deleted_at', null),
+    // THE COURSE'S OWN OFFERING ONLY (0039). A course that runs several
+    // meetings a day carries one hidden offering per Meet code, created by the
+    // upload from the file's own evidence. They are registers, not courses:
+    // showing them here would list "Postnatal · Coimbatore" six times in the
+    // picker, and enrolling a member from this list could put her in one
+    // meeting rather than in the course.
+    supabase.from('course_offerings').select('id, course_id, branch_id')
+      .is('deleted_at', null).is('meet_code', null),
     supabase.from('branches').select('id, name').is('deleted_at', null),
     supabase.from('offering_schedules').select('offering_id, weekdays, effective_from, effective_to'),
   ]);
@@ -506,8 +513,12 @@ export async function deleteCourse(id: string): Promise<CourseDeletion> {
   const { data, error } = await supabase.rpc('delete_course', { p_course_id: id });
   if (error) {
     console.error('deleteCourse:', error.message);
-    if (/only the super admin|not writable/i.test(error.message)) {
-      throw new Error('Only the super admin can delete a course, and only while the subscription is active. Nothing has been changed.');
+    // 0038 opened this to any active user, so the refusal left to map is the
+    // SUBSCRIPTION one. The role half of the pattern stays because a database
+    // still running 0020 raises the old wording, and a person reading a stale
+    // deployment should get a sentence rather than a Postgres string.
+    if (/only the super admin|only a signed-in|not writable/i.test(error.message)) {
+      throw new Error('That course could not be deleted — the subscription has to be active. Nothing has been changed.');
     }
     throw new Error(`${personReadable(error.message, 'The course could not be deleted')}. Nothing has been changed.`);
   }
@@ -734,9 +745,12 @@ export async function fetchOfferings(courseId: string): Promise<OfferingDetail[]
   }
 
   const [offeringsRes, branchesRes, schedulesRes] = await Promise.all([
+    // The course's own offering only — see fetchCourses (0039). This screen
+    // edits an offering's branch, times and days; a meeting group has none of
+    // those to edit, and its days come from the files that arrive.
     supabase.from('course_offerings')
       .select('id, branch_id, start_time, end_time')
-      .eq('course_id', courseId).is('deleted_at', null),
+      .eq('course_id', courseId).is('deleted_at', null).is('meet_code', null),
     supabase.from('branches').select('id, name').is('deleted_at', null),
     supabase.from('offering_schedules')
       .select('offering_id, weekdays, effective_from, effective_to'),
@@ -2196,6 +2210,73 @@ export async function setMemberStatus(id: string, status: MemberStatus):
   // the dashboard count, the weekly list and the send draft, all of them.
   membersChanged();
   return { changed: Boolean((data as { changed?: boolean }).changed) };
+}
+
+/** What a deletion actually did, so the toast can say it rather than guess. */
+export type MemberDeletion = {
+  name: string | null;
+  enrolmentsEnded: number;
+  attendanceKept: number;
+  alreadyDeleted: boolean;
+};
+
+/**
+ * Removing a member from the register.
+ *
+ * WHY THIS IS NOT set_member_status('inactive')
+ * They answer different questions. Inactive is a member who is still on the
+ * register and is not being followed up; deleted is a member who should not be
+ * on it -- a duplicate, a test row, somebody entered twice under two spellings.
+ * The register offers both because the requester asked for CRUD and the D is
+ * the one the roster's bin icon has always claimed to be
+ * (requests/2026-09-07-staff-write-access.md).
+ *
+ * WHY IT IS A SOFT DELETE, AND WHY THAT IS NOT A HALF-MEASURE
+ * attendance_records.member_id references members(id) with no ON DELETE, so a
+ * hard delete is refused by the foreign key whatever anyone intends -- and
+ * that refusal is the schema saying the right thing: her attendance is the
+ * academy's record of what happened, not her property. delete_member (0038)
+ * flags her row, frees her email addresses, removes her lookup aliases so a
+ * later upload of the same name cannot land on her, and ENDS her enrolment,
+ * which is the part that actually stops her being expected at a session.
+ *
+ * Idempotent, like deleteCourse: a second tap reports `alreadyDeleted` rather
+ * than an error.
+ */
+export async function deleteMember(id: string): Promise<MemberDeletion> {
+  if (!isConfigured) {
+    // Offline the fixture list IS the store -- a row that vanishes from the
+    // screen and not from the list is the lie RC-008 was about.
+    const at = MEMBERS.findIndex(m => m.id === id);
+    if (at < 0) {
+      return { name: null, enrolmentsEnded: 0, attendanceKept: 0, alreadyDeleted: true };
+    }
+    const [member] = MEMBERS.splice(at, 1);
+    membersChanged();
+    return { name: member.name, enrolmentsEnded: 1, attendanceKept: 0, alreadyDeleted: false };
+  }
+
+  const { data, error } = await supabase.rpc('delete_member', { p_member_id: id });
+  if (error) {
+    console.error('deleteMember:', error.message);
+    if (/not writable/i.test(error.message)) {
+      throw new Error('She could not be removed — the subscription has to be active. Nothing has been changed.');
+    }
+    throw new Error(`${personReadable(error.message, 'She could not be removed')}. Nothing has been changed.`);
+  }
+
+  // The flagged set is DERIVED from this one list (guardrail 1), so
+  // revalidating the roster is the dashboard count, the weekly list and the
+  // send draft, all of them.
+  membersChanged();
+
+  const r = (data ?? {}) as Record<string, unknown>;
+  return {
+    name: (r.name as string | null) ?? null,
+    enrolmentsEnded: Number(r.enrolments_ended ?? 0),
+    attendanceKept: Number(r.attendance_kept ?? 0),
+    alreadyDeleted: Boolean(r.already_deleted),
+  };
 }
 
 /* ------------------------------------------------ marking attendance by hand

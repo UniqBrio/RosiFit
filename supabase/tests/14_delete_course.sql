@@ -54,17 +54,34 @@ begin;
 commit;
 
 -- ------------------------------------------------------------ the guard
+-- AMENDED 07-Sep-2026 (0038). Until today this block asserted the opposite:
+--   t.rejects(delete_course('Doomed Course') as staff,
+--             'a staff account cannot delete a course', 'only the super admin')
+-- followed by 'and the refusal changed nothing'. The repo owner moved the
+-- boundary (requests/2026-09-07-staff-write-access.md). A course of its own
+-- is deleted here rather than 'Doomed Course', so the owner-path assertions
+-- below still run against a course nobody has touched.
+begin;
+  insert into public.courses (name, default_start_time, default_end_time, default_frequency)
+    values ('Staff Doomed Course','08:00','09:00',3);
+  insert into public.course_offerings (course_id, branch_id, start_time, end_time)
+    select c.id, b.id, '08:00','09:00' from public.courses c, public.branches b
+     where c.name = 'Staff Doomed Course';
+commit;
+
 begin;
   set local role authenticated;
   set local request.jwt.claim.sub = 'cccccccc-0000-0000-0000-000000000002';
-  select t.rejects(
-    $$select public.delete_course((select id from public.courses where name='Doomed Course'))$$,
-    'a staff account cannot delete a course',
-    'only the super admin');
+  select t.ok(
+    not ((public.delete_course((select id from public.courses where name='Staff Doomed Course'))
+          ->>'already_deleted')::boolean),
+    'a staff account CAN delete a course, since 0038');
 commit;
 
+select t.eq((select count(*)::int from public.courses where name='Staff Doomed Course' and deleted_at is null), 0,
+  'and the course it deleted is gone');
 select t.eq((select count(*)::int from public.courses where name='Doomed Course' and deleted_at is null), 1,
-  'and the refusal changed nothing');
+  'and nothing else moved with it');
 
 -- ------------------------------------------------------------ the delete
 begin;
