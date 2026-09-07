@@ -243,6 +243,19 @@ function SendDraftBody() {
 
   const nothingToSend = recipients.length === 0;
   const firstNames = recipients.filter(m => isPicked(m.id)).map(m => m.name.split(' ')[0]);
+  /* WHO, short enough to read at a glance: a send to fifteen people does not
+     need fifteen names to be recognisable, it needs the first few and a count. */
+  const whoLine = firstNames.length > 3
+    ? `${firstNames.slice(0, 3).join(', ')} and ${firstNames.length - 3} more`
+    : firstNames.join(', ');
+  /* The three caveats, one word-group each instead of one sentence each.
+     Each is still STATED and still carries its number -- what goes is the
+     prose around it, which said the same thing on every send. */
+  const caveats = [
+    skipped ? `${skipped} flagged not ticked` : '',
+    resending ? `${resending} already sent this week` : '',
+    excluded.length ? `${excluded.length} without an address` : '',
+  ].filter(Boolean).join(' · ');
 
   return (
     <FormDialog
@@ -279,19 +292,15 @@ function SendDraftBody() {
           open={confirming}
           onClose={() => setConfirming(false)}
           title={`Send to ${picked.length} ${picked.length === 1 ? 'member' : 'members'}?`}
-          body={`${firstNames.join(', ')} will receive this course’s follow-up wording.`
-            /* The subset is STATED. A send that quietly reaches fewer people
-               than the rule named is what selection must not become. */
-            + (skipped
-              ? ` ${skipped} flagged ${skipped === 1 ? 'member is' : 'members are'} not ticked and will not be contacted.`
-              : '')
-            + (resending
-              ? ` ${resending} of them ${resending === 1 ? 'has' : 'have'} already had this week’s message and will get a second one.`
-              : '')
-            + (excluded.length
-              ? ` ${excluded.length} ${excluded.length === 1 ? 'member is' : 'members are'} excluded for having no address; they stay counted.`
-              : '')
-            + ' This cannot be recalled.'}
+          /* THREE SHORT LINES, not a paragraph. The count is already in the
+             title and the wording is already fixed by the course, so what is
+             left to say here is who, what is being left out, and that it is
+             final. The subset is still STATED -- a send that quietly reaches
+             fewer people than the rule named is what selection must not
+             become -- it is just no longer a screenful to read it. */
+          body={whoLine
+            + (caveats ? `\n${caveats}` : '')
+            + '\nThis cannot be recalled.'}
           cancelLabel="Not yet"
           confirmLabel="Send"
           onConfirm={() => { void send(); }} />
@@ -313,7 +322,6 @@ function SendDraftBody() {
           {/* One row of chrome for the whole list: how many are ticked, and
               the only bulk action worth a control. */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.md }}>
-            <Label style={{ flex: 1 }}>{`${picked.length} of ${recipients.length} selected`}</Label>
             <Pressable testID="send-select-all"
               accessibilityRole="button"
               accessibilityLabel={allPicked ? 'Clear the selection' : 'Select every member'}
@@ -327,6 +335,7 @@ function SendDraftBody() {
                 {allPicked ? 'Clear all' : 'Select all'}
               </Text>
             </Pressable>
+            <Label style={{ flex: 1, textAlign: 'right' }}>{`${picked.length} of ${recipients.length} selected`}</Label>
           </View>
 
           {everyoneAlreadySent && picked.length === 0 ? (
