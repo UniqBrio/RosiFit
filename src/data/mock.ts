@@ -786,11 +786,12 @@ export type AttendanceRow = {
    * The course this row's session belongs to, by identity, or null when the
    * offering behind it can no longer be resolved.
    *
-   * delete_course KEEPS completed sessions and every attendance record --
-   * that is the promise its confirmation makes -- so the deleted course's
-   * history stays readable for as long as the academy exists. Which means
-   * the week strip cannot ask "rows whose course is called this", or a new
-   * course would open showing the attendance of the one it replaced.
+   * Since 0047 delete_course removes the course's sessions and attendance
+   * records outright, so a row whose offering cannot be resolved is a
+   * transient state rather than a permanent one. The identity match stays
+   * for the same reason it was written: the week strip must never ask "rows
+   * whose course is called this", or a new course could open showing the
+   * attendance of one that shared its name.
    */
   course_id: string | null;
   /** ISO yyyy-mm-dd — the query filters on this, the screen formats it */

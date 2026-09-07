@@ -22,10 +22,11 @@ import assert from 'node:assert/strict';
 import {
   statusOn, isActiveOn, pendingInactiveFrom, statusNote,
   inactiveFromProblem, dateInWords, dayBefore,
+  membersActiveOn, leftEarlierNote,
 } from './inactiveFrom';
 import { isEligible, isFollowable, flagged } from './followup';
 import { dayAttendance } from './dayAttendance';
-import { hasJoinedBy } from './joined';
+import { hasJoinedBy, membersOnDay } from './joined';
 import type { Member, FollowUpRule, AttendanceRow } from './mock';
 
 const RULE: FollowUpRule = {
@@ -249,4 +250,76 @@ test('being inactive never removes her from a day-scoped roster — she is off f
   // it at all, because her history stays readable and her card goes on
   // reporting the sessions she was marked at.
   assert.equal(hasJoinedBy(LEAVING, '2026-12-01'), true);
+});
+
+/* ----------------------------------- off the roster for a day she was off
+ *
+ * "when i set member as inactive from 1st oct then when i click on date card
+ * of 1st oct that member should not show up" -- the requester, 08-Sep-2026.
+ *
+ * The pill already read Inactive on that day, which was right and was not
+ * what was asked: the day's roster is who the academy HAD that day, so from
+ * the 1st she is not on it at all. This is the mirror image of `joined.ts` --
+ * the two ends of one membership window -- and these assert they compose. */
+
+test('she is on the day-scoped roster right up to the day before', () => {
+  assert.deepEqual(membersActiveOn([LEAVING], '2026-09-30').length, 1);
+});
+
+test('and off it ON the day, which is the whole of the request', () => {
+  assert.deepEqual(membersActiveOn([LEAVING], '2026-10-01'), []);
+  assert.deepEqual(membersActiveOn([LEAVING], '2026-12-25'), []);
+});
+
+test('an active member is never narrowed away', () => {
+  const set = [member({ id: 'a' }), LEAVING];
+  assert.deepEqual(membersActiveOn(set, '2026-10-01').map(m => m.id), ['a']);
+});
+
+test('a member off the register with NO date is off every day', () => {
+  // Every row written before 0045 carries no date, and this is what those
+  // rows mean: inactive, full stop.
+  assert.deepEqual(membersActiveOn([member({ status: 'inactive' })], '2020-01-01'), []);
+});
+
+test('no day selected narrows nothing — an unselected strip must not empty the roster', () => {
+  const set = [member({ id: 'a' }), LEAVING, member({ id: 'c', status: 'inactive' })];
+  assert.equal(membersActiveOn(set, null).length, 3);
+});
+
+test('the two ends compose: joined in March, gone from October', () => {
+  const day = (d: string) => membersActiveOn(membersOnDay([LEAVING], d), d).length;
+  assert.equal(day('2026-02-28'), 0, 'not a member yet');
+  assert.equal(day('2026-03-01'), 1, 'a member from the day she joined');
+  assert.equal(day('2026-09-30'), 1, 'still on the register the day before');
+  assert.equal(day('2026-10-01'), 0, 'off it from the date onward');
+});
+
+test('the omission is STATED, never a count that drops rows in silence', () => {
+  assert.equal(leftEarlierNote(1, 'Thu 1 Oct'),
+    '1 member was inactive on Thu 1 Oct and is not listed for it. She is still on the course.');
+  assert.equal(leftEarlierNote(3, 'Thu 1 Oct'),
+    '3 members were inactive on Thu 1 Oct and are not listed for it. They are still on the course.');
+  assert.equal(leftEarlierNote(0, 'Thu 1 Oct'), null, 'nothing hidden, nothing said');
+});
+
+test('a departure is pending only while the day on screen is BEFORE it', () => {
+  // Read against today it contradicted the pill beside it: on the 1 Oct card
+  // she drew an "Inactive" pill and, under it, "Inactive from 1 October" --
+  // a promise about a departure that had already happened on that day.
+  assert.equal(pendingInactiveFrom(LEAVING, '2026-09-30'), '2026-10-01');
+  assert.equal(pendingInactiveFrom(LEAVING, '2026-10-01'), null);
+  assert.equal(pendingInactiveFrom(LEAVING, '2026-10-02'), null);
+});
+
+test('being hidden from a day changes nothing about her attendance on it', () => {
+  // The roster stops listing her; the register is untouched. Her enrolment is
+  // open, so the session still expects her -- which is exactly why the screen
+  // states the omission instead of quietly shrinking.
+  const after = dayAttendance({
+    rows: [row()], member: LEAVING, dayIso: '2026-10-05',
+    weekdays: [1, 2, 3, 4, 5], todayIso: '2026-10-06',
+  });
+  assert.equal(after.expected, true);
+  assert.equal(after.state, 'present');
 });

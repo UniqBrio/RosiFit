@@ -16,6 +16,7 @@ import { useFollowUp, useFilterOptions } from '../../src/data/hooks';
 import { rosterScope } from '../../src/data/course';
 import { ConfirmDialog } from '../../src/components/Sheet';
 import { deleteMember, dataSource } from '../../src/data/repository';
+import { removalOutcome, removalFailure } from '../../src/data/memberRemoval';
 
 type Filter = 'all' | 'nomail' | 'follow' | 'coimbatore';
 
@@ -85,16 +86,15 @@ export default function Members() {
     setConfirmRemove(null);
     setRemoving(true);
     try {
-      const result = await deleteMember(member.id);
-      const first = member.name.split(' ')[0];
-      flash(result.alreadyDeleted
-        ? `${first} had already been removed`
-        : dataSource === 'live'
-        ? `${first} removed, ${result.attendanceKept} attendance ${result.attendanceKept === 1 ? 'record' : 'records'} kept`
-        : `${first} removed on this device only. The academy database is not configured.`,
-        result.alreadyDeleted || dataSource !== 'live' ? 'warn' : 'ok');
+      // The sentence and its tone are decided in src/data/memberRemoval.ts,
+      // where all four outcomes are asserted -- three of them are ones nobody
+      // meets by hand, and each reads like success if it is worded wrong.
+      const { message, tone } = removalOutcome(
+        member.name, await deleteMember(member.id), dataSource);
+      flash(message, tone);
     } catch (err) {
-      flash(err instanceof Error ? err.message : 'She could not be removed. Nothing has been changed.', 'warn');
+      const { message, tone } = removalFailure(err);
+      flash(message, tone);
     } finally {
       setRemoving(false);
     }

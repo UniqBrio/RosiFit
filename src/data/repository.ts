@@ -496,44 +496,102 @@ export type CourseDeletion = {
   name: string | null;
   offerings: number;
   sessionsRemoved: number;
-  sessionsKept: number;
-  enrolmentsEnded: number;
+  attendanceRemoved: number;
+  importsRemoved: number;
+  enrolmentsRemoved: number;
+  membersRecomputed: number;
   alreadyDeleted: boolean;
 };
 
 /**
+ * What a deletion WOULD destroy, before anybody confirms it.
+ *
+ * The confirmation used to state a promise it could keep without asking
+ * anything -- "attendance history stays". Since 0047 it can promise nothing,
+ * so it states a quantity instead, and the courses read holds none of these
+ * numbers: it carries offerings and a roster, never sessions or attendance.
+ * Read-only, and gated exactly as the deletion is.
+ */
+export type CourseDeletionPreview = {
+  name: string | null;
+  offerings: number;
+  /** distinct PEOPLE, not enrolment rows -- one member at two branches is one member */
+  membersEnrolled: number;
+  sessions: number;
+  sessionsCompleted: number;
+  attendanceRecords: number;
+  imports: number;
+  alreadyDeleted: boolean;
+};
+
+export async function courseDeletionPreview(id: string): Promise<CourseDeletionPreview> {
+  if (!isConfigured) {
+    // The fixture store holds courses and a roster and nothing that happened
+    // on a day, so the honest offline count of sessions and attendance is
+    // zero -- that IS what deleting from this device destroys.
+    const course = COURSE_LIST.find(c => c.id === id);
+    if (!course) {
+      return { name: null, offerings: 0, membersEnrolled: 0, sessions: 0,
+               sessionsCompleted: 0, attendanceRecords: 0, imports: 0, alreadyDeleted: true };
+    }
+    return {
+      name: course.name, offerings: course.offerings.length,
+      membersEnrolled: enrolledIn(MEMBERS, course).length,
+      sessions: 0, sessionsCompleted: 0, attendanceRecords: 0, imports: 0,
+      alreadyDeleted: false,
+    };
+  }
+  const { data, error } = await supabase.rpc('course_deletion_preview', { p_course_id: id });
+  if (error) {
+    console.error('courseDeletionPreview:', error.message);
+    throw new Error(`${personReadable(error.message, 'What this deletion would remove could not be counted')}. Nothing has been changed.`);
+  }
+  const r = (data ?? {}) as Record<string, unknown>;
+  return {
+    name: (r.name as string | null) ?? null,
+    offerings: Number(r.offerings ?? 0),
+    membersEnrolled: Number(r.members_enrolled ?? 0),
+    sessions: Number(r.sessions ?? 0),
+    sessionsCompleted: Number(r.sessions_completed ?? 0),
+    attendanceRecords: Number(r.attendance_records ?? 0),
+    imports: Number(r.imports ?? 0),
+    alreadyDeleted: Boolean(r.already_deleted),
+  };
+}
+
+/**
  * Deleting a course, as ONE call.
  *
- * An RPC and not a direct write, and not by preference. The confirmation
- * promises that attendance history STAYS while the course and its sessions
- * go, and a client cannot keep that promise:
+ * An RPC and not a direct write, and not by preference: a client cannot reach
+ * sessions or attendance at all (0007 grants authenticated `update (status,
+ * cancellation_reason)` on sessions and nothing else), and most of the
+ * foreign keys between these tables are NO ACTION, so the deletion has to run
+ * children-first in one transaction at a level that can reach all of them.
  *
- *   * hiding the courses row leaves its offerings live, and every read of
- *     expected attendance goes through course_offerings ->
- *     offering_schedules -> sessions, never through courses. The course would
- *     leave the list and go on expecting attendance and emailing members.
- *   * sessions cannot be hidden from a client at all: 0007 grants
- *     authenticated `update (status, cancellation_reason)` and nothing else,
- *     deliberately.
- *
- * public.delete_course (0020) does the whole thing in one transaction, and
- * draws the line where the promise draws it: COMPLETED sessions, their frozen
- * expectations and every attendance record are untouched.
+ * public.delete_course is a HARD delete since 0047, by the repo owner's
+ * decision (requests/2026-09-08-hard-delete-course.md): the course, its
+ * offerings, every session including completed ones, their expectations and
+ * attendance records, the enrolments and the import records all leave the
+ * database. Members survive; only their enrolment in THIS course goes. 0020's
+ * promise that history stayed is withdrawn, and the confirmation says so.
  */
 export async function deleteCourse(id: string): Promise<CourseDeletion> {
   if (!isConfigured) {
     const at = COURSE_LIST.findIndex(c => c.id === id);
     if (at < 0) {
-      return { name: null, offerings: 0, sessionsRemoved: 0, sessionsKept: 0,
-               enrolmentsEnded: 0, alreadyDeleted: true };
+      return { name: null, offerings: 0, sessionsRemoved: 0, attendanceRemoved: 0,
+               importsRemoved: 0, enrolmentsRemoved: 0, membersRecomputed: 0,
+               alreadyDeleted: true };
     }
     const [course] = COURSE_LIST.splice(at, 1);
     // Offline the arrays ARE the store, so the deletion has to do to them
-    // what delete_course does to the tables: END the enrolments. Leaving the
-    // members pointing at the course that has just gone is how the next
+    // what delete_course does to the tables: take the enrolment away. Leaving
+    // the members pointing at the course that has just gone is how the next
     // course created with this name inherited them -- the defect this whole
     // path exists to close. Matched on the course's id, so a course that
-    // merely SHARES the name keeps its own roster.
+    // merely SHARES the name keeps its own roster. The fixture store has no
+    // enrolment ROW to delete -- a member carries her course as a field --
+    // so clearing that field is the whole of the deletion here.
     const ended = enrolledIn(MEMBERS, course);
     // In place: the exported array IS the store, and every screen already
     // holds a reference to it. The RULE for what ending an enrolment leaves
@@ -549,8 +607,8 @@ export async function deleteCourse(id: string): Promise<CourseDeletion> {
     membersChanged();
     return {
       name: course.name, offerings: course.offerings.length,
-      sessionsRemoved: 0, sessionsKept: 0,
-      enrolmentsEnded: ended.length,
+      sessionsRemoved: 0, attendanceRemoved: 0, importsRemoved: 0,
+      enrolmentsRemoved: ended.length, membersRecomputed: ended.length,
       alreadyDeleted: false,
     };
   }
@@ -568,11 +626,12 @@ export async function deleteCourse(id: string): Promise<CourseDeletion> {
     throw new Error(`${personReadable(error.message, 'The course could not be deleted')}. Nothing has been changed.`);
   }
   coursesChanged();
-  // delete_course ENDS every active enrolment on the course's offerings, so
-  // this is a member write as much as a course write and both lists have to
-  // be re-read. Announcing only the course list left the members cached as
-  // they were a moment ago -- still naming the deleted course -- which is
-  // what put its counts on the next course created with the same name.
+  // delete_course removes every enrolment on the course's offerings and
+  // rebuilds member_stats for the people it touched, so this is a member
+  // write as much as a course write and both lists have to be re-read.
+  // Announcing only the course list left the members cached as they were a
+  // moment ago -- still naming the deleted course -- which is what put its
+  // counts on the next course created with the same name.
   membersChanged();
 
   const r = (data ?? {}) as Record<string, unknown>;
@@ -580,8 +639,10 @@ export async function deleteCourse(id: string): Promise<CourseDeletion> {
     name: (r.name as string | null) ?? null,
     offerings: Number(r.offerings ?? 0),
     sessionsRemoved: Number(r.sessions_removed ?? 0),
-    sessionsKept: Number(r.sessions_kept ?? 0),
-    enrolmentsEnded: Number(r.enrolments_ended ?? 0),
+    attendanceRemoved: Number(r.attendance_removed ?? 0),
+    importsRemoved: Number(r.imports_removed ?? 0),
+    enrolmentsRemoved: Number(r.enrolments_removed ?? 0),
+    membersRecomputed: Number(r.members_recomputed ?? 0),
     alreadyDeleted: Boolean(r.already_deleted),
   };
 }

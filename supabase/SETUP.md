@@ -1,5 +1,55 @@
 # Connecting RosiFit to Supabase
 
+> ## 08-Sep-2026 — `0045_member_inactive_from` applied, and what querying the project revealed
+>
+> **Verified by querying the live project, before and after.** Read this before
+> the 04-Sep block below, which it corrects on one important point.
+>
+> - **`set_member_status` DID NOT EXIST at any arity.** `0031` was never applied
+>   — the 04-Sep block does not mention it because it predates it, and
+>   `FEATURE_TRUTH.md` had it right. The consequence nobody had stated: **every
+>   status write this app has ever attempted against production has failed**
+>   with the function-not-found message, on both the roster pill and the Edit
+>   form, for as long as they have shipped. `0045` creates the function whole
+>   (3 arguments, the date optional), so it supersedes `0031` rather than
+>   needing it first — and applying it is what gave `members.status` a working
+>   write path for the first time.
+> - **Applied WITHOUT the harness rehearsal**, on the owner's explicit
+>   instruction. This is a departure from the CLAUDE.md pre-flight — this
+>   machine has no PostgreSQL 16, so `npm run test:db` has never run and
+>   `supabase/tests/34_member_inactive_from.sql` has never executed. What stood
+>   in for it: the entire migration was run against the live database inside a
+>   transaction that was then **rolled back**, proving it applies over the real
+>   23 member rows, that both new CHECK constraints validate, and that
+>   `create or replace follow_up_candidates` matches the deployed return type.
+>   A survey immediately afterwards confirmed the rollback left nothing behind.
+>   It was then applied for real in one transaction.
+> - **Verified after applying:** `members.inactive_from` exists and is nullable;
+>   **0 of 23 rows carry a date**, so no existing record changed meaning;
+>   `members_inactive_from_after_joined` and `members_inactive_from_needs_status`
+>   are both present; `member_status_on` evaluates the boundary in the database
+>   itself (today → active, the day before → active, on the day → inactive, a
+>   null date → inactive); `follow_up_candidates` still returns its 3
+>   candidates; EXECUTE on `set_member_status` is granted to `authenticated`
+>   and refused to `anon`.
+> - **Ledger row `20260908000000` (`member_inactive_from`)**, 36 rows → 37. A
+>   timestamp version, deliberately **not** the literal `0045`: two local files
+>   carry that number while several sessions are running, and claiming it would
+>   mark the other one applied too.
+> - **The local ledger mapping is broken and `supabase db push` is DANGEROUS
+>   here.** `supabase migration list --linked` shows 46 local files and 37
+>   remote timestamp versions with **no overlap at all** — every local reads as
+>   unapplied. A `db push` would try to replay the schema from `0001`. Apply
+>   through `supabase db query --linked -f <file>` (what was used here) or the
+>   dashboard SQL editor, and add the ledger row by hand.
+> - **Not touched by this run:** every other migration in the tree, including
+>   the ones other sessions left there on 07/08-Sep — `0044_delete_member`,
+>   `0044_override_scoped_by_meeting_instance` and `0045_import_change_counts`.
+>   **Whether those are applied is UNKNOWN and was not determined here**: with
+>   the ledger mapping broken (above), the only way to know is to query for the
+>   objects each one creates, and this run only did that for the objects `0045`
+>   touches. Do not read this block as a claim about any of them.
+>
 > ## Current state — project `lhpzhkzbnquwjljmbylo` ("Rosifit")
 >
 > **Verified against the live project on 04-Sep-2026** by querying it, not by

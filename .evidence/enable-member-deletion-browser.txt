@@ -1,0 +1,81 @@
+requests/2026-09-07-enable-member-deletion.md — browser evidence, 08-Sep-2026
+
+Fixtures build (EXPO_NO_DOTENV=1 CI=1 npx expo export --platform web), served from dist
+on :8137 by a static server that maps /member/<id> onto member/[id].html the way a real
+host does, driven by Playwright 1.63 / Chromium at 1440x900, dark and light, on
+/members. Divya Ramesh (fixture id 1, Prenatal Flow) is the member removed.
+
+What PASS means here: the bin is on her card and names her in its accessible label; it
+opens a confirmation that asks by name and states what SURVIVES as well as what goes;
+Cancel leaves the register exactly as it was; Remove takes her off it and nobody else;
+the toast names her by first name and says plainly that only this device was written;
+and a link to a member who is not on the register is answered in words rather than an
+empty card.
+
+THE THEME TRAP, and why there is a check for it. ThemeProvider defaults to dark
+OUTRIGHT — `useState<ThemeMode>('dark')`, not 'system' — so Playwright's colorScheme
+option changes nothing on its own. The first run of this script reported a clean sweep
+across "both themes" while rendering dark twice (identical rgb(8,4,10) background and
+rgb(23,10,20) dialog card in both). The stored preference is what the app actually
+reads, so that is what is set now, and the last check FAILS the run if the two passes
+paint the same background. Both figures are printed so the difference is checkable
+rather than asserted.
+
+WHAT THIS DOES NOT PROVE. This is the fixtures build, so the write went to the offline
+member list and the toast says so — that is the branch being exercised, deliberately,
+and it is why the sentence reads "on this device only". The live branch is proven
+elsewhere and separately: delete_member exists in production with the right posture
+(0044, applied 07-Sep-2026), and the four outcome sentences including the live one are
+asserted in src/data/memberRemoval.test.ts. A removal against the live academy database
+has still not been done by anyone.
+
+Page errors: none on any route in either theme.
+
+ALL 29 CHECKS PASSED.
+
+
+== dark  url=http://127.0.0.1:8137/members
+   painted background rgb(8, 4, 10)
+   roster before: 8 members
+PASS  dark: the bin is on her card and names her  aria="Remove Divya Ramesh"
+   dialog card background rgb(23, 10, 20)
+   dialog: Remove Divya Ramesh? She comes off the register and off every follow-up list, and her enrolment in Prenatal Flow ends today. Her attendance history stays: every session she was marked at is untouched. Her email address is freed for whoever holds it next. Recorded in the audit log. Cancel Remove
+PASS  dark: the confirmation asks by name
+PASS  dark: it states what SURVIVES, not only what goes
+PASS  dark: it names the enrolment that ends
+PASS  dark: it says the email address is freed
+PASS  dark: it says the removal is recorded
+PASS  dark: both answers are offered
+PASS  dark: Cancel leaves her on the register  8 members, still listed
+PASS  dark: she is off the roster
+PASS  dark: the roster is exactly one shorter  8 -> 7
+   toast: Divya removed on this device only. The academy database is not configured.
+PASS  dark: the toast says the academy database was NOT written  fixtures build — this is the offline branch
+PASS  dark: it addresses her by first name, not her full record
+PASS  dark: nobody else was removed  Shazia Begum, Aarthi Venkat, Lakshmi Priya
+PASS  dark: an id that is not on the register is told plainly  That member is not on the register. She may have been removed since this link was opened.
+
+== light  url=http://127.0.0.1:8137/members
+   painted background rgb(244, 238, 242)
+   roster before: 8 members
+PASS  light: the bin is on her card and names her  aria="Remove Divya Ramesh"
+   dialog card background rgb(255, 255, 255)
+   dialog: Remove Divya Ramesh? She comes off the register and off every follow-up list, and her enrolment in Prenatal Flow ends today. Her attendance history stays: every session she was marked at is untouched. Her email address is freed for whoever holds it next. Recorded in the audit log. Cancel Remove
+PASS  light: the confirmation asks by name
+PASS  light: it states what SURVIVES, not only what goes
+PASS  light: it names the enrolment that ends
+PASS  light: it says the email address is freed
+PASS  light: it says the removal is recorded
+PASS  light: both answers are offered
+PASS  light: Cancel leaves her on the register  8 members, still listed
+PASS  light: she is off the roster
+PASS  light: the roster is exactly one shorter  8 -> 7
+   toast: Divya removed on this device only. The academy database is not configured.
+PASS  light: the toast says the academy database was NOT written  fixtures build — this is the offline branch
+PASS  light: it addresses her by first name, not her full record
+PASS  light: nobody else was removed  Shazia Begum, Aarthi Venkat, Lakshmi Priya
+PASS  light: an id that is not on the register is told plainly  That member is not on the register. She may have been removed since this link was opened.
+
+PASS  the two runs actually rendered DIFFERENT themes  dark rgb(8, 4, 10) vs light rgb(244, 238, 242)
+
+ALL CHECKS PASSED

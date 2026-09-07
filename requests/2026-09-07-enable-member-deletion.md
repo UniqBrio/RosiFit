@@ -100,6 +100,38 @@ anywhere. The apply went ahead without that rehearsal, on instruction. **The fir
 removal through the live app is still the real proof**, and `docs/registers/FEATURE_TRUTH.md`
 holds the row at ◻ until someone does one.
 
+## FRONTEND — completed and proven 08-Sep-2026
+The screen already carried the whole flow, so the work here was proving it and removing
+the one part nobody could test.
+
+**Checked, not changed.** Every member-derived surface — the dashboard, the members list,
+the course roster, the member record, the send draft and reports — reads through
+`useMembers` or `useFollowUp`, and both revalidate on `onMembersChanged`, which
+`deleteMember` fires. So the roster, the follow-up list and every count refresh off the
+one write, by construction. Guardrail 1 holds: nothing keeps a second list. A link to a
+member who is no longer on the register already answered *"That member is not on the
+register. She may have been removed since this link was opened."* The bin stays on the
+roster card only; the member dialog's footer is Edit and Reach out, and a destructive
+third button there was not asked for and is not added.
+
+**Changed.** The four outcome sentences were four nested ternaries inside `remove()` in
+`app/(tabs)/members.tsx` — untestable by construction, and three of the four are outcomes
+nobody meets by hand (already gone, fixtures-only, refused), each of which reads like
+success if worded wrong. They moved to `src/data/memberRemoval.ts` with 14 specs in
+`memberRemoval.test.ts`. The wording is character-for-character what shipped, with one
+deliberate fix: the screen read `name.split(' ')[0]`, so a name arriving off an imported
+file with a leading space produced the empty string and a toast reading *" removed, 3
+attendance records kept"*, addressed to nobody. `firstName` trims first.
+
+**Proven.** `.evidence/enable-member-deletion-browser.txt` — 29 DOM checks, Chromium,
+both themes, fixtures build. That run also caught a trap: `ThemeProvider` defaults to
+dark outright rather than to `system`, so `prefers-color-scheme` alone silently re-tests
+dark twice, which is what the first pass of the script did while reporting a clean sweep
+of "both themes". It now sets the stored preference and fails itself if the two passes
+paint the same background.
+
+`npm run check` green: typecheck, **951** unit tests, 2840 contrast pairs, 75 icons.
+
 ## SIBLING FINDING — not fixed here
 Sweeping all 47 functions the migrations define against production turned up six absent. Four
 are harmless (no caller, or a caller withdrawn under TD-040). One is not: **`set_member_status`
@@ -108,6 +140,24 @@ is missing from production and has a live caller** in `src/data/repository.ts`, 
 member active or inactive"* is therefore dead on the live project in exactly the way member
 deletion was. It is deliberately untouched: outside this request, and another session was
 editing that surface (`0045_member_inactive_from.sql`) while this ran. It needs its own request.
+
+**RESOLVED WITHOUT THIS FILE — 08-Sep-2026, and not by this session.** The other session
+finished that strand and applied `0045` to production. Re-checked directly:
+`members.inactive_from` exists, and so do `set_member_status(uuid, text, date)` and
+`member_status_on(text, date, date)`, both with the right posture — `anon` no EXECUTE,
+`authenticated` yes. **`0031` was never the answer and must not be applied now:** it
+creates the two-argument `set_member_status(uuid, text)`, which `0045` drops, and which
+does not match the three-argument call in `src/data/repository.ts`. Applying it would
+add a dead overload, not a capability.
+
+**The sweep, re-run 08-Sep-2026.** Four of the 48 functions the migrations define are
+still absent from production, and none of them is a live fault:
+
+| absent | why it is not a fault |
+|---|---|
+| `set_attendance` (0035) | zero UI callers — the control was withdrawn a day after it shipped (TD-040), exactly as FEATURE_TRUTH records |
+| `offering_for_meeting`, `place_member_in_group` (0039) | zero app callers. `0042` calls them, but the `commit_csv_import` actually running in production does not reference either — verified against `pg_get_functiondef`. Repo-to-production drift in the meeting-code strand, owned by another session, not a live break |
+| `attendance_backdates_membership` (0046) | another session's migration, written today and not yet applied. Theirs to apply |
 
 ## STANDING INSTRUCTIONS (do not edit)
 - Track C order is binding: search `docs/registers/ROOT_CAUSE_REGISTER.md` for the same class;

@@ -17,7 +17,9 @@ import { dayAttendance, dayInWords, type DayState } from '../../src/data/dayAtte
 import { enrolledIn } from '../../src/data/course';
 import { offersUpload } from '../../src/data/uploadWindow';
 import { membersOnDay, joinedLaterNote } from '../../src/data/joined';
-import { isActiveOn, pendingInactiveFrom, dateInWords } from '../../src/data/inactiveFrom';
+import {
+  isActiveOn, pendingInactiveFrom, dateInWords, membersActiveOn, leftEarlierNote,
+} from '../../src/data/inactiveFrom';
 import type { AttendanceRow } from '../../src/data/mock';
 import type { ScreenState } from '../../src/data/useScreenState';
 import { MERGE_FAILED } from '../../src/data/alias';
@@ -292,9 +294,27 @@ function CourseDetailBody() {
    * about a date. Only this list, and only while a day is selected, and the
    * note below says so in words rather than letting a count change silently.
    */
-  const onDay = useMemo(
+  const joinedByDay = useMemo(
     () => membersOnDay(scoped, chosen?.iso ?? null), [scoped, chosen?.iso]);
-  const joinedLater = chosen ? joinedLaterNote(scoped.length - onDay.length,
+  /**
+   * ...and the OTHER end of the same window: she is off the roster for a day
+   * she was off the register (0045).
+   *
+   * "when i set member as inactive from 1st oct then when i click on date
+   * card of 1st oct that member should not show up" — the requester, with a
+   * screenshot of exactly that. Her pill already read Inactive on the day,
+   * which was right and was not what was asked for: the day's roster is who
+   * the academy HAD that day, so on the 1st she is not on it at all.
+   *
+   * Narrowed in two steps rather than one predicate so each omission can be
+   * counted and named separately — "joined later" and "was inactive" are
+   * different facts and a reader deserves to be told which one applies.
+   */
+  const onDay = useMemo(
+    () => membersActiveOn(joinedByDay, chosen?.iso ?? null), [joinedByDay, chosen?.iso]);
+  const joinedLater = chosen ? joinedLaterNote(scoped.length - joinedByDay.length,
+    dayLabel(chosen.iso)) : null;
+  const leftEarlier = chosen ? leftEarlierNote(joinedByDay.length - onDay.length,
     dayLabel(chosen.iso)) : null;
 
   // What the roster shows: the members of that day, less anything the search
@@ -784,6 +804,16 @@ function CourseDetailBody() {
                 fontSize: 11.5, color: theme.muted,
               }}>{joinedLater}</Text>
             ) : null}
+
+            {/* The same sentence for the other end of the window. Its own
+                line, not folded into the one above: a reader who sees a
+                count drop needs to know WHICH fact took the row out, and
+                "joined later" and "was inactive" are opposite answers. */}
+            {leftEarlier ? (
+              <Text testID="course-left-earlier" style={{
+                fontSize: 11.5, color: theme.muted,
+              }}>{leftEarlier}</Text>
+            ) : null}
           </View>
         </View>
 
@@ -1029,8 +1059,17 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
   const statusDay = dayIso ?? todayIso;
   const inactive = !isActiveOn(member, statusDay);
   const inactiveToday = !isActiveOn(member, todayIso);
-  /** The day she is DUE off, when it has not arrived: what "Active" leaves out. */
-  const pending = pendingInactiveFrom(member, todayIso);
+  /**
+   * The day she is DUE off, when it has not arrived: what "Active" leaves out.
+   *
+   * Read against the day the CARD is about, not against today. Read against
+   * today it contradicted the pill beside it: on the 1 Oct date card a member
+   * inactive from 1 Oct drew an "Inactive" pill and, underneath,
+   * "Inactive from 1 October 2026" -- a line promising a departure that,
+   * on the day being shown, had already happened. A departure is only
+   * pending while the day on screen is before it.
+   */
+  const pending = pendingInactiveFrom(member, statusDay);
   /** The pill is about another day than the tap is. Said, never assumed. */
   const readingIsHistoric = inactive !== inactiveToday;
   /**

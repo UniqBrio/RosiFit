@@ -1,12 +1,15 @@
-\echo 'delete_course: the schedule goes, the history stays'
+\echo 'delete_course: the schedule goes, and since 0047 the history goes with it'
 --
--- The confirmation the canvas draws makes a promise -- "their attendance
--- history stays, but the course and its sessions are removed" -- and the
--- canvas itself flashes "<name> deleted" without touching anything. These
--- assertions are that promise, both halves, because the two halves fail in
--- opposite directions: too little and a deleted course goes on expecting
--- attendance and emailing members; too much and a completed session's
--- attendance is rewritten.
+-- AMENDED 08-Sep-2026 (0047). This file was written for 0020's promise --
+-- "their attendance history stays, but the course and its sessions are
+-- removed" -- and pinned both halves of it. The repo owner withdrew that
+-- promise (requests/2026-09-08-hard-delete-course.md): a deleted course now
+-- takes every session, completed included, and every attendance record with
+-- it. The four assertions under "the history" asserted the opposite and are
+-- amended to the new contract rather than deleted, so the file still reads as
+-- the story of what this function guarantees; the new contract in full is
+-- 36_hard_delete_course.sql. The first half -- a deleted course must stop
+-- expecting attendance -- is unchanged and still asserted below.
 
 begin;
   insert into auth.users (id) values
@@ -88,9 +91,11 @@ begin;
   set local role authenticated;
   set local request.jwt.claim.sub = 'cccccccc-0000-0000-0000-000000000001';
 
+  -- AMENDED 08-Sep-2026 (0047): was 2, "both not-yet-completed sessions are
+  -- removed -- scheduled AND cancelled". The completed one goes too now.
   select t.eq(
     (public.delete_course((select id from public.courses where name='Doomed Course'))->>'sessions_removed')::int,
-    2, 'both not-yet-completed sessions are removed -- scheduled AND cancelled');
+    3, 'every session is removed -- scheduled, cancelled AND completed');
 commit;
 
 select t.eq((select count(*)::int from public.courses where name='Doomed Course' and deleted_at is null), 0,
@@ -110,22 +115,26 @@ select t.eq((select count(*)::int from public.sessions s
   'no future session survives');
 
 -- ----------------------------------------------------------- the history
+-- AMENDED 08-Sep-2026 (0047). These four asserted, in order: the completed
+-- session survives (1), every attendance record survives (1), her enrolment
+-- is 'ended', and it is dated closed. Each now asserts the withdrawn promise's
+-- opposite. 36_hard_delete_course.sql carries the full new contract.
 select t.eq((select count(*)::int from public.sessions s
               join public.course_offerings o on o.id = s.offering_id
               join public.courses c on c.id = o.course_id
-             where c.name='Doomed Course' and s.deleted_at is null and s.status = 'completed'), 1,
-  'the COMPLETED session is untouched -- deleting a course does not rewrite what happened');
+             where c.name='Doomed Course'), 0,
+  'the COMPLETED session goes too -- since 0047, deleting a course deletes what happened in it');
 
-select t.eq((select count(*)::int from public.attendance_records), 1,
-  'and so is every attendance record');
+select t.eq((select count(*)::int from public.attendance_records), 0,
+  'and every attendance record on it');
 
-select t.eq((select status from public.member_enrollments
-              where member_id = (select id from public.members where member_code='RF-000900')), 'ended',
-  'her enrolment is ENDED rather than deleted, so she still has a history of this course');
+select t.eq((select count(*)::int from public.member_enrollments
+              where member_id = (select id from public.members where member_code='RF-000900')), 0,
+  'her enrolment is DELETED rather than ended -- there is no history left for it to protect');
 
-select t.ok((select effective_to from public.member_enrollments
-              where member_id = (select id from public.members where member_code='RF-000900')) is not null,
-  'and the enrolment is dated closed');
+select t.eq((select sessions_attended from public.member_stats
+              where member_id = (select id from public.members where member_code='RF-000900')), 0,
+  'and her stats are recomputed, so the follow-up list does not count sessions that no longer exist');
 
 select t.ok((select deleted_at from public.members where member_code='RF-000900') is null,
   'the MEMBER is not deleted -- she was enrolled, not owned');

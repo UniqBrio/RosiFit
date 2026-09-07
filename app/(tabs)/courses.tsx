@@ -13,7 +13,8 @@ import { useCourses, useFollowUp } from '../../src/data/hooks';
 import { courseSummary, coursesHeadline, enrolledIn } from '../../src/data/course';
 import { ALL_BRANCHES } from '../../src/state/academy';
 import { ConfirmDialog } from '../../src/components/Sheet';
-import { deleteCourse, dataSource } from '../../src/data/repository';
+import { deleteCourse, courseDeletionPreview, dataSource } from '../../src/data/repository';
+import { deletionWarning, deletionOutcome, type PreviewState } from '../../src/data/courseDeletion';
 import type { Course } from '../../src/data/mock';
 
 /** '06:00' -> '6:00 AM', for reading out a course's default time */
@@ -32,6 +33,8 @@ export default function Courses() {
   const followUp = useFollowUp(forced);
   const [query, setQuery] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<Course | null>(null);
+  /** what the deletion would destroy, counted by the database for the dialog */
+  const [previewState, setPreviewState] = useState<PreviewState>({ kind: 'counting' });
   const [branch, setBranch] = useState<string>(ALL_BRANCHES);
   const [branchOpen, setBranchOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -48,11 +51,29 @@ export default function Courses() {
   useEffect(() => { setMeasured(true); }, []);
   const compact = (measured ? width : 0) < 768;
 
-  /** How many members the deletion will actually un-enrol. By the course's
-   *  id, so the confirmation counts THIS course's roster and not that of a
-   *  course which happened to carry the same name before it. */
-  const enrolmentCount = (course: Course) =>
-    enrolledIn(followUp.data?.members ?? [], course).length;
+  /**
+   * WHAT THE CONFIRMATION IS ABOUT TO DESTROY, counted when it opens.
+   *
+   * Since 0047 the deletion is permanent and takes every session and
+   * attendance record with it, and the app holds none of those numbers: the
+   * courses read carries offerings and a roster, never what happened on a
+   * day. So the dialog asks the database, and says "counting" until it has
+   * an answer. A count that fails does not cancel the deletion -- the
+   * sentence falls back to one with no numbers in it, and is no gentler.
+   *
+   * `cancelled` guards the answer, not the request: closing the dialog and
+   * opening it on another course before the first count lands must not paint
+   * the first course's numbers under the second course's name.
+   */
+  useEffect(() => {
+    if (!confirmDelete) return;
+    let cancelled = false;
+    setPreviewState({ kind: 'counting' });
+    courseDeletionPreview(confirmDelete.id)
+      .then(p => { if (!cancelled) setPreviewState({ kind: 'counted', preview: p }); })
+      .catch(() => { if (!cancelled) setPreviewState({ kind: 'uncounted' }); });
+    return () => { cancelled = true; };
+  }, [confirmDelete]);
 
   /**
    * The canvas' DELETE COURSE CONFIRM, behind a real deletion. The row's
@@ -64,12 +85,8 @@ export default function Courses() {
     setDeleting(true);
     try {
       const result = await deleteCourse(course.id);
-      flash(result.alreadyDeleted
-        ? `${course.name} was already deleted`
-        : dataSource === 'live'
-        ? `${course.name} deleted, ${result.sessionsKept} completed ${result.sessionsKept === 1 ? 'session' : 'sessions'} kept`
-        : `${course.name} deleted on this device only. The academy database is not configured.`,
-        result.alreadyDeleted || dataSource !== 'live' ? 'warn' : 'ok');
+      const out = deletionOutcome(course.name, result, dataSource === 'live' ? 'live' : 'fixture');
+      flash(out.message, out.tone);
     } catch (err) {
       flash(err instanceof Error ? err.message : 'The course could not be deleted. Nothing has been changed.', 'warn');
     } finally {
@@ -288,7 +305,7 @@ export default function Courses() {
                     The words move to the accessibility label rather than
                     disappearing — the pair is tinted apart AND shaped apart
                     (a pencil, a bin), and delete stops at a confirmation that
-                    names the course and states what survives, so nothing
+                    names the course and counts what it destroys, so nothing
                     irreversible turns on recognising a glyph. */}
                 <CardAction icon="edit" tint={theme.accentInk}
                   testID={`courses-edit-${c.id}`}
@@ -344,21 +361,19 @@ export default function Courses() {
         })}
       </View>
 
-      {/* The confirmation states what SURVIVES as well as what goes, because
-          the promise the deletion keeps is that attendance history is not
-          rewritten -- delete_course (0020) leaves every completed session,
-          its frozen expectations and every attendance record alone. */}
+      {/* The confirmation COUNTS what goes, because since 0047 nothing
+          survives to promise: delete_course removes every session and every
+          attendance record on it, for good. The numbers come from
+          course_deletion_preview and the sentence from
+          src/data/courseDeletion.ts, where a spec can read it -- this is the
+          last thing anybody reads before the one write that cannot be undone.
+          Confirm stays enabled while the count runs: the count is information
+          for the person, not a lock on the action. */}
       <ConfirmDialog
         open={confirmDelete !== null}
         onClose={() => setConfirmDelete(null)}
         title={confirmDelete ? `Delete ${confirmDelete.name}?` : ''}
-        body={confirmDelete
-          ? `${(() => { const n = enrolmentCount(confirmDelete);
-              return n === 0 ? 'Nobody is enrolled.'
-                : `${n} ${n === 1 ? 'member is' : 'members are'} enrolled, and their enrolment ends today.`; })()} `
-            + 'Their attendance history stays: every completed session and every record of who was there is untouched. '
-            + `The course, its ${confirmDelete.offerings.length} ${confirmDelete.offerings.length === 1 ? 'offering' : 'offerings'} and every session still to come are removed. Recorded in the audit log.`
-          : ''}
+        body={confirmDelete ? deletionWarning(previewState) : ''}
         cancelLabel="Cancel"
         confirmLabel={deleting ? 'Deleting…' : 'Delete'}
         onConfirm={() => { if (confirmDelete) void remove(confirmDelete); }} />

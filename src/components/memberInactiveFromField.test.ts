@@ -140,7 +140,9 @@ test('the pill writes a date, so the two surfaces record the same kind of fact',
 
 test('a departure still to come is stated on the card, not left to the day it happens', () => {
   const src = read(ROSTER);
-  assert.match(src, /const pending = pendingInactiveFrom\(member, todayIso\)/);
+  // Against `statusDay`, not `todayIso` -- see the pending-tense test below,
+  // which is why that argument changed.
+  assert.match(src, /const pending = pendingInactiveFrom\(member, statusDay\)/);
   assert.match(src, /course-member-pending-\$\{member\.id\}/,
     'the scheduled date needs its own testID or nothing can assert it is drawn');
   assert.match(src, /\{`Inactive from \$\{dateInWords\(pending\)\}`\}/,
@@ -155,4 +157,25 @@ test('a day in the future is spoken about in the future tense', () => {
   assert.match(read(ROSTER),
     /const wasOrWillBe = dayIso && dayIso > todayIso \? 'will be' : 'was'/,
     'the historic reading must pick its tense from the day, not assume the past');
+});
+
+test('the day-scoped roster drops a member who was off the register that day', () => {
+  const src = read(ROSTER);
+  // "when i set member as inactive from 1st oct then when i click on date
+  // card of 1st oct that member should not show up" (08-Sep-2026).
+  assert.match(src, /membersActiveOn\(joinedByDay, chosen\?\.iso \?\? null\)/,
+    'the roster must narrow by the STATUS on the selected day as well as by the joining date');
+  // Two steps, so each omission can be counted and named separately.
+  assert.match(src, /const joinedLater = chosen \? joinedLaterNote\(scoped\.length - joinedByDay\.length/,
+    'the joined-later count must be measured against the un-narrowed list');
+  assert.match(src, /const leftEarlier = chosen \? leftEarlierNote\(joinedByDay\.length - onDay\.length/,
+    'and the inactive count against the list the joining filter already produced');
+  assert.match(src, /testID="course-left-earlier"/,
+    'a count that drops rows in silence is the defect this screen already fixed once');
+});
+
+test('a departure is pending against the day on screen, not against today', () => {
+  assert.match(read(ROSTER), /const pending = pendingInactiveFrom\(member, statusDay\)/,
+    'read against today it contradicted the pill beside it: on the 1 Oct card an '
+    + 'Inactive member also drew "Inactive from 1 October 2026"');
 });

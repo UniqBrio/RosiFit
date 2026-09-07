@@ -1,3 +1,8 @@
+## Fail-first evidence, 08-Sep-2026 (defect injected into the source, spec run, source restored, spec re-run green)
+
+FAIL-FIRST: src/data/courseDeletion.test.ts - with "attendance record" misspelt in courseDeletion.ts, 5 of 10 fail (the numbered warning, the singulars, the no-records clause, the uncounted fallback, the toast); restored -> 10 pass 0 fail
+FAIL-FIRST: src/data/memberRemoval.test.ts - with "removed" and "attendance record" misspelt in memberRemoval.ts, 8 of 14 fail (the named toast, singular/zero kept, already-gone, offline, the non-Error throw, the single-word first name); restored -> 14 pass 0 fail
+
 FAIL-FIRST: src/components/auditRemarksColumn.test.ts - 7 of 7 failed against a tree
   rebuilt from HEAD (git show HEAD:app/audit.tsx, HEAD:src/data/repository.ts, and 0044
   deliberately absent), driven through the spec’s own REMARKS_COLUMN_SPEC_ROOT. Remarks
@@ -258,6 +263,46 @@ NOT OBSERVED FAILING: src/components/reportsPeriodFilter.test.ts,
      spec passes and that each file maps to a request file in requests/. It
      did NOT design, review or hand-test the six features it did not build.
      The commit messages say which session's work each one is. -->
+
+## Gate run - 2026-09-07 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
 
 ## Gate run - 2026-09-07 - VERDICT: FAIL
 

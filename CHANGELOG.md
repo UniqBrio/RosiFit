@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased — Deleting a course now deletes it for good
+
+**Deleting a course removes it and everything recorded in it — its sessions, including the
+ones that already happened, and every attendance record on them.** It used to be hidden rather
+than removed, and its finished sessions were kept. That left ghosts: a course you had deleted
+still holding registers nobody could open, a second course with the same name sitting beside
+the old one in the database, and an attendance file that could never be uploaded again because
+the deleted course still claimed it.
+
+**The confirmation now counts what will go before you confirm** — how many members are
+enrolled, how many sessions, how many attendance records — and says plainly that the
+history cannot be recovered. Members themselves are never deleted with a course; only their
+place in it. A file that was imported into a deleted course can be uploaded again afterwards.
+
+The six courses deleted before this change are cleaned up the same way, once, when the update
+is applied.
+
 ## Unreleased — Remarks move into the table, and a new record lists only what names it
 
 **Your remarks now sit in the log itself, in a last column beside the change they are

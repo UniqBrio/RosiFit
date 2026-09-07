@@ -111,6 +111,57 @@ export function pendingInactiveFrom(m: StatusRecord, todayIso: string): string |
 }
 
 /**
+ * The members a DAY-SCOPED view may show — the other end of the membership
+ * window from `joined.ts`, and deliberately its mirror image.
+ *
+ * `membersOnDay` (src/data/joined.ts) drops anybody who had not joined by the
+ * day being shown, because she was not a member yet. This drops anybody who
+ * is off the register ON that day, for the same reason read the other way:
+ * the roster under "Attendance for Thu 1 Oct" is who the academy had that
+ * day, and a member who went inactive on the 1st is not one of them. Compose
+ * them and the list is the register as it stood on that date.
+ *
+ * SHE IS NOT OFF THE COURSE, exactly as `joined.ts` says of its half. The
+ * Members tab, the search, the course's own member count and every send list
+ * are untouched — none of them is about a date. Step the strip back to a day
+ * before her date and she is on the roster again, with her pill, which is
+ * also how she is marked active again from this screen. The caller states
+ * the omission (`leftEarlierNote`) rather than letting a count drop rows in
+ * silence.
+ *
+ * A null day means "no day is selected", and then nothing is narrowed — an
+ * unselected strip must not empty the roster underneath it.
+ *
+ * NOTE ON WHAT THIS DOES NOT MOVE. Her enrolment stays open, so
+ * `expected_members_for_session` (0007) goes on expecting her at sessions
+ * after the date and the day's expected count still counts her. That is the
+ * one place the roster and the register can now disagree, and it is why the
+ * note matters. Making them agree means ENDING the enrolment at the date,
+ * which is a different act (ADR-030) and is not taken here.
+ */
+export function membersActiveOn<T extends StatusRecord>(
+  members: T[], dayIso: string | null,
+): T[] {
+  if (!dayIso) return members;
+  return members.filter(m => isActiveOn(m, dayIso));
+}
+
+/**
+ * The sentence a day-scoped roster owes the reader for the members it left
+ * out because they were off the register that day.
+ *
+ * Worded like `joinedLaterNote`, and ending in the same reassurance, because
+ * they are two halves of one fact and a reader should not have to notice
+ * that the app phrases them differently.
+ */
+export function leftEarlierNote(hidden: number, dayLabel: string): string | null {
+  if (hidden <= 0) return null;
+  return hidden === 1
+    ? `1 member was inactive on ${dayLabel} and is not listed for it. She is still on the course.`
+    : `${hidden} members were inactive on ${dayLabel} and are not listed for it. They are still on the course.`;
+}
+
+/**
  * The one line a screen puts under her status word, or null when there is
  * nothing to add. Never the only signal — the word and the icon carry the
  * status itself (guardrail 3); this dates it.

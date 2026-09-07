@@ -230,6 +230,18 @@ boundary is inclusive*, *there on 8 Sep and every day after*. In the app: add a 
 open her course, step the week strip back a day — she is off the roster and the line under the
 heading says how many members joined later and that they are still on the course.
 
+**The server half, written and not yet rehearsed (TD-049).** The client narrowing left one way for
+the database to contradict it: `commit_csv_import` matches a participant by alias or address and
+never consults her joining date, so a Meet export for the 6th naming a member who joined on the
+7th wrote her a row for a day her roster no longer shows her on. `set_attendance` (0035) cannot do
+this — it refuses a date her enrolment does not cover — so the import is the only writer that can.
+`supabase/migrations/0046_attendance_backdates_membership.sql` answers it the way the evidence
+points: a register that names her moves her joining date and her enrolment BACK to the session,
+never forward. That keeps a bulk-imported academy able to backfill last month's files, which
+refusing the row or the file would have broken. It is a trigger rather than an eighth restatement
+of `commit_csv_import`, so nothing existing is redefined. NOT APPLIED and NOT REHEARSED — this
+machine has no Postgres; see TD-049.
+
 **Recurrence risk** — Every column the repository *formats* on the way out. `last`
 (`last_emailed_at` → a locale date string) is the same shape and the same trap: a screen that
 ever needs to compare it has nothing to compare. The rule: **carry the stored value and derive
