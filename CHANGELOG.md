@@ -12,6 +12,13 @@ rather than after. Only one row is open for writing at a time.
 Remarks written before this change are still stored and still yours; they simply belong to
 no particular row, and the page no longer offers a way to write another of that kind.
 
+This is live on the academy: the database change it needs was applied on 8 Sep 2026, so the
+column reads and writes for real rather than sitting inert. What has *not* happened is the
+rehearsal the process asks for — the spec written for it has never been executed anywhere,
+because this machine has no Postgres to run it against. The structure was checked directly
+against the live database instead; the behaviour of its permission rules under a real
+sign-in is taken on the strength of the rules 0043 already carried, not demonstrated.
+
 **A record being created no longer prints every column it was born with.** *Member added*
 listed six lines — name, member code, status, joined on, notes, added by — when the answer
 to "who was added" is the first of them. It now prints the fields that name the thing and
