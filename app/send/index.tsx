@@ -57,13 +57,42 @@ import { setSendResult } from '../../src/data/pending';
 function SendDraftBody() {
   const { theme } = useTheme();
   const router = useRouter();
-  const { id, state: forced } = useLocalSearchParams<{ id?: string; state?: string }>();
+  const { id, member, state: forced } =
+    useLocalSearchParams<{ id?: string; member?: string; state?: string }>();
   const courseId = typeof id === 'string' && id ? id : null;
+  /* ONE member's draft, opened by Reach out on her own record
+     (requests/2026-09-07-reach-out-already-sent-and-rule-label.md). The
+     dialog is otherwise unchanged: same derivation, same stored wording,
+     same tick, same confirmation -- this narrows WHO is listed and nothing
+     else. Without it the button on her record listed the whole academy. */
+  const onlyMemberId = typeof member === 'string' && member ? member : null;
 
   const week = currentWeek();
   const courses = useCourses(forced);
   const followUp = useFollowUp(forced, week);
-  const message = useCourseMessage(courseId, forced);
+
+  /* WHOSE WORDING A SEND TO ONE MEMBER USES: her own course's.
+     Named from the WHOLE member list, not from the flagged subset -- a member
+     the rule has not flagged still opened this dialog, and the empty state
+     owes her a name rather than a sentence about "this academy".
+
+     The message is resolved from HER course rather than left unresolved,
+     because `useCourseMessage(null)` answers `null` and `!message.data` is
+     the error branch below -- so a draft with no course id renders "The draft
+     could not be loaded" and can never send. Guardrail 5 wants this anyway:
+     the wording belongs to a course, and a send to one member has to use the
+     one her course stores. (The SAME null reaches this screen from the weekly
+     screen's all-courses button, which passes no course either; that path is
+     not touched here and is reported as its own defect.) */
+  const onlyMember = onlyMemberId
+    ? (followUp.data?.members ?? []).find(m => m.id === onlyMemberId) ?? null
+    : null;
+  const memberCourseId = onlyMember
+    ? (courses.data ?? []).find(c => c.name === onlyMember.course)?.id ?? null
+    : null;
+
+  const wantedCourseId = courseId ?? memberCourseId;
+  const message = useCourseMessage(wantedCourseId, forced);
   const already = useSentForPeriod(week, forced);
 
   // null = nobody has touched a box yet, so the default below applies. An
@@ -82,7 +111,9 @@ function SendDraftBody() {
   // The same derived list the dashboard and the weekly screen read -- one
   // member source, one rule, so these counts cannot disagree with theirs.
   const flaggedAll = followUp.data?.flagged ?? [];
-  const flagged = course ? flaggedAll.filter(m => m.course === course.name) : flaggedAll;
+  const flagged = onlyMemberId
+    ? flaggedAll.filter(m => m.id === onlyMemberId)
+    : course ? flaggedAll.filter(m => m.course === course.name) : flaggedAll;
   // Both halves from ONE call, so the draft cannot claim to reach somebody it
   // will skip. Counted and NAMED, never silently dropped (C-76).
   const { recipients, excluded } = recipientSplit(flagged);
@@ -106,9 +137,39 @@ function SendDraftBody() {
   const resending = picked.filter(pid => sent[pid]).length;
   const everyoneAlreadySent = recipients.length > 0 && recipients.every(m => sent[m.id]);
 
+  /* THE MESSAGE HOOK LAGS ONE COMMIT BEHIND A CHANGE OF COURSE ID, and
+     without this the member path PAINTS the very error card this change was
+     written to remove.
+
+     `useCourseMessage(null)` is `Promise.resolve(null)`, so it settles at
+     `ready` with `data: null` almost at once. `memberCourseId` is null until
+     BOTH courses and followUp are ready, so in the commit where the last of
+     them lands, `loading` is already false, `failed` is false, and `message`
+     is still the answer to the null id — which is exactly `!message.data`,
+     the error branch. `useAsync` only resets to `loading` inside an effect,
+     and passive effects run AFTER paint, so "The draft could not be loaded"
+     is a frame the person actually sees on every open.
+
+     `data: null` at `ready` can mean nothing else: fetchCourseMessage either
+     returns a message or throws. So it reads exactly as "the hook has not
+     been asked for the id we now want", which is a load, not a failure. When
+     no id is wanted at all the expression is false and the all-courses path
+     keeps its existing behaviour untouched (TD-033). */
+  const messageBehind = wantedCourseId !== null
+    && message.state === 'ready' && message.data === null;
+
   const loading = courses.state === 'loading' || followUp.state === 'loading'
-    || message.state === 'loading' || already.state === 'loading';
+    || message.state === 'loading' || already.state === 'loading' || messageBehind;
   const failed = courses.state === 'error' || followUp.state === 'error' || message.state === 'error';
+
+  /* A member whose course has no row to resolve — renamed, removed, or an
+     ended enrolment, which leaves `course` as '—' (repository.ts). Her
+     wording cannot be found, so nothing can be sent, and the generic "the
+     draft could not be loaded" would be both wrong and unactionable: it says
+     retry, and retrying resolves nothing. Named as its own answer rather
+     than left to the error card. */
+  const memberUnsendable = onlyMemberId !== null && memberCourseId === null
+    && courses.state === 'ready' && followUp.state === 'ready';
 
   const send = async () => {
     if (!message.data || sending || picked.length === 0) return;
@@ -146,6 +207,30 @@ function SendDraftBody() {
       </FormDialog>
     );
   }
+  /* Answered BEFORE the error card, because it is not one: nothing failed and
+     retrying changes nothing. Either the member on the link is not on the
+     register, or her course has no row to take wording from. */
+  if (memberUnsendable) {
+    return (
+      <FormDialog title="Send communication"
+        subtitle={onlyMember ? `${onlyMember.name} · ${week.label}` : undefined}
+        onClose={close}
+        footer={(
+          <View style={{
+            padding: SPACE.lg, borderTopWidth: 1, borderTopColor: theme.line,
+            backgroundColor: theme.shell,
+          }}>
+            <Button testID="send-cancel" label="Close" variant="secondary" onPress={close} />
+          </View>
+        )}>
+        <EmptyState
+          title="There is no wording to send"
+          body={onlyMember
+            ? `${onlyMember.name} is not on a course that has follow-up wording, so nothing can be sent to her from here. Put her on a course and the send is available again.`
+            : 'That member is not on the register. She may have been removed since this link was opened.'} />
+      </FormDialog>
+    );
+  }
   if (failed || !message.data) {
     return (
       <FormDialog title="Send communication" onClose={close}>
@@ -165,7 +250,7 @@ function SendDraftBody() {
       /* The course and the week -- what this send APPLIES to. The template's
          name used to sit here; it names something that cannot be changed from
          this dialog and reads the same on every send. */
-      subtitle={`${course?.name ?? 'Every course'} · ${week.label}`}
+      subtitle={`${onlyMember?.name ?? course?.name ?? 'Every course'} · ${week.label}`}
       onClose={close}
       cancelLabel="Not now"
       cancelTestID="send-cancel"
@@ -217,7 +302,12 @@ function SendDraftBody() {
           title={excluded.length ? 'Nobody here can be emailed' : 'Nobody needs following up'}
           body={excluded.length
             ? `${excluded.length} ${excluded.length === 1 ? 'member is' : 'members are'} over the threshold and ${excluded.length === 1 ? 'has' : 'have'} no email address. Add an address on the member and they will be included next time.`
-            : `No member of ${course?.name ?? 'this academy'} is over the follow-up threshold for ${week.label}. Nothing to send.`} />
+            /* One member's draft says so about HER. "No member of this
+               academy is over the threshold" is a claim about everybody, and
+               it is not the one this dialog was opened to answer. */
+            : onlyMember
+              ? `${onlyMember.name} is not over the follow-up threshold for ${week.label}. Nothing to send.`
+              : `No member of ${course?.name ?? 'this academy'} is over the follow-up threshold for ${week.label}. Nothing to send.`} />
       ) : (
         <>
           {/* One row of chrome for the whole list: how many are ticked, and

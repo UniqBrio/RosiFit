@@ -33,11 +33,31 @@ export const periodKey = (p: Period): string => `${p.from}..${p.to}`;
  *  of something the server already knows, never a second record of it. */
 const session = new Map<string, SentMap>();
 
+/**
+ * Everything mounted that shows whether she has been written to, so a send
+ * reaches all of it at once.
+ *
+ * The same idiom as `onMembersChanged` (repository.ts) and for the same
+ * reason. The member pop-up STAYS MOUNTED under the send dialog it opened --
+ * that is what `DIALOG_SCREEN` is for -- so without this its "Email sent"
+ * label still read "not sent yet" the moment the send it had just made came
+ * back, and the only way to correct it was to close her record and reopen it.
+ * A screen that shows a stale answer about an email that has already gone is
+ * the same failure as not showing the answer at all.
+ */
+const listeners = new Set<() => void>();
+
+export function onSentChanged(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
+
 export function recordSent(period: Period, memberIds: string[], at = new Date().toISOString()): void {
   const key = periodKey(period);
   const map = { ...(session.get(key) ?? {}) };
   for (const id of memberIds) map[id] = at;
   session.set(key, map);
+  for (const listener of listeners) listener();
 }
 
 export function sentThisSession(period: Period): SentMap {
@@ -73,10 +93,24 @@ export function defaultSelection(memberIds: string[], sent: SentMap): string[] {
   return memberIds.filter(id => !sent[id]);
 }
 
+/**
+ * "3 Sep" — the bare date, or `null` when the stamp is not a date at all.
+ *
+ * Extracted from `sentLabel` when the member pop-up's already-sent warning
+ * needed the same date inside a sentence of its own
+ * (requests/2026-09-07-reach-out-already-sent-and-rule-label.md). ONE
+ * formatter, because two would be how the row and the warning end up naming
+ * different days for one send.
+ */
+export function sentOn(at: string): string | null {
+  const d = new Date(at);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+
 /** "Sent 3 Sep" — the date only. The hour is on the audit log and on the
  *  result; here it would be precision that changes no decision. */
 export function sentLabel(at: string): string {
-  const d = new Date(at);
-  if (Number.isNaN(d.getTime())) return 'Already sent';
-  return `Sent ${d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`;
+  const on = sentOn(at);
+  return on === null ? 'Already sent' : `Sent ${on}`;
 }

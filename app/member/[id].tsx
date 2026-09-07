@@ -1,13 +1,19 @@
+import { useState } from 'react';
 import { View, Text } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { useMembers } from '../../src/data/hooks';
+import { useMembers, useRules, useSentForPeriod } from '../../src/data/hooks';
 import { FormDialog } from '../../src/components/FormDialog';
+import { ConfirmDialog } from '../../src/components/Sheet';
 import { Muted, Label, Button, Skeleton, ErrorState } from '../../src/components/ui';
 import { Icon } from '../../src/components/Icon';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { SPACE, RADIUS, STATUS, statusSurface } from '../../src/theme/tokens';
 import { memberSubtitle, attendanceTone } from '../../src/components/memberDialog';
 import { sessionsFor, attendancePct, primaryEmail, hasEmail } from '../../src/data/mock';
+import { flagged, isReachable } from '../../src/data/followup';
+import { currentWeek } from '../../src/data/period';
+import { mergeSent, sentThisSession, sentOn } from '../../src/data/sent';
+import { reachOutState, REACH_OUT, warnsBeforeReachOut } from '../../src/data/reachOut';
 
 /**
  * ONE MEMBER, AS A POP-UP OVER THE LIST SHE WAS TAPPED ON
@@ -45,6 +51,25 @@ export default function MemberDetail() {
   const m = (members.data ?? []).find(x => x.id === id) ?? null;
   const ink = (k: keyof typeof STATUS) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
 
+  /* WILL AN EMAIL GO, AND HAS ONE GONE
+     (requests/2026-09-07-reach-out-already-sent-and-rule-label.md).
+
+     Two reads that this dialog does NOT depend on. The card opens on the
+     member alone exactly as it did -- the loading and missing branches below
+     are untouched -- and the label is drawn only once the rule has arrived.
+     That is the same rule the send draft's already-sent mark carries: it is
+     an ADDITION to the screen, never a precondition for it, so a rules read
+     that fails costs a label rather than the record.
+
+     The rule is not re-implemented here, and neither is the SELECTION around
+     it: `flagged()` is called over a list of one, so this label and the
+     weekly list answer to the same function rather than to two copies of one
+     expression (CP-011). */
+  const week = currentWeek();
+  const rules = useRules(forced);
+  const already = useSentForPeriod(week, forced);
+  const [warning, setWarning] = useState(false);
+
   /* Loading and missing are separate answers and both are given plainly, in
      the same card -- the dialog is the member's from the moment it opens, so
      it does not flash a page and then become one. */
@@ -72,6 +97,38 @@ export default function MemberDetail() {
   const mailInk = mail ? ink('present') : ink('absent');
   const mailBox = statusSurface(mailInk);
 
+  /* The server's history plus this session's own sends -- the same merge the
+     send draft marks its rows from, so the warning here cannot say "never"
+     over a send made a minute ago in the other dialog. */
+  const sentAt = mergeSent(already.data ?? {}, sentThisSession(week))[m.id];
+  const state = rules.data
+    ? reachOutState({
+        /* `flagged` itself, over a list of one -- not the expression inside
+           it copied out. The rule has gained a condition before (`isFollowable`,
+           followup.ts) and a second copy of the selection is exactly how this
+           label would start disagreeing with the weekly list and the draft
+           the next time (guardrail 1, CP-011). */
+        ruleMet: flagged([m], rules.data.global, rules.data.byCourseName).length === 1,
+        /* The predicate the SEND splits on, not `hasEmail`: the panel above
+           asks whether her primary address is filled in, this asks whether a
+           message can leave, and they are different questions for a member
+           whose primary is blank but who holds a second address. */
+        hasEmail: isReachable(m),
+        sentAt,
+      })
+    : null;
+  const label = state ? REACH_OUT[state] : null;
+  const labelInk = label ? ink(label.tone) : theme.muted;
+  const labelBox = statusSurface(labelInk);
+
+  /* Her own send, not the academy's. Reach out opened the draft for EVERY
+     course from here, so the button on one member's record listed everybody
+     and left her to be found in it -- which is why "sent using reach out"
+     and "sending multiple emails at once" could not be told apart. It
+     carries her id now and the draft is hers alone. Nothing about HOW it
+     sends changes: same dialog, same stored wording, same confirmation. */
+  const reachOut = () => router.push({ pathname: '/send', params: { member: m.id } });
+
   return (
     <FormDialog
       title={m.name}
@@ -88,9 +145,23 @@ export default function MemberDetail() {
           <Button testID="member-edit" label="Edit" variant="secondary" style={{ flex: 1 }}
             onPress={() => router.push({ pathname: '/member/edit', params: { id: m.id } })} />
           <Button testID="member-reach-out" label="Reach out" style={{ flex: 2 }}
-            onPress={() => router.push('/send')} />
+            onPress={() => (warnsBeforeReachOut(sentAt) ? setWarning(true) : reachOut())} />
         </View>
-      }>
+      }
+      /* The warning renders OUTSIDE the card, the way the send draft's own
+         confirmation does: it is a decision about this dialog, not a section
+         of the record that scrolls with it (CP-014). */
+      overlays={(
+        <ConfirmDialog
+          open={warning}
+          onClose={() => setWarning(false)}
+          title="She has already had this week’s message"
+          body={`${m.name.split(' ')[0]} was sent this week’s follow-up${sentAt && sentOn(sentAt) ? ` on ${sentOn(sentAt)}` : ''}.`
+            + ' Reaching out again means a second identical email, and it cannot be recalled.'}
+          cancelLabel="Not yet"
+          confirmLabel="Reach out anyway"
+          onConfirm={() => { setWarning(false); reachOut(); }} />
+      )}>
 
       {/* HER FIGURES, one strip. Expected · Attended · Missed · Streak side
           by side, each under its own label -- streak and missed are
@@ -188,6 +259,29 @@ export default function MemberDetail() {
           </Muted>
         </View>
       </View>
+
+      {/* WHETHER THE RULE IS MET, AND SO WHETHER ANYTHING GOES OUT. The card
+          said what her attendance was and whether she had an address; it
+          never said the thing the button under it is FOR. The word carries
+          it and the glyph carries it -- colour never alone (guardrail 3) --
+          and the tone comes from the measured token pair for the theme that
+          is on, never a literal (CP-008).
+
+          Absent while the rule is still arriving, or if it failed to: an
+          addition to the record, never a precondition for it. */}
+      {label ? (
+        <View testID="member-rule-label" accessible accessibilityLabel={label.text}
+          style={{
+            marginTop: SPACE.md, paddingVertical: 10, paddingHorizontal: 12, borderRadius: RADIUS.md,
+            backgroundColor: labelBox.bg, borderWidth: 1, borderColor: labelBox.border,
+            flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
+          }}>
+          <Icon name={label.icon} size={18} color={labelInk} />
+          <Text style={{ flex: 1, fontSize: 12.5, fontWeight: '700', color: labelInk }}>
+            {label.text}
+          </Text>
+        </View>
+      ) : null}
     </FormDialog>
   );
 }

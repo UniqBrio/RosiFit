@@ -104,16 +104,30 @@ export const attendancePct = (m: Member): number | null =>
  */
 export function recipientSplit(flagged: Member[]):
   { recipients: Member[]; excluded: Member[] } {
-  // Written out rather than imported from mock's hasEmail: mock imports
-  // isEligible and attendancePct FROM this file, so a value import back would
-  // close a require cycle and mock's module body -- which calls both at load
-  // -- would run before they exist. Type imports are erased and are fine.
-  const reachable = (m: Member) => m.emails.some(e => e.address.trim() !== '');
   return {
-    recipients: flagged.filter(reachable),
-    excluded: flagged.filter(m => !reachable(m)),
+    recipients: flagged.filter(isReachable),
+    excluded: flagged.filter(m => !isReachable(m)),
   };
 }
+
+/**
+ * Whether a follow-up can actually LEAVE for her.
+ *
+ * Written out rather than imported from mock's `hasEmail`: mock imports
+ * isEligible and attendancePct FROM this file, so a value import back would
+ * close a require cycle and mock's module body -- which calls both at load --
+ * would run before they exist. Type imports are erased and are fine.
+ *
+ * Exported because it is not the same question as `hasEmail`, and anything
+ * claiming on screen that an email is or is not going has to ask THIS one.
+ * `hasEmail` is `primaryEmail(m) !== ''` -- her PRIMARY address, untrimmed --
+ * so a member whose primary is blank but who holds a second address answers
+ * no to it and yes here, and the send would reach somebody a label had just
+ * said was unreachable. This is the predicate the send itself splits on, so a
+ * screen that uses it cannot disagree with what the draft does.
+ */
+export const isReachable = (m: Member): boolean =>
+  m.emails.some(e => e.address.trim() !== '');
 
 /**
  * The two numbers the attendance ring draws, counted from the SAME member

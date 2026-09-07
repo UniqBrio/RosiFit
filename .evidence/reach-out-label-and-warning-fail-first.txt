@@ -1,0 +1,102 @@
+Fail-first evidence — requests/2026-09-07-reach-out-already-sent-and-rule-label.md
+==================================================================================
+Recorded 07-Sep-2026.
+
+THE ASK
+  1. "On click of Reach out, there should be a pop-up if the email has sent
+     already."
+  2. "If email is sent using 'reach out' button, ignore when sending multiple
+     emails at once."
+  3. "Add a lebel, if the email is sent only if rule is met — 'Rule is met,
+     Email sent', 'Rule is not met, No email to send'"
+
+Spec: src/data/reachOut.test.ts (9 assertions)
+
+-------------------------------------------------------------- the honest form
+`reachOut.ts` and its spec were written together, so there is no PRE-CHANGE
+tree in which the spec merely fails to import. Recording that as "fail-first"
+would prove nothing about the assertions — only that the file did not exist.
+
+So the spec was run against a MUTANT instead: the module copied to a scratch
+root with ONE character-level defect reintroduced, the exact defect the third
+label string exists to prevent. A flagged member nobody has written to is made
+to read the requester's "Email sent" string:
+
+    'unsent': { text: 'Rule is met, Email sent', tone: 'awaiting', ... }
+
+That is RC-017 one layer up — *"the app said SENT for an email it never sent"*,
+an S1 in this repository — expressed as a label rather than as a result screen.
+
+Run: npx tsx --test reachOut.test.ts   (scratch root, mutant module)
+
+    # Subtest: a flagged member nobody has written to does NOT read "Email sent"
+    not ok 3 - a flagged member nobody has written to does NOT read "Email sent"
+        + actual - expected
+        + 'Rule is met, Email sent'
+        - 'Rule is met, Email not sent yet'
+      expected: 'Rule is met, Email not sent yet'
+      actual:   'Rule is met, Email sent'
+    ok 5 - a send this period is what turns the label to "Email sent"
+    ok 7 - Reach out warns only when a message has actually gone out
+    # tests 9
+    # pass 8
+    # fail 1
+
+The assertion fails, names the false claim, and prints both strings. Note that
+assertions 5 and 7 stay GREEN under the mutant: the spec discriminates the
+"never sent" case specifically rather than failing wholesale, which is what
+makes it evidence about that case.
+
+Run against the module as shipped:
+
+    # tests 9
+    # pass 9
+    # fail 0
+
+------------------------------------------------------- halves 1 and 2, in a browser
+The pop-up and the "ignored when several go at once" rule are behaviour across
+two dialogs and a session log; there is no component harness in this repo, so
+they were walked in a real browser against a fixtures export
+(EXPO_NO_DOTENV=1 expo export, served locally, Playwright — the .harness/*.mjs
+scripts hard-code Linux paths and cannot run on this machine).
+
+    ok  the send reported: 1 sent
+    ok  back on her record: /member/1
+    ok  label after the send: "Rule is met, Email sent"
+    ok  Reach out raised the warning
+          She has already had this week's message
+          Divya was sent this week's follow-up on 7 Sept. Reaching out again
+          means a second identical email, and it cannot be recalled.
+          Not yet | Reach out anyway
+    ok  Not yet returns to her record without sending
+    ok  Reach out anyway -> /send?member=1
+    ok  after her send she is NOT ticked by default
+
+That run is also what caught a defect in the change itself: before
+`onSentChanged` was added to src/data/sent.ts, the label on her record still
+read "Rule is met, Email not sent yet" about the send it had just made — the
+member pop-up stays mounted UNDER the send dialog it opens, and nothing told
+it to re-read. The assertion above failed until the notifier existed.
+
+------------------------------------------- the error-card flash, and its control
+The code review found that the member path PAINTED "The draft could not be
+loaded. Nothing has been sent." for one frame on every press of Reach out:
+`useCourseMessage(null)` settles at ready/null before `memberCourseId`
+resolves, and `useAsync` only returns to 'loading' inside an effect, which
+runs after paint.
+
+Caught with a MutationObserver rather than by polling, because a committed
+frame is gone by the time a poll looks. The detector was then run against the
+PRE-FIX build as a control — a detector that never fires proves nothing:
+
+    pre-fix build   FAIL the error card never painted on the way in (1 sightings)
+    fixed build     ok   the error card never painted on the way in (0 sightings)
+
+--------------------------------------------------------------- both themes
+The label's ink was read from the painted DOM, not assumed:
+
+    light   #7A5300 (awaiting) · #6B5563 (none) · #B3261E (absent)
+    dark    #E8B93B (awaiting) · #A78E9E (none) · #F2683C (absent)
+
+All six are STATUS token values from src/theme/tokens.ts and are inside the
+2,840-pair sweep that scripts/check-contrast.ts runs at build time.
