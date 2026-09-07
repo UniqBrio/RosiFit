@@ -39,6 +39,160 @@ _Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
+> **THE WORK OF FOUR CONCURRENT SESSIONS, COMMITTED AND PUSHED** -- 07-Sep-2026.
+> The four FAILs and one BLOCKED above are the SAME ones this repo has carried
+> since 02-Sep-2026, and each is a MISSING RUNNER, not a failing check: G1/G2/G3
+> want `design/tokens.json`, which this app has never had (its measured tokens
+> live in `src/theme/tokens.ts`); G6 wants a local eslint that is deliberately
+> not fetched; G8 wants a `test:functional` script that does not exist here.
+> Nothing in this series touched any of them.
+>
+> WHAT DID RUN, against this exact tree: `npm run check` -- `tsc --noEmit` over
+> app and scripts, 615 unit specs (0 fail), 2840/2840 contrast pairs, 75/75
+> canvas icons.
+>
+> ONE gate run covers the SEVEN commits of this series. The gate reads the
+> WORKING TREE, not the index, so re-running it once per commit over one
+> unchanged tree would record the same verdict seven times and prove nothing
+> further. The six commits after the first therefore carry `LEDGER-NA:` naming
+> this run, rather than padding the ledger with copies of it.
+
+FAIL-FIRST: src/components/openingFocus.test.ts - replayed against HEAD (b6bd904)
+via OPENING_FOCUS_SPEC_ROOT. 5 of 10 fail there: not ok 2 the shared field can be
+told to take the caret; not ok 3 every screen with an input names its first one;
+not ok 4 only the first field of a form autofocuses; not ok 5 the picker search box
+takes the caret in both its hosts; not ok 10 all three layers ask the shared rule
+rather than blurring on sight. 11/11 on the change. Confirmed in Chromium off
+document.activeElement, 24/24 route x theme checks.
+Evidence: .evidence/autofocus-first-input-fail-first.txt
+
+FAIL-FIRST: src/components/keypadGrid.test.ts - against the pre-fix tree, not ok 7
+"both keypads draw from this module, so they cannot drift apart" - "app/index.tsx:
+the keypad does not import src/components/keypadGrid." And the arithmetic over the
+values that shipped (key width 31.5%, row gap 10): columnsThatFit === 2 for both the
+sign-in card and the set-pin Screen at 360px, three keys needing a row of >= 363.64px.
+Measured in Chromium off boundingBox: Enter PIN rows=2/2/2/2/2/2 at 360 and 390px;
+Change PIN the same, with the PIN boxes drawn over the pad by +37px and +21px.
+POST: rows=3/3/3/3 at 320/360/390/412, both themes, nothing overlapping.
+Evidence: .evidence/pin-keypad-two-per-row-fail-first.txt
+
+FAIL-FIRST: src/data/pinReturn.test.ts - the module it pins (afterPinChange,
+src/data/nav.ts) is NEW, so the spec could not fail by import. The defect itself was
+observed instead, in Chromium against the pre-fix build: arriving at set-pin with no
+back entry and completing the PIN landed on /set-pin - stuck, exactly as reported -
+while Profile to Change My PIN returned to /profile before AND after, which is why
+only first login stuck. POST: ?for=first lands on the dashboard.
+Evidence: .evidence/pin-keypad-two-per-row-fail-first.txt (NAVIGATION)
+
+FAIL-FIRST: src/components/addMemberBranchDefault.test.ts - against app/member/edit.tsx
+at HEAD (418629b): not ok 2 a single branch option is the default; not ok 3 the default
+never overwrites a branch already chosen. 2 of 4 fail; test 4 guards that the row stays
+a picker and passes on both sides on purpose. 4/4 on the change.
+Evidence: .evidence/add-member-form-defaults-fail-first.txt
+
+FAIL-FIRST: src/components/addMemberDraftCommit.test.ts - same replay: not ok 2 leaving
+the field commits the draft, on both rows. 1 of 4 fail; tests 3 and 4 are the regression
+guards (blur is not a laxer way in than + Add; + Add and Enter still work) and hold on
+both sides. 4/4 on the change.
+Evidence: .evidence/add-member-form-defaults-fail-first.txt
+
+FAIL-FIRST: src/components/addMemberStatusShown.test.ts - against HEAD's Add form via
+ADD_MEMBER_STATUS_SPEC_ROOT, 4 of 6 fail: not ok 2 the Add form shows a status, and it is
+Active; not ok 3 the Add block is gated on the ADD state, not on a missing record; not ok 4
+the Add toggle cannot write the column; not ok 6 one source for the Active words. Test 5
+guards the Edit form's own pick and passes before and after by design. 6/6 on the change.
+Evidence: .evidence/add-member-status-toggle-fail-first.txt
+
+FAIL-FIRST: src/components/memberRefusalClears.test.ts - against the PRE-CHANGE form
+(MEMBER_REFUSAL_SPEC_ROOT over HEAD:app/member/edit.tsx), 4 of 7 fail: not ok 2 typing in
+the display-name box clears the refusal; not ok 3 committing a display name clears it;
+not ok 4 removing one clears it; not ok 5 only a refusal ABOUT a display name is cleared.
+Cases 6 and 7 are the guard half and pass on both sides. 7/7 on the change.
+Evidence: .evidence/display-name-refusal-fail-first.txt
+
+NOT OBSERVED FAILING: src/data/refusalCase.test.ts - sentenceOpening and
+src/data/refusalCase.ts did not exist before this change, so there was no module for the
+spec to fail against. Six of its ten cases pin what must NOT change (the quoted name keeps
+its case, an already-written sentence is untouched, twice is the same as once, a message
+opening on a quote or a digit comes back as it was). The banner itself was not rendered in
+a browser: it appears only when a write RPC refuses, and the offline createMember path
+never refuses a duplicate display name, so no build reachable from this machine can
+provoke it. 10/10 pass.
+Evidence: .evidence/display-name-refusal-fail-first.txt
+
+FAIL-FIRST: src/data/reachOut.test.ts - reachOut.ts and its spec were written together, so
+there is no pre-change tree in which the spec merely fails to import; recording that would
+prove nothing about the assertions. It was run against a MUTANT instead - the module copied
+to a scratch root with the one defect the third label exists to prevent, a flagged member
+nobody has written to reading "Rule is met, Email sent". not ok 3 - a flagged member nobody
+has written to does NOT read "Email sent", actual 'Rule is met, Email sent', expected 'Rule
+is met, Email not sent yet'. That is RC-017 one layer up: the app claiming SENT for an email
+it never sent. 8/9 with the mutant, 9/9 on the real module.
+Evidence: .evidence/reach-out-label-and-warning-fail-first.txt
+
+FAIL-FIRST: src/data/dayAttendance.test.ts - the five defect injections already recorded in
+this ledger for src/data/dayAttendance.ts are this spec's fail-first: canAbsent made
+unconditional (10/13), the future guard removed (12/13), her own days ignored (12/13),
+`expected` taken from the schedule over a recorded row, and the row lookup ignoring which
+member it belongs to.
+Evidence: .evidence/attendance-chips-fail-first.txt
+
+FAIL-FIRST: src/components/seedGateDeps.test.ts - already recorded in this ledger: replayed
+against the pre-fix tree (working tree at 1c3d45b with app/course/edit.tsx's dependency
+array put back to its pre-fix form, no `recordPending`) via SEED_GATE_SPEC_ROOT.
+Evidence: .evidence/seed-gate-deps-fail-first.txt
+
+NOT OBSERVED FAILING: the live PIN-reset notification read was proved against the LIVE
+project rather than a spec - PostgREST answered the shipped selector with PGRST201
+("Could not embed because more than one relationship was found for 'pin_reset_requests'
+and 'app_users'"), which is a PLANNING failure, before RLS and before the grant, so it
+failed identically for the academy admin and the bell never rang for a locked-out staff
+member. With the FK named the same query reaches the grant check (42501 under the anon key,
+which 0034 revokes on purpose). No migration, policy, grant or Edge Function changed.
+Evidence: .evidence/pin-reset-notification-embed-fail-first.txt
+
+---
+
+## Gate run - 2026-09-07 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
 > **THE UPLOAD ASKS BEFORE IT REPLACES A REGISTER** -- request
 > `requests/2026-09-07-upload-override-confirm.md`, ADR 027. The four FAILs and
 > one BLOCKED above are the SAME ones this repo has carried since 02-Sep-2026,

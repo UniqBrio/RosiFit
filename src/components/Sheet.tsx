@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, Modal, ScrollView, TextInput, Platform } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
 import { RADIUS, SPACE, TAP_MIN } from '../theme/tokens';
@@ -6,6 +6,7 @@ import { Icon } from './Icon';
 import { AnchoredPanel } from './AnchoredPanel';
 import type { Anchor } from './datePanel';
 import { pickerMatches, pickerKey } from './pickerSearch';
+import { blurOpener, useAutoFocus } from './openingFocus';
 
 /**
  * The canvas' bottom sheet: scrim, rounded top, grab handle. Dismissing by
@@ -30,6 +31,7 @@ export function Sheet({ open, onClose, title, children, placement = 'bottom' }:
   }) {
   const { theme } = useTheme();
   const top = placement === 'top';
+  const card = useRef<View>(null);
 
   /**
    * Two halves of the same accessibility bug, both from react-native-web's
@@ -44,11 +46,16 @@ export function Sheet({ open, onClose, title, children, placement = 'bottom' }:
    *    buttons and search field are still in the DOM and still focusable.
    *    Not rendering it at all (below) is the fix -- a closed sheet has no
    *    DOM, so it cannot hold focus or be tabbed into.
+   *
+   * The two things `blurOpener` knows that this effect did not -- that a
+   * SHUT sheet has no opener to blur, and that the caret inside the sheet's
+   * own search box is not an opener either -- are written out in
+   * openingFocus.ts. Both are the difference between a first field that
+   * keeps the caret and one that loses it a frame later.
    */
   useEffect(() => {
     if (Platform.OS !== 'web') return;
-    const active = document.activeElement as HTMLElement | null;
-    if (active && active !== document.body && typeof active.blur === 'function') active.blur();
+    blurOpener(open, card.current);
   }, [open]);
 
   if (!open) return null;
@@ -62,6 +69,7 @@ export function Sheet({ open, onClose, title, children, placement = 'bottom' }:
           accessibilityLabel={`Close ${title}`}
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.scrim }} />
         <View
+          ref={card}
           accessibilityViewIsModal
           style={{
             maxHeight: '76%', backgroundColor: theme.surface,
@@ -146,18 +154,28 @@ function usePickerQuery(options: PickerOption[], onAdd?: (label: string) => void
 function PickerSearch({ query, onChange, placeholder, testID }:
   { query: string; onChange: (q: string) => void; placeholder: string; testID?: string }) {
   const { theme } = useTheme();
+  // A picker is only rendered while it is open, so "on mount" is "on open":
+  // the caret is in the search box as the list appears, in both hosts.
+  const focusRef = useAutoFocus<TextInput>(true);
+  // The box carries the focus, not a ring inside it -- see Field.tsx.
+  const [focused, setFocused] = useState(false);
   return (
     <View style={{
       flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
       height: 50, borderRadius: RADIUS.md, backgroundColor: theme.shell,
-      borderWidth: 1, borderColor: theme.lineStrong, paddingHorizontal: SPACE.lg,
+      borderWidth: 1, borderColor: focused ? theme.accent : theme.lineStrong,
+      paddingHorizontal: SPACE.lg,
     }}>
       <Icon name="search" size={20} color={theme.muted} />
       <TextInput
+        ref={focusRef}
         testID={testID}
         value={query} onChangeText={onChange} placeholder={placeholder}
         placeholderTextColor={theme.muted} accessibilityLabel={placeholder}
-        style={{ flex: 1, color: theme.fgStrong, fontSize: 14.5, fontWeight: '600' }} />
+        onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+        selectionColor={theme.accent}
+        style={{ flex: 1, color: theme.fgStrong, fontSize: 14.5, fontWeight: '600',
+          outlineWidth: 0, outlineStyle: 'solid' }} />
     </View>
   );
 }
@@ -435,10 +453,11 @@ export function ConfirmDialog({ open, onClose, title, body, cancelLabel = 'Not y
   }) {
   const { theme } = useTheme();
 
+  // No field of its own, so there is never a caret inside to keep -- but a
+  // dialog that is SHUT must not blur the form field behind it either.
   useEffect(() => {
     if (Platform.OS !== 'web') return;
-    const active = document.activeElement as HTMLElement | null;
-    if (active && active !== document.body && typeof active.blur === 'function') active.blur();
+    blurOpener(open, null);
   }, [open]);
 
   if (!open) return null;

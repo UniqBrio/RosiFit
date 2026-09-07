@@ -119,7 +119,7 @@ function BranchesBody() {
         </View>
       ) : (
         <>
-          <Field label="New branch name" required value={draft} onChange={setDraft}
+          <Field label="New branch name" autoFocus required value={draft} onChange={setDraft}
             placeholder="e.g. Salem"
             error={duplicate ? `${name} already exists.`
               : tooShort ? 'A little longer, please.' : undefined}

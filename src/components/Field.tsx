@@ -1,16 +1,29 @@
+import { useState } from 'react';
 import { View, Text, TextInput, Pressable, type KeyboardTypeOptions } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
 import { RADIUS, SPACE, TAP_MIN } from '../theme/tokens';
 import { RequiredMark } from './RequiredMark';
+import { useAutoFocus } from './openingFocus';
 
-export function Field({ label, value, onChange, placeholder, hint, error, keyboardType, secure, multiline, prefix, required }:
+export function Field({ label, value, onChange, placeholder, hint, error, keyboardType, secure, multiline, prefix, required, autoFocus }:
   { label: string; value: string; onChange: (v: string) => void; placeholder?: string;
     hint?: string; error?: string; keyboardType?: KeyboardTypeOptions;
     secure?: boolean; multiline?: boolean; prefix?: string;
     /** Marks the field mandatory. Optional, so the fields that were already
      *  here keep compiling and keep rendering exactly as they did. */
-    required?: boolean }) {
+    required?: boolean;
+    /** The caret starts here. Set on the FIRST field of a form and nowhere
+     *  else -- two autofocusing fields on one screen is a race, and the
+     *  loser is whichever one the requester was looking at. */
+    autoFocus?: boolean }) {
   const { theme } = useTheme();
+  const focusRef = useAutoFocus<TextInput>(autoFocus);
+  // Focus is shown on the BOX, the way the sign-in field shows it: the
+  // browser's own ring is drawn around the INNER input, which is a second
+  // rectangle inside this one. Moved, never removed -- a field with no
+  // visible focus is unusable on a keyboard, and with the caret placed on
+  // arrival this is now the first thing every form shows.
+  const [focused, setFocused] = useState(false);
   return (
     <View style={{ marginBottom: SPACE.md }}>
       <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase',
@@ -22,18 +35,22 @@ export function Field({ label, value, onChange, placeholder, hint, error, keyboa
       <View style={{
         flexDirection: 'row', alignItems: multiline ? 'flex-start' : 'center', gap: SPACE.sm,
         borderWidth: 1, borderRadius: RADIUS.md, paddingHorizontal: SPACE.lg,
-        borderColor: error ? theme.danger : theme.lineStrong,
+        borderColor: error ? theme.danger : focused ? theme.accent : theme.lineStrong,
         backgroundColor: theme.surface,
         minHeight: multiline ? 110 : TAP_MIN + 8, paddingVertical: multiline ? SPACE.md : 0,
       }}>
         {prefix ? <Text style={{ color: theme.muted, fontWeight: '700' }}>{prefix}</Text> : null}
         <TextInput
+          ref={focusRef}
           value={value} onChangeText={onChange} placeholder={placeholder}
           placeholderTextColor={theme.muted} keyboardType={keyboardType}
           secureTextEntry={secure} multiline={multiline}
           accessibilityLabel={required ? `${label}, required` : label}
+          onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+          selectionColor={theme.accent}
           style={{ flex: 1, color: theme.fgStrong, fontSize: 15, fontWeight: '400',
-            minHeight: multiline ? 86 : undefined, textAlignVertical: multiline ? 'top' : 'center' }} />
+            minHeight: multiline ? 86 : undefined, textAlignVertical: multiline ? 'top' : 'center',
+            outlineWidth: 0, outlineStyle: 'solid' }} />
       </View>
       {/* the error replaces the hint rather than stacking, so the row height
           does not jump while somebody is typing */}

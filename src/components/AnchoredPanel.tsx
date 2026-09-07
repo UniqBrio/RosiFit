@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Pressable, ScrollView, Modal, Platform, useWindowDimensions } from 'react-native';
 import { placePanel, anchoredWidth, PANEL_GAP, type Anchor } from './datePanel';
 import { useTheme } from '../theme/ThemeProvider';
+import { blurOpener } from './openingFocus';
 import { RADIUS, SPACE } from '../theme/tokens';
 
 /**
@@ -49,11 +50,18 @@ export function AnchoredPanel({ open, onClose, label, anchor, testID, width, hei
     children: React.ReactNode }) {
   const { theme } = useTheme();
   const { width: winW, height: winH } = useWindowDimensions();
+  const panel = useRef<View>(null);
 
+  /**
+   * The opener is blurred so nothing focused is left inside the app root
+   * that `accessibilityViewIsModal` hides (CP-014) -- but only once the
+   * panel is actually OPEN, and never the panel's own search box, which is
+   * exactly what should hold the caret while a picker is up. Both rules are
+   * in openingFocus.ts, shared with the two other layers.
+   */
   useEffect(() => {
     if (Platform.OS !== 'web') return;
-    const active = document.activeElement as HTMLElement | null;
-    if (active && active !== document.body && typeof active.blur === 'function') active.blur();
+    blurOpener(open, panel.current);
   }, [open]);
 
   if (!open) return null;
@@ -91,6 +99,7 @@ export function AnchoredPanel({ open, onClose, label, anchor, testID, width, hei
           accessibilityLabel={`Close ${label}`}
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
         <View
+          ref={panel}
           accessibilityViewIsModal
           accessibilityLabel={label}
           testID={`${testID}-panel`}

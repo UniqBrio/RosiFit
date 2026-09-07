@@ -1,0 +1,64 @@
+FAIL-FIRST EVIDENCE - the cursor starts in the first input field, 2026-09-07
+requests/2026-09-07-autofocus-first-input-field.md
+
+src/components/openingFocus.test.ts replayed against HEAD (b6bd904) via the
+OPENING_FOCUS_SPEC_ROOT override the spec carries. The tests that read source
+fail there and pass on the change; the four that test shouldBlurOpener pass in
+both columns because the predicate is new code the spec imports from the
+working tree either way -- they are the unit half, not the fail-first half.
+
+--- BEFORE: OPENING_FOCUS_SPEC_ROOT=<HEAD checkout> ---
+ok 1 - the spec is looking at a real tree
+not ok 2 - the shared field can be told to take the caret
+not ok 3 - every screen with an input names its first one
+not ok 4 - only the first field of a form autofocuses
+not ok 5 - the picker search box takes the caret in both its hosts
+ok 6 - a shut layer never blurs the field behind it
+ok 7 - an open layer blurs the opener behind it
+ok 8 - an open layer never blurs its own field
+ok 9 - nothing focused is nothing to blur
+not ok 10 - all three layers ask the shared rule rather than blurring on sight
+# tests 10
+# pass 5
+# fail 5
+
+(Test 11 -- "every field that takes the caret shows its focus on the box" --
+was added after this replay, when the browser pass below showed the ring.)
+
+--- AFTER: against the working tree ---
+# tests 11
+# pass 11
+# fail 0
+
+--- BROWSER PASS: expo export + Chromium, both themes ---
+The .harness route checks are Linux-only on this machine, so the exported web
+build was served locally and driven with Playwright. Focus is read off
+document.activeElement -- the DOM, not a picture of it.
+
+24/24 route x theme checks place the caret in the first input:
+  light+dark x /course/edit /member/edit /staff/add /holiday /change-mobile
+  /branches /register /forgot-pin /set-pin /members /attendance /appearance
+  -> activeElement is that screen's first field in every one.
+
+/course/c1 (reached the way a person reaches it, from /courses):
+  activeElement = "Search the members of this course", window.scrollY = 0.
+  Both the reason the hook exists: the field is below the course header, and
+  the page did NOT scroll to it.
+
+Pickers:
+  /staff/add role picker -> activeElement = "Search or type a new one",
+    inside the panel (the layer did not blur its own field).
+  /member/edit course picker -> no search box (4 options, no onAdd: the box is
+    drawn from 8 rows up), so focus lands on the panel as it did before.
+
+Keyboard:
+  /course/edit: typing lands in the field; Tab walks Course name -> Branch ->
+    Mon -> Tue -> Wed.
+  /members: typing lands in the search; Tab walks Search -> All -> No email ->
+    Needs follow-up -> Coimbatore.
+
+The dialog card overflowing the viewport top in this headless export is NOT
+this change: blurring the field leaves the card exactly where it was
+(cardTop -148 both ways), and one pixel of resize restores the 90% cap
+(cardTop 45, height 811). That is the documented no-viewport-on-first-render
+path in dialogSize.ts, unchanged here.

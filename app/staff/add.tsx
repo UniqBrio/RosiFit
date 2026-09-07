@@ -67,7 +67,7 @@ export default function StaffAdd() {
       onConfirm={() => void save()}
       hint={valid ? `Saved as ${role} · no app access yet`
         : 'Name and a 10-digit mobile number are needed'}>
-      <Field label="Full name" required value={name} onChange={setName} placeholder="e.g. Revathi Anand" />
+      <Field label="Full name" autoFocus required value={name} onChange={setName} placeholder="e.g. Revathi Anand" />
 
       <Field
         label="Mobile number" required value={phone} onChange={setPhone}

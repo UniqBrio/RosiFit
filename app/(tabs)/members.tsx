@@ -6,6 +6,7 @@ import { ScreenHeader } from '../../src/components/AppShell';
 import { safeBackTarget } from '../../src/data/nav';
 import { Icon } from '../../src/components/Icon';
 import { useTheme } from '../../src/theme/ThemeProvider';
+import { useAutoFocus } from '../../src/components/openingFocus';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../../src/theme/tokens';
 import {
@@ -28,6 +29,10 @@ export default function Members() {
   // names its origin instead; `from` is a URL parameter, so it is validated
   // (src/data/nav.ts) rather than navigated to on trust.
   const backTo = safeBackTarget(from, '/courses');
+  // The caret starts in the search box: this screen's first, and only, field.
+  const search = useAutoFocus<TextInput>(true);
+  // The box carries the focus, not a ring inside it -- see Field.tsx.
+  const [searching, setSearching] = useState(false);
   // ONE fetch for the members AND the rule, so "needs follow-up" here is the
   // same derivation the dashboard and the send flow use -- not a second list.
   const { state, data, error, retry } = useFollowUp(forced);
@@ -132,15 +137,20 @@ export default function Members() {
       <View style={{
         flexDirection: 'row', alignItems: 'center', gap: SPACE.md, marginTop: SPACE.md,
         height: 46, borderRadius: RADIUS.md, backgroundColor: theme.surface,
-        borderWidth: 1, borderColor: theme.lineStrong, paddingHorizontal: 13,
+        borderWidth: 1, borderColor: searching ? theme.accent : theme.lineStrong,
+        paddingHorizontal: 13,
       }}>
         <Icon name="search" size={19} color={theme.muted} />
         <TextInput
+          ref={search}
           value={query} onChangeText={setQuery}
           placeholder="Name, email or Meet alias"
           placeholderTextColor={theme.muted}
           accessibilityLabel="Search members"
-          style={{ flex: 1, color: theme.fgStrong, fontSize: 13.5, fontWeight: '600' }} />
+          onFocus={() => setSearching(true)} onBlur={() => setSearching(false)}
+          selectionColor={theme.accent}
+          style={{ flex: 1, color: theme.fgStrong, fontSize: 13.5, fontWeight: '600',
+            outlineWidth: 0, outlineStyle: 'solid' }} />
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false}

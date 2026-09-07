@@ -50,7 +50,7 @@ export default function ChangeMobile() {
       <Card>
         <H2>Confirm it is you</H2>
         <View style={{ marginTop: SPACE.md }}>
-          <Field label="Your current PIN" required value={pin} onChange={setPin} secure
+          <Field label="Your current PIN" autoFocus required value={pin} onChange={setPin} secure
             keyboardType="number-pad" placeholder="••••"
             error={pin.length > 0 && !pinOk ? 'Your PIN is 4 digits.' : undefined} />
           <Field label="New mobile number" required value={next} onChange={setNext} prefix="+91"

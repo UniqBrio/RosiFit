@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Screen, Muted, Label, Card } from '../src/components/ui';
 import { Icon } from '../src/components/Icon';
 import { useTheme, CUSTOM_KEY, type ThemeMode } from '../src/theme/ThemeProvider';
+import { useAutoFocus } from '../src/components/openingFocus';
 import { useToast } from '../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS, customAccent, customShades, hueFromHex } from '../src/theme/tokens';
 import { ShellScreen } from '../src/components/AppShell';
@@ -31,6 +32,11 @@ function AppearanceBody() {
     theme, mode, setMode, accentKey, setAccentKey, accents, hue, setHue, isCustom, customRatio,
   } = useTheme();
   const { flash } = useToast();
+  // The caret starts in the hex box: this screen's first, and only, field.
+  // Placed without scrolling, so the presets above it are still what opens.
+  const hex = useAutoFocus<TextInput>(true);
+  // The box carries the focus, not a ring inside it -- see Field.tsx.
+  const [hexFocused, setHexFocused] = useState(false);
 
   const custom = customAccent(hue);
   const shades = customShades(hue);
@@ -171,9 +177,10 @@ function AppearanceBody() {
               flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
               height: TAP_MIN, borderRadius: RADIUS.sm, paddingHorizontal: 11,
               backgroundColor: theme.surface2, borderWidth: 1,
-              borderColor: hexError ? theme.danger : theme.lineStrong,
+              borderColor: hexError ? theme.danger : hexFocused ? theme.accent : theme.lineStrong,
             }}>
               <TextInput
+                ref={hex}
                 testID="appearance-hex"
                 value={hexDraft}
                 onChangeText={onHexChange}
@@ -182,7 +189,10 @@ function AppearanceBody() {
                 autoCapitalize="characters" autoCorrect={false} maxLength={7}
                 accessibilityLabel="Accent colour as a hex value"
                 accessibilityHint="Type a six-digit hex colour. Its hue is taken; the shade is measured."
+                onFocus={() => setHexFocused(true)} onBlur={() => setHexFocused(false)}
+                selectionColor={theme.accent}
                 style={{
+                  outlineWidth: 0, outlineStyle: 'solid',
                   flex: 1, color: theme.fgStrong, fontSize: 13.5, fontWeight: '700',
                   fontVariant: ['tabular-nums'],
                 }} />
