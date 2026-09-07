@@ -156,9 +156,17 @@
 >    09:58 `400 Email address is not verified … AP-SOUTH-1:
 >    shaziafarheen74@gmail.com`, then 10:07 `sent`, nine minutes later.
 >    Production access takes about a day; verifying ONE address takes one
->    click in a confirmation email. So the likely state is still **sandbox,
->    with a single recipient identity verified** — which looks exactly like a
->    working deployment until the second member is mailed.
+>    click in a confirmation email.
+>
+>    **CONFIRMED from the SES console the same day.** The Identities pane in
+>    Asia Pacific (Mumbai) holds five: `getfit.rosifit.com` and
+>    `getfit.ravisfit.com` verified as DOMAINS, `uniqbrio.com` pending, and —
+>    this is the part that explains the successful send — `shaziafarheen74@`
+>    `gmail.com` and `uniqbotzinfo@gmail.com` verified as individual EMAIL
+>    ADDRESS identities. So the 10:07 success was a verified RECIPIENT, not a
+>    lifted sandbox. Of the nine members holding an address, exactly one is on
+>    that list, and a send today reaches **one of fifteen** — which looks
+>    exactly like a working deployment until the second member is mailed.
 >
 >    Check it in the SES console under Account dashboard, not by sending. A
 >    send to the one verified address cannot tell the two states apart.
