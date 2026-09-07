@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased — The course header stops eating half the screen, and four controls become addressable
+
+**The course page no longer opens on a wall of purple.** Its header — the course name, the
+schedule under it and the three buttons — was painting most of the way down the screen with
+nothing in it, pushing the follow-up sentence, the week strip and the member list into the
+bottom half. The bar now ends where its contents end. On a wide screen it went from 417pt to
+74pt; on a phone the three buttons stack, so it is 244pt and that is genuinely how tall they
+are. Nothing moved, was removed or was renamed — there is simply no empty band above the
+roster any more.
+
+The cause was shared: the deep gradient assumed it was always a whole screen, which is true on
+sign-in, Help and the PIN screens and stopped being true when the course header was pinned
+above the scrolling roster. It now says which of the two it is, so those screens are untouched.
+
+**Four buttons an automated test could not reach now have names.** *Call* and *WhatsApp* on
+Help, the two *Powered by* links beside them, *Choose a new PIN* after a recovery check passes,
+and the answer button on the recovery questions. Nothing about them looks or behaves any
+different; they can now be addressed by a runner rather than only by a person, which closes the
+last audit gate that was still failing.
+
 ## Unreleased — Each day that is waiting for a file says so, and takes you straight to the upload
 
 **The week strip on a course now carries an *Awaiting upload* button on every day that has no

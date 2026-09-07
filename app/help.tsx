@@ -49,7 +49,7 @@ function HelpBody() {
   const action = (
     key: string, label: string, hint: string, onPress: () => void, icon: React.ReactNode,
   ) => (
-    <Pressable key={key} onPress={onPress}
+    <Pressable key={key} testID={`help-${key}`} onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={hint}
       style={({ pressed }) => ({
@@ -119,6 +119,7 @@ function HelpBody() {
             <View key={s.url} style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }}>
               {ix > 0 ? <Text style={{ fontSize: 13, color: onGradient }}>·</Text> : null}
               <Pressable
+                testID={`help-poweredby-${s.label.replace(/./g, '-')}`}
                 onPress={() => open(s.url, `Open ${s.label} — this device cannot open the link`)}
                 accessibilityRole="link"
                 accessibilityLabel={`Open ${s.label}`}

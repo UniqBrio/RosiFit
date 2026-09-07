@@ -273,7 +273,7 @@ export default function ForgotPin() {
           <Body style={{ marginTop: SPACE.sm, textAlign: 'center' }}>
             Set a new PIN now. Your old one stopped working the moment you passed this check.
           </Body>
-          <Button label="Choose a new PIN" style={{ marginTop: SPACE.xl, alignSelf: 'stretch' }}
+          <Button testID="forgot-pin-choose-new" label="Choose a new PIN" style={{ marginTop: SPACE.xl, alignSelf: 'stretch' }}
             onPress={() => router.replace('/set-pin?for=first')} />
         </View>
       </Screen>
@@ -315,7 +315,7 @@ export default function ForgotPin() {
         </View>
       </View>
 
-      <Button label={busy ? 'Checking…' : ix === 1 ? 'Check and continue' : 'Next question'} onPress={() => void submit()}
+      <Button testID="forgot-pin-submit" label={busy ? 'Checking…' : ix === 1 ? 'Check and continue' : 'Next question'} onPress={() => void submit()}
         disabled={!answer.trim() || busy} style={{ marginTop: SPACE.lg }} />
       <Button testID="forgot-pin-back" label="Back to sign in" variant="secondary"
         onPress={toSignIn} style={{ marginTop: SPACE.sm }} />
