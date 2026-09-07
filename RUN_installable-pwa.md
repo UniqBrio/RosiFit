@@ -88,6 +88,14 @@ outlives its deployment, `sw.js` also ships a kill switch — see the note in th
 Every Gate 1 answer above was taken on the written recommendation and is logged there; Q2 and
 Q7 are the two worth the requester's eye. Nothing here overrode a stated FIELD.
 
+**Decided by the requester directly, 07-Sep-2026** — the two things auto mode does not get to
+choose, put to them after the build so neither blocked it:
+
+| Question | Answer |
+|---|---|
+| The icon plate behind the crest. An app icon is the app's identity on a home screen and is cached hard by the OS, so changing it later does not reach anyone who has already installed. Three token-backed options were rendered and shown (`.evidence/pwa-icon-candidates/`). | **A — the app's own background, `#08040A`.** What was already built; no change. |
+| Deploy a Vercel preview. | **No — local only.** Nothing has been deployed. The mechanical gate's verdict is FAIL on four pre-existing missing runners, so there is no PASS to merge on; accepting those BLOCKED classes is an owner decision, and promotion to production is a separate approved step in every run mode. |
+
 ## A5 — what was built
 
 | File | New / changed | What |
