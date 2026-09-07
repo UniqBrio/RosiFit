@@ -9,6 +9,7 @@ import { Icon } from '../../src/components/Icon';
 import { AnchoredPicker } from '../../src/components/Sheet';
 import { useAnchor } from '../../src/components/AnchoredPanel';
 import { FormDialog } from '../../src/components/FormDialog';
+import { spaceSelects } from '../../src/components/keyboard';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../../src/theme/tokens';
@@ -30,25 +31,6 @@ const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
  * distinction the system does not make. A record that already holds 'paused'
  * reads as Inactive, exactly as the course roster's pill already draws it.
  */
-/**
- * SPACE picks a radio -- the ARIA pattern says so, and CP-22 after it.
- *
- * React Native Web's Pressable answers Enter and lets Space through to the
- * page, where it scrolls instead: verified on the built page, where the
- * keydown arrived at the element and no press followed it. React Native's own
- * Pressable types carry no keyboard event, because most platforms have no
- * keyboard, so the handler is typed here and spread in rather than cast at
- * the call site. Picking is idempotent, so a browser that does synthesise the
- * press as well lands on the same value.
- */
-const spaceSelects = (pick: () => void) => ({
-  onKeyDown: (e: { nativeEvent: { key: string }; preventDefault: () => void }) => {
-    if (e.nativeEvent.key !== ' ') return;
-    e.preventDefault();
-    pick();
-  },
-}) as object;
-
 /**
  * The Active row's own words, named because TWO states of this form now show
  * them: the Edit pick below, and the Add form's toggle, which states the

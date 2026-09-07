@@ -1,5 +1,91 @@
 # Changelog
 
+## Unreleased — Each day that is waiting for a file says so, and takes you straight to the upload
+
+**The week strip on a course now carries an *Awaiting upload* button on every day that has no
+file yet.** Press it and the upload opens for that exact day — Wednesday's button uploads
+Wednesday — so a file for the wrong day is still caught and asked about. A day whose file has
+arrived shows its tick, as before, with nothing to press; a day the course does not run keeps
+its dash. On a phone, where the seven cards are too narrow for the words, the button is the
+cloud alone and the legend above the strip still names it.
+
+The *Upload Session* button beside *Send Communication* is unchanged. Nothing comes back under
+the strip: no card, no message.
+
+## Unreleased — The Overview keeps its filters in view, and its charts say more than a percentage
+
+**The three filters stay where you put them.** Course, Period and Branch used to scroll away
+with everything else, so by the time the course and period charts were on screen the controls
+that decided what they counted were off it — and there was no way to tell what the numbers in
+front of you covered without scrolling back up. The row is now pinned to the top of the
+Overview and the charts pass underneath it. Opening a filter still drops its list in place,
+over the figures rather than beside them.
+
+**Every course and every day now shows all three numbers.** A ring used to read "1 of 9
+present", which left you to work out the figure you were actually after — how many were missed.
+It now reads *9 scheduled · 1 attended · 8 missed*, the same words the member chart has always
+used, so a course cannot be described one way under a ring and another way under a bar. A
+course with nothing on the timetable still says so in words instead of showing 0%.
+
+**And the member chart names the course.** *Divya Ramesh · Prenatal Flow · Chennai*, under her
+name. The ranking tells you who to chase; now it also tells you what about, without leaving for
+Reports to find out. Where two members share a name and are in different courses, no course is
+named — a caption for a population it does not describe would be worse than none.
+
+Nothing about how any figure is counted has changed.
+
+## Unreleased — The audit log reads like English
+
+**It was a record of your academy written in the database's handwriting.** The screen printed
+what the table stores, so the line that was supposed to name a member read
+`a98a2d1a-32de-45f4-8b67-6…`, the heading above it read `member.insert`, and the fields that
+changed were column names — `full_name`, `joined_on`, `created_by`. Sign-ins were listed as
+ordinary entries, and with only the fifty most recent changes on screen they were pushing the
+real ones off the end.
+
+**Now every line is a sentence.** *Member added · Ranjani*. *Course follow-up rule updated ·
+Prenatal Yoga · Missed in a week 3 → 2*. *Course schedule updated · Days Mon Tue Thu Sat →
+Mon Tue Wed Thu Sat*. Whoever made the change is named with their role beside it — Owner or
+Staff — and the time reads *Today, 3:11 PM* rather than *9/7/2026, 3:11:49 PM*. An entry is
+one row now, with everything it changed listed inside it, instead of one row per field with
+"same action" underneath.
+
+**Signing in and out is no longer listed.** It is still recorded, still permanent, and still
+in the table — it just is not a change to anything, and the screen says so in a line under the
+heading. Nothing was deleted and nothing stopped being written down.
+
+**The column header stays put while you scroll**, so you never lose track of which column you
+are reading. On a phone the entries are cards instead, where there are no columns to freeze.
+
+**And you can find things.** A search box across every word on every row, seven chips for the
+kind of activity — members, courses, attendance, uploads, messages, settings — a date range
+(with *Any date* as the default, so nothing is hidden unless you ask), and a branch filter.
+
+**Remarks.** A section of your own beneath the log, for why something was done: *"lowered the
+Prenatal Yoga thresholds after the Saturday batch moved"*. Like the log itself, a remark
+cannot be edited or deleted once saved, and it never alters the record beside it. **This half
+needs a database update that has not been applied yet** — until it is, the section says so
+plainly and the log above it works exactly as described.
+
+## Unreleased — A form no longer disappears when you tap beside it
+
+**A stray tap used to throw the whole form away.** Every form in RosiFit opens as a dialog over
+the screen you were on, and a press anywhere on the dimmed area around it closed the dialog.
+Closing is not saving, so a member you had half finished — her name, her email, her course,
+her joining date — was simply gone, with nothing to undo and nothing on screen that you had
+actually aimed at.
+
+**Now the area around a form does nothing when you press it.** Add member, edit member, add and
+edit a course, the class editor, a member's record, the attendance upload, the member import and
+its help panel, add staff, holidays, the message you are sending, change mobile — all of them
+leave the way they have always shown you they leave: the close button in the top corner, or
+Cancel. The confirmations that stand in front of the irreversible things — sending, deleting
+— work the same way now: they wait for an answer instead of vanishing on a misplaced click.
+
+**The pickers are deliberately unchanged.** A calendar hanging under a date field, the
+notifications list, the search panels — those still close when you tap away from them, because
+tapping away is the only way out they have, and none of them is holding anything you typed.
+
 ## Unreleased — RosiFit installs like an app
 
 **It has called itself a PWA since the day it was written, and it could not be installed.**

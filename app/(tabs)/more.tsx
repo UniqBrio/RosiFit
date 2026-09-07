@@ -5,7 +5,7 @@ import { ScreenHeader } from '../../src/components/AppShell';
 import { Icon } from '../../src/components/Icon';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { SPACE, RADIUS, TAP_MIN, STATUS } from '../../src/theme/tokens';
-import { SUPPORT_PHONE } from '../../src/data/mock';
+import { SUPPORT_PHONE_DISPLAY } from '../../src/data/mock';
 import { useBranchUsage, useStaff } from '../../src/data/hooks';
 import { useIdentity, signOut } from '../../src/data/session';
 import { useGoToSignIn } from '../../src/components/useGoToSignIn';
@@ -110,7 +110,7 @@ export default function More() {
     {
       title: 'App', items: [
         { icon: 'palette',       label: 'Appearance',     meta: `${themeName} · ${accentName}`, to: '/appearance' },
-        { icon: 'support_agent', label: 'Help & support', meta: SUPPORT_PHONE, to: '/help' },
+        { icon: 'support_agent', label: 'Help & support', meta: SUPPORT_PHONE_DISPLAY, to: '/help' },
         { icon: 'logout',        label: 'Sign out',       meta: '', danger: true,
           onPress: () => { void leave(); } },
       ],
@@ -128,9 +128,9 @@ export default function More() {
 
   if (loading) {
     return (
-      <Screen>
+      <Screen header={
         <ScreenHeader title="More" subtitle="Your account, your academy, your rules"
-        onBack={() => router.navigate('/')} />
+        onBack={() => router.navigate('/')} />}>
         <Skeleton lines={8} />
       </Screen>
     );
@@ -138,9 +138,9 @@ export default function More() {
 
   if (signedOut || !identity) {
     return (
-      <Screen>
+      <Screen header={
         <ScreenHeader title="More" subtitle="Your account, your academy, your rules"
-        onBack={() => router.navigate('/')} />
+        onBack={() => router.navigate('/')} />}>
         {/* Being signed out is not a failure, so it does not get the error
             card's "Something went wrong / Try again" words. */}
         <EmptyState
@@ -153,16 +153,16 @@ export default function More() {
   }
 
   return (
-    <Screen>
-      {/* More is a TAB ROOT, so there is no stack to pop -- router.back()
-          inside the tab group answers about the stack the tabs sit in and
-          would leave the app for the sign-in screen. The canvas draws a back
-          arrow here all the same, and it means the same thing a hardware back
-          means on a non-home tab: return HOME -- Overview for the super admin,
-          the Attendance workspace for a staff account, which has no Overview
-          to return to. A named destination, not a guess. */}
+    /* More is a TAB ROOT, so there is no stack to pop -- router.back()
+       inside the tab group answers about the stack the tabs sit in and
+       would leave the app for the sign-in screen. The canvas draws a back
+       arrow here all the same, and it means the same thing a hardware back
+       means on a non-home tab: return HOME -- Overview for the super admin,
+       the Attendance workspace for a staff account, which has no Overview
+       to return to. A named destination, not a guess. */
+    <Screen header={
       <ScreenHeader title="More" subtitle="Your account, your academy, your rules"
-        onBack={() => router.navigate(homeHref(identity.isSuperAdmin))} />
+        onBack={() => router.navigate(homeHref(identity.isSuperAdmin))} />}>
 
       <Pressable onPress={() => router.push('/profile')}
         accessibilityRole="button"

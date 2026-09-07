@@ -20,6 +20,12 @@ import {
  * The custom range is not applied until BOTH ends are picked. A half-picked
  * range would otherwise leave the screen labelled "Custom range" while it
  * still counted the previous period -- the exact drift C-84 exists to stop.
+ *
+ * The day that COMPLETES the range is the whole answer: it applies the range
+ * and closes the panel, exactly as tapping one of the named ranges does.
+ * There used to be a confirming button after it, and it confirmed nothing --
+ * the range had already been applied by the tap before it, so all the button
+ * did was ask for the same choice a second time (ADR-035).
  */
 
 /** What the closed field shows: the name, or the dates when they are custom. */
@@ -28,14 +34,27 @@ export function periodFieldValue(choice: PeriodChoice): string {
 }
 
 export function PeriodPanel({ choice, onChange, onDone, testID }:
-  { choice: PeriodChoice; onChange: (next: PeriodChoice) => void;
+  {
+    /**
+     * The range in force, or `null` for "none of these is chosen".
+     *
+     * Null exists for the Audit log, the one screen whose honest default is
+     * no date filter at all: it offers "Any date" above this panel, and
+     * without a null the panel would go on marking a preset as Selected
+     * beside it — two items claiming to be the choice in one radio group,
+     * which is a false statement to the eye and to a screen reader alike.
+     * Every other caller passes a real choice and renders exactly as before.
+     */
+    choice: PeriodChoice | null; onChange: (next: PeriodChoice) => void;
     onDone: () => void; testID: string }) {
   const { theme } = useTheme();
-  const isCustom = choice.key === CUSTOM_PERIOD;
+  const isCustom = choice?.key === CUSTOM_PERIOD;
 
   // The half-picked range lives here, not in the screen's applied choice.
   const [draft, setDraft] = useState<{ from: string; to: string }>(
-    () => isCustom ? { from: choice.from, to: choice.to } : { from: '', to: '' });
+    () => (choice && choice.key === CUSTOM_PERIOD)
+      ? { from: choice.from, to: choice.to }
+      : { from: '', to: '' });
   const [dating, setDating] = useState(isCustom);
 
   const pick = (day: string) => {
@@ -46,21 +65,26 @@ export function PeriodPanel({ choice, onChange, onDone, testID }:
       ? { from: day, to: '' }
       : { from: draft.from, to: day };
     setDraft(next);
-    if (next.to) onChange({ key: CUSTOM_PERIOD, from: next.from, to: next.to });
+    // Applied AND gone on the day that finishes the range. A start with no
+    // end still changes nothing, which is the half of this that matters.
+    if (next.to) {
+      onChange({ key: CUSTOM_PERIOD, from: next.from, to: next.to });
+      onDone();
+    }
   };
 
   return (
     <>
       {PERIOD_PRESETS.map(key => (
         <DropdownItem key={key} label={key} meta={presetPeriod(key).label}
-          selected={choice.key === key}
+          selected={choice?.key === key}
           onPress={() => { setDating(false); onChange({ key }); onDone(); }}
           testID={`${testID}-${key.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`} />
       ))}
 
       <DropdownItem
         label={CUSTOM_PERIOD}
-        meta={isCustom ? resolvePeriod(choice).label : 'Pick any two days'}
+        meta={isCustom && choice ? resolvePeriod(choice).label : 'Pick any two days'}
         selected={isCustom}
         expandable expanded={dating}
         onPress={() => setDating(d => !d)}
@@ -90,7 +114,9 @@ export function PeriodPanel({ choice, onChange, onDone, testID }:
             cannot be counted yet, so they are not offered.
           </Text>
 
-          <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.md }}>
+          {/* Clear, and nothing beside it. The button that used to sit here
+              only re-asked for a range the second tap had already applied. */}
+          <View style={{ flexDirection: 'row', marginTop: SPACE.md }}>
             <Pressable
               testID={`${testID}-custom-clear`}
               onPress={() => setDraft({ from: '', to: '' })}
@@ -101,23 +127,6 @@ export function PeriodPanel({ choice, onChange, onDone, testID }:
                 borderWidth: 1, borderColor: theme.lineStrong, opacity: pressed ? 0.75 : 1,
               })}>
               <Text style={{ fontSize: 13, fontWeight: '700', color: theme.fg }}>Clear</Text>
-            </Pressable>
-            <Pressable
-              testID={`${testID}-custom-done`}
-              onPress={onDone}
-              disabled={!draft.to}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: !draft.to }}
-              accessibilityLabel={draft.to ? 'Use this range' : 'Pick both days first'}
-              style={({ pressed }) => ({
-                flex: 1, minHeight: TAP_MIN, borderRadius: RADIUS.md,
-                alignItems: 'center', justifyContent: 'center',
-                backgroundColor: theme.accent,
-                opacity: !draft.to ? 0.4 : pressed ? 0.85 : 1,
-              })}>
-              <Text style={{ fontSize: 13, fontWeight: '800', color: theme.onAccent }}>
-                {draft.to ? 'Use this range' : 'Pick both days'}
-              </Text>
             </Pressable>
           </View>
         </View>

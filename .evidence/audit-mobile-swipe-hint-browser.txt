@@ -1,0 +1,50 @@
+requests/2026-09-07-audit-log-for-end-users.md, correction round 2 - browser evidence, 07-Sep-2026
+
+Fixtures build (EXPO_NO_DOTENV=1 CI=1 npx expo export --platform web - without the
+Supabase env, fetchAudit and fetchRemarks return their fixtures), served on 8131 and
+driven by Playwright / Chromium 1243 at 390x780 with isMobile+hasTouch, and at 1280x780.
+Both themes via colorScheme.
+
+WHAT WAS ASKED
+  "the audit log in mobile view should also be in table format and where is remarks
+   section new value previous value smodiefied at and modified by fields?"
+
+WHAT WAS ACTUALLY WRONG
+  Nothing was missing from the screen. All five columns were there and Remarks was
+  there. On a 390pt phone the 760pt table shows 356pt of itself, and a touch
+  scrollbar is an overlay that appears only once you are already scrolling - so four
+  columns sat one swipe away with nothing on screen saying so, and the table read as
+  a list. Separately, Remarks was painting its ERROR state because migration 0043 had
+  never been applied to the live project.
+
+PHONE 390x780, isMobile + hasTouch
+  light  hint present   "Swipe the table sideways for Previous value, New value, Modified by and Modified at"
+  dark   hint present   same sentence
+  light  at far right   "That is every column - swipe back for What changed, Previous value and New value"
+  dark   at far right   same sentence
+  light  mid-swipe 300  "Swipe the table sideways for Modified at"   (names only what is still hidden)
+  dark   mid-swipe 300  same sentence
+  both   body scroller  scrollWidth 760 / clientWidth 356 - the table does overflow, as designed
+  both   frozen header  follows the body: two distinct nodes, head 0->300 when body 0->300
+  both   headers in DOM What changed, Previous value, New value, Modified by, Modified at (all five)
+  both   remarks        section present, composer present ("Add remark" button found)
+  both   page overflow  0px - the PAGE never scrolls sideways, only the table inside it
+
+DESKTOP 1280x780
+  light  no hint        nothing is hidden, so no instruction that does nothing
+  dark   no hint        same
+  both   no overflowing table scroller at all; all five headers present; remarks present
+
+No page errors in any of the four runs (React #418 hydration is filtered - pre-existing
+on every route, TD-043).
+
+Not proven here: the LIVE screen against Supabase. This is the fixtures build, so it
+exercises the layout and the hint arithmetic, not RLS. The remarks table's production
+shape was verified separately by query after 0043 was applied - RLS enabled and forced,
+2 policies, 3 append-only triggers, anon holds nothing, authenticated holds SELECT+INSERT
+only, the length check present, 0 rows.
+
+Scripts: scratchpad/audit-probe.mjs, scratchpad/head-follow.mjs.
+Screenshots: audit-{phone,desktop}-{light,dark}.png in the scratchpad.
+Unit spec: src/components/tableScroll.test.ts (9 tests) - fail-first in
+.evidence/audit-mobile-swipe-hint-fail-first.txt.

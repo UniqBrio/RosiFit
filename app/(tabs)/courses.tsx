@@ -157,23 +157,29 @@ export default function Courses() {
   }
 
   return (
-    <Screen>
-      {/* "Attendance", not "Courses". This is the canvas' second TAB and its
-          landing screen -- the workspace where a course is opened, its
-          register uploaded and its weekly review run. The course list is how
-          you get at all of that, not the subject of the screen. */}
-      {/* THE SCREEN'S ACTIONS, together in its header. Add Course, Add Member
-          and Bulk Import are the three ways a person comes here to put
-          something on the register, so they sit as one group beside the
-          title. Add Member and Bulk Import used to be a row of their own
-          between the search box and the list; the requester asked for them
-          next to Add Course (2026-09-06).
-          On a phone the three do not fit beside a two-line title, so the
-          group drops under it as a full-width row that wraps: buttons grow
-          to share the line, and whichever does not fit takes the next one. */}
+    /* "Attendance", not "Courses". This is the canvas' second TAB and its
+       landing screen -- the workspace where a course is opened, its
+       register uploaded and its weekly review run. The course list is how
+       you get at all of that, not the subject of the screen.
+
+       THE SCREEN'S ACTIONS, together in its header. Add Course, Add Member
+       and Bulk Import are the three ways a person comes here to put
+       something on the register, so they sit as one group beside the
+       title. Add Member and Bulk Import used to be a row of their own
+       between the search box and the list; the requester asked for them
+       next to Add Course (2026-09-06).
+       On a phone the three do not fit beside a two-line title, so the
+       group drops under it as a full-width row that wraps: buttons grow
+       to share the line, and whichever does not fit takes the next one.
+
+       PINNED, with the actions: the header goes through Screen's `header`
+       slot so it stays put while the course cards scroll beneath it
+       (requests/2026-09-07-pin-screen-header-on-scroll.md). */
+    <Screen header={<>
       <ScreenHeader title="Attendance" subtitle={headline}
         right={compact ? undefined : actions} />
       {compact ? <View style={{ marginTop: -SPACE.xs, marginBottom: SPACE.md }}>{actions}</View> : null}
+    </>}>
 
       {all.length === 0 && (
         <EmptyState

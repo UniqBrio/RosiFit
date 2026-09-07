@@ -8,9 +8,15 @@
  * figure that carries a tone. Both rules lived inline on the page; they are
  * here so the dialog is nothing but layout and the rules can be read on
  * their own.
+ *
+ * The card is TWO panels since 2026-09-07 (the tabs below), so this module
+ * also holds the readings her details panel needs -- for the same reason:
+ * the panel is layout, and what "Inactive" or "follows the course" MEANS is
+ * a rule that belongs beside the ones already here.
  */
 
 import type { StatusKey } from '../theme/tokens';
+import { DAY_NAMES, type MemberStatus } from '../data/mock';
 
 /**
  * `course · branch · joined <month>` -- or just `course · branch` when there
@@ -32,4 +38,67 @@ export function memberSubtitle(m: { course: string; branch: string; joined: stri
 export function attendanceTone(pct: number | null): Extract<StatusKey, 'present' | 'awaiting' | 'absent'> | null {
   if (pct === null) return null;
   return pct >= 70 ? 'present' : pct >= 40 ? 'awaiting' : 'absent';
+}
+
+/* ------------------------------------------------------------ the two tabs
+ * (requests/2026-09-07-member-dialog-two-tabs.md)
+ *
+ * The card carried her week AND her record in one scroll. It is two panels
+ * now: the week exactly as it was, and the record's own details -- the facts
+ * the Edit form writes, read-only, at the moment somebody is deciding whether
+ * to reach out to her.
+ *
+ * The list is here rather than in the dialog because the panel a tab names
+ * and the tab itself must not be able to drift apart; the key is what the
+ * dialog switches on, so a tab with no panel is a type error.
+ */
+export const MEMBER_TABS = [
+  { key: 'week', label: 'This week' },
+  { key: 'details', label: 'Her details' },
+] as const;
+
+export type MemberTab = typeof MEMBER_TABS[number]['key'];
+
+/**
+ * Her status, as a WORD and an ICON -- never the colour alone (guardrail 3).
+ *
+ * 'paused' reads as Inactive, and that is not a shortcut: `members.status`
+ * allows a third value that no screen sets, and `follow_up_candidates()`
+ * (0009) passes 'active' and nothing else -- so paused and inactive are the
+ * SAME fact to every part of the app that acts on the column. The roster
+ * pill already folds them this way; this is the same reading, named, so the
+ * pop-up and the row behind it cannot start calling one member two things.
+ */
+export function memberStatusReading(status: MemberStatus):
+  { word: string; icon: string; active: boolean } {
+  const active = status === 'active';
+  return {
+    active,
+    word: active ? 'Active' : 'Inactive',
+    icon: active ? 'check_circle' : 'pause_circle',
+  };
+}
+
+/**
+ * The days she attends, Monday first -- or `null` when she has none of her
+ * own and follows the days her offering runs.
+ *
+ * `member_schedules` (0006) is an OVERRIDE, so `null` and `[]` both mean "no
+ * row, she follows the course" and must not be drawn as "no days": a member
+ * who follows a course that runs three days a week attends three days. The
+ * order is the WEEK's, not the row's -- a stored [5,1] is Mon · Fri.
+ */
+export function memberDayNames(weekdays: number[] | null): string[] | null {
+  if (!weekdays || weekdays.length === 0) return null;
+  return [...weekdays].sort((a, b) => a - b).map(d => DAY_NAMES[d]);
+}
+
+/**
+ * Her addresses with the primary first, the order the member form saves them
+ * in -- so the panel that READS the record and the form that WRITES it agree
+ * about which address is at the top. Stable below the primary: the rest keep
+ * the order they are stored in rather than being shuffled by the sort.
+ */
+export function addressesInOrder<T extends { primary: boolean }>(emails: T[]): T[] {
+  return [...emails].sort((a, b) => Number(b.primary) - Number(a.primary));
 }

@@ -181,10 +181,16 @@ function CourseDetailBody() {
    *
    *   rows present             -> completed; present/absent as recorded
    *   no rows, offering is off -> not expected
-   *   no rows, date to come    -> scheduled
-   *   no rows, date passed     -> awaiting upload. The session ran and no
-   *                               file has arrived, which is the state the
-   *                               Upload action exists for.
+   *   no rows                  -> awaiting upload. No file has arrived for a
+   *                               day this course runs, which is the state
+   *                               the Upload action exists for.
+   *
+   * A day still to come used to be its own key, `scheduled`, drawn with a
+   * clock. Nothing on the screen said what the clock meant: it was left out
+   * of the legend because the day panel underneath spelled it out in a
+   * sentence, and that panel has since been removed. So the strip now speaks
+   * the four states its legend names, and an un-uploaded day wears the
+   * cloud whether the date has passed or not (0034).
    */
   const days: DayCell[] = useMemo(() => {
     const rows = (attendance.data ?? []).filter(r => r.course === course?.name
@@ -204,7 +210,6 @@ function CourseDetailBody() {
       for (const d of o.weekdays) runsOn.add(d);
     }
 
-    const todayIso = iso(new Date());
     const start = new Date(`${week.from}T00:00:00`);
     return Array.from({ length: 7 }, (_, i) => {
       const date = new Date(start);
@@ -221,7 +226,6 @@ function CourseDetailBody() {
       const key: StatusKey = dayRows.length > 0
         ? (absent > 0 && present === 0 ? 'absent' : 'present')
         : !runsOn.has(weekday) ? 'none'
-        : dateIso > todayIso ? 'scheduled'
         : 'awaiting';
 
       return {
@@ -304,10 +308,13 @@ function CourseDetailBody() {
 
   return (
     <>
-      <ScrollView style={{ flex: 1, backgroundColor: theme.bg }}
-        contentContainerStyle={{ paddingBottom: 110 }}>
-
         {/* --------------------------------------- THE COMPACT COURSE HEADER
+            PINNED: this bar is a sibling ABOVE the roster's ScrollView, not
+            its first child, so the course name and its three actions stay
+            while the week strip and the member cards scroll beneath them
+            (requests/2026-09-07-pin-screen-header-on-scroll.md). The same
+            sibling-above pattern ShellScreen uses one level up for the
+            academy header.
             The course is named ONCE, at heading size, with the back arrow
             beside it and the schedule directly underneath. What was here
             before said it twice -- a `Courses -> Postnatal` breadcrumb over a
@@ -384,6 +391,8 @@ function CourseDetailBody() {
           </View>
         </DeepBackground>
 
+      <ScrollView style={{ flex: 1, backgroundColor: theme.bg }}
+        contentContainerStyle={{ paddingBottom: 110 }}>
         <View style={{ paddingHorizontal: SPACE.lg, paddingTop: SPACE.md }}>
           {rule ? <Muted style={{ marginBottom: SPACE.sm }}>{ruleSentence(rule, course.name)}</Muted> : null}
 
@@ -457,34 +466,96 @@ function CourseDetailBody() {
                     const on = chosen?.iso === d.iso;
                     const tone = STATUS[d.key];
                     const ink = theme.isDark ? tone.fgDark : tone.fgLight;
+                    const waiting = d.key === 'awaiting';
+                    const dayWords = `${d.dow} ${d.dayNum} ${d.mon}`;
+                    const box = statusSurface(ink);
                     return (
-                      <Pressable key={d.iso} testID={`course-day-${d.iso}`}
-                        onPress={() => setSelectedDay(d.iso)}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: on }}
-                        // The word, not the colour. The cell shows an icon and a
-                        // number, so the STATUS has to reach a screen reader
-                        // some other way.
-                        accessibilityLabel={`${d.dow} ${d.dayNum} ${d.mon}, ${tone.word}`}
-                        style={{
-                          flex: 1, minWidth: 0, alignItems: 'center', gap: 1,
-                          paddingVertical: 7, paddingHorizontal: compact ? 1 : 2,
-                          borderRadius: 12,
-                          backgroundColor: on ? statusSurface(theme.accent).bg : theme.surface,
-                          borderWidth: 1, borderColor: on ? theme.accent : theme.line,
-                        }}>
-                        <Text style={{ fontSize: 8.5, fontWeight: '800', color: on ? theme.accentInk : theme.dim }}>
-                          {d.mon}
-                        </Text>
-                        <Text style={{
-                          fontSize: 15, fontWeight: '800', fontVariant: ['tabular-nums'],
-                          color: on ? theme.fgStrong : theme.fg,
-                        }}>{d.dayNum}</Text>
-                        <Text style={{ fontSize: 8.5, fontWeight: '700', color: on ? theme.accentInk : theme.dim }}>
-                          {d.dow}
-                        </Text>
-                        <Icon name={tone.icon} size={13} color={ink} />
-                      </Pressable>
+                      /* A FRAME, not a press. An awaiting day holds TWO controls
+                         -- the date block, which selects the day, and the upload
+                         button under it -- and they are siblings inside this
+                         frame, never one inside the other: a button inside a
+                         button is one control to a screen reader and a
+                         coin-toss to a finger. The frame wears the card's
+                         border and fill, so the two read as one card. */
+                      <View key={d.iso} style={{
+                        flex: 1, minWidth: 0, borderRadius: 12,
+                        backgroundColor: on ? statusSurface(theme.accent).bg : theme.surface,
+                        borderWidth: 1, borderColor: on ? theme.accent : theme.line,
+                      }}>
+                        <Pressable testID={`course-day-${d.iso}`}
+                          onPress={() => setSelectedDay(d.iso)}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: on }}
+                          // The word, not the colour. The cell shows an icon and a
+                          // number, so the STATUS has to reach a screen reader
+                          // some other way.
+                          accessibilityLabel={`${dayWords}, ${tone.word}`}
+                          style={{
+                            alignItems: 'center', gap: 1,
+                            paddingTop: 7, paddingBottom: waiting ? 5 : 7,
+                            paddingHorizontal: compact ? 1 : 2,
+                          }}>
+                          <Text style={{ fontSize: 8.5, fontWeight: '800', color: on ? theme.accentInk : theme.dim }}>
+                            {d.mon}
+                          </Text>
+                          <Text style={{
+                            fontSize: 15, fontWeight: '800', fontVariant: ['tabular-nums'],
+                            color: on ? theme.fgStrong : theme.fg,
+                          }}>{d.dayNum}</Text>
+                          <Text style={{ fontSize: 8.5, fontWeight: '700', color: on ? theme.accentInk : theme.dim }}>
+                            {d.dow}
+                          </Text>
+                          {/* An uploaded day shows what it recorded, a day the
+                              course does not run shows its dash. The awaiting
+                              day hands this slot to the button below instead. */}
+                          {waiting ? null : <Icon name={tone.icon} size={13} color={ink} />}
+                        </Pressable>
+
+                        {/* ---------------------------------- upload, ON THE DAY
+                            Third round on this surface. The button used to live
+                            on a card under the strip, wrapped in a sentence, and
+                            went with the card when the requester called the
+                            pair "a dialog in the way". The button and the message
+                            were two things; only the message was the complaint.
+                            So the button is back on the day it is about -- only a
+                            day AWAITING a file has one, because that is the day
+                            the register is waiting on -- and it opens the upload
+                            with that date, which is what lets the import ASK when
+                            the file turns out to be from another day (0024). The
+                            undated Upload Session in the course bar stays.
+
+                            The word is the status word the legend already uses,
+                            read from STATUS and never retyped. Under 768pt the
+                            seven cards leave each about 33pt, narrower than the
+                            word at any legible size, so a phone gets the cloud
+                            alone on the same press -- the word is in the legend
+                            one line up, as it is for the other three icons. */}
+                        {waiting ? (
+                          <Pressable testID={`course-day-upload-${d.iso}`}
+                            onPress={() => router.push({
+                              pathname: '/upload', params: { courseId: course.id, date: d.iso },
+                            })}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Upload a session for ${dayWords}`}
+                            style={({ pressed }) => ({
+                              flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+                              gap: 4, minHeight: compact ? 26 : 24,
+                              marginHorizontal: compact ? 3 : 5, marginBottom: compact ? 3 : 5,
+                              paddingHorizontal: compact ? 0 : 5, paddingVertical: 2,
+                              borderRadius: RADIUS.sm,
+                              backgroundColor: box.bg, borderWidth: 1, borderColor: box.border,
+                              opacity: pressed ? 0.7 : 1,
+                            })}>
+                            <Icon name={tone.icon} size={13} color={ink} />
+                            {compact ? null : (
+                              <Text numberOfLines={2} style={{
+                                flexShrink: 1, fontSize: 9.5, fontWeight: '800', lineHeight: 12,
+                                color: ink, textAlign: 'center',
+                              }}>{tone.word}</Text>
+                            )}
+                          </Pressable>
+                        ) : null}
+                      </View>
                     );
                   })}
                 </View>
@@ -730,9 +801,9 @@ function StripArrow({ testID, icon, label, disabled, onPress }: {
 /**
  * What the icon on a date card means, in one wrapping row.
  *
- * The four states a WEEK of this course can be in. Scheduled is left out on
- * purpose: it is the only one the day panel below always spells out in a
- * sentence, and a five-item legend stopped fitting one row at 360pt.
+ * The four states a WEEK of this course can be in -- and the four the strip
+ * above draws, exactly. Every icon on a date card is named here, which is
+ * what a legend is for.
  */
 function DayLegend() {
   const { theme } = useTheme();

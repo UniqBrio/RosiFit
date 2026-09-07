@@ -1,0 +1,39 @@
+# Browser evidence — requests/2026-09-07-dialogs-close-only-on-close-control.md
+# 07-Sep-2026 · Chromium via Playwright against `npm run export` output, served on 127.0.0.1:8100.
+# Re-recorded after the code-review round (spec hardened, comments corrected).
+#
+# The dialog probe drives the IMPORT HELP pop-up, and that choice is the point:
+# its close is `setHelpOpen(false)` — pure state, no router.back() — so "did the
+# backdrop close it" is answered by the DOM alone, with no navigation history to
+# make a no-op look like a pass.
+
+$ node behave.mjs   # the dialogs
+
+=== light theme ===
+PASS  the help dialog opened
+      (2 scrim element(s); top one 1280x900)
+PASS  a press on the backdrop LEFT THE DIALOG OPEN
+PASS  a second press, opposite corner, left it open too
+PASS  the backdrop is not focusable and not announced as a button
+PASS  the close icon closed the dialog
+PASS  the dialog reopens (nothing was left in a broken state)
+
+=== dark theme ===
+PASS  the help dialog opened
+      (2 scrim element(s); top one 1280x900)
+PASS  a press on the backdrop LEFT THE DIALOG OPEN
+PASS  a second press, opposite corner, left it open too
+PASS  the backdrop is not focusable and not announced as a button
+PASS  the close icon closed the dialog
+PASS  the dialog reopens (nothing was left in a broken state)
+
+ALL CHECKS PASS
+
+$ node picker.mjs   # the pickers, deliberately unchanged
+PASS  the calendar starts shut (CP-014: a closed layer renders nothing)
+PASS  the calendar opened under its field
+PASS  the calendar still has a backdrop
+PASS  it is still a real, labelled control — role=button label="Close Start date"
+PASS  a press on the calendar backdrop STILL CLOSES it — nobody is trapped
+
+ALL CHECKS PASS

@@ -134,7 +134,7 @@ export default function Members() {
   const courses = Math.max(0, (filters.data?.courses.length ?? 1) - 1);
 
   return (
-    <Screen>
+    <Screen header={
       <ScreenHeader title={scopedTo ?? 'Members'}
         subtitle={scopedTo
           ? `${scoped.length} ${scoped.length === 1 ? 'member' : 'members'} in this course`
@@ -142,7 +142,7 @@ export default function Members() {
         onBack={() => router.navigate(backTo)}
         right={<Button label="Add" onPress={() => router.push(scopedTo && courseId
           ? { pathname: '/member/edit', params: { courseId } }
-          : { pathname: '/member/edit' })} />} />
+          : { pathname: '/member/edit' })} />} />}>
 
       {/* A filtered list that does not say it is filtered is a list that has
           silently lost rows -- so the narrowing is stated AND escapable, the

@@ -158,7 +158,8 @@ export default function Attendance() {
       {/* The filters open in place. A sheet covered the very rows it was
           about to narrow, so the choice was made blind; a panel under the
           fields keeps the counts and the list in view (C-58/C-29). */}
-      <DropdownRow open={open !== null}>
+      <DropdownRow open={open !== null}
+        dismiss={{ onPress: () => setOpen(null), testID: 'attendance-filter-dismiss' }}>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.sm }}>
           {filters.map(f => (
             <DropdownField key={f.kind}
@@ -219,9 +220,9 @@ export default function Attendance() {
 
   if (attendance.state === 'loading') {
     return (
-      <Screen>
+      <Screen header={
         <ScreenHeader title="Attendance" subtitle={range.label}
-          onBack={() => router.navigate(backTo)} right={uploadButton} />
+          onBack={() => router.navigate(backTo)} right={uploadButton} />}>
         {controls}
         <View style={{ marginTop: SPACE.lg }}><Skeleton lines={5} /></View>
       </Screen>
@@ -230,9 +231,9 @@ export default function Attendance() {
 
   if (attendance.state === 'error') {
     return (
-      <Screen>
+      <Screen header={
         <ScreenHeader title="Attendance" subtitle={range.label}
-          onBack={() => router.navigate(backTo)} right={uploadButton} />
+          onBack={() => router.navigate(backTo)} right={uploadButton} />}>
         {controls}
         <View style={{ marginTop: SPACE.lg }}>
           <ErrorState onRetry={attendance.retry}
@@ -243,10 +244,10 @@ export default function Attendance() {
   }
 
   return (
-    <Screen>
+    <Screen header={
       <ScreenHeader title="Attendance"
         subtitle={`${rows.length} record${rows.length === 1 ? '' : 's'} · ${scopeLabel} · ${range.label}`}
-        onBack={() => router.navigate(backTo)} right={uploadButton} />
+        onBack={() => router.navigate(backTo)} right={uploadButton} />}>
 
       {controls}
 

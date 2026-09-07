@@ -1,0 +1,29 @@
+requests/2026-09-07-pin-screen-header-on-scroll.md — browser evidence, 07-Sep-2026
+
+Fixtures build (EXPO_NO_DOTENV=1 CI=1 npx expo export --platform web), served with
+serve@14 -s, driven by Playwright 1.63 / Chromium at 390x600 so every route overflows.
+For each route and theme: locate an element INSIDE the header being pinned, measure its
+box, scroll the deepest overflowing container by 500px, measure again. PASS means the
+header's top is unchanged and still on screen, the Overview·Attendance tab row is
+unchanged, and the body actually scrolled.
+
+PASS  light /courses    Attendance workspace header: header 225->225, tab 62->62, scrolled 0->432/432
+PASS  light /reports    Reports header:              header 149->149, tab 62->62, scrolled 0->445/445
+PASS  light /course/c1  Course bar:                  header 192->192, tab 62->62, scrolled 0->500/653
+PASS  dark  /courses    Attendance workspace header: header 225->225, tab 62->62, scrolled 0->432/432
+PASS  dark  /reports    Reports header:              header 149->149, tab 62->62, scrolled 0->445/445
+PASS  dark  /course/c1  Course bar:                  header 192->192, tab 62->62, scrolled 0->500/653
+
+Anchors: [data-testid="courses-add"] (in the Attendance header's action row, which drops
+under the title at phone width and pins with it); the Reports subtitle text "uploaded
+sessions only"; [data-testid="course-send"] (in the purple course bar).
+
+One page error per route: React #418 (hydration mismatch), pre-existing on every primary
+route in both themes and unrelated to this change — TD-043.
+
+Not exercised here: /members, /weekly, /attendance and /more take the same Screen
+`header` slot and are covered by src/components/screenHeaderPinned.test.ts (source shape);
+Overview (/) was deliberately left unpinned — it has no per-screen header, and pinning its
+filter row would put a 430pt dropdown panel outside the scroll on a phone.
+
+Script: scratchpad/pin-check.mjs. Screenshots: pin-{light,dark}-{_courses,_reports,_course_c1}.png.

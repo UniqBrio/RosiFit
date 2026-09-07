@@ -16,6 +16,7 @@ import { authLookup } from './api';
 import { phoneDigits } from './signin';
 import { cleanAlias, aliasProblem, aliasSaveError, MERGE_FAILED } from './alias';
 import { sentenceOpening } from './refusalCase';
+import { personReadable } from './engineWording';
 import type { Period } from './period';
 import { SUBJECT_MIN, SUBJECT_MAX, BODY_MIN, COURSE_NAME_MIN, COURSE_NAME_MAX } from './message';
 import { bucketFixture, type BucketMetrics } from './buckets';
@@ -28,12 +29,12 @@ import {
   type Notification,
 } from './notifications';
 import {
-  MEMBERS, COURSE_LIST, GLOBAL_RULE, COURSE_RULES, TEMPLATES, STAFF, AUDIT,
+  MEMBERS, COURSE_LIST, GLOBAL_RULE, COURSE_RULES, TEMPLATES, STAFF, AUDIT, REMARKS,
   BRANCHES, COURSES, MONTH_DAYS, PENDING_SESSIONS, WEEK_ROWS, attendanceFixture,
   MANUAL_MARKS, markFixtureAttendance,
   HOLIDAYS, HOLIDAY_PREVIEW, SENDERS, COURSE_MESSAGES,
   type Member, type MemberStatus, type Course, type FollowUpRule, type Template, type Staff,
-  type StaffAccess, type AuditEntry, type SessionDay, type WeekRow,
+  type StaffAccess, type AuditEntry, type Remark, type SessionDay, type WeekRow,
   type AttendanceRow, type AttendanceStatus, type Holiday,
 } from './mock';
 
@@ -57,27 +58,18 @@ function fail(context: string, error: { message?: string } | null): never {
 }
 
 /**
- * Whether a failure message is the ENGINE talking rather than this product.
+ * The engine-wording guard lives in `./engineWording` (CP-003, RC-023).
  *
- * The write translators below deliberately pass a refusal through when the
- * database wrote it for a person to read — "she has an email address of her
- * own", "still runs 3 courses", the date a completed session blocks. That
- * decision is sound and is kept. What it could not tell apart was a sentence
- * somebody wrote and a sentence Postgres generated, so a CHECK constraint
- * arrived in the dialog verbatim: `new row for relation "course_communication"
- * violates check constraint "course_communication_subject_check"`. CP-003 is
- * explicit that this must never happen. RC-023.
- *
- * Shapes only — Postgres' own wording for a violated constraint, a failed cast
- * or a missing column. A hand-raised RAISE matches none of them and still
- * passes through untouched.
+ * It was a private regex here, which meant the one rule standing between an
+ * operator and a raw machine string had no spec -- and it was found to have a
+ * hole: it knew Postgres' wording for a broken constraint and had never heard
+ * PostgREST's wording for a function that is not there. `merge_member_into` is
+ * written and unapplied in production (TD-033), so the No email card answered
+ * "Could not find the function public.merge_member_into(p_stray, p_target) in
+ * the schema cache" to somebody who had tapped a button beside a member's
+ * name. `repository.ts` cannot be imported under node, so the rule moved out
+ * to where a spec can pin it (`src/data/engineWording.test.ts`).
  */
-const ENGINE_WORDING =
-  /violates (check|unique|foreign key|not-null|exclusion) constraint|new row for relation|duplicate key value|null value in column|invalid input syntax|value too long for type|column .* does not exist/i;
-
-function personReadable(message: string, fallback: string): string {
-  return ENGINE_WORDING.test(message) ? fallback : (message || fallback);
-}
 
 // -------------------------------------------------------------------- auth
 /**
@@ -1118,33 +1110,293 @@ export async function fetchStaff(): Promise<Staff[]> {
 }
 
 // -------------------------------------------------------------------- audit
-export async function fetchAudit(): Promise<AuditEntry[]> {
-  if (!isConfigured) return AUDIT;
+/** A value that is an identifier and nothing a person can read. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-  const { data, error } = await supabase.from('audit_logs')
-    .select('id, occurred_at, action, entity_type, entity_id, changes, actor_app_user_id')
+/**
+ * Every identifier in a batch of audit rows, resolved to the name of the
+ * thing it points at.
+ *
+ * WHY THIS IS WORTH TWO ROUND TRIPS
+ * `entity_id` is the ONE field that says who the entry is about, and it is a
+ * UUID. So is every `member_id`, `course_id`, `created_by` and `branch_id`
+ * inside `changes`. Printed raw they are 36 characters of nothing; resolved
+ * they are the whole point of the row. The cost is bounded by the fifty rows
+ * the screen loads, and a failure degrades to "not resolved" — the caller
+ * shows a dash, never an identifier and never an error.
+ *
+ * The offerings pass is separate because an offering's NAME is two other
+ * rows: the course and the branch. Its ids are learned from the offering and
+ * have to join the second lookup, so the order is offerings, then everything.
+ */
+type AuditContext = {
+  /** id -> the name of the thing it points at */
+  names: Map<string, string>;
+  /** id -> the branch that thing belongs to, where it belongs to one */
+  branchOf: Map<string, string>;
+};
+
+async function resolveContext(ids: string[]): Promise<AuditContext> {
+  const names = new Map<string, string>();
+  const branchOf = new Map<string, string>();
+  if (ids.length === 0) return { names, branchOf };
+
+  // Pass 1 — offerings, and the enrolments that put a MEMBER at a branch.
+  // Both are silent on failure: an unresolved id is a dash, and refusing the
+  // whole audit log over one would be a worse answer.
+  const [offerings, enrolments] = await Promise.all([
+    supabase.from('course_offerings').select('id, course_id, branch_id').in('id', ids),
+    supabase.from('member_enrollments').select('member_id, offering_id').in('member_id', ids).eq('status', 'active'),
+  ]);
+  const offeringRows = (offerings.data ?? []) as { id: string; course_id: string; branch_id: string }[];
+  const enrolRows = (enrolments.data ?? []) as { member_id: string; offering_id: string }[];
+
+  // A member's branch is her offering's branch, so the offerings her
+  // enrolments name have to be resolved too even though no audit row
+  // mentioned them.
+  const enrolledOfferingIds = [...new Set(enrolRows.map(e => e.offering_id))]
+    .filter(id => !offeringRows.some(o => o.id === id));
+  const extraOfferings = enrolledOfferingIds.length
+    ? await supabase.from('course_offerings').select('id, course_id, branch_id').in('id', enrolledOfferingIds)
+    : { data: [] as { id: string; course_id: string; branch_id: string }[] };
+  const allOfferings = [...offeringRows, ...((extraOfferings.data ?? []) as typeof offeringRows)];
+
+  const wanted = [...new Set([
+    ...ids,
+    ...allOfferings.map(o => o.course_id),
+    ...allOfferings.map(o => o.branch_id),
+  ])];
+
+  // Pass 2 — everything an id can name. Each read is scoped to the ids we
+  // actually saw, so a table contributes nothing unless it was referenced.
+  const [members, courses, branches, users] = await Promise.all([
+    supabase.from('members').select('id, full_name').in('id', wanted),
+    supabase.from('courses').select('id, name').in('id', wanted),
+    supabase.from('branches').select('id, name').in('id', wanted),
+    supabase.from('app_users').select('id, name').in('id', wanted),
+  ]);
+  for (const m of (members.data ?? []) as { id: string; full_name: string }[]) names.set(m.id, m.full_name);
+  for (const c of (courses.data ?? []) as { id: string; name: string }[]) names.set(c.id, c.name);
+  for (const b of (branches.data ?? []) as { id: string; name: string }[]) names.set(b.id, b.name);
+  for (const u of (users.data ?? []) as { id: string; name: string }[]) names.set(u.id, u.name);
+
+  // A branch is its own branch: an entry ABOUT a branch belongs to it.
+  for (const b of (branches.data ?? []) as { id: string; name: string }[]) branchOf.set(b.id, b.name);
+
+  // An offering is named by what runs and where — the same "Course · Branch"
+  // the Courses screen writes — and it carries its branch.
+  const offeringBranch = new Map<string, string>();
+  for (const o of allOfferings) {
+    const course = names.get(o.course_id);
+    const branch = names.get(o.branch_id);
+    if (course) names.set(o.id, branch ? `${course} · ${branch}` : course);
+    if (branch) { branchOf.set(o.id, branch); offeringBranch.set(o.id, branch); }
+  }
+
+  // A member sits at the branch of the offering she is enrolled in TODAY.
+  // `audit_logs` records no branch, so there is nothing else to go on — and
+  // the screen says as much rather than implying the branch was read from
+  // the entry itself.
+  for (const e of enrolRows) {
+    const branch = offeringBranch.get(e.offering_id);
+    if (branch && !branchOf.has(e.member_id)) branchOf.set(e.member_id, branch);
+  }
+
+  return { names, branchOf };
+}
+
+/**
+ * A date range as the two instants that bound it.
+ *
+ * `occurred_at` is a timestamptz; a `Period` is two calendar dates. Comparing
+ * one against the other directly would compare a moment with a bare date and
+ * silently answer in UTC — so the day boundaries are built in LOCAL time (a
+ * date string with no Z is parsed local) and sent as instants.
+ */
+function dayBounds(period: Period): { from: string; to: string } {
+  return {
+    from: new Date(`${period.from}T00:00:00`).toISOString(),
+    to: new Date(`${period.to}T23:59:59.999`).toISOString(),
+  };
+}
+
+/**
+ * The audit log, newest first.
+ *
+ * `period` narrows the QUERY rather than the result, and that distinction is
+ * the whole point: the log returns the fifty most recent rows, so filtering
+ * fifty rows client-side would answer "the changes in August" with "the ones
+ * that happen to be in the last fifty" — which is a different question and
+ * looks identical on screen. Narrowing the query makes it the fifty most
+ * recent changes IN THE PERIOD.
+ */
+export async function fetchAudit(period?: Period | null): Promise<AuditEntry[]> {
+  if (!isConfigured) {
+    if (!period) return AUDIT;
+    const { from, to } = dayBounds(period);
+    return AUDIT.filter(a => a.when >= from && a.when <= to);
+  }
+
+  let query = supabase.from('audit_logs')
+    .select('id, occurred_at, action, entity_type, entity_id, changes, actor_app_user_id, actor_kind')
     .order('occurred_at', { ascending: false }).limit(50);
+  if (period) {
+    const { from, to } = dayBounds(period);
+    query = query.gte('occurred_at', from).lte('occurred_at', to);
+  }
+  const { data, error } = await query;
   if (error) fail('Could not load the audit log', error);
 
-  const actorIds = [...new Set((data ?? []).map(r => r.actor_app_user_id).filter(Boolean))] as string[];
-  const actors = actorIds.length
-    ? await supabase.from('app_users').select('id, name').in('id', actorIds)
-    : { data: [] as { id: string; name: string }[] };
-  const actorName = new Map((actors.data ?? []).map(a => [a.id, a.name]));
+  const rows = (data ?? []) as {
+    id: number; occurred_at: string; action: string; entity_type: string;
+    entity_id: string | null; actor_app_user_id: string | null; actor_kind: string;
+    changes: { field: string; old: unknown; new: unknown }[] | null;
+  }[];
 
-  return (data ?? []).map(r => ({
+  // Every identifier anywhere in the batch, in one set: the subjects, the
+  // actors, and any changed value that is itself a reference.
+  const ids = new Set<string>();
+  const collect = (v: unknown) => { if (typeof v === 'string' && UUID.test(v)) ids.add(v); };
+  for (const r of rows) {
+    collect(r.entity_id);
+    collect(r.actor_app_user_id);
+    for (const c of r.changes ?? []) { collect(c.old); collect(c.new); }
+  }
+  const { names, branchOf } = await resolveContext([...ids]);
+
+  /** A recorded value, with any identifier in it swapped for the name it
+   *  points at. An identifier that names nothing becomes null — the screen
+   *  draws a dash. A UUID must never reach a person (Q9). */
+  const readable = (v: unknown): string | null => {
+    if (v === null || v === undefined) return null;
+    const s = String(v);
+    if (UUID.test(s)) return names.get(s) ?? null;
+    return s;
+  };
+
+  /** The branch a row can be traced to: what it is ABOUT first, then
+   *  anything it points at. Null is a real answer — a message template and an
+   *  academy setting belong to no branch, and pretending otherwise would put
+   *  them under every one. */
+  const branchFor = (r: typeof rows[number]): string | null => {
+    if (r.entity_id && branchOf.has(r.entity_id)) return branchOf.get(r.entity_id) ?? null;
+    for (const c of r.changes ?? []) {
+      for (const v of [c.new, c.old]) {
+        if (typeof v === 'string' && branchOf.has(v)) return branchOf.get(v) ?? null;
+      }
+    }
+    return null;
+  };
+
+  return rows.map(r => ({
     id: String(r.id),
-    who: r.actor_app_user_id ? (actorName.get(r.actor_app_user_id as string) ?? 'Unknown') : 'System',
-    when: new Date(r.occurred_at as string).toLocaleString(),
-    action: r.action as string,
-    entity: r.entity_type as string,
-    subject: (r.entity_id as string) ?? '—',
-    changes: ((r.changes ?? []) as { field: string; old: unknown; new: unknown }[]).map(c => ({
-      field: c.field,
-      old: c.old === null || c.old === undefined ? null : String(c.old),
-      new: c.new === null || c.new === undefined ? null : String(c.new),
+    who: r.actor_app_user_id ? (names.get(r.actor_app_user_id) ?? 'Unknown') : 'System',
+    whoKind: (r.actor_kind as AuditEntry['whoKind']) ?? 'system',
+    branch: branchFor(r),
+    // ISO, not a formatted string: the screen says "Today, 3:11 PM" and
+    // cannot work that out from "9/7/2026, 3:11:49 PM".
+    when: r.occurred_at,
+    action: r.action,
+    entity: r.entity_type,
+    subject: r.entity_id ? (names.get(r.entity_id) ?? null) : null,
+    changes: (r.changes ?? []).map(c => ({
+      field: c.field, old: readable(c.old), new: readable(c.new),
     })),
   }));
+}
+
+// ------------------------------------------------------------------ remarks
+const remarkListeners = new Set<() => void>();
+
+export function onRemarksChanged(listener: () => void): () => void {
+  remarkListeners.add(listener);
+  return () => { remarkListeners.delete(listener); };
+}
+
+function remarksChanged(): void {
+  for (const listener of remarkListeners) listener();
+}
+
+/** The longest a remark may be. Stated here AND as a check constraint in
+ *  0043, because a form that refuses at 2,000 and a table that refuses at
+ *  1,000 is a save that fails after the typing. */
+export const REMARK_MAX = 1000;
+
+/**
+ * Whether a failure is "0043 has not been applied to this project yet".
+ *
+ * PostgREST answers a missing table with 42P01 from Postgres, or PGRST205
+ * from its own schema cache. Neither sentence means anything to the person
+ * reading the screen, and "could not be loaded" would send her looking for a
+ * network fault that is not there.
+ */
+function isMissingTable(error: { code?: string; message?: string } | null): boolean {
+  const code = error?.code ?? '';
+  return code === '42P01' || code === 'PGRST205'
+    || /relation .*audit_remarks.* does not exist|Could not find the table/i.test(error?.message ?? '');
+}
+
+const REMARKS_NOT_READY =
+  'Remarks are not switched on for this academy yet — the 0043 update has not been applied. '
+  + 'The audit log above is unaffected.';
+
+export async function fetchRemarks(): Promise<Remark[]> {
+  if (!isConfigured) return [...REMARKS].sort((a, b) => b.when.localeCompare(a.when));
+
+  const { data, error } = await supabase.from('audit_remarks')
+    .select('id, created_at, body, author_app_user_id')
+    .order('created_at', { ascending: false }).limit(100);
+  if (error) {
+    if (isMissingTable(error)) throw new Error(REMARKS_NOT_READY);
+    fail('The remarks could not be loaded', error);
+  }
+
+  const rows = (data ?? []) as {
+    id: number; created_at: string; body: string; author_app_user_id: string | null;
+  }[];
+  const authorIds = [...new Set(rows.map(r => r.author_app_user_id).filter(Boolean))] as string[];
+  const authors = authorIds.length
+    ? await supabase.from('app_users').select('id, name').in('id', authorIds)
+    : { data: [] as { id: string; name: string }[] };
+  const authorName = new Map((authors.data ?? []).map(a => [a.id, a.name]));
+
+  return rows.map(r => ({
+    id: String(r.id),
+    body: r.body,
+    who: r.author_app_user_id ? (authorName.get(r.author_app_user_id) ?? 'Unknown') : 'System',
+    when: r.created_at,
+  }));
+}
+
+/**
+ * Adds a remark. The AUTHOR is not sent: `audit_remarks.author_app_user_id`
+ * defaults to `current_app_user_id()` and the insert policy refuses any other
+ * value, for the same reason `audit_log_as` is denied to clients (RC-011) —
+ * a client that could name its own author could sign somebody else's name.
+ */
+export async function addRemark(body: string): Promise<void> {
+  const text = body.trim();
+  if (text === '') throw new Error('A remark needs some words in it. Nothing has been saved.');
+  if (text.length > REMARK_MAX) {
+    throw new Error(`A remark can be at most ${REMARK_MAX} characters. Nothing has been saved.`);
+  }
+
+  if (!isConfigured) {
+    REMARKS.push({
+      id: `r${REMARKS.length + 1}-${Date.now()}`,
+      body: text, who: 'Rosi Owner', when: new Date().toISOString(),
+    });
+    remarksChanged();
+    return;
+  }
+
+  const { error } = await supabase.from('audit_remarks').insert({ body: text });
+  if (error) {
+    if (isMissingTable(error)) throw new Error(REMARKS_NOT_READY);
+    console.error('addRemark:', error.message);
+    throw new Error('The remark could not be saved — only the academy admin may add one. Nothing has been saved.');
+  }
+  remarksChanged();
 }
 
 // ------------------------------------------------------------------ filters

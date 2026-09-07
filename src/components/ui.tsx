@@ -5,16 +5,46 @@ import { useTheme } from '../theme/ThemeProvider';
 import { RADIUS, SPACE, TAP_MIN } from '../theme/tokens';
 import { RequiredMark } from './RequiredMark';
 
-export function Screen({ children, scroll = true, deep = false }:
-  { children: React.ReactNode; scroll?: boolean; deep?: boolean }) {
+export function Screen({ children, scroll = true, deep = false, header }:
+  { children: React.ReactNode; scroll?: boolean; deep?: boolean;
+    /** The screen's own title block, PINNED above the scroll rather than
+     *  scrolled with it -- so mid-scroll the screen still says which screen
+     *  it is (requests/2026-09-07-pin-screen-header-on-scroll.md). Same
+     *  sibling-above pattern ShellScreen uses for the academy header; never
+     *  a child of the ScrollView, never `position: sticky`. */
+    header?: React.ReactNode }) {
   const { theme } = useTheme();
   // `deep` puts the screen on the header gradient instead of the app
   // background -- sign-in, help and the PIN screen in the canvas.
+  const bg = deep ? 'transparent' : theme.bg;
   const body = scroll
-    ? <ScrollView style={{ flex: 1, backgroundColor: deep ? 'transparent' : theme.bg }}
-        contentContainerStyle={{ padding: SPACE.lg, paddingBottom: 96 }}>{children}</ScrollView>
-    : <View style={{ flex: 1, backgroundColor: deep ? 'transparent' : theme.bg, padding: SPACE.lg }}>{children}</View>;
-  return deep ? <DeepBackground>{body}</DeepBackground> : body;
+    ? <ScrollView style={{ flex: 1, backgroundColor: bg }}
+        // With a pinned header the block's own bottom margin and the hairline
+        // already separate it from the body, so the body opens on the smaller
+        // gap rather than a second full one.
+        contentContainerStyle={{ padding: SPACE.lg, paddingTop: header ? SPACE.md : SPACE.lg, paddingBottom: 96 }}>
+        {children}</ScrollView>
+    : <View style={{ flex: 1, backgroundColor: bg, padding: SPACE.lg }}>{children}</View>;
+  const framed = header
+    ? <View style={{ flex: 1, backgroundColor: bg }}>
+        {/* The hairline is the one thing added: content has to visibly pass
+            UNDER the header, and on the same ground with no rule between them
+            a scrolling card runs straight into the title. `theme.line`, the
+            same rule the tab row draws beneath itself. */}
+        {/* The header owns the stacking context. Every View here is
+            `position: relative` with a z-index of its own, so a header whose
+            z-index were left to default would be painted UNDER the body that
+            follows it -- and a filter panel opened from a pinned header would
+            disappear behind the first card it overlapped. Lifting the header
+            is also what "content passes under it" means literally. */}
+        <View style={{ paddingHorizontal: SPACE.lg, paddingTop: SPACE.lg, zIndex: 40,
+                       borderBottomWidth: 1, borderBottomColor: theme.line }}>
+          {header}
+        </View>
+        {body}
+      </View>
+    : body;
+  return deep ? <DeepBackground>{framed}</DeepBackground> : framed;
 }
 
 export function Card({ children, style }: { children: React.ReactNode; style?: ViewStyle }) {

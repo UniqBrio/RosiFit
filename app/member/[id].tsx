@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { View, Text } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useMembers, useRules, useSentForPeriod } from '../../src/data/hooks';
@@ -8,8 +8,12 @@ import { Muted, Label, Button, Skeleton, ErrorState } from '../../src/components
 import { Icon } from '../../src/components/Icon';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { SPACE, RADIUS, STATUS, statusSurface } from '../../src/theme/tokens';
-import { memberSubtitle, attendanceTone } from '../../src/components/memberDialog';
-import { sessionsFor, attendancePct, primaryEmail, hasEmail } from '../../src/data/mock';
+import {
+  memberSubtitle, attendanceTone, MEMBER_TABS, memberStatusReading,
+  memberDayNames, addressesInOrder, type MemberTab,
+} from '../../src/components/memberDialog';
+import { TabStrip } from '../../src/components/TabStrip';
+import { sessionsFor, attendancePct, primaryEmail, hasEmail, type Member } from '../../src/data/mock';
 import { flagged, isReachable } from '../../src/data/followup';
 import { currentWeek } from '../../src/data/period';
 import { mergeSent, sentThisSession, sentOn } from '../../src/data/sent';
@@ -35,6 +39,17 @@ import { reachOutState, REACH_OUT, warnsBeforeReachOut } from '../../src/data/re
  * two actions pinned in the footer where every dialog keeps its way on.
  * Nothing that was shown is dropped -- the request's MUST NOT CHANGE binds
  * the facts, and guardrail 3 binds each status to its word and its icon.
+ *
+ * TWO PANELS, ONE CARD (requests/2026-09-07-member-dialog-two-tabs.md).
+ * Everything above stayed true and got crowded: her week, her address and
+ * whether anything will go out are what the card is OPENED for, and the rest
+ * of her record -- the days she attends, every address on file, the names the
+ * import matches her on -- was only readable by leaving for the Edit form.
+ * So the card is tabbed: `This week` is the panel above, unchanged and in the
+ * same order, and `Her details` is the record beside it. The strip is PINNED
+ * under the title (FormDialog's `subheader`) rather than scrolling with the
+ * panel it switches, and the footer belongs to the DIALOG, not to a tab --
+ * Reach out is one tap from either side.
  *
  * THE LIVE member, not the fixture. An earlier version of this screen read
  * `MEMBERS[index] ?? MEMBERS[0]` and showed A DIFFERENT PERSON -- the first
@@ -69,6 +84,10 @@ export default function MemberDetail() {
   const rules = useRules(forced);
   const already = useSentForPeriod(week, forced);
   const [warning, setWarning] = useState(false);
+  /* Opens on her week, every time. Not remembered between openings: the card
+     is opened to decide whether to reach out, and a card that opens on
+     whichever panel was last read shows a different thing to the same tap. */
+  const [tab, setTab] = useState<MemberTab>('week');
 
   /* Loading and missing are separate answers and both are given plainly, in
      the same card -- the dialog is the member's from the moment it opens, so
@@ -134,6 +153,8 @@ export default function MemberDetail() {
       title={m.name}
       subtitle={memberSubtitle(m)}
       closeTestID="member-close"
+      subheader={<TabStrip tabs={MEMBER_TABS} value={tab} onChange={setTab}
+        testIDPrefix="member-tab" />}
       footer={
         /* The way on, pinned: Reach out is what the record is opened FOR, so
            it is the primary; Edit says its word now rather than being an
@@ -162,6 +183,8 @@ export default function MemberDetail() {
           confirmLabel="Reach out anyway"
           onConfirm={() => { setWarning(false); reachOut(); }} />
       )}>
+
+      {tab === 'week' ? (<>
 
       {/* HER FIGURES, one strip. Expected · Attended · Missed · Streak side
           by side, each under its own label -- streak and missed are
@@ -282,7 +305,133 @@ export default function MemberDetail() {
           </Text>
         </View>
       ) : null}
+
+      </>) : <HerDetails m={m} />}
     </FormDialog>
+  );
+}
+
+/**
+ * HER DETAILS -- the record, read-only
+ * (requests/2026-09-07-member-dialog-two-tabs.md).
+ *
+ * Everything here is on the member row already. Nothing is fetched for this
+ * panel and nothing is written from it: it is the Edit form's fields, shown
+ * to somebody who is about to reach out to her and needs to know WHO she is
+ * without leaving the card to find out.
+ *
+ * WHAT IS DELIBERATELY NOT HERE
+ *   - *Last contacted*, which the week panel's email row already carries.
+ *   - Her RF- code. It is searchable and never rendered, on purpose (see
+ *     Member.code): a code tells the reader nothing she can check, which is
+ *     why the subtitle carries her joining month instead.
+ *
+ * EVERY ROW HAS AN ANSWER when the record is empty. A blank beside "Days she
+ * attends" reads as "she attends none"; she attends the days her course runs,
+ * and the row says so.
+ */
+function HerDetails({ m }: { m: Member }) {
+  const { theme } = useTheme();
+  const ink = (k: keyof typeof STATUS) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
+
+  const status = memberStatusReading(m.status);
+  const statusInk = status.active ? ink('present') : theme.muted;
+  const days = memberDayNames(m.weekdays);
+  const addresses = addressesInOrder(m.emails);
+
+  return (
+    <View testID="member-details" style={{
+      borderRadius: RADIUS.md, backgroundColor: theme.surface,
+      borderWidth: 1, borderColor: theme.line, overflow: 'hidden',
+    }}>
+      {/* The word AND the glyph, never the tone alone (guardrail 3) -- and
+          the same two words the roster pill behind this card uses, from the
+          same reading, so a member cannot be Active in one and not the
+          other. */}
+      <Detail label="Status">
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }}>
+          <Icon name={status.icon} size={16} color={statusInk} />
+          <Text style={{ fontSize: 13, fontWeight: '700', color: statusInk }}>{status.word}</Text>
+        </View>
+        <Muted style={{ fontSize: 11.5, lineHeight: 16, marginTop: 2 }}>
+          {status.active ? 'In the follow-up rule' : 'Left out of the follow-up rule'}
+        </Muted>
+      </Detail>
+
+      {/* Course, branch and joining month are on the subtitle too -- as ONE
+          clipped line, which on a phone is the line that gets cut. Here they
+          are three facts that fit. */}
+      <Detail label="Course"><Value text={m.course} /></Detail>
+      <Detail label="Branch"><Value text={m.branch} /></Detail>
+      <Detail label="Joined"><Value text={m.joined === '—' ? 'Not on record' : m.joined}
+        faint={m.joined === '—'} /></Detail>
+
+      <Detail label="Days she attends">
+        <Value text={days ? days.join(' · ') : 'Follows the course schedule'} faint={!days} />
+        {days ? (
+          <Muted style={{ fontSize: 11.5, lineHeight: 16, marginTop: 2 }}>
+            Her own days, not every day her course runs
+          </Muted>
+        ) : null}
+      </Detail>
+
+      {/* EVERY address, primary first -- the week panel names the one a
+          follow-up would leave from; this is what the academy holds. No
+          address is a stated fact with its consequence, never a blank
+          (C-76). */}
+      <Detail label="Email addresses">
+        {addresses.length === 0 ? (
+          <Value text="None on file — she is excluded from every send" faint />
+        ) : addresses.map(e => (
+          <View key={e.address} style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }}>
+            <Text style={{ flex: 1, fontSize: 13, color: theme.fgStrong }}>{e.address}</Text>
+            {e.primary ? (
+              <Text style={{ fontSize: 10.5, fontWeight: '800', letterSpacing: 0.5, color: theme.muted }}>
+                PRIMARY
+              </Text>
+            ) : null}
+          </View>
+        ))}
+      </Detail>
+
+      {/* What the Meet import matches her on. Empty is normal, not missing. */}
+      <Detail label="Also known as" last>
+        <Value text={m.aliases.length ? m.aliases.join(' · ') : 'No other names on record'}
+          faint={!m.aliases.length} />
+      </Detail>
+    </View>
+  );
+}
+
+/** One fact: its label above it, a hairline under it. Stacked rather than
+ *  two columns, because an address is longer than any label column a 560pt
+ *  card can spare and wrapping it into a gutter is how it becomes unreadable
+ *  on a phone. */
+function Detail({ label, children, last }:
+  { label: string; children: ReactNode; last?: boolean }) {
+  const { theme } = useTheme();
+  return (
+    <View style={{
+      paddingVertical: 10, paddingHorizontal: 12,
+      borderBottomWidth: last ? 0 : 1, borderBottomColor: theme.line,
+    }}>
+      <Label style={{ fontSize: 9.5, letterSpacing: 0.6 }}>{label}</Label>
+      <View style={{ marginTop: 3 }}>{children}</View>
+    </View>
+  );
+}
+
+/** A stated value, or -- `faint` -- the sentence that stands in for one the
+ *  record does not hold. The two are told apart by weight and wording, so
+ *  "Not on record" cannot be mistaken for a joining month called that. */
+function Value({ text, faint }: { text: string; faint?: boolean }) {
+  const { theme } = useTheme();
+  return (
+    <Text style={{
+      fontSize: 13, lineHeight: 18,
+      fontWeight: faint ? '500' : '600',
+      color: faint ? theme.muted : theme.fgStrong,
+    }}>{text}</Text>
   );
 }
 

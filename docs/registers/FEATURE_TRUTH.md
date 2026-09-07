@@ -100,6 +100,30 @@ Configuration) is dropped, so the filter widens visibly rather than narrowing to
 under a field still reading "2 branches". `src/data/overview.ts`, ✅ held by 16
 assertions in `src/data/overview.test.ts`.
 
+**A pick is the whole interaction — no dropdown asks for a confirming tap, 07-Sep-2026**
+(`requests/2026-09-07-dropdowns-apply-on-pick-no-done.md`, ADR 035). The tick applies the
+filter and the figures move underneath the open panel; the day that COMPLETES a custom range
+applies that range and closes the panel, exactly as a named range does. The **"Done"** button
+under the Course and Branch panels and the **"Use this range" / "Pick both days"** button under
+the custom-range calendar are gone from the app — `DropdownDone` and `DropdownPanel`'s `footer`
+slot are deleted from the library rather than merely unmounted, because an empty shelf is how a
+button comes back. Neither had ever applied anything: both called the screen's close and nothing
+else, which told a reader the figures already on screen were provisional when they never were.
+**A tick still does NOT close the panel** — a checkbox list that shut on the first tick could
+never be given a second branch — so the way out is now the press that means "not in here": the
+field again, or **anywhere beside the panel**, through `DropdownRow`'s `dismiss` prop
+(`home-filter-dismiss`, `attendance-filter-dismiss`, `reports-filter-dismiss`). That layer is
+untinted, because these panels exist so the figures they narrow stay readable; it is
+`position: fixed` on the web and a negatively-inset `absolute` on native, since an absolute
+child stretched to the window on the web would add its own overshoot to the page's scroll
+height. It covers the screen's CONTENT AREA rather than the whole window — react-navigation's
+screen container carries a transform and so becomes the containing block — which leaves the
+persistent header's controls and the tab bar above it and still working. Measured in the
+exported page in both themes (420x603 at y=178 of 420x780), not assumed. A half-picked range still applies nothing (C-84), and that guard is now the only thing
+between a stray tap and a one-day period. The single-choice filters — Attendance's Branch,
+Course and Status — already behaved this way and are untouched. ✅ held by 8 assertions in
+`src/components/dropdownAppliesOnPick.test.ts`.
+
 **The ring is Present and Absent.** "Not expected" was removed on request and is not a
 category: it described the absence of a session, not the outcome of one. It was only ever
 needed because the ring's denominator was a fixed six-session week; the denominator is now
@@ -144,6 +168,24 @@ different populations.
 the full list is on Reports. The period section is a second round trip and carries its own
 loading and error states, so a failure there leaves the ring and the other two sections
 standing.
+
+**As of 07-Sep the filter row is PINNED and every mark carries the whole figure**
+(`requests/2026-09-07-overview-course-detail-and-frozen-filters.md`). The filters are the
+Screen's `header` rather than the first thing in its scroller, in the ready, loading and
+error states alike — the sections scroll under them, and an open panel paints over the body
+because the header owns the stacking context (`zIndex` on the header frame in
+`src/components/ui.tsx`). The freeze is the SCREEN's: `DropdownRow` is drawn by eight
+screens and was not touched, so only Overview pins. Each ring now writes
+`reportMeta` — *9 scheduled · 1 attended · 8 missed* — the same line the member bars write
+and from the same function, replacing "1 of 9 present"; the ring column widened 108 → 132 to
+hold it. Each member bar carries the course and branch it is counted under (`withScope`,
+`src/data/overview.ts`), attached by the screen from the same narrowed member list every
+figure is counted from — nothing new is queried and nothing new is totalled. A name shared by
+members of DIFFERENT courses gets no course line at all. Verified in a browser at 1440×900,
+both themes: the row holds at the same offset through a full 537px scroll, and the open panel
+tests on top. ✅ held by `src/components/overviewDetailAndFrozenFilters.test.ts` and
+`src/data/overviewScope.test.ts` (11 assertions, fail-first recorded in
+`.evidence/overview-course-detail-and-frozen-filters-fail-first.txt`).
 
 **As of 03-Sep** the dashboard was the scope tabs, the filters and ONE chart. The canvas
 revision of that date dropped the hero "N members need you" card, the "What needs you"
@@ -402,6 +444,7 @@ The month calendar, closures, and the attendance register upload.
 | Whoever ran the class is not on the register | ◻ | **06-Sep-2026.** A Meet file lists everybody who was in the call, the instructor included; she is not a member, so every match tier missed her and — once nobody is asked — she was created the first week and MATCHED every week after, marked present in the class she teaches. `csv-import` now sets aside any row whose normalised name is an `app_users` name, BEFORE matching, and names them separately from the dropped rows. Done in the function, not the client, because `app_users_read` (0013) is `is_super_admin() or your own row` — on the client the same file would import differently depending on who pressed the button. **Needs the function deployed**; until then such a row imports as a new no-email member |
 | The upload is scoped to where it was opened from | ✅ | A day opens straight into that session; a course narrows to its own; Attendance narrows nothing (`src/data/uploadScope.ts`). **The day it was opened on is read from the date PARAMETER**, not from a `PendingSession` — those exist only for days awaiting a file, so a file for another day opened from any other day used to ask nothing and silently update that other register |
 | Upload works with nothing scheduled | ✅ | The first choice is the **course**; the session comes from the file's own date (0024). **Since 06-Sep-2026 the button is there too:** `course-day-upload` on the course week strip rendered only for a day already `awaiting` a file, so a class arranged on the day, or run on a day the course does not normally run, showed no way to upload at all. It is now on every day, and the day she tapped travels with it — which is what lets the upload ASK when the file turns out to be from another day. **Later on 06-Sep-2026 the day card went altogether**, button and message with it, on the requester's ask: the header's `course-upload` beside Send Communication is the one way to upload from the course screen, and the file's own date still names the session |
+| An awaiting day carries its own upload button | ✅ | **07-Sep-2026, the third round on this surface.** Round 1 put an *Upload session* button on the card under the strip; round 2 removed the card, its sentence AND the button on the ask *"remove that extra upload session dialog appearing with a message"*. What round 2 missed: the card was two things and only the message was the complaint. Now every date card is a frame holding two SIBLING controls, never one inside the other — the date block (`course-day-<iso>`, still selects the day) and, on an **awaiting day only**, `course-day-upload-<iso>`: the cloud and the word **Awaiting upload** (read from `STATUS.awaiting.word`, never retyped), opening `/upload?courseId=…&date=<that day>` — the dated push 0024 reads. An uploaded day shows its tick and nothing to press; a not-expected day its dash. Under 768pt the press is the cloud alone, 26pt tall, the word in the legend one line up. The course bar's undated *Upload Session* stays. Requested as *"bring awaiting upload button as earlier for each day … Its a button with text on click of it user should be able to upload"*. ADR 036; 11 specs in `src/components/dayStripUploadButton.test.ts`; browser evidence in `.evidence/awaiting-upload-button-on-each-day-browser.txt` (three widths, both themes, Enter and click both land on the dated route) |
 | One person, one session, one day | ✅ | `attendance_unique_live`, plus in-file duplicates collapsed and **named** before import |
 | Five outcomes, only the unguessable one blocking | ✅ | **AMENDED 06-Sep-2026 from "blocking distinguished from not".** A and B never needed a person and no longer get a screen: `commit_csv_import` (0014) already defaults `matched` to accept and `noEmail` to continue-without-email. C pre-selects its one candidate, visibly and changeable in a tap; E resolves to a new member; **D alone holds the Import button**, because two members carry the name and the import does not guess. `OUTCOME_META` still carries a letter, a word and an icon each |
 | Choosing the file processes it | ✅ | No "Process" button: `choose()` runs the preview on the pick. A file with no `Created on` line stops on the file step, where the session map names what is missing |
@@ -515,6 +558,7 @@ The course list, the course editor, and the follow-up rule editor.
 | Live preview of who a draft rule would list | ◻ | Nothing changes until Save |
 | A course card has exactly three destinations | ✅ | Card → the course · chevron → its roster · Edit / Delete, labelled |
 | Where a member stands on the selected day, on the roster | ◻ | **A READING, and only a reading (ADR-030).** Three labels on every roster card — **Present · Absent · Yet to mark** — for the day the week strip has selected, named once under the search box (*Attendance for Mon 7 Sept*). Which one is filled is derived by `dayAttendance` and nothing on the row is tappable: a row was uploaded → Present or Absent exactly as recorded; a session that day with no file yet → *Yet to mark*, in the same `awaiting` amber the day strip puts on that day one line above; a day the course does not run → **Not expected** (`STATUS.none`), because "yet to mark" there promises an upload that is never coming. `extra` reads as Present, which is what happened. The unfilled two are drawn at FULL opacity — they were dimmed to 0.45 as disabled controls, and static text has to clear 4.5:1 (DR-2). 13 specs in `src/data/dayAttendance.test.ts` cover the derivation; 7 in `src/components/memberCardAttendanceReadOnly.test.ts` hold the row inert. `requests/2026-09-07-member-card-attendance-is-a-reading.md` |
+| Every icon on the course week strip is in its legend | ✅ | **07-Sep-2026.** A day still to come was drawn with a clock (`STATUS.scheduled`) that nothing named: the legend deliberately left it out because the day panel under the strip spelled it out in a sentence, and that panel was removed on 06-Sep-2026 — so the clock was left saying nothing. The strip now draws the four states its legend names: uploaded → **Present**/**Absent**, a day the course runs with no file yet → **Awaiting upload** (the cloud, past date or future), a day it does not run → **Not expected**. Requested as *"what is that clock icon its not clear it should be awaiting upload icon only"*. No new colour: the amber is the one the roster card one line below already uses for the same day (`app/course/[id].tsx`) |
 | ~~Mark one member present or absent, on the roster~~ | ✖ | **Withdrawn 07-Sep-2026, one day after it was built (ADR-030 supersedes the client half of ADR-021).** It shipped as three chips whose Present and Absent tapped through `setAttendance` → `set_attendance` (0035), and the requester asked for it to be a status and not a control: *"they are not button they are just status ... dont make is clickable and manual action"*. **Nothing server-side was removed** — 0035, its 24 assertions in `supabase/tests/27_set_attendance.sql` and its RBAC row are all still there, and now have no caller (**TD-040**). A day is corrected by re-uploading it, which since 0037 replaces the day and says so first (ADR-027). The reasoning for the write path, if it is ever wanted again, is ADR-021 and it is worth reading before rebuilding it. |
 
 **Rules and validations** — everything in the rule editor edits a **draft**. A configuration with
@@ -675,7 +719,7 @@ guessing. The earlier limit recorded here — `PIN_PEPPER` unset, every auth fun
 ---
 
 ### Settings and support — `(tabs)/more` · `appearance` · `templates` · `audit` · `help`
-**Last confirmed:** 03-Sep-2026
+**Last confirmed:** 07-Sep-2026 (audit rows); 03-Sep-2026 (the rest)
 
 | Capability | Status | Notes |
 |---|---|---|
@@ -684,7 +728,14 @@ guessing. The earlier limit recorded here — `PIN_PEPPER` unset, every auth fun
 | Edit email templates | ◻ | The only place message wording changes; editing or toggling one is audited |
 | Audit log | ◻ | Admin-only (`audit_logs_read`); redacted by `audit_redact()` |
 | Every entry names who did it | ◻ | `audit_log_as` (0023) — see the note below and RC-011 |
+| The log reads in plain words | ✅ | Every action, entity, column name and stored value is translated in `src/data/auditPlain.ts`; identifiers resolve to the member, course, branch, account or offering they name, and never render raw. Tested for TOTALITY over all 24 hand-written actions and 19×3 trigger actions (`src/data/auditPlain.test.ts`) — an unmapped future action prettifies, it never prints as a code (07-Sep-2026) |
+| Changes only — sign-ins are not listed | ✅ | The six pre-session actions are filtered from the VIEW by `visibleEntries`. Nothing stops being recorded and no row is deleted; the screen states this in a line under the heading (07-Sep-2026) |
+| The column header is frozen | ✅ | `stickyHeaderIndices` on the page scroller; verified pinned at the top of the viewport after scrolling, both themes. Below 768px the entries render as cards, where there are no columns to freeze (07-Sep-2026) |
+| Search, category, dates and branch | ✅ | Search across every plain word on a row; seven category chips; the shared `PeriodPanel` plus an **Any date** default that narrows the QUERY, not the loaded fifty; a branch filter traced from what each entry points at (07-Sep-2026) |
+| Remarks beside the log | ⚠ | Built end to end — `audit_remarks` (0043), append-only, admin-only, author forced server-side, spec at `supabase/tests/32_audit_remarks.sql`. **The migration is written but UNAPPLIED and UNREHEARSED** (no Postgres on the development machine): until it is applied the section renders a stated "not switched on yet" message and the log above is unaffected (07-Sep-2026) |
 | Help | ◻ | |
+| One support number, two ways to reach it | ✅ | UniqBrio support, `+91 9994871158` — Call and WhatsApp both hand off to the SAME number, which is what keeps the C-90 "only support channel" claim true (07-Sep-2026) |
+| Powered by UniqBrio | ✅ | The maker's mark at the foot of Help: uniqbrio.com and uniqbotz.com. An attribution, **not** a third support channel — it sits below the C-90 card, not beside the number |
 
 **Rules and validations** — templates are the only way anything reaches a member. The audit log is
 readable by the academy admin only, because it records staff actions.
@@ -703,7 +754,12 @@ exists, so they keep `audit_log()` and record no actor. Nobody has proved who th
 naming the account an attempt was aimed at would record her as having done something she may know
 nothing about.
 
-**Limits** — the audit log is read-only and cannot be exported. The attribution above is applied
+**Limits** — the audit log is read-only: nothing on it can be edited or deleted, by anyone,
+and that is the point. It **can** be exported — a CSV of exactly what the screen shows, one
+line per changed field, written by `downloadCsv` (the earlier "cannot be exported" line here
+was stale). Only the fifty most recent changes are loaded, within the chosen dates if any.
+A branch is worked out from what an entry POINTS AT and is therefore the branch that holds
+today; `audit_logs` records no branch of its own. The attribution above is applied
 to the local harness and present in the repository; **the live project still records "System" for
 Edge Function actions until 0023 and the functions are deployed** (RC-011).
 

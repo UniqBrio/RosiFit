@@ -1,0 +1,45 @@
+  ---
+  duration_ms: 0.3081
+  type: 'test'
+  location: 'C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\src\\data\\overviewScope.test.ts:47:1'
+  failureType: 'testCodeFailure'
+  error: '(0 , import_overview.withScope) is not a function'
+  code: 'ERR_TEST_FAILURE'
+  name: 'TypeError'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\src\data\overviewScope.test.ts:48:15)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: a row with nobody behind it is left alone rather than guessed at
+not ok 11 - a row with nobody behind it is left alone rather than guessed at
+  ---
+  duration_ms: 0.1878
+  type: 'test'
+  location: 'C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\src\\data\\overviewScope.test.ts:55:1'
+  failureType: 'testCodeFailure'
+  error: '(0 , import_overview.withScope) is not a function'
+  code: 'ERR_TEST_FAILURE'
+  name: 'TypeError'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\src\data\overviewScope.test.ts:56:15)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 3
+# fail 8
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 606.4586

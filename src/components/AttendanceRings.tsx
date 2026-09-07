@@ -3,7 +3,7 @@ import Svg, { Circle, G } from 'react-native-svg';
 import { useTheme } from '../theme/ThemeProvider';
 import { SPACE, onStatusFill } from '../theme/tokens';
 import { Icon } from './Icon';
-import type { ReportRow } from '../data/report';
+import { reportMeta, type ReportRow } from '../data/report';
 
 /**
  * SMALL RINGS -- one per course, or one per sub-range of the period. Each is
@@ -37,8 +37,11 @@ import type { ReportRow } from '../data/report';
  *  five across a half-width desktop card, and leaves the hole wide enough
  *  for "100%". */
 const SIZE = 84, W = 11;
-/** Each ring's column: wide enough for a course name on two lines. */
-const COL = 108;
+/** Each ring's column: wide enough for a course name on two lines AND for
+ *  the three figures under it -- scheduled, attended, missed -- which is what
+ *  widened it from 108. Four still fit across a half-width desktop card, two
+ *  across a phone. */
+const COL = 132;
 
 export function AttendanceRings({ rows, testID }: { rows: ReportRow[]; testID: string }) {
   const { theme } = useTheme();
@@ -55,9 +58,11 @@ export function AttendanceRings({ rows, testID }: { rows: ReportRow[]; testID: s
         {rows.map(r => {
           const absent = Math.max(r.expected - r.attended, 0);
           const present = r.expected ? (r.attended / r.expected) * C : 0;
-          const counts = r.expected === 0
-            ? 'No sessions scheduled'
-            : `${r.attended} of ${r.expected} present`;
+          // The SAME line the member bars write, from the same function --
+          // so a course cannot be described one way under a ring and another
+          // way under a bar. "1 of 9 present" left the reader to subtract for
+          // the figure she is actually chasing: how many were missed.
+          const counts = reportMeta(r);
           return (
             <View key={r.label} testID={`${testID}-row`} accessible
               accessibilityLabel={r.pct === null
@@ -93,8 +98,12 @@ export function AttendanceRings({ rows, testID }: { rows: ReportRow[]; testID: s
               <Text numberOfLines={2} style={{
                 fontSize: 12, fontWeight: '700', color: theme.fgStrong, textAlign: 'center', lineHeight: 15,
               }}>{r.label}</Text>
-              <Text numberOfLines={1} style={{
-                fontSize: 10.5, color: theme.muted, textAlign: 'center', fontVariant: ['tabular-nums'],
+              {/* two lines, because the three figures no longer fit on one
+                  at this width -- and truncating them would put the ring back
+                  to carrying a percentage alone. */}
+              <Text numberOfLines={2} style={{
+                fontSize: 10.5, lineHeight: 14, color: theme.muted,
+                textAlign: 'center', fontVariant: ['tabular-nums'],
               }}>{counts}</Text>
             </View>
           );

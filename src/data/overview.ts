@@ -108,3 +108,42 @@ export function attentionFirst(rows: ReportRow[]): ReportRow[] {
     return a.pct === b.pct ? a.label.localeCompare(b.label) : a.pct - b.pct;
   });
 }
+
+/**
+ * The line under a member's name on the Overview: her course and her branch.
+ *
+ * WHY THE GRAPH NEEDS IT
+ * "Based on member" is a ranking of who to chase, and it named six people
+ * without saying what to chase them about. With the Course filter left wide
+ * -- which is how the screen opens -- six names from four different courses
+ * looked like one list, and the reader had to leave for Reports to find out
+ * which course any row belonged to.
+ *
+ * WHY IT IS NOT COMPUTED IN reportRows
+ * The report screen groups ITS member rows the same way, and a scope line
+ * there would repeat a heading the reader already has. So the label is
+ * attached by the screen that wants it, from the same narrowed member list
+ * every figure on it is counted from -- nothing new is queried, and nothing
+ * here totals anything (guardrail 1).
+ *
+ * WHY A SHARED NAME LOSES THE LINE
+ * Two members called the same thing are two rows with one label, and naming
+ * one of their courses beside a bar counted from both would be a caption for
+ * a population it does not describe. Silence is the only honest answer -- the
+ * same rule scopeSentence follows.
+ */
+export function withScope(
+  rows: ReportRow[],
+  members: { name: string; course: string; branch: string }[],
+): ReportRow[] {
+  const scope = new Map<string, string | null>();
+  for (const m of members) {
+    const line = `${m.course} · ${m.branch}`;
+    const seen = scope.get(m.name);
+    scope.set(m.name, seen === undefined || seen === line ? line : null);
+  }
+  return rows.map(r => {
+    const line = scope.get(r.label);
+    return line ? { ...r, sub: line } : r;
+  });
+}

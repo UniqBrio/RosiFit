@@ -70,7 +70,7 @@ const BACKDROP_BLUR = (Platform.OS === 'web'
 export function FormDialog({
   title, subtitle, onClose, children, hint, cancelLabel = 'Cancel',
   confirmLabel, onConfirm, confirmDisabled, confirmTestID, closeTestID,
-  cancelTestID, footer, overlays,
+  cancelTestID, footer, overlays, subheader,
 }: {
   title: string;
   /** what this dialog applies to -- the course, the member, the branch */
@@ -92,6 +92,12 @@ export function FormDialog({
   /** Sheets and pickers this dialog opens. They render OUTSIDE the card --
    *  a bottom sheet belongs to the viewport, not to a scrolling form body. */
   overlays?: ReactNode;
+  /** A row PINNED under the title, above the scroll -- a tab strip for a
+   *  dialog whose content comes in panels. It is chrome, not content: put it
+   *  in the body and it scrolls out of reach of the panel it switches, which
+   *  is the same reason the footer is pinned. Omitted, nothing is drawn and
+   *  the card is exactly what it was. */
+  subheader?: ReactNode;
 }) {
   const { theme } = useTheme();
   const router = useRouter();
@@ -108,12 +114,38 @@ export function FormDialog({
       flex: 1, backgroundColor: theme.scrim,
       alignItems: 'center', justifyContent: 'center', padding: SPACE.lg,
     }, BACKDROP_BLUR]}>
-      {/* Tapping beside the dialog leaves it, the way tapping beside any
-          dialog does. It is the SAME action as the close button, never a
-          quiet save -- nothing typed is kept by walking away from it. */}
-      <Pressable testID="dialog-scrim"
-        accessibilityRole="button" accessibilityLabel="Close without saving"
-        onPress={close}
+      {/* The backdrop is INERT, and that is the whole of it.
+          It used to close the dialog -- "tapping beside a dialog leaves it,
+          the way tapping beside any dialog does" -- and a close here has
+          never been a save. So one stray tap beside a half-typed form threw
+          the whole of it away, silently, with no undo and nothing on screen
+          that had been aimed at. A form leaves by its own controls now: the
+          header close, and Cancel where the dialog has one
+          (requests/2026-09-07-dialogs-close-only-on-close-control.md).
+
+          It stays rather than going away, because it has a second job and
+          always did. `presentation: 'transparentModal'` leaves the screen
+          underneath mounted and LIVE (app/_layout.tsx) -- that is what makes
+          "over the member screen" true rather than a description of an
+          intention -- so something has to stop a press beside the card
+          landing on a member row on the list behind it.
+
+          What does that is the element FILLING THE SPACE and not being
+          transparent to pointers -- a div the click lands on, a native view
+          the hit test picks first. It is not the responder claim below:
+          react-native-web's responder system never calls `preventDefault`,
+          and RN redelivers an unclaimed touch to ANCESTORS, never to a
+          sibling underneath. The claim is there to say out loud that a press
+          here is deliberately absorbed, and so the spec has one thing to
+          pin; `pointerEvents="none"` on this element is what would actually
+          break it, and dialogDismiss.test.ts is what refuses it.
+
+          No role and no label: it is nothing to a screen reader, because a
+          thing announced as a button that does nothing is worse than no
+          control at all. "Close without saving" still names the close button
+          in the header, where it is still true. */}
+      <View testID="dialog-scrim"
+        onStartShouldSetResponder={() => true}
         style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} />
 
       <View style={{
@@ -145,6 +177,8 @@ export function FormDialog({
           <Icon name="close" size={20} color={theme.fgStrong} />
         </Pressable>
       </View>
+
+      {subheader}
 
       <ScrollView style={{ flexGrow: 0 }}
         contentContainerStyle={{ padding: SPACE.lg, paddingBottom: SPACE.lg }}>

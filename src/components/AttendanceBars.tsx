@@ -37,7 +37,7 @@ export function AttendanceBars({ rows, testID }: { rows: ReportRow[]; testID: st
         return (
           <View key={b.label} testID={`${testID}-row`}
             accessible
-            accessibilityLabel={`${b.label}. ${b.pct === null ? 'No sessions scheduled' : `${b.pct} per cent present`}. ${meta}`}>
+            accessibilityLabel={`${b.label}${b.sub ? `, ${b.sub}` : ''}. ${b.pct === null ? 'No sessions scheduled' : `${b.pct} per cent present`}. ${meta}`}>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: SPACE.sm }}>
               <Text numberOfLines={1} style={{ flex: 1, fontSize: 12.5, fontWeight: '700', color: theme.fgStrong }}>
                 {b.label}
@@ -46,6 +46,17 @@ export function AttendanceBars({ rows, testID }: { rows: ReportRow[]; testID: st
                 {b.pct === null ? '—' : `${b.pct}%`}
               </Text>
             </View>
+
+            {/* WHICH COURSE this row is counted under. A ranking of names
+                against a Course filter said nothing about which course any of
+                them was in, so the one fact needed to act on the ranking --
+                who to chase, and about what -- was the fact it left out.
+                Written, never colour-coded: a course is not a status. */}
+            {b.sub ? (
+              <Text numberOfLines={1} style={{ fontSize: 10.5, color: theme.muted, marginTop: 2 }}>
+                {b.sub}
+              </Text>
+            ) : null}
 
             <View style={{
               flexDirection: 'row', height: 20, marginTop: 6, borderRadius: 7,

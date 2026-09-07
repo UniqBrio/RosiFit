@@ -1,254 +1,732 @@
-import { View, Text, Pressable, ScrollView } from 'react-native';
+import { useMemo, useRef, useState } from 'react';
+import { View, Text, Pressable, ScrollView, TextInput } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Muted, Label, Skeleton, EmptyState, ErrorState } from '../src/components/ui';
+import { Muted, Label, Button, Skeleton, EmptyState, ErrorState } from '../src/components/ui';
 import { ScreenHeader, ShellScreen } from '../src/components/AppShell';
 import { Icon } from '../src/components/Icon';
 import { useTheme } from '../src/theme/ThemeProvider';
 import { useToast } from '../src/components/Toast';
-import { SPACE, RADIUS, STATUS } from '../src/theme/tokens';
-import { useAudit } from '../src/data/hooks';
+import { SPACE, RADIUS, TAP_MIN } from '../src/theme/tokens';
+import { DropdownRow, DropdownField, DropdownPanel, DropdownItem, DropdownList } from '../src/components/Dropdown';
+import { PeriodPanel, periodFieldValue } from '../src/components/PeriodFilter';
+import { resolvePeriod, type PeriodChoice } from '../src/data/period';
+import { ALL_BRANCHES } from '../src/state/academy';
+import { useAudit, useRemarks, useFilterOptions } from '../src/data/hooks';
+import { addRemark, REMARK_MAX } from '../src/data/repository';
 import { toCsv } from '../src/data/csvFormat';
+import { swipeHint } from '../src/components/tableScroll';
 import { downloadCsv } from '../src/data/csv';
-import type { AuditEntry } from '../src/data/mock';
+import {
+  visibleEntries, isSessionAction, whenText, stampText, CATEGORY_CHIPS,
+  type AuditCategory, type PlainEntry,
+} from '../src/data/auditPlain';
 
 /**
- * C-94/C-96, as the canvas now draws it: a TABLE, five columns, newest first,
- * and nothing editable.
+ * The audit log, rebuilt for the one person allowed to open it: the academy
+ * owner, who does not read databases.
  *
- * WHY A TABLE RATHER THAN THE CARDS THIS SCREEN HAD
- * The cards stacked WHO, WHAT, WHEN, PREVIOUS and CURRENT vertically, one
- * card per entry. That reads a single change well and answers the question
- * the log exists for -- "what changed here, and when did it start" -- badly:
- * comparing the same field across six entries meant scrolling past five
- * cards' worth of labels. The columns put the values under each other, which
- * is the comparison, and the table scrolls sideways rather than reflowing,
- * because a column that changes width between two rows stops being a column.
+ * WHAT WAS WRONG WITH THE TABLE THIS REPLACES
+ * Nothing about the RECORD -- the rows were right, complete and immutable.
+ * The screen simply printed them as the database stores them: the action as
+ * a code (`member.insert`), the changed field as a COLUMN name (`full_name`),
+ * and the one field that says who the entry is about -- `entity_id` -- as a
+ * UUID. So the column headed "action name" read `communication.batc...` and
+ * the line under it, meant to name the member, read
+ * `a98a2d1a-32de-45f4-8b67-6...`. Every translation now happens in
+ * src/data/auditPlain.ts, which is tested for TOTALITY: no future action can
+ * reach this screen as a code.
  *
- * ONE ROW PER CHANGE, NOT PER ENTRY
- * An audit entry carries a LIST of changed fields -- the follow-up rule entry
- * in the fixtures changes three at once. The canvas draws one old/new pair per
- * row, so an entry with three changes becomes three rows under one action.
- * Flattening keeps every value visible; folding them into one cell would hide
- * two-thirds of what the entry recorded.
+ * WHAT IT NOW SHOWS, AND WHAT IT DOES NOT
+ * Changes only. Signing in and out is still recorded, still permanent and
+ * still readable in the table -- it is not a CHANGE, and with fifty rows on
+ * screen it was pushing real activity off the end. Nothing is deleted and no
+ * write path was touched; `visibleEntries` decides what is LISTED and says so
+ * in one line under the heading.
+ *
+ * ONE LINE PER CHANGED FIELD, FIVE COLUMNS
+ * PREVIOUS VALUE and NEW VALUE are columns of their own, keeping the names
+ * this screen has always used. A rule change with three thresholds is three
+ * lines under one heading, the way it was -- with the fix that the FIELD is
+ * now named on every line, including the first, which the old table left
+ * unlabelled.
+ *
+ * ONE TABLE AT EVERY WIDTH
+ * A phone gets the same five columns and scrolls sideways to reach them.
+ * This screen briefly drew cards below 768pt and the cards dropped the
+ * column names, which is precisely the labelling somebody reading a log is
+ * looking for -- "previous value" and "modified at" are the question, not
+ * decoration.
+ *
+ * THE HEADER IS FROZEN, AND FOLLOWS THE COLUMNS
+ * `stickyHeaderIndices` on the page scroller, pinned to the column header's
+ * position in the children array -- which is why the children are built as an
+ * explicit list below rather than written inline: the index has to be the one
+ * React actually sees, in every state. Because the header is a child of the
+ * PAGE and the rows are in their own sideways scroller, the two are separate
+ * scroll containers: the body reports its offset and the header is moved to
+ * match, or the header would sit still while its own columns slid under it.
  */
 
-/** A flattened table row: one changed field, carrying its entry's identity. */
-type AuditRow = {
+/* The five columns the screen has always had, keeping the names the reader
+ * already knows -- PREVIOUS VALUE and NEW VALUE are two columns rather than
+ * one "Details" cell, because the question the log answers is "what was it,
+ * and what is it now", and two values in one cell make that a sentence to
+ * read instead of a pair to compare.
+ *
+ * Flex weights, not pixel widths, over a minimum: on a phone the row is
+ * TABLE_MIN wide and scrolls sideways; on a desktop it fills whatever is
+ * there. One table at every width -- the cards this screen briefly used
+ * dropped the column names, which is exactly the labelling the reader was
+ * looking for. */
+const COLS = [
+  { key: 'what', label: 'What changed',   flex: 2.7 },
+  { key: 'was',  label: 'Previous value', flex: 1.9 },
+  { key: 'now',  label: 'New value',      flex: 1.9 },
+  { key: 'who',  label: 'Modified by',    flex: 1.5 },
+  { key: 'when', label: 'Modified at',    flex: 1.6 },
+] as const;
+
+/**
+ * The width the columns need to stay readable. Below it the table scrolls
+ * sideways -- five columns squeezed into 358pt is five unreadable columns,
+ * and a table nobody can read is not a table.
+ */
+const TABLE_MIN = 760;
+
+/**
+ * One row of the table: ONE changed field, carrying the entry it belongs to.
+ *
+ * The entry is flattened rather than folded into a single cell because
+ * PREVIOUS and NEW are columns — three changes stacked inside one cell would
+ * put three values under a heading that says "new value", with nothing
+ * saying which is which.
+ */
+type Line = {
   key: string;
-  action: string;
-  subject: string;
-  field: string;
-  old: string | null;
-  now: string | null;
-  who: string;
-  when: string;
-  /** True on the first row of an entry. The table heads only that row with
-   *  the action, so the eye reads three changed fields as one act rather than
-   *  as three -- while every row still KNOWS its action, which is what the
-   *  export needs once a spreadsheet sorts the rows out of order. */
+  entry: PlainEntry;
+  /** the field that changed, or null when the entry recorded no fields */
+  label: string | null;
+  from: string | null;
+  to: string | null;
+  /** true on the first line of an entry — the one that heads it */
   first: boolean;
 };
 
-function flatten(entries: AuditEntry[]): AuditRow[] {
-  const rows: AuditRow[] = [];
-  for (const a of entries) {
-    const shared = { action: a.action, subject: a.subject, who: a.who, when: a.when };
-    if (a.changes.length === 0) {
-      // A creation records no PREVIOUS value for anything. It is still an
-      // action somebody took, so it gets a row rather than vanishing.
-      rows.push({ ...shared, key: a.id, field: a.entity, old: null, now: null, first: true });
+function toLines(entries: PlainEntry[]): Line[] {
+  const lines: Line[] = [];
+  for (const entry of entries) {
+    if (entry.changes.length === 0) {
+      // An action that recorded no field changes is still something somebody
+      // did. It gets a line rather than vanishing.
+      lines.push({ key: entry.id, entry, label: null, from: null, to: null, first: true });
       continue;
     }
-    a.changes.forEach((c, i) => rows.push({
-      ...shared,
-      key: `${a.id}-${i}-${c.field}`,
-      field: c.field, old: c.old, now: c.new,
-      first: i === 0,
+    entry.changes.forEach((c, i) => lines.push({
+      key: `${entry.id}-${i}-${c.label}`,
+      entry, label: c.label, from: c.from, to: c.to, first: i === 0,
     }));
   }
-  return rows;
+  return lines;
 }
-
-/** The five column widths the canvas states, in order. */
-const COLS = [
-  { label: 'Action name',   width: 170 },
-  { label: 'Value existed', width: 150 },
-  { label: 'New value',     width: 180 },
-  { label: 'Modified by',   width: 130 },
-  { label: 'Modified at',   width: 160 },
-] as const;
-
-const TABLE_WIDTH = COLS.reduce((w, c) => w + c.width, 0);
 
 function AuditBody() {
   const { theme } = useTheme();
   const { flash } = useToast();
   const router = useRouter();
   const { state: forced } = useLocalSearchParams<{ state?: string }>();
-  const { state, data, error, retry } = useAudit(forced);
-  const entries = data ?? [];
-  const rows = flatten(entries);
-
-  const okInk = theme.isDark ? STATUS.present.fgDark : STATUS.present.fgLight;
+  /**
+   * The date range, and it starts UNSET.
+   *
+   * Every other screen with a period opens on one — This week, This month —
+   * because they answer "how are we doing lately". This screen answers "what
+   * has happened", and a default range would hide changes nobody asked it to
+   * hide, on the one screen whose promise is that nothing is hidden. So the
+   * field reads "Any date" until somebody chooses otherwise, and "Any date"
+   * is offered inside the panel as the way back.
+   */
+  const [choice, setChoice] = useState<PeriodChoice | null>(null);
+  const range = useMemo(() => (choice ? resolvePeriod(choice) : null), [choice]);
 
   /**
-   * A real file, not a toast. The canvas' Export flashed "Exporting the audit
-   * log · Excel (.xlsx)" and produced nothing -- the same defect as a form
-   * that reports a save it never attempted. CSV rather than xlsx because it
-   * needs no dependency and Excel opens it; the toast says which it is.
+   * The branch, kept LOCAL to this screen rather than taken from the shell
+   * scope Attendance uses (src/state/academy). The shell branch is "which
+   * branch am I working in"; narrowing an audit log by a choice made two
+   * screens ago would quietly shorten a list whose whole promise is
+   * completeness. This one starts at All branches every time the screen opens.
+   */
+  const [branch, setBranch] = useState<string>(ALL_BRANCHES);
+  const [open, setOpen] = useState<'period' | 'branch' | null>(null);
+
+  const { state, data, error, retry } = useAudit(forced, range);
+  const remarks = useRemarks(forced);
+  const options = useFilterOptions(forced);
+  const branchOptions = options.data?.branches ?? [ALL_BRANCHES];
+
+  const [query, setQuery] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [category, setCategory] = useState<AuditCategory | 'all'>('all');
+
+  const [draft, setDraft] = useState('');
+  const [composing, setComposing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  /**
+   * The header scroller, driven by the body's.
+   *
+   * The header is a child of the PAGE scroller so the page can pin it, and
+   * the body is its own sideways scroller — two different scroll containers
+   * showing the same columns. Nothing keeps them lined up but this: the body
+   * reports its offset and the header is moved to match. Without it the
+   * header stays put while the columns under it slide, which is worse than
+   * no frozen header at all.
+   */
+  const headScroll = useRef<ScrollView>(null);
+
+  /**
+   * What the reader has not seen yet, in words.
+   *
+   * The table is 760pt over a ~358pt phone, so four of the five columns
+   * start off the right-hand edge -- and a touch scrollbar is an overlay
+   * that appears only once you are ALREADY scrolling. The round-1 rebuild
+   * got the table right and left the reader no way to find that out, which
+   * is why this round was asked as "where is new value, previous value,
+   * modified at and modified by" -- they were one swipe away, unannounced.
+   *
+   * Only the SENTENCE is state. The measurements live in a ref because they
+   * change on every frame of a swipe and the screen must not re-render 50
+   * rows to move a scrollbar; setting the same sentence twice is a bail-out
+   * in React, so the common case of scrolling within one hint costs nothing.
+   */
+  const [hint, setHint] = useState<string | null>(null);
+  const geom = useRef({ x: 0, viewport: 0, content: 0 });
+  const showHint = () => {
+    const g = geom.current;
+    const next = swipeHint(COLS, g.x, g.viewport, g.content).text;
+    setHint(prev => (prev === next ? prev : next));
+  };
+
+  const entries = useMemo(() => data ?? [], [data]);
+  /** One clock for the whole render: fifty rows asking the OS the time
+   *  separately can straddle midnight and disagree about "Today". */
+  const now = useMemo(() => new Date(), [entries]);
+
+  /** Everything this screen is willing to list, before the chip and the box. */
+  const listed = useMemo(() => entries.filter(e => !isSessionAction(e.action)), [entries]);
+  const rows = useMemo(
+    () => visibleEntries(entries, {
+      category, query, now,
+      branch: branch === ALL_BRANCHES ? null : branch,
+    }),
+    [entries, category, query, branch, now],
+  );
+  /** The table's rows: one per changed field (see `toLines`). */
+  const lines = useMemo(() => toLines(rows), [rows]);
+  const narrowed = rows.length !== listed.length;
+  /** Whether anything is narrowing the list right now. */
+  const filtered = range !== null || branch !== ALL_BRANCHES || query.trim() !== '' || category !== 'all';
+  /** What is narrowing it, named — so "nothing matches" says which control
+   *  to reach for rather than leaving somebody to hunt for it. */
+  const filterWords = [
+    range ? `the dates ${range.label}` : null,
+    branch !== ALL_BRANCHES ? `the branch ${branch}` : null,
+    category !== 'all' ? `the ${(CATEGORY_CHIPS.find(c => c.key === category)?.label ?? category).toLowerCase()} filter` : null,
+    query.trim() !== '' ? `the search “${query.trim()}”` : null,
+  ].filter(Boolean).join(' and ') || 'the filters set';
+
+  const subtitle = state !== 'ready' ? undefined
+    : narrowed
+      ? `${rows.length} of ${listed.length} shown · newest first`
+      : `${listed.length} ${listed.length === 1 ? 'change' : 'changes'} · newest first`;
+
+  /**
+   * A real file, not a toast. Unfolded to one line per changed field, because
+   * a spreadsheet sorts and filters columns and a cell holding three changes
+   * can do neither -- and with the action repeated on every line, so a sorted
+   * file never has a row that lost its heading. The words are the screen's.
    */
   const exportLog = () => {
     try {
+      const lines = rows.flatMap(r => (r.changes.length
+        ? r.changes.map(c => [r.title, r.subject ?? '', c.label, c.from ?? '', c.to ?? '',
+                              r.who, r.role ?? '', stampText(r.at)])
+        : [[r.title, r.subject ?? '', '', '', '', r.who, r.role ?? '', stampText(r.at)]]));
       downloadCsv(
         `rosifit-audit-${new Date().toISOString().slice(0, 10)}.csv`,
-        toCsv(
-          ['Action', 'Subject', 'Field', 'Value existed', 'New value', 'Modified by', 'Modified at'],
-          // The same flattened rows the table draws, so the file and the
-          // screen agree line for line -- but with the action on EVERY row,
-          // because a spreadsheet gets sorted and a row that inherited its
-          // action from the one above it would lose it.
-          rows.map(r => [r.action, r.subject, r.field, r.old ?? 'NA', r.now ?? 'NA', r.who, r.when]),
-        ),
+        toCsv(['What changed', 'About', 'Detail', 'Before', 'After', 'Done by', 'Role', 'When'], lines),
       );
-      flash(`Exported ${rows.length} ${rows.length === 1 ? 'row' : 'rows'} · CSV, opens in Excel`);
+      flash(`Exported ${lines.length} ${lines.length === 1 ? 'row' : 'rows'} · CSV, opens in Excel`);
     } catch (err) {
       flash(err instanceof Error ? err.message : 'The audit log could not be exported.', 'warn');
     }
   };
 
-  return (
-    <ScrollView style={{ flex: 1, backgroundColor: theme.bg }}
-      contentContainerStyle={{ padding: SPACE.lg, paddingBottom: 96 }}>
-      <ScreenHeader
-        title="Audit log"
-        subtitle={state === 'ready'
-          ? `${entries.length} ${entries.length === 1 ? 'action' : 'actions'} · newest first`
-          : undefined}
-        onBack={() => router.back()}
-        right={state === 'ready' && rows.length > 0 ? (
-          <Pressable testID="audit-export" onPress={exportLog}
-            accessibilityRole="button"
-            accessibilityLabel={`Export ${rows.length} audit rows as CSV`}
-            style={({ pressed }) => ({
-              flexDirection: 'row', alignItems: 'center', gap: 5,
-              height: 36, paddingHorizontal: 12, borderRadius: 11,
-              backgroundColor: theme.control, borderWidth: 1, borderColor: theme.lineStrong,
-              opacity: pressed ? 0.7 : 1,
-            })}>
-            <Icon name="download" size={16} color={theme.accentInk} />
-            <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.accentInk }}>Export</Text>
-          </Pressable>
-        ) : undefined} />
+  const tooLong = draft.trim().length > REMARK_MAX;
+  const canSave = draft.trim().length > 0 && !tooLong && !saving;
 
-      <Muted style={{ marginBottom: SPACE.lg }}>
-        Every change to a member, course, rule, schedule, holiday, branch or account. Append-only —
-        entries cannot be edited or deleted by anyone, including the system.
-      </Muted>
+  const saveRemark = async () => {
+    if (!canSave) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await addRemark(draft);
+      setDraft('');
+      flash('Remark added');
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'The remark could not be saved.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
-      {state === 'loading' && <Skeleton lines={5} />}
+  /* ------------------------------------------------------------ pieces */
 
-      {state === 'error' && (
-        <ErrorState onRetry={retry}
-          message={error ?? 'The audit log could not be loaded. Nothing has been changed.'} />
-      )}
+  const cell = (i: number) => ({ flex: COLS[i].flex, paddingHorizontal: 12 });
 
-      {state === 'ready' && rows.length === 0 && (
-        <EmptyState
-          title="Nothing recorded yet"
-          body="Every change writes an entry here as soon as it happens. An empty log means nothing has changed yet, not that anything is missing." />
-      )}
+  /** A recorded value. Absent is a WORD, not a blank: a creation had no
+   *  previous value and a cleared field has no new one, and those are two
+   *  different facts that an empty cell would render identically. */
+  const value = (v: string | null, absent: string, strong: boolean) => (
+    <Text style={{
+      fontSize: 12, lineHeight: 18,
+      color: v === null ? theme.dim : strong ? theme.fgStrong : theme.muted,
+      fontWeight: v !== null && strong ? '700' : '400',
+    }}>{v ?? absent}</Text>
+  );
 
-      {state === 'ready' && rows.length > 0 && (
-        <>
-          {/* The table scrolls SIDEWAYS as one piece. Reflowing the columns
-              to fit would put a different set of fields on each row, which is
-              the one thing a table is for stopping. */}
-          <ScrollView horizontal showsHorizontalScrollIndicator
-            style={{
-              borderRadius: RADIUS.lg, borderWidth: 1, borderColor: theme.lineStrong,
-              backgroundColor: theme.surface,
-            }}
-            contentContainerStyle={{ minWidth: TABLE_WIDTH }}>
-            <View style={{ minWidth: TABLE_WIDTH }}>
-              <View accessibilityRole="header" style={{
-                flexDirection: 'row', paddingVertical: 11,
-                backgroundColor: theme.surface2,
-                borderBottomWidth: 1, borderBottomColor: theme.lineStrong,
-              }}>
-                {COLS.map(c => (
-                  <Text key={c.label} numberOfLines={1} style={{
-                    width: c.width, paddingHorizontal: 12,
-                    fontSize: 9.5, fontWeight: '800', letterSpacing: 0.7,
-                    textTransform: 'uppercase', color: theme.muted,
-                  }}>{c.label}</Text>
-                ))}
+  /** The frozen column header. Its own child of the page scroller, so the
+   *  page can pin it; it paints an opaque ground and its own top corners,
+   *  because the rows pass UNDER it. Its sideways position is set by the
+   *  body, never by the reader — it is not scrollable itself. */
+  const headerRow = (
+    <ScrollView ref={headScroll} horizontal scrollEnabled={false}
+      showsHorizontalScrollIndicator={false}
+      style={{
+        backgroundColor: theme.surface2,
+        borderWidth: 1, borderColor: theme.lineStrong,
+        borderTopLeftRadius: RADIUS.lg, borderTopRightRadius: RADIUS.lg,
+      }}
+      contentContainerStyle={{ minWidth: TABLE_MIN, flexGrow: 1 }}>
+      <View accessibilityRole="header"
+        style={{ flexDirection: 'row', paddingVertical: 11, minWidth: TABLE_MIN, flexGrow: 1 }}>
+        {COLS.map((c, i) => (
+          <Text key={c.key} numberOfLines={1} style={{
+            ...cell(i),
+            fontSize: 9.5, fontWeight: '800', letterSpacing: 0.7,
+            textTransform: 'uppercase', color: theme.muted,
+          }}>{c.label}</Text>
+        ))}
+      </View>
+    </ScrollView>
+  );
+
+  /**
+   * The swipe line. It sits UNDER the frozen column header and inside the
+   * same sticky child, because it is about those columns and has to stay
+   * with them: a hint that scrolls away is a hint you have to remember.
+   *
+   * It renders only when the table actually overflows, so a desktop never
+   * gets an instruction that does nothing, and it names the columns rather
+   * than drawing a fade -- colour is never the only signal here, and
+   * "Modified at" is the answer the reader is looking for anyway.
+   */
+  const hintBar = hint === null ? null : (
+    <View testID="audit-swipe-hint"
+      style={{
+        flexDirection: 'row', alignItems: 'center', gap: 6,
+        paddingHorizontal: 12, paddingVertical: 7,
+        backgroundColor: theme.surface2,
+        borderLeftWidth: 1, borderRightWidth: 1, borderBottomWidth: 1,
+        borderColor: theme.lineStrong,
+      }}>
+      <Icon name="swipe" size={14} color={theme.accentInk} />
+      <Text style={{ flex: 1, fontSize: 11, fontWeight: '700', color: theme.fg }}>
+        {hint}
+      </Text>
+    </View>
+  );
+
+  const tableRow = (l: Line) => {
+    const r = l.entry;
+    return (
+      <View key={l.key} testID={`audit-row-${l.key}`} style={{
+        flexDirection: 'row', alignItems: 'flex-start',
+        paddingTop: l.first ? 13 : 9, paddingBottom: 11,
+        minWidth: TABLE_MIN, flexGrow: 1,
+        // A continuation line is part of the act above it, not a new one.
+        borderBottomWidth: 1, borderBottomColor: theme.line,
+      }}>
+        <View style={cell(0)}>
+          {/* The heading line: what happened, and to whom. Only the first
+              line of an entry carries it — the ones under it are the same
+              act, and repeating it would read as three separate changes. */}
+          {l.first ? (
+            <>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Icon name={r.icon} size={15} color={theme.accentInk} />
+                <Text style={{ flex: 1, fontSize: 12.5, fontWeight: '800', color: theme.fgStrong }}>
+                  {r.title}
+                </Text>
               </View>
+              {r.subject ? (
+                <Text style={{ fontSize: 11.5, color: theme.fg, marginTop: 2, marginLeft: 21 }}>
+                  {r.subject}
+                </Text>
+              ) : null}
+            </>
+          ) : null}
 
-              {rows.map(r => (
-                <View key={r.key} style={{
-                  flexDirection: 'row', alignItems: 'center', paddingVertical: 12,
-                  borderBottomWidth: 1, borderBottomColor: theme.line,
-                }}>
-                  <View style={{ width: COLS[0].width, paddingHorizontal: 12 }}>
-                    {/* A continuation row carries the FIELD in the action
-                        column instead of repeating the action: the entry is
-                        one act, and the field is what distinguishes its rows. */}
-                    <Text numberOfLines={1} style={{
-                      fontSize: 12.5, fontWeight: '800',
-                      color: r.first ? theme.fgStrong : theme.fg,
-                    }}>{r.first ? r.action : r.field}</Text>
-                    <Text numberOfLines={1} style={{ fontSize: 10.5, color: theme.muted, marginTop: 2 }}>
-                      {r.first ? r.subject : 'same action'}
-                    </Text>
-                  </View>
+          {/* The field itself, on EVERY line. The table this replaces named
+              the field only on continuation lines, so the first line's two
+              values sat under no label at all — the one row where you could
+              not tell what had changed. */}
+          {l.label ? (
+            <Text numberOfLines={2} style={{
+              marginLeft: 21, marginTop: l.first ? 4 : 0,
+              fontSize: 10, fontWeight: '800', letterSpacing: 0.5,
+              textTransform: 'uppercase', color: theme.muted,
+            }}>{l.label}</Text>
+          ) : (
+            <Text style={{ marginLeft: 21, marginTop: 4, fontSize: 11, color: theme.dim }}>
+              No field values recorded
+            </Text>
+          )}
+        </View>
 
-                  {/* 'NA' is the word for "there was no previous value" --
-                      a creation, not a blank. It is dim BUT it is a word, so
-                      the distinction survives greyscale. */}
-                  <Text numberOfLines={1} style={{
-                    width: COLS[1].width, paddingHorizontal: 12, fontSize: 11.5,
-                    color: r.old === null ? theme.dim : theme.muted,
-                    fontVariant: ['tabular-nums'],
-                  }}>{r.old ?? 'NA'}</Text>
+        {/* "Nothing before" is a creation; "cleared" is a value taken away.
+            Both are words, so the distinction survives a greyscale screen. */}
+        <View style={cell(1)}>{value(l.from, l.label ? 'nothing before' : '—', false)}</View>
+        <View style={cell(2)}>{value(l.to, l.label ? 'cleared' : '—', true)}</View>
 
-                  <Text numberOfLines={1} style={{
-                    width: COLS[2].width, paddingHorizontal: 12, fontSize: 11.5, fontWeight: '700',
-                    color: r.now === null ? theme.dim : okInk,
-                    fontVariant: ['tabular-nums'],
-                  }}>{r.now ?? 'NA'}</Text>
+        <View style={cell(3)}>
+          {l.first ? (
+            <>
+              <Text style={{ fontSize: 11.5, color: theme.fg, fontWeight: '600' }}>{r.who}</Text>
+              {r.role ? (
+                <Text style={{ fontSize: 10.5, color: theme.muted, marginTop: 2 }}>{r.role}</Text>
+              ) : null}
+            </>
+          ) : null}
+        </View>
 
-                  <Text numberOfLines={1} style={{
-                    width: COLS[3].width, paddingHorizontal: 12, fontSize: 11.5, color: theme.fg,
-                  }}>{r.who}</Text>
+        <View style={cell(4)}>
+          {l.first
+            ? <Text style={{ fontSize: 11.5, color: theme.muted }}>{r.when}</Text>
+            : null}
+        </View>
+      </View>
+    );
+  };
 
-                  <Text numberOfLines={1} style={{
-                    width: COLS[4].width, paddingHorizontal: 12, fontSize: 11, color: theme.muted,
-                    fontVariant: ['tabular-nums'],
-                  }}>{r.when}</Text>
-                </View>
-              ))}
-            </View>
-          </ScrollView>
+  const controls = (
+    <View style={{ marginBottom: SPACE.md }}>
+      {/* The two filters that narrow before the search does. They open in
+          place, under their own fields, so the list they are about stays in
+          view while the choice is made (CP-014). */}
+      <DropdownRow open={open !== null} style={{ marginBottom: SPACE.sm }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.sm }}>
+          <DropdownField testID="audit-filter-period"
+            label="Dates" value={choice ? periodFieldValue(choice) : 'Any date'}
+            open={open === 'period'} highlight={choice !== null}
+            onPress={() => setOpen(o => (o === 'period' ? null : 'period'))}
+            style={{ flexBasis: '48%', flexGrow: 1 }} />
+          <DropdownField testID="audit-filter-branch"
+            label="Branch" value={branch}
+            open={open === 'branch'} highlight={branch !== ALL_BRANCHES}
+            onPress={() => setOpen(o => (o === 'branch' ? null : 'branch'))}
+            style={{ flexBasis: '48%', flexGrow: 1 }} />
+        </View>
 
-          <Muted style={{ marginTop: 9 }}>
-            Scroll the table sideways for the remaining columns. A row reading{' '}
-            <Text style={{ fontVariant: ['tabular-nums'], color: theme.fg }}>NA</Text> under “value
-            existed” is a new record, not a missing one.
-          </Muted>
-        </>
-      )}
+        {open === 'period' ? (
+          <DropdownPanel maxHeight={470}>
+            {/* "Any date" sits ABOVE the shared panel rather than inside it.
+                Adding an item to PeriodPanel itself would give every other
+                screen a range option none of them wants, and this screen is
+                the only one whose honest default is no range at all. */}
+            <DropdownItem testID="audit-period-any"
+              label="Any date" meta="Every change the log holds"
+              selected={choice === null}
+              onPress={() => { setChoice(null); setOpen(null); }} />
+            {/* `null` means none of the presets is the choice — "Any date"
+                above is. Passing a stand-in preset here made the panel mark
+                that preset Selected beside an already-Selected "Any date":
+                two radios claiming to be the answer, announced as two. */}
+            <PeriodPanel testID="audit-period"
+              choice={choice}
+              onChange={setChoice} onDone={() => setOpen(null)} />
+          </DropdownPanel>
+        ) : null}
+        {open === 'branch' ? (
+          <DropdownPanel>
+            <DropdownList testID="audit-branch"
+              options={branchOptions.map(label => ({ label }))} value={branch}
+              onSelect={l => { setBranch(l); setOpen(null); }} />
+          </DropdownPanel>
+        ) : null}
+      </DropdownRow>
 
       <View style={{
-        marginTop: SPACE.lg, padding: SPACE.lg, borderRadius: RADIUS.lg,
-        backgroundColor: theme.surface2, borderWidth: 1, borderColor: theme.line,
+        flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
+        height: 46, borderRadius: RADIUS.md, backgroundColor: theme.surface,
+        borderWidth: 1, borderColor: searching ? theme.accent : theme.lineStrong,
+        paddingHorizontal: 13,
       }}>
-        <Label>What is never recorded</Label>
-        <Muted style={{ marginTop: SPACE.sm }}>
-          PINs, security answers, passwords and provider keys never reach this log — not in
-          readable form and not hashed. That is enforced when the entry is written, not by
-          remembering to leave them out.
-        </Muted>
+        <Icon name="search" size={19} color={theme.muted} />
+        <TextInput
+          value={query} onChangeText={setQuery}
+          placeholder="A member, a course, a person or a value"
+          placeholderTextColor={theme.muted}
+          accessibilityLabel="Search the audit log"
+          onFocus={() => setSearching(true)} onBlur={() => setSearching(false)}
+          selectionColor={theme.accent}
+          style={{ flex: 1, color: theme.fgStrong, fontSize: 13.5, fontWeight: '600',
+            outlineWidth: 0, outlineStyle: 'solid' }} />
       </View>
+
+      {/* Colour is never the only signal: each chip carries its word and its
+          own glyph, and the selected one is stated to a screen reader. */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ gap: SPACE.sm, paddingVertical: SPACE.md }}>
+        {CATEGORY_CHIPS.map(c => {
+          const on = category === c.key;
+          return (
+            <Pressable key={c.key} testID={`audit-chip-${c.key}`}
+              onPress={() => setCategory(c.key)}
+              accessibilityRole="radio" accessibilityState={{ selected: on }}
+              accessibilityLabel={`Show ${c.label.toLowerCase()}`}
+              style={{
+                minHeight: TAP_MIN, flexDirection: 'row', alignItems: 'center', gap: 5,
+                paddingHorizontal: 12, borderRadius: RADIUS.pill,
+                backgroundColor: on ? theme.accent : theme.surface,
+                borderWidth: 1, borderColor: on ? theme.accent : theme.lineStrong,
+              }}>
+              <Icon name={c.icon} size={15} color={on ? theme.onAccent : theme.fg} />
+              <Text style={{ fontSize: 12, fontWeight: '700', color: on ? theme.onAccent : theme.fg }}>
+                {c.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+
+  const remarksSection = (
+    <View testID="audit-remarks" style={{
+      marginTop: SPACE.xl, padding: SPACE.lg, borderRadius: RADIUS.lg,
+      backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
+    }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+        <Icon name="sticky_note_2" size={18} color={theme.accentInk} />
+        <Label>Remarks</Label>
+      </View>
+      <Muted style={{ marginTop: SPACE.sm }}>
+        Your own notes, in your own words — why something was changed, what to watch for next
+        week. They sit beside the log and never alter it. Like the log, a remark cannot be
+        edited or deleted once saved, and everyone who can open this page can read it.
+      </Muted>
+
+      <View style={{
+        marginTop: SPACE.lg,
+        borderWidth: 1, borderRadius: RADIUS.md, paddingHorizontal: SPACE.lg, paddingVertical: SPACE.md,
+        borderColor: saveError ? theme.danger : composing ? theme.accent : theme.lineStrong,
+        backgroundColor: theme.surface2, minHeight: 96,
+      }}>
+        <TextInput
+          value={draft} onChangeText={setDraft} multiline
+          placeholder="Add a remark…"
+          placeholderTextColor={theme.muted}
+          accessibilityLabel="Add a remark"
+          onFocus={() => setComposing(true)} onBlur={() => setComposing(false)}
+          selectionColor={theme.accent}
+          style={{ flex: 1, color: theme.fgStrong, fontSize: 14, minHeight: 68,
+            textAlignVertical: 'top', outlineWidth: 0, outlineStyle: 'solid' }} />
+      </View>
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.md, marginTop: SPACE.md }}>
+        <View style={{ flex: 1 }}>
+          {saveError ? (
+            <Text accessibilityLiveRegion="polite" style={{ fontSize: 12, color: theme.danger }}>
+              {saveError}
+            </Text>
+          ) : tooLong ? (
+            <Text accessibilityLiveRegion="polite" style={{ fontSize: 12, color: theme.danger }}>
+              {draft.trim().length} of {REMARK_MAX} characters — a little too long to save.
+            </Text>
+          ) : draft.trim().length > REMARK_MAX - 200 ? (
+            <Muted>{draft.trim().length} of {REMARK_MAX} characters</Muted>
+          ) : null}
+        </View>
+        <Button testID="audit-remark-add" label={saving ? 'Saving…' : 'Add remark'}
+          onPress={saveRemark} disabled={!canSave} />
+      </View>
+
+      <View style={{ marginTop: SPACE.lg }}>
+        {remarks.state === 'loading' && <Skeleton lines={2} />}
+
+        {remarks.state === 'error' && (
+          <ErrorState onRetry={remarks.retry}
+            message={remarks.error ?? 'The remarks could not be loaded. Nothing has been changed.'} />
+        )}
+
+        {remarks.state === 'ready' && (remarks.data ?? []).length === 0 && (
+          <Muted>No remarks yet. The first one goes in the box above.</Muted>
+        )}
+
+        {remarks.state === 'ready' && (remarks.data ?? []).map((r, i) => (
+          <View key={r.id} testID={`audit-remark-${r.id}`} style={{
+            paddingTop: i === 0 ? 0 : SPACE.md, marginTop: i === 0 ? 0 : SPACE.md,
+            borderTopWidth: i === 0 ? 0 : 1, borderTopColor: theme.line,
+          }}>
+            <Text style={{ fontSize: 13.5, color: theme.fgStrong, lineHeight: 20 }}>{r.body}</Text>
+            <Text style={{ fontSize: 11.5, color: theme.muted, marginTop: 5 }}>
+              {r.who} · {whenText(r.when, now)}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+
+  /* ----------------------------------------------------------- assembly
+   * Built as an explicit list because the sticky index must be the position
+   * React actually sees. A conditional written inline shifts every index
+   * after it, and the symptom is a pinned SEARCH BOX rather than an error.
+   */
+  const children: React.ReactNode[] = [];
+  let stickyAt: number | undefined;
+
+  children.push(
+    <ScreenHeader key="head"
+      title="Audit log"
+      subtitle={subtitle}
+      onBack={() => router.back()}
+      right={state === 'ready' && rows.length > 0 ? (
+        <Pressable testID="audit-export" onPress={exportLog}
+          accessibilityRole="button"
+          accessibilityLabel={`Export ${rows.length} entries as CSV`}
+          style={({ pressed }) => ({
+            flexDirection: 'row', alignItems: 'center', gap: 5,
+            height: 36, paddingHorizontal: 12, borderRadius: 11,
+            backgroundColor: theme.control, borderWidth: 1, borderColor: theme.lineStrong,
+            opacity: pressed ? 0.7 : 1,
+          })}>
+          <Icon name="download" size={16} color={theme.accentInk} />
+          <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.accentInk }}>Export</Text>
+        </Pressable>
+      ) : undefined} />,
+  );
+
+  children.push(
+    <Muted key="intro" style={{ marginBottom: SPACE.lg }}>
+      Every change made in the app — members, courses, schedules, attendance, uploads, messages
+      and accounts — with the name of whoever made it, staff included. Signing in and out is
+      recorded too, but it changes nothing, so it is not listed here. Nothing on this page can
+      be edited or deleted by anyone, including the system.
+    </Muted>,
+  );
+
+  if (state === 'loading') children.push(<Skeleton key="skeleton" lines={5} />);
+
+  if (state === 'error') {
+    children.push(
+      <ErrorState key="error" onRetry={retry}
+        message={error ?? 'The audit log could not be loaded. Nothing has been changed.'} />,
+    );
+  }
+
+  if (state === 'ready') {
+    /**
+     * A log with nothing in it and a log FILTERED to nothing are different
+     * answers, and only one of them may say "nothing has been changed yet".
+     * The dates narrow the query, so an empty result under a chosen range
+     * means empty IN THAT RANGE — saying otherwise would be a false
+     * statement about the academy's history.
+     */
+    if (listed.length === 0 && !filtered) {
+      children.push(
+        <EmptyState key="empty"
+          title="No changes recorded yet"
+          body="Every change writes an entry here as soon as it happens. Signing in is recorded separately and is not shown, so an empty list means nothing has been changed yet — not that anything is missing." />,
+      );
+    } else {
+      // The filters render even when they have narrowed the list to nothing.
+      // A filter that disappears with its own rows leaves somebody looking at
+      // an empty month with no way to ask for another one.
+      children.push(<View key="controls">{controls}</View>);
+
+      if (rows.length === 0) {
+        children.push(
+          <EmptyState key="no-match"
+            title="Nothing matches"
+            body={`No change matches ${filterWords}. Clear one of them to see the rest — nothing has been hidden permanently, and nothing has been deleted.`} />,
+        );
+      } else {
+        // The frozen header. Its index is captured HERE, after every
+        // conditional above it has decided.
+        stickyAt = children.length;
+        children.push(<View key="thead">{headerRow}{hintBar}</View>);
+        children.push(
+          <ScrollView key="tbody" horizontal
+            showsHorizontalScrollIndicator
+            onScroll={e => {
+              const x = e.nativeEvent.contentOffset.x;
+              headScroll.current?.scrollTo({ x, animated: false });
+              geom.current.x = x;
+              showHint();
+            }}
+            onLayout={e => { geom.current.viewport = e.nativeEvent.layout.width; showHint(); }}
+            onContentSizeChange={w => { geom.current.content = w; showHint(); }}
+            scrollEventThrottle={16}
+            style={{
+              borderWidth: 1, borderTopWidth: 0, borderColor: theme.lineStrong,
+              borderBottomLeftRadius: RADIUS.lg, borderBottomRightRadius: RADIUS.lg,
+              backgroundColor: theme.surface,
+            }}
+            contentContainerStyle={{ minWidth: TABLE_MIN, flexGrow: 1 }}>
+            <View style={{ minWidth: TABLE_MIN, flexGrow: 1 }}>
+              {lines.map(tableRow)}
+            </View>
+          </ScrollView>,
+        );
+      }
+
+      children.push(
+        <Muted key="foot" style={{ marginTop: SPACE.md }}>
+          One line per changed field; the lines under a heading are the same act.
+          “Nothing before” is a record being created, “cleared” is a value taken away, and a
+          dash means the record a value pointed at is no longer there. On a narrow screen the
+          table scrolls sideways and the header follows it.
+          Only the fifty most recent changes are shown{range ? ' for the dates chosen' : ''}.
+          {branch === ALL_BRANCHES ? '' : ` A change is matched to ${branch} by what it points at`
+            + ' today, and changes that belong to no single branch — a setting, a message'
+            + ' template, an account — are not listed while a branch is chosen.'}
+        </Muted>,
+      );
+    }
+  }
+
+  children.push(<View key="remarks">{remarksSection}</View>);
+
+  children.push(
+    <View key="never" style={{
+      marginTop: SPACE.lg, padding: SPACE.lg, borderRadius: RADIUS.lg,
+      backgroundColor: theme.surface2, borderWidth: 1, borderColor: theme.line,
+    }}>
+      <Label>What is never recorded</Label>
+      <Muted style={{ marginTop: SPACE.sm }}>
+        PINs, security answers, passwords and provider keys never reach this log — not in
+        readable form and not hashed. That is enforced when the entry is written, not by
+        remembering to leave them out.
+      </Muted>
+    </View>,
+  );
+
+  return (
+    <ScrollView style={{ flex: 1, backgroundColor: theme.bg }}
+      stickyHeaderIndices={stickyAt === undefined ? undefined : [stickyAt]}
+      contentContainerStyle={{ padding: SPACE.lg, paddingBottom: 96 }}>
+      {children}
     </ScrollView>
   );
 }

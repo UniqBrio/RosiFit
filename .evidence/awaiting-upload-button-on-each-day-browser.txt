@@ -1,0 +1,119 @@
+requests/2026-09-07-awaiting-upload-button-on-each-day.md — browser evidence, 07-Sep-2026
+
+Fixtures build (EXPO_NO_DOTENV=1 CI=1 npx expo export --platform web), served with
+serve@14 -s on :8102, driven by Playwright 1.63 / Chromium at 1440x900, 768x1024 and
+375x812, dark and light, on /course/c1 (Prenatal Flow, runs Mon/Wed/Fri; the fixture
+week has Mon uploaded, Wed and Fri awaiting). For each cell: its accessible label; for
+each upload button: its box, its visible text, its accessible label, whether it sits
+inside another role=button, and the contrast of its word against the button fill
+composited over the card and the page.
+
+What PASS means here: the button appears on the awaiting days ONLY (Wed 9, Fri 11);
+uploaded Mon keeps "Present" and no button; the four not-expected days keep their dash
+and no button; pressing the date block still selects the day (the roster caption
+follows it) and does NOT open the upload; Enter on the focused button and a click both
+land on /upload?courseId=c1&date=<that day>; the button is never nested in the select
+press; the page never scrolls sideways.
+
+PASS  1440 dark   button 173x24, "Awaiting upload" on one line, contrast 8.37:1
+PASS  1440 light  button 173x24, "Awaiting upload" on one line, contrast 5.64:1
+PASS   768 dark   button  77x30, "Awaiting upload" wrapped to two lines, contrast 8.37:1
+PASS   768 light  button  77x30, "Awaiting upload" wrapped to two lines, contrast 5.64:1
+PASS   375 dark   button  27x26, the cloud alone (word in the legend), contrast n/a (no text) — icon 8.37:1
+PASS   375 light  button  27x26, the cloud alone (word in the legend), contrast n/a (no text) — icon 5.64:1
+
+At every width and theme:
+  select 2026-09-09  -> caption "Attendance for Wed 9 Sept", url stays /course/c1
+  Enter on focused course-day-upload-2026-09-09 -> /upload?courseId=c1&date=2026-09-09
+  click course-day-upload-2026-09-09            -> /upload?courseId=c1&date=2026-09-09
+  nestedInButton=false; scrollWidth == viewport
+
+Contrast is computed from the rendered colours (getComputedStyle), not read from the
+token table: ink over rgba fill over card over body. Both clear 4.5:1 for 9.5px bold.
+
+One page error per route: React #418 (hydration mismatch), pre-existing on every primary
+route in both themes and unrelated to this change — TD-043.
+
+Not exercised here: the upload screen's handling of the date parameter — unchanged by
+this request and covered where it lives (0024, requests/2026-09-06-upload-imports-on-pick.md).
+
+== 1440x900 dark  url=http://localhost:8102/course/c1
+  course-day-2026-09-07  "Mon 7 SEPT, Present"
+  course-day-2026-09-08  "Tue 8 SEPT, Not expected"
+  course-day-2026-09-09  "Wed 9 SEPT, Awaiting upload"  UPLOAD w=173 h=24 text=" Awaiting upload" scroll/client=13/13 contrast=8.37 nestedInButton=false aria="Upload a session for Wed 9 SEPT"
+  course-day-2026-09-10  "Thu 10 SEPT, Not expected"
+  course-day-2026-09-11  "Fri 11 SEPT, Awaiting upload"  UPLOAD w=173 h=24 text=" Awaiting upload" scroll/client=13/13 contrast=8.37 nestedInButton=false aria="Upload a session for Fri 11 SEPT"
+  course-day-2026-09-12  "Sat 12 SEPT, Not expected"
+  course-day-2026-09-13  "Sun 13 SEPT, Not expected"
+  scrollWidth=1440 (viewport 1440)
+  select 2026-09-09: caption="Attendance for Wed 9 Sept" url=/course/c1
+  Enter on focused course-day-upload-2026-09-09: url=/upload?courseId=c1&date=2026-09-09
+  click upload 2026-09-09: url=/upload?courseId=c1&date=2026-09-09
+  pageerrors: Minified React error #418; visit https://react.dev/errors/41
+== 1440x900 light  url=http://localhost:8102/course/c1
+  course-day-2026-09-07  "Mon 7 SEPT, Present"
+  course-day-2026-09-08  "Tue 8 SEPT, Not expected"
+  course-day-2026-09-09  "Wed 9 SEPT, Awaiting upload"  UPLOAD w=173 h=24 text=" Awaiting upload" scroll/client=13/13 contrast=5.64 nestedInButton=false aria="Upload a session for Wed 9 SEPT"
+  course-day-2026-09-10  "Thu 10 SEPT, Not expected"
+  course-day-2026-09-11  "Fri 11 SEPT, Awaiting upload"  UPLOAD w=173 h=24 text=" Awaiting upload" scroll/client=13/13 contrast=5.64 nestedInButton=false aria="Upload a session for Fri 11 SEPT"
+  course-day-2026-09-12  "Sat 12 SEPT, Not expected"
+  course-day-2026-09-13  "Sun 13 SEPT, Not expected"
+  scrollWidth=1440 (viewport 1440)
+  select 2026-09-09: caption="Attendance for Wed 9 Sept" url=/course/c1
+  Enter on focused course-day-upload-2026-09-09: url=/upload?courseId=c1&date=2026-09-09
+  click upload 2026-09-09: url=/upload?courseId=c1&date=2026-09-09
+  pageerrors: Minified React error #418; visit https://react.dev/errors/41
+== 768x1024 dark  url=http://localhost:8102/course/c1
+  course-day-2026-09-07  "Mon 7 SEPT, Present"
+  course-day-2026-09-08  "Tue 8 SEPT, Not expected"
+  course-day-2026-09-09  "Wed 9 SEPT, Awaiting upload"  UPLOAD w=77 h=30 text=" Awaiting upload" scroll/client=13/13 contrast=8.37 nestedInButton=false aria="Upload a session for Wed 9 SEPT"
+  course-day-2026-09-10  "Thu 10 SEPT, Not expected"
+  course-day-2026-09-11  "Fri 11 SEPT, Awaiting upload"  UPLOAD w=77 h=30 text=" Awaiting upload" scroll/client=13/13 contrast=8.37 nestedInButton=false aria="Upload a session for Fri 11 SEPT"
+  course-day-2026-09-12  "Sat 12 SEPT, Not expected"
+  course-day-2026-09-13  "Sun 13 SEPT, Not expected"
+  scrollWidth=768 (viewport 768)
+  select 2026-09-09: caption="Attendance for Wed 9 Sept" url=/course/c1
+  Enter on focused course-day-upload-2026-09-09: url=/upload?courseId=c1&date=2026-09-09
+  click upload 2026-09-09: url=/upload?courseId=c1&date=2026-09-09
+  pageerrors: Minified React error #418; visit https://react.dev/errors/41
+== 768x1024 light  url=http://localhost:8102/course/c1
+  course-day-2026-09-07  "Mon 7 SEPT, Present"
+  course-day-2026-09-08  "Tue 8 SEPT, Not expected"
+  course-day-2026-09-09  "Wed 9 SEPT, Awaiting upload"  UPLOAD w=77 h=30 text=" Awaiting upload" scroll/client=13/13 contrast=5.64 nestedInButton=false aria="Upload a session for Wed 9 SEPT"
+  course-day-2026-09-10  "Thu 10 SEPT, Not expected"
+  course-day-2026-09-11  "Fri 11 SEPT, Awaiting upload"  UPLOAD w=77 h=30 text=" Awaiting upload" scroll/client=13/13 contrast=5.64 nestedInButton=false aria="Upload a session for Fri 11 SEPT"
+  course-day-2026-09-12  "Sat 12 SEPT, Not expected"
+  course-day-2026-09-13  "Sun 13 SEPT, Not expected"
+  scrollWidth=768 (viewport 768)
+  select 2026-09-09: caption="Attendance for Wed 9 Sept" url=/course/c1
+  Enter on focused course-day-upload-2026-09-09: url=/upload?courseId=c1&date=2026-09-09
+  click upload 2026-09-09: url=/upload?courseId=c1&date=2026-09-09
+  pageerrors: Minified React error #418; visit https://react.dev/errors/41
+== 375x812 dark  url=http://localhost:8102/course/c1
+  course-day-2026-09-07  "Mon 7 SEPT, Present"
+  course-day-2026-09-08  "Tue 8 SEPT, Not expected"
+  course-day-2026-09-09  "Wed 9 SEPT, Awaiting upload"  UPLOAD w=27 h=26 text="" scroll/client=13/13 contrast=8.37 nestedInButton=false aria="Upload a session for Wed 9 SEPT"
+  course-day-2026-09-10  "Thu 10 SEPT, Not expected"
+  course-day-2026-09-11  "Fri 11 SEPT, Awaiting upload"  UPLOAD w=27 h=26 text="" scroll/client=13/13 contrast=8.37 nestedInButton=false aria="Upload a session for Fri 11 SEPT"
+  course-day-2026-09-12  "Sat 12 SEPT, Not expected"
+  course-day-2026-09-13  "Sun 13 SEPT, Not expected"
+  scrollWidth=375 (viewport 375)
+  select 2026-09-09: caption="Attendance for Wed 9 Sept" url=/course/c1
+  Enter on focused course-day-upload-2026-09-09: url=/upload?courseId=c1&date=2026-09-09
+  click upload 2026-09-09: url=/upload?courseId=c1&date=2026-09-09
+  pageerrors: Minified React error #418; visit https://react.dev/errors/41
+== 375x812 light  url=http://localhost:8102/course/c1
+  course-day-2026-09-07  "Mon 7 SEPT, Present"
+  course-day-2026-09-08  "Tue 8 SEPT, Not expected"
+  course-day-2026-09-09  "Wed 9 SEPT, Awaiting upload"  UPLOAD w=27 h=26 text="" scroll/client=13/13 contrast=5.64 nestedInButton=false aria="Upload a session for Wed 9 SEPT"
+  course-day-2026-09-10  "Thu 10 SEPT, Not expected"
+  course-day-2026-09-11  "Fri 11 SEPT, Awaiting upload"  UPLOAD w=27 h=26 text="" scroll/client=13/13 contrast=5.64 nestedInButton=false aria="Upload a session for Fri 11 SEPT"
+  course-day-2026-09-12  "Sat 12 SEPT, Not expected"
+  course-day-2026-09-13  "Sun 13 SEPT, Not expected"
+  scrollWidth=375 (viewport 375)
+  select 2026-09-09: caption="Attendance for Wed 9 Sept" url=/course/c1
+  Enter on focused course-day-upload-2026-09-09: url=/upload?courseId=c1&date=2026-09-09
+  click upload 2026-09-09: url=/upload?courseId=c1&date=2026-09-09
+  pageerrors: Minified React error #418; visit https://react.dev/errors/41
+
+Script: scratchpad/strip-check.mjs. Screenshots: strip-{1440,768,375}-{dark,light}.png.

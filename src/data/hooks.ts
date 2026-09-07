@@ -16,6 +16,7 @@ import type { ScreenState } from './useScreenState';
 import { currentWeek, periodBuckets, type Period } from './period';
 import {
   fetchMembers, fetchRules, fetchCourses, fetchTemplates, fetchStaff, fetchAudit,
+  fetchRemarks, onRemarksChanged,
   fetchFilterOptions, fetchMonthSessions, fetchPendingSessions, fetchWeekRows,
   fetchBucketMetrics,
   fetchAcademy, fetchBranches, fetchOfferings,
@@ -30,7 +31,7 @@ import {
 } from './repository';
 import { flagged } from './followup';
 import type { BucketMetrics } from './buckets';
-import type { Member, Course, Template, Staff, AuditEntry, SessionDay, WeekRow, AttendanceRow } from './mock';
+import type { Member, Course, Template, Staff, AuditEntry, Remark, SessionDay, WeekRow, AttendanceRow } from './mock';
 import { onSentChanged, type SentMap } from './sent';
 
 export type Async<T> = {
@@ -152,8 +153,30 @@ export function useStaff(forced?: string): Async<Staff[]> {
   return useAsync(() => fetchStaff(), [], forced);
 }
 
-export function useAudit(forced?: string): Async<AuditEntry[]> {
-  return useAsync(() => fetchAudit(), [], forced);
+/**
+ * The audit log, narrowed by a date range when one is chosen.
+ *
+ * `period` is nullable and starts null on the Audit screen, which is the one
+ * place in the app where a default date filter would be wrong: every other
+ * screen answers "how are we doing lately", and this one answers "what has
+ * happened" — a default range would hide changes nobody asked it to hide.
+ */
+export function useAudit(forced?: string, period?: Period | null): Async<AuditEntry[]> {
+  return useAsync(() => fetchAudit(period), [period?.from ?? '', period?.to ?? ''], forced);
+}
+
+/**
+ * The remarks beside the audit log, refetched whenever one is added.
+ *
+ * Separate from useAudit rather than folded into it, because the two fail
+ * independently: remarks live in their own table (0043) and a project that
+ * has not had it applied must still show the log. One hook for both would
+ * make the log's success depend on the remarks' success.
+ */
+export function useRemarks(forced?: string): Async<Remark[]> {
+  const [version, setVersion] = useState(0);
+  useEffect(() => onRemarksChanged(() => setVersion(v => v + 1)), []);
+  return useAsync(() => fetchRemarks(), [version], forced);
 }
 
 export function useFilterOptions(forced?: string): Async<{ branches: string[]; courses: string[] }> {

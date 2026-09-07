@@ -25,6 +25,16 @@ export const REPORT_SCOPES: ReportScope[] = ['Members', 'Courses', 'Branches'];
 
 export type ReportRow = {
   label: string;
+  /**
+   * What the label belongs to, when the label alone does not say -- a
+   * member's course and branch under her name on the Overview.
+   *
+   * OPTIONAL, and set by the caller rather than by reportRows: the report
+   * screen's own rows are already grouped by the thing they name, and a
+   * scope line under them would repeat the group heading. Nothing here is
+   * counted from it; it is a label, not a figure.
+   */
+  sub?: string;
   /** null when nothing was expected -- never 0, which reads as "attended none" */
   pct: number | null;
   expected: number;

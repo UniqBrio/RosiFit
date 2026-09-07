@@ -1,0 +1,247 @@
+# dayStripUploadButton.test.ts fail-first — requests/2026-09-07-awaiting-upload-button-on-each-day.md
+# 07-Sep-2026, replayed against a snapshot of app/course/[id].tsx taken from the
+# WORKING TREE immediately before this change — not HEAD, because HEAD predates
+# the peer change that already dropped the clock (STATUS.scheduled) from the
+# strip, and this spec's last test asserts that half stays gone.
+#
+# Recorded with:
+#   cp app/course/[id].tsx $PRE/app/course/[id].tsx     (before editing)
+#   DAY_STRIP_UPLOAD_SPEC_ROOT=$PRE npx tsx --test src/components/dayStripUploadButton.test.ts
+#
+# 7 of 11 fail before the change: 2, 3, 4, 5, 6, 8, 10 — the button, its gate,
+# the icon handed off, the dated push, the STATUS word, the sibling shape and
+# the label. Test 8 fails on the snapshot BY CONSTRUCTION — an absent button is
+# treated as "not a sibling" rather than sliced to -1 and waved through; an
+# earlier draft did exactly that and passed vacuously.
+#
+# Tests 1, 7, 9 and 11 pass in BOTH trees on purpose: the cell is still there,
+# the status word was never a literal, the select press still selects, and the
+# clock is already gone. They hold what must not change.
+#
+# After the change: 11/11 pass (npx tsx --test src/components/dayStripUploadButton.test.ts).
+TAP version 13
+# Subtest: the spec is looking at a real tree
+ok 1 - the spec is looking at a real tree
+  ---
+  duration_ms: 0.9157
+  type: 'test'
+  ...
+# Subtest: an awaiting day carries an upload button of its own
+not ok 2 - an awaiting day carries an upload button of its own
+  ---
+  duration_ms: 0.9417
+  type: 'test'
+  location: 'C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\src\\components\\dayStripUploadButton.test.ts:51:1'
+  failureType: 'testCodeFailure'
+  error: 'no course-day-upload-<iso> on the strip'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: -1
+  actual: -1
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\src\components\dayStripUploadButton.test.ts:52:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+  ...
+# Subtest: the button is drawn only for a day that is awaiting a file
+not ok 3 - the button is drawn only for a day that is awaiting a file
+  ---
+  duration_ms: 0.2116
+  type: 'test'
+  location: 'C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\src\\components\\dayStripUploadButton.test.ts:55:1'
+  failureType: 'testCodeFailure'
+  error: 'the upload button is not gated on the awaiting state'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: -1
+  actual: -1
+  operator: 'notStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\src\components\dayStripUploadButton.test.ts:57:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: an uploaded day keeps its icon in the cell, with nothing to press
+not ok 4 - an uploaded day keeps its icon in the cell, with nothing to press
+  ---
+  duration_ms: 0.2779
+  type: 'test'
+  location: 'C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\src\\components\\dayStripUploadButton.test.ts:60:1'
+  failureType: 'testCodeFailure'
+  error: 'the uploaded day no longer draws its status icon in the cell'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual: |-
+    testID={`course-day-${d.iso}`}
+                            onPress={() => setSelectedDay(d.iso)}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected: on }}
+                            // The word, not the colour. The cell shows an icon and a
+                            // number, so the STATUS has to reach a screen reader
+                            // some other way.
+                            accessibilityLabel={`${d.dow} ${d.dayNum} ${d.mon}, ${tone.word}`}
+                            style={{
+                              flex: 1, minWidth: 0, alignItems: 'center', gap: 1,
+                              paddingVertical: 7, paddingHorizontal: compact ? 1 : 2,
+                              borderRadius: 12,
+                              backgroundColor: on ? statusSurface(theme.accent).bg : theme.surface,
+                              borderWidth: 1, borderColor: on ? theme.accent : theme.line,
+                            }}>
+                            <Text style={{ fontSize: 8.5, fontWeight: '800', color: on ? theme.accentInk : theme.dim }}>
+                              {d.mon}
+                            </Text>
+                            <Text style={{
+                              fontSize: 15, fontWeight: '800', fontVariant: ['tabular-nums'],
+                              color: on ? theme.fgStrong : theme.fg,
+                            }}>{d.dayNum}</Text>
+                            <Text style={{ fontSize: 8.5, fontWeight: '700', color: on ? theme.accentInk : theme.dim }}>
+                              {d.dow}
+                            </Text>
+                            <Icon name={tone.icon} size={13} color={ink} />
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
+    
+                <StripArrow testID=
+  operator: 'match'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\src\components\dayStripUploadButton.test.ts:64:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: the press opens the upload for THAT date, not the undated course upload
+not ok 5 - the press opens the upload for THAT date, not the undated course upload
+  ---
+  duration_ms: 0.1759
+  type: 'test'
+  location: 'C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\src\\components\\dayStripUploadButton.test.ts:68:1'
+  failureType: 'testCodeFailure'
+  error: 'the upload push has lost its date parameter'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual: ''
+  operator: 'match'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\src\components\dayStripUploadButton.test.ts:69:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: the button says the status word, read from STATUS and not retyped
+not ok 6 - the button says the status word, read from STATUS and not retyped
+  ---
+  duration_ms: 0.2558
+  type: 'test'
+  location: 'C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\src\\components\\dayStripUploadButton.test.ts:73:1'
+  failureType: 'testCodeFailure'
+  error: 'the button word is not STATUS.awaiting.word'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual: ''
+  operator: 'match'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\src\components\dayStripUploadButton.test.ts:74:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: "Awaiting upload" is never a literal on this screen
+ok 7 - "Awaiting upload" is never a literal on this screen
+  ---
+  duration_ms: 0.2884
+  type: 'test'
+  ...
+# Subtest: the upload button is a SIBLING of the select press, never inside it
+not ok 8 - the upload button is a SIBLING of the select press, never inside it
+  ---
+  duration_ms: 0.9444
+  type: 'test'
+  location: 'C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\src\\components\\dayStripUploadButton.test.ts:81:1'
+  failureType: 'testCodeFailure'
+  error: 'the select press does not close before the upload button opens -- a button inside a button'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\src\components\dayStripUploadButton.test.ts:85:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: the select press is still there and still selects the day
+ok 9 - the select press is still there and still selects the day
+  ---
+  duration_ms: 0.3173
+  type: 'test'
+  ...
+# Subtest: the button names its day for a screen reader
+not ok 10 - the button names its day for a screen reader
+  ---
+  duration_ms: 0.5319
+  type: 'test'
+  location: 'C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\src\\components\\dayStripUploadButton.test.ts:94:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The input did not match the regular expression /accessibilityLabel=\{`Upload a session for \$\{dayWords\}`\}/. Input:
+    
+    ''
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual: ''
+  operator: 'match'
+  stack: |-
+    TestContext.<anonymous> (C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\src\components\dayStripUploadButton.test.ts:95:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: the strip never draws the clock
+ok 11 - the strip never draws the clock
+  ---
+  duration_ms: 1.0529
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 4
+# fail 7
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 390.9231

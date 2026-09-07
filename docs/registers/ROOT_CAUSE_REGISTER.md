@@ -59,6 +59,76 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-028 — A migration that was never applied answered the operator in PostgREST's own words
+**Date:** 07-Sep-2026  ·  **Severity:** S2  ·  **Modules:** `src/data/repository.ts`, `src/data/engineWording.ts`, `supabase/migrations/0032_merge_member.sql`
+
+**Symptom** — the requester, on the course roster's **No email** group: "nitha i added as new
+member but still apeaing under no mail section", and an "issue appearing when adding the no
+email member as display to existing member". Two buttons on one card, neither of which
+resolved the row it sits on.
+
+**Root cause** — two causes, one per symptom, and they compound.
+
+1. The card is still listed because the register still holds the TWIN that
+   `cc9438c` was written to stop being made. That commit closed the door; it could not
+   unmake the record already through it. The stray still has no address and the No email
+   group is DERIVED from the member list (guardrail 1), so listing her is the group telling
+   the truth. The one act that repairs the data is the merge — the other button.
+2. The merge is inert in production. `merge_member_into` is defined in
+   `supabase/migrations/0032_merge_member.sql` and was never applied to the live project
+   (TD-033, found the same day by Track A's parity check). PostgREST answers a call to a
+   function it cannot see with `PGRST202` — "Could not find the function
+   public.merge_member_into(p_stray, p_target) in the schema cache" — and that sentence
+   reached the operator VERBATIM, because `personReadable`'s guard knew Postgres' wording
+   for a violated constraint and had never heard PostgREST's wording for a function that is
+   not there. So the deployment gap was reported to her as a cache and an argument list.
+
+**Fix** — the guard moved out of `repository.ts` (which no spec can import) into
+`src/data/engineWording.ts` and gained the two PostgREST shapes: `schema cache` and a
+`PGRSTnnn` code. A missing deployment now reads as the product's own sentence — "That merge
+did not run. Nothing has been changed — she is still on the register under her own name." —
+while the machine detail still reaches the console. That is the C2 message exception: what
+the operator READ was the defect.
+
+**The button itself is fixed by applying 0032**, which is a production write and was the
+owner's call, not automation's. They read the raw SQL and gave the go-ahead; it was applied on
+07-Sep-2026 (ledger `20260907112255`) and the deployed body verified byte-identical to the file
+— 6074 characters, md5 `c8ce4e52084201fd8011c0a131e7c3f3` — with `anon` holding no execute
+grant. It creates one function and touches no row, so there was no production-data hazard to
+check; the harness could not rehearse it (no PostgreSQL 16 on this machine, TD-010), and every
+object it depends on was verified present in the live project first.
+
+**Files** — `src/data/engineWording.ts` (new), `src/data/engineWording.test.ts` (new),
+`src/data/repository.ts`.
+
+**How to verify** — `npx tsx --test src/data/engineWording.test.ts`. The fail-first output
+against the pre-fix regex was the leak itself: `actual: 'Could not find the function
+public.merge_member_into(p_stray, p_target) in the schema cache'`. For the button: once 0032
+is applied, the No email card's "Add display name to existing member" folds the stray into
+the member she is and the row leaves the group.
+
+**Recurrence risk** — `personReadable` has three call sites in `repository.ts`
+(`memberWriteError`, `mergeMemberInto`, `aliasSaveError`'s neighbours) and ALL of them ran
+through the same holed regex, so all three are fixed by the one module — searched with
+`grep -n personReadable src/data/repository.ts`. The wider class is live now and not closed
+by this change: nine migration files are absent from production's ledger (TD-033, TD-035),
+so `set_member_status`, `set_attendance` and `delete_member` are the same inert-button shape
+waiting behind the same message. They now read as a product sentence rather than a leak,
+which is a better failure and still a failure.
+
+**Prevention** — `src/data/engineWording.test.ts` pins both halves: the engine shapes are
+caught, and the sentences a migration wrote for the operator are still passed through. The
+deployment half has no rung — nothing in `npm run check` can see production's migration
+ledger. TD-033 is the record, and the parity check that found it is a Gate 4 obligation, not
+an automated one.
+
+**Process check** — yes, partly. RC-023 closed this exact class for Postgres' wording and did
+not ask which OTHER engine sits on the wire; CP-003 says "no raw engine string", and the
+guard implemented "no raw POSTGRES string". A rule stated once and implemented for one of its
+two producers is a process finding — `/framework-update` is flagged in the request file.
+
+---
+
 ## RC-027 — Every course save re-asserted the schedule, so a reword hit the history guard
 **Date:** 07-Sep-2026 · **Severity:** S2 · **Modules:** `supabase/migrations/0040_save_course_schedule_only_when_days_change.sql`,
 `app/course/edit.tsx`, `src/components/TokenChips.tsx`, `src/data/message.ts`

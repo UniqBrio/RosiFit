@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable, ScrollView, type ViewStyle } from 'react-native';
+import { View, Text, Pressable, ScrollView, Platform, type ViewStyle } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
 import { RADIUS, SPACE, TAP_MIN } from '../theme/tokens';
 import { Icon } from './Icon';
@@ -25,16 +25,75 @@ import { RequiredMark } from './RequiredMark';
 
 export type DropdownOption = { label: string; meta?: string };
 
-/** The row of fields plus whichever panel is open. */
-export function DropdownRow({ open, children, style }:
-  { open: boolean; children: React.ReactNode; style?: ViewStyle }) {
+/**
+ * The press BESIDE an open panel, which is one of its two ways out.
+ *
+ * It has to reach well beyond the row it lives in, and the two platforms need
+ * opposite tools for that. On the web it is `fixed`: an absolutely positioned
+ * child stretched out with negative insets still counts towards the
+ * scroller's content, so every open filter would grow the page by its own
+ * overshoot and hand the screen a scrollbar of empty space. On native there
+ * is no `fixed`, and an absolutely positioned child does NOT contribute to a
+ * ScrollView's content size, so the negative insets are exactly the way to
+ * reach the edges of the screen from inside the row.
+ *
+ * What it covers on the web is the screen's CONTENT AREA, not the whole
+ * window -- react-navigation's screen container carries a transform, which
+ * makes it the containing block for a fixed child. Measured, not assumed:
+ * 420x603 at y=178 in a 420x780 window. That is the better region anyway.
+ * The panel and everything it floats over live inside it, while the
+ * persistent header's controls and the tab bar stay above it and go on
+ * working -- so a press meant for Settings or another tab still lands there
+ * rather than being spent closing a filter.
+ *
+ * It is UNTINTED, and that is the point. These panels exist so the figures
+ * they narrow stay on screen; a scrim over them would dim the very counts
+ * the filter is being chosen against -- the same reason the panel hung under
+ * a form field does not dim its form (CP-014).
+ */
+const DISMISS_FILL: ViewStyle = Platform.OS === 'web'
+  // `fixed` is a real react-native-web position and not in React Native's own
+  // union, which is why it arrives through a cast rather than as a literal.
+  ? { position: 'fixed' as unknown as 'absolute', top: 0, left: 0, right: 0, bottom: 0 }
+  : { position: 'absolute', top: -9999, left: -9999, right: -9999, bottom: -9999 };
+
+/**
+ * The row of fields plus whichever panel is open.
+ *
+ * `dismiss` is what replaced the panels' "Done" button. A filter applies on
+ * the tick itself, so nothing was left for that button to confirm -- but a
+ * multi-choice panel must NOT close on a tick either, or a second branch
+ * could never be added to the first. So the way out is the press that means
+ * "not in here": the field again, or anywhere beside the panel. Given
+ * without it, a reader who has ticked two branches and scrolled down to read
+ * the numbers has to scroll back up to the field to be rid of the panel
+ * (ADR-035).
+ */
+export function DropdownRow({ open, children, style, dismiss }:
+  { open: boolean; children: React.ReactNode; style?: ViewStyle;
+    /** The press beside the panel. The testID travels with the handler so
+     *  the layer can never ship as an untestable one. */
+    dismiss?: { onPress: () => void; testID: string } }) {
   return (
     <View style={[
       // lifted only while a panel is out, so nothing else on the screen has
       // to know about this row's z-order
       { zIndex: open ? 40 : 0 },
       style,
-    ]}>{children}</View>
+    ]}>
+      {/* First, so the fields and the panel after it are pressed rather than
+          this. A shut row draws nothing at all -- a full-window layer left
+          mounted would swallow every press on the screen. */}
+      {open && dismiss ? (
+        <Pressable
+          testID={dismiss.testID}
+          onPress={dismiss.onPress}
+          accessibilityRole="button"
+          accessibilityLabel="Close the open filter"
+          style={DISMISS_FILL} />
+      ) : null}
+      {children}
+    </View>
   );
 }
 
@@ -89,15 +148,11 @@ export function DropdownField({ label, value, open, highlight, onPress, testID, 
  * by the screen, so a floating panel can be clipped at the header's edge,
  * and a dropdown nobody can reach is worse than one that moves the page.
  */
-export function DropdownPanel({ children, maxHeight = 340, inset = 0, flow = false, footer }:
+export function DropdownPanel({ children, maxHeight = 340, inset = 0, flow = false }:
   { children: React.ReactNode; maxHeight?: number;
     /** pulls the panel in from the row's edges, to line it up with a
      *  padded header rather than with the screen */
-    inset?: number; flow?: boolean;
-    /** Pinned under the scroller, never inside it. A multi-select panel does
-     *  not close on a tick, so its way out has to stay reachable however far
-     *  down a long list somebody has scrolled. */
-    footer?: React.ReactNode }) {
+    inset?: number; flow?: boolean }) {
   const { theme } = useTheme();
   return (
     <View style={{
@@ -113,7 +168,6 @@ export function DropdownPanel({ children, maxHeight = 340, inset = 0, flow = fal
         keyboardShouldPersistTaps="handled">
         {children}
       </ScrollView>
-      {footer}
     </View>
   );
 }
@@ -242,22 +296,3 @@ export function DropdownCheckList({ options, allLabel, selected, onToggle, onAll
   );
 }
 
-/** The panel's way out. Pinned under the list by DropdownPanel's `footer`. */
-export function DropdownDone({ onPress, label, testID }:
-  { onPress: () => void; label: string; testID: string }) {
-  const { theme } = useTheme();
-  return (
-    <Pressable
-      testID={testID}
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={({ pressed }) => ({
-        marginTop: SPACE.sm, minHeight: TAP_MIN, borderRadius: RADIUS.md,
-        alignItems: 'center', justifyContent: 'center',
-        backgroundColor: theme.accent, opacity: pressed ? 0.85 : 1,
-      })}>
-      <Text style={{ fontSize: 13, fontWeight: '800', color: theme.onAccent }}>{label}</Text>
-    </Pressable>
-  );
-}

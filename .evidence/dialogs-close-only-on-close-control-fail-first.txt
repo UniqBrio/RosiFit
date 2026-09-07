@@ -1,0 +1,245 @@
+# dialogDismiss.test.ts fail-first — requests/2026-09-07-dialogs-close-only-on-close-control.md
+# 07-Sep-2026, replayed against the tree at HEAD before this change.
+#
+# Recorded with:
+#   git show HEAD:src/components/{FormDialog,Sheet,AnchoredPanel}.tsx > $PRE/...
+#   + ONE edit to $PRE's Sheet.tsx: `testID="confirm-scrim"` added to the OLD
+#     Pressable backdrop, with its onPress={onClose} KEPT. The testID is what
+#     this change adds so the spec can find the element; without it tests 10
+#     and 12 would die at the lookup and never observe the old onPress, which
+#     is cover not earned. With it, test 10 fails on its merits.
+#   DIALOG_DISMISS_SPEC_ROOT=$PRE npx tsx --test src/components/dialogDismiss.test.ts
+#
+# ONE ASSERTION PER TEST is why this file is worth reading. node:test abandons
+# a test at its first failed assert, so a spec that bundles four claims into
+# one test can only ever evidence the first of them.
+#
+# RED (5): 2, 4, 5, 7, 10 -- the claims this change adds.
+# GREEN in both trees (12): 1, 3, 6, 8, 9, 11, 12, 13, 14, 15, 16, 17 -- what
+# must NOT change: no container acts on a press (3, 11), neither backdrop was
+# ever pointer-transparent (6, 12), the header close still closes (8, 9),
+# Cancel stands (13), and both pickers still close on their backdrop and
+# announce it (14-17). A pass before and after is the evidence, not a gap.
+#
+# Each of the seven side doors a reviewer found was ALSO replayed as a
+# mutation of the CHANGED tree and reddened exactly one test: container takes
+# onPress (3), pointerEvents="none" (6), header close loses onPress (8),
+# picker backdrop loses its close (14), onResponderRelease on the scrim (2),
+# ConfirmDialog container becomes a Pressable (11), `return (` reformatted
+# around a Pressable container (3).
+
+TAP version 13
+# Subtest: the spec is looking at a real tree
+ok 1 - the spec is looking at a real tree
+  ---
+  duration_ms: 1.3242
+  type: 'test'
+  ...
+# Subtest: a form dialog does not close when its backdrop is pressed
+not ok 2 - a form dialog does not close when its backdrop is pressed
+  ---
+  duration_ms: 2.2144
+  type: 'test'
+  location: 'C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\src\\components\\dialogDismiss.test.ts:131:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    src/components/FormDialog.tsx: the backdrop acts on a press again -- a tap beside a half-typed form discards it:
+    <Pressable testID="dialog-scrim"
+            accessibilityRole="button" accessibilityLabel="Close without saving"
+            onPress={close}
+            style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} />
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\src\components\dialogDismiss.test.ts:133:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+  ...
+# Subtest: nothing AROUND the form dialog backdrop closes it either
+ok 3 - nothing AROUND the form dialog backdrop closes it either
+  ---
+  duration_ms: 1.0154
+  type: 'test'
+  ...
+# Subtest: the form dialog backdrop is not announced as a control
+not ok 4 - the form dialog backdrop is not announced as a control
+  ---
+  duration_ms: 0.8864
+  type: 'test'
+  location: 'C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\src\\components\\dialogDismiss.test.ts:146:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    src/components/FormDialog.tsx: the backdrop is announced as a control it no longer is -- a button that does nothing is worse than none:
+    <Pressable testID="dialog-scrim"
+            accessibilityRole="button" accessibilityLabel="Close without saving"
+            onPress={close}
+            style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} />
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\src\components\dialogDismiss.test.ts:148:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: the form dialog backdrop is not labelled as a way out
+not ok 5 - the form dialog backdrop is not labelled as a way out
+  ---
+  duration_ms: 0.7929
+  type: 'test'
+  location: 'C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\src\\components\\dialogDismiss.test.ts:152:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    src/components/FormDialog.tsx: the backdrop still carries a label naming an action it no longer performs:
+    <Pressable testID="dialog-scrim"
+            accessibilityRole="button" accessibilityLabel="Close without saving"
+            onPress={close}
+            style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} />
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\src\components\dialogDismiss.test.ts:154:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: the form dialog backdrop still takes the press rather than passing it through
+ok 6 - the form dialog backdrop still takes the press rather than passing it through
+  ---
+  duration_ms: 0.9883
+  type: 'test'
+  ...
+# Subtest: the form dialog backdrop says out loud that it absorbs the press
+not ok 7 - the form dialog backdrop says out loud that it absorbs the press
+  ---
+  duration_ms: 1.0012
+  type: 'test'
+  location: 'C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\src\\components\\dialogDismiss.test.ts:167:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    src/components/FormDialog.tsx: the backdrop no longer claims the touch. The claim is not what blocks the press -- filling the space is -- but it is how the file states the intent:
+    <Pressable testID="dialog-scrim"
+            accessibilityRole="button" accessibilityLabel="Close without saving"
+            onPress={close}
+            style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }} />
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\src\components\dialogDismiss.test.ts:169:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: the header close is still what leaves a form dialog
+ok 8 - the header close is still what leaves a form dialog
+  ---
+  duration_ms: 0.9366
+  type: 'test'
+  ...
+# Subtest: the header close still says what it costs
+ok 9 - the header close still says what it costs
+  ---
+  duration_ms: 1.1465
+  type: 'test'
+  ...
+# Subtest: a confirm dialog does not close when its backdrop is pressed
+not ok 10 - a confirm dialog does not close when its backdrop is pressed
+  ---
+  duration_ms: 1.4455
+  type: 'test'
+  location: 'C:\\Users\\shazi\\Downloads\\RosiFit Custom App\\RosiFit\\src\\components\\dialogDismiss.test.ts:189:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    ConfirmDialog: its backdrop acts on a press again -- a stray press answers a question about an irreversible act:
+    <Pressable testID="confirm-scrim" onPress={onClose} accessibilityRole="button" accessibilityLabel={`Close ${title}`}
+              style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.scrim }} />
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\src\components\dialogDismiss.test.ts:191:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: nothing AROUND the confirm dialog backdrop closes it either
+ok 11 - nothing AROUND the confirm dialog backdrop closes it either
+  ---
+  duration_ms: 0.9164
+  type: 'test'
+  ...
+# Subtest: the confirm dialog backdrop still takes the press
+ok 12 - the confirm dialog backdrop still takes the press
+  ---
+  duration_ms: 2.1836
+  type: 'test'
+  ...
+# Subtest: the confirm dialog keeps the cancel that is now its only way out
+ok 13 - the confirm dialog keeps the cancel that is now its only way out
+  ---
+  duration_ms: 0.8021
+  type: 'test'
+  ...
+# Subtest: the bottom sheet still closes when its backdrop is pressed
+ok 14 - the bottom sheet still closes when its backdrop is pressed
+  ---
+  duration_ms: 0.8578
+  type: 'test'
+  ...
+# Subtest: the bottom sheet still announces its backdrop as a control
+ok 15 - the bottom sheet still announces its backdrop as a control
+  ---
+  duration_ms: 0.9193
+  type: 'test'
+  ...
+# Subtest: the panel hung under a field still closes when its backdrop is pressed
+ok 16 - the panel hung under a field still closes when its backdrop is pressed
+  ---
+  duration_ms: 1.1605
+  type: 'test'
+  ...
+# Subtest: the panel hung under a field still announces its backdrop as a control
+ok 17 - the panel hung under a field still announces its backdrop as a control
+  ---
+  duration_ms: 0.7571
+  type: 'test'
+  ...
+1..17
+# tests 17
+# suites 0
+# pass 12
+# fail 5
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 301.1229

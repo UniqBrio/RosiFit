@@ -96,7 +96,7 @@ export default function Reports() {
   const ready = followUp.state === 'ready';
 
   return (
-    <Screen>
+    <Screen header={
       <ScreenHeader title="Reports" subtitle={`${range.label} · uploaded sessions only`}
         right={ready && rows.length > 0 ? (
           <Pressable testID="reports-export" onPress={exportReport}
@@ -111,7 +111,7 @@ export default function Reports() {
             <Icon name="download" size={16} color={theme.accentInk} />
             <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.accentInk }}>Export</Text>
           </Pressable>
-        ) : undefined} />
+        ) : undefined} />}>
 
       {/* The date filter. It is the SAME control Overview and Attendance
           carry -- one PeriodPanel, so the four named ranges and the custom
@@ -124,7 +124,8 @@ export default function Reports() {
           of putting it here: "Nothing to report yet" for a month somebody did
           not pick, with no way to pick another, is a dead end -- and it is
           the state a filter is most needed in. */}
-      <DropdownRow open={periodOpen} style={{ marginTop: SPACE.md }}>
+      <DropdownRow open={periodOpen} style={{ marginTop: SPACE.md }}
+        dismiss={{ onPress: () => setPeriodOpen(false), testID: 'reports-filter-dismiss' }}>
         <View style={{ flexDirection: 'row' }}>
           <DropdownField
             testID="reports-filter-period"

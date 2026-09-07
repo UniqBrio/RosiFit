@@ -12,7 +12,7 @@ select t.eq(
   0, 'anon holds no privilege on any table in public -- user_preferences included');
 
 -- ----------------------------------------------- authenticated, table by table
--- One assertion for all 30 tables: any table whose privileges differ from the
+-- One assertion for all 31 tables: any table whose privileges differ from the
 -- creating migration's intent names itself in the failure message.
 with intended(tbl, privs) as (values
   ('app_settings','SELECT,UPDATE'),
@@ -20,6 +20,10 @@ with intended(tbl, privs) as (values
   ('app_users','SELECT,UPDATE'),
   ('attendance_records','SELECT'),
   ('audit_logs','SELECT'),
+  -- Added by 0043: a remark is written by a person, so authenticated needs
+  -- INSERT. UPDATE and DELETE are absent on purpose -- append-only, like the
+  -- log it sits beside.
+  ('audit_remarks','INSERT,SELECT'),
   ('branches','INSERT,SELECT,UPDATE'),
   ('course_follow_up_config','INSERT,SELECT,UPDATE'),
   ('course_offerings','INSERT,SELECT,UPDATE'),

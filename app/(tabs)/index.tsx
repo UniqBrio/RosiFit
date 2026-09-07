@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Screen, H2, Muted, Skeleton, ErrorState } from '../../src/components/ui';
 import { Icon } from '../../src/components/Icon';
 import {
-  DropdownRow, DropdownField, DropdownPanel, DropdownCheckList, DropdownDone,
+  DropdownRow, DropdownField, DropdownPanel, DropdownCheckList,
 } from '../../src/components/Dropdown';
 import { PeriodPanel, periodFieldValue } from '../../src/components/PeriodFilter';
 import { Donut } from '../../src/components/Donut';
@@ -18,7 +18,7 @@ import { reportRows, type ReportRow } from '../../src/data/report';
 import { bucketTotals } from '../../src/data/buckets';
 import {
   matchesSelection, fieldValue, scopeSentence, toggle, pruned, attentionFirst,
-  MEMBER_ROWS_SHOWN, type Selection,
+  withScope, MEMBER_ROWS_SHOWN, type Selection,
 } from '../../src/data/overview';
 import { resolvePeriod, type PeriodChoice } from '../../src/data/period';
 import { ALL_BRANCHES } from '../../src/state/academy';
@@ -159,7 +159,9 @@ export default function Home() {
   const { attended, missed } = distribution(members);
   const flaggedHere = (followUp.data?.flagged ?? []).filter(m => matchesSelection(m, selection));
 
-  const memberRows = attentionFirst(reportRows(members, 'Members'));
+  // Each member row also names the course and branch it is counted under --
+  // the ranking says who to chase, and this says what about.
+  const memberRows = withScope(attentionFirst(reportRows(members, 'Members')), members);
   const courseRows = reportRows(members, 'Courses');
 
   const ids = new Set(members.map(m => m.id));
@@ -185,8 +187,16 @@ export default function Home() {
   const controls = (
     /* The filters open in place. A bottom sheet hid the very figures the
        filter is meant to narrow, so the choice was made blind; a panel under
-       the field keeps the charts in view while it is open. */
-    <DropdownRow open={open !== null}>
+       the field keeps the charts in view while it is open.
+
+       The row is PINNED -- it is the Screen's header, not the first thing in
+       its scroller. Every figure below is counted from what these three
+       fields say, and reading the lower sections used to scroll them out of
+       sight, so the reader could not tell what the numbers in front of her
+       covered without scrolling back up. The gap below it is the row's own,
+       so it does not sit on the header's hairline. */
+    <DropdownRow open={open !== null} style={{ marginBottom: SPACE.md }}
+      dismiss={{ onPress: () => setOpen(null), testID: 'home-filter-dismiss' }}>
       <View style={{ flexDirection: 'row', gap: SPACE.sm }}>
         {filters.map(f => (
           <DropdownField key={f.label}
@@ -199,8 +209,7 @@ export default function Home() {
       </View>
 
       {open === 'course' ? (
-        <DropdownPanel footer={
-          <DropdownDone onPress={() => setOpen(null)} label="Done" testID="home-course-done" />}>
+        <DropdownPanel>
           <DropdownCheckList options={courseOptions.map(label => ({ label }))}
             allLabel={allCoursesLabel} selected={selection.courses}
             onToggle={l => setCourses(c => toggle(c, l))}
@@ -214,8 +223,7 @@ export default function Home() {
         </DropdownPanel>
       ) : null}
       {open === 'branch' ? (
-        <DropdownPanel footer={
-          <DropdownDone onPress={() => setOpen(null)} label="Done" testID="home-branch-done" />}>
+        <DropdownPanel>
           <DropdownCheckList options={branchOptions.map(label => ({ label }))}
             allLabel={allBranchesLabel} selected={selection.branches}
             onToggle={l => setBranches(b => toggle(b, l))}
@@ -237,12 +245,11 @@ export default function Home() {
     return <Screen><View style={{ marginTop: SPACE.lg }}><Skeleton lines={7} /></View></Screen>;
   }
   if (followUp.state === 'loading') {
-    return <Screen>{controls}<View style={{ marginTop: SPACE.lg }}><Skeleton lines={7} /></View></Screen>;
+    return <Screen header={controls}><View style={{ marginTop: SPACE.lg }}><Skeleton lines={7} /></View></Screen>;
   }
   if (followUp.state === 'error') {
     return (
-      <Screen>
-        {controls}
+      <Screen header={controls}>
         <View style={{ marginTop: SPACE.lg }}>
           <ErrorState onRetry={followUp.retry}
             message={followUp.error ?? 'The dashboard figures could not be loaded. Nothing has been changed.'} />
@@ -252,8 +259,7 @@ export default function Home() {
   }
 
   return (
-    <Screen>
-      {controls}
+    <Screen header={controls}>
 
       {/* The four sections share ONE grid: two to a row from TWO_UP_MIN,
           stacked below it, and the same gap either way. Each card sits in a

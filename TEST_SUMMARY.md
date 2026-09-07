@@ -1,4 +1,30 @@
 
+<!-- AWAITING UPLOAD BUTTON ON EACH DAY (requests/2026-09-07-awaiting-upload-button-on-each-day.md).
+     Same four FAILs and one BLOCKED this repo has carried since 02-Sep-2026, every
+     one a MISSING RUNNER, none caused by this change: G1/G2/G3 want
+     design/tokens.json (TD-001..TD-003), G6 wants eslint (TD-004), G8 wants
+     test:functional (TD-006). Substitute rungs: typecheck clean, 2840/2840
+     contrast, 75/75 icons; the unit suite carries 2 FAILs in
+     src/components/tableScroll.test.ts that belong to a peer session's
+     in-flight table-scroll work in this shared tree, not to this change --
+     they fail identically with app/course/[id].tsx restored to its
+     pre-change snapshot. audit:testids is BLOCKED on two baseline entries
+     (forgot-pin.tsx|4, help.tsx|1) paid down by peer work and not yet
+     regenerated; the two new Pressables here both carry testIDs.
+
+     BROWSER: fixtures export driven by Playwright at 1440/768/375, dark and
+     light -- .evidence/awaiting-upload-button-on-each-day-browser.txt. -->
+
+FAIL-FIRST: src/components/dayStripUploadButton.test.ts - 11 cases, new file.
+7 of 11 observed failing on a snapshot of app/course/[id].tsx taken from the
+working tree immediately before the change (2, 3, 4, 5, 6, 8, 10). Test 8 fails
+on the snapshot BY CONSTRUCTION -- an absent button counts as "not a sibling"
+rather than slicing to -1 and passing vacuously, which an earlier draft did.
+Tests 1, 7, 9, 11 pass in BOTH trees on purpose: they hold the cell, the
+never-literal status word, the select press and the absent clock. 11/11 on
+the changed tree. Full output:
+`.evidence/awaiting-upload-button-on-each-day-fail-first.txt`.
+
 <!-- 0038: REPOINT EIGHT PRODUCTION COURSES OFF THE UNVERIFIED DOMAINS.
      Same four FAILs and one BLOCKED this repo has carried since 02-Sep-2026,
      every one a MISSING RUNNER, none caused by this change: G1/G2/G3 want
@@ -170,6 +196,86 @@ NOT OBSERVED FAILING: src/components/reportsPeriodFilter.test.ts,
      spec passes and that each file maps to a request file in requests/. It
      did NOT design, review or hand-test the six features it did not build.
      The commit messages say which session's work each one is. -->
+
+## Gate run - 2026-09-07 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-07 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
 
 ## Gate run - 2026-09-07 - VERDICT: FAIL
 
@@ -5099,3 +5205,7 @@ build, on identical URLs — pre-existing and app-wide, not introduced here. It 
 CP-015, so it is logged as TD-027 rather than folded into a bug fix that did not cause it.
 
 **DB harness — N/A.** No migration; no schema surface. Three screens and one spec.
+
+FAIL-FIRST: src/components/screenHeaderPinned.test.ts - run against the unchanged tree on 07-Sep-2026: 8 of 9 assertions failed (Screen had no header slot; every tabbed screen had its ScreenHeader as the first child of a bare <Screen>; the course bar sat inside the course page ScrollView). The 9th, the no-sticky-mechanism guard, passed as it should. 9 of 9 after the change.
+
+FAIL-FIRST: src/components/dialogDismiss.test.ts - run against the unchanged tree on 07-Sep-2026 (with only the `confirm-scrim` testID pre-added to the old backdrop, so ConfirmDialog's claim is observed on its merits rather than dying at the lookup): 5 of 17 failed - the five claims this change adds (form backdrop acts on press; announced as a control; labelled as a way out; no responder claim; confirm backdrop acts on press). The other 12 pass in both trees as they must: no container acts on a press, neither backdrop was ever pointer-transparent, the header close still closes, Cancel stands, both pickers still close on their backdrop. Seven reviewer-found side doors replayed as mutations of the changed tree, each reddening exactly one test. 17 of 17 after. Full output: `.evidence/dialogs-close-only-on-close-control-fail-first.txt`. Browser: `.evidence/dialogs-close-only-on-close-control-browser.txt` - the FormDialog import-help pop-up (state-closed, no router history to fake a pass), both themes, backdrop pressed twice and left open, × closes; the calendar panel still closes on its backdrop. NOT browser-driven: ConfirmDialog's inert backdrop (every host needs signed-in data), and the press-does-not-reach-the-live-screen claim - both held by the spec and the read of react-native-web's responder system only.

@@ -465,7 +465,16 @@ export function ConfirmDialog({ open, onClose, title, body, cancelLabel = 'Not y
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 26 }}>
-        <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel={`Close ${title}`}
+        {/* Inert, exactly as `FormDialog`'s backdrop is, and for the same
+            reason: a press beside a dialog is a miss, not a decision. This
+            one asks a question that cannot be un-asked once answered -- the
+            send, the delete -- so walking away from it by accident is worse
+            here, not better. The way out is `cancelLabel` below, which is
+            always drawn and always says what it does. Unlike FormDialog's,
+            this element paints the dim itself, and it still does; it keeps
+            swallowing the press by filling the space, and just no longer
+            acts on one. */}
+        <View testID="confirm-scrim" onStartShouldSetResponder={() => true}
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: theme.scrim }} />
         <View accessibilityViewIsModal style={{
           width: '100%', maxWidth: 420, borderRadius: 24, padding: 22,

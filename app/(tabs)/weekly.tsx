@@ -43,10 +43,10 @@ export default function Weekly() {
   ];
 
   return (
-    <Screen>
+    <Screen header={
       <ScreenHeader title="Weekly review"
         subtitle={`${week.label} · ${members.length} members`}
-        onBack={() => router.navigate(backTo)} />
+        onBack={() => router.navigate(backTo)} />}>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false}
         contentContainerStyle={{ gap: SPACE.sm, paddingVertical: SPACE.md }}>

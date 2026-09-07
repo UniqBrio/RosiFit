@@ -1,0 +1,36 @@
+requests/2026-09-07-audit-log-for-end-users.md, correction round 2 - fail-first, 07-Sep-2026
+
+"the audit log in mobile view should also be in table format and where is remarks
+section new value previous value smodiefied at and modified by fields?"
+
+Both answers were already in the code and neither reached the screen:
+
+  1. Remarks rendered its ERROR state, not its composer. Migration 0043_audit_remarks
+     was untracked and unapplied - the live project's applied list ended at
+     0032_merge_member - so fetchRemarks hit its missing-table guard and printed
+     "Remarks are not switched on for this academy yet". Applied to PROD this run.
+
+  2. All five columns exist (app/audit.tsx COLS) over TABLE_MIN=760. On a 390pt
+     phone the window is ~358pt: "What changed" fits, "Previous value" is half on,
+     and New value / Modified by / Modified at are one swipe right. The touch
+     scrollbar is an overlay that appears only once you are already scrolling, so
+     nothing on screen said the columns were there.
+
+npx tsx --test src/components/tableScroll.test.ts
+
+ok 1 - the audit table still has the five columns this hint names
+ok 2 - no hint on a desktop, where every column is already on screen
+ok 3 - no hint before layout has measured anything
+ok 4 - on a phone at rest it names every column that is off the right edge
+ok 5 - a column half on screen is named, because half a value cannot be read
+ok 6 - the sentence follows the swipe
+ok 7 - at the right-hand end it stops telling the reader to swipe further
+ok 8 - every column can be read in full at some point along the swipe
+not ok 9 - the screen mounts the hint, keyed off the body scroller it describes
+# tests 9
+# pass 8
+# fail 1
+
+8 of 9 pass against the helper alone. The one failure is the wiring assertion:
+app/audit.tsx does not yet import tableScroll, has no audit-swipe-hint testID, and
+its body scroller reports neither onLayout nor onContentSizeChange.

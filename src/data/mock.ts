@@ -205,6 +205,34 @@ export const WEEK = { from: '18 Aug', to: '24 Aug 2026', label: '18\u201324 Aug 
 export const BRANCHES = ['All branches', 'Coimbatore', 'Madurai', 'Chennai'];
 export const COURSES  = ['All courses', 'Prenatal Flow', 'Postnatal Core', 'Trimester 3 Gentle', 'Pelvic Floor Foundations'];
 export const SUPPORT_PHONE = '9994871158';
+/**
+ * Support is UniqBrio's desk, not a RosiFit inbox -- the academy calls a
+ * person there, and that person answers as UniqBrio. Naming it is part of
+ * the C-90 anti-phishing control: the screen states who picks up as well as
+ * on which number.
+ */
+export const SUPPORT_NAME = 'UniqBrio support';
+/** The number is an Indian mobile; +91 is what a dialler and wa.me both need. */
+export const SUPPORT_DIAL_CODE = '+91';
+/** What the screen SHOWS. */
+export const SUPPORT_PHONE_DISPLAY = `${SUPPORT_DIAL_CODE} ${SUPPORT_PHONE}`;
+/** What a `tel:` link carries -- no space, so no dialler has to parse one. */
+export const SUPPORT_PHONE_E164 = `${SUPPORT_DIAL_CODE}${SUPPORT_PHONE}`;
+/** wa.me wants the digits alone: country code, no '+', no separators. */
+export const SUPPORT_WHATSAPP_URL = `https://wa.me/91${SUPPORT_PHONE}`;
+
+/**
+ * The maker's mark at the foot of Help & support. Two sites, both UniqBrio's
+ * own -- they are an attribution, NOT a second support channel, and the card
+ * above them says so.
+ */
+export const POWERED_BY = {
+  name: 'UniqBrio',
+  sites: [
+    { label: 'uniqbrio.com', url: 'https://uniqbrio.com' },
+    { label: 'uniqbotz.com', url: 'https://uniqbotz.com' },
+  ],
+} as const;
 
 /**
  * The addresses the academy may send AS.
@@ -400,30 +428,95 @@ export const initials = (n: string) =>
   n.split(' ').filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase();
 
 // ----------------------------------------------------------------- audit
+/**
+ * One recorded entry, exactly as the database holds it.
+ *
+ * Everything here is RAW on purpose — the action code, the entity type, the
+ * column names inside `changes`. The screen never prints any of them; it
+ * asks `src/data/auditPlain.ts` for the words. Storing the readable form
+ * here instead would put the translation in two places, and the live rows
+ * (which arrive as codes and cannot be anything else) would take the other
+ * path — which is how the fixtures end up describing a screen that does not
+ * exist.
+ */
 export type AuditEntry = {
-  id: string; who: string; when: string; action: string;
-  entity: string; subject: string;
+  id: string;
+  /** the actor's name, or 'System' when the row carries no actor */
+  who: string;
+  /** `actor_kind` — what that name IS. The screen says Owner or Staff. */
+  whoKind: 'super_admin' | 'staff' | 'system' | 'anon' | 'provider';
+  /** ISO 8601. The screen decides how to say it (whenText). */
+  when: string;
+  action: string;
+  entity: string;
+  /** who or what the entry is about, already resolved to a name. null when
+   *  nothing on the row names one — never an identifier. */
+  subject: string | null;
+  /** The branch the change can be traced to, when it can be traced to one.
+   *  `audit_logs` records no branch — this is worked out from what the row
+   *  POINTS AT (a branch, an offering, or a member through her enrolment),
+   *  so it is the branch that holds today. null means the change belongs to
+   *  no single branch: a message template, a setting, an account. */
+  branch: string | null;
   changes: { field: string; old: string | null; new: string | null }[];
 };
+
+/** A fixed clock for the fixtures, so "Today" in the prototype means today. */
+const auditAt = (daysAgo: number, h: number, m: number): string => {
+  const d = new Date();
+  d.setDate(d.getDate() - daysAgo);
+  d.setHours(h, m, 0, 0);
+  return d.toISOString();
+};
+
 export const AUDIT: AuditEntry[] = [
-  { id: 'a1', who: 'Priya Menon', when: '31 Aug 2026, 10:32 am', action: 'CSV match decision',
-    entity: 'Member', subject: 'Shazia Farheen',
-    changes: [{ field: 'Display names', old: '“Shazia F”, “Shazia Farheen”', new: '“Shazia F”, “Shazia Farheen”, “Shazia”' }] },
-  { id: 'a2', who: 'Priya Menon', when: '31 Aug 2026, 10:18 am', action: 'Member email changed',
-    entity: 'Member', subject: 'Divya Ramesh',
-    changes: [{ field: 'Primary email', old: 'old@example.com', new: 'divya@example.com' }] },
-  { id: 'a3', who: 'Rosi Owner', when: '30 Aug 2026, 6:40 pm', action: 'Follow-up rule changed',
-    entity: 'Course', subject: 'Prenatal Yoga',
+  { id: 'a1', who: 'Priya Menon', whoKind: 'staff', when: auditAt(0, 10, 32),
+    action: 'csv_import.matched_existing', entity: 'member', subject: 'Shazia Farheen', branch: 'Coimbatore',
+    changes: [{ field: 'alias_display', old: null, new: 'Shazia' }] },
+  { id: 'a2', who: 'Priya Menon', whoKind: 'staff', when: auditAt(0, 10, 18),
+    action: 'member_email.update', entity: 'member_email', subject: 'Divya Ramesh', branch: 'Madurai',
+    changes: [{ field: 'email', old: 'old@example.com', new: 'divya@example.com' }] },
+  { id: 'a3', who: 'Rosi Owner', whoKind: 'super_admin', when: auditAt(1, 18, 40),
+    action: 'course_follow_up_config.update', entity: 'course_follow_up_config', subject: 'Prenatal Yoga', branch: null,
     changes: [
-      { field: 'Weekly threshold', old: '3', new: '2' },
-      { field: 'Consecutive threshold', old: '4', new: '3' },
-      { field: 'Combination', old: 'OR', new: 'AND' }] },
-  { id: 'a4', who: 'Rosi Owner', when: '30 Aug 2026, 9:02 am', action: 'Holiday added',
-    entity: 'Holiday', subject: 'Diwali · 20–22 Oct 2026 · All branches',
-    changes: [{ field: 'Sessions marked', old: null, new: '12' }] },
-  { id: 'a5', who: 'Priya Menon', when: '29 Aug 2026, 4:15 pm', action: 'Schedule changed',
-    entity: 'Offering', subject: 'Prenatal Fitness · Coimbatore',
-    changes: [{ field: 'Weekdays', old: 'Mon Tue Thu Sat', new: 'Mon Tue Wed Thu Sat' }] },
+      { field: 'weekly_threshold', old: '3', new: '2' },
+      { field: 'consecutive_threshold', old: '4', new: '3' },
+      { field: 'combination', old: 'or', new: 'and' }] },
+  { id: 'a4', who: 'Rosi Owner', whoKind: 'super_admin', when: auditAt(1, 9, 2),
+    action: 'holiday.applied', entity: 'holiday', subject: 'Diwali', branch: null,
+    changes: [
+      { field: 'from_date', old: null, new: '2026-10-20' },
+      { field: 'to_date', old: null, new: '2026-10-22' },
+      { field: 'scope', old: null, new: 'all_branches' }] },
+  { id: 'a5', who: 'Priya Menon', whoKind: 'staff', when: auditAt(2, 16, 15),
+    action: 'offering_schedule.update', entity: 'offering_schedule', subject: 'Prenatal Fitness · Coimbatore', branch: 'Coimbatore',
+    changes: [{ field: 'weekdays', old: '1,2,4,6', new: '1,2,3,4,6' }] },
+  // Present so the prototype shows what the screen now HIDES: a sign-in is
+  // recorded and is not a change. If the filter ever stops working, this row
+  // appears and the defect is visible without a live project.
+  { id: 'a6', who: 'System', whoKind: 'anon', when: auditAt(0, 16, 7),
+    action: 'auth.login_succeeded', entity: 'app_user', subject: null, branch: null, changes: [] },
+];
+
+// ---------------------------------------------------------------- remarks
+/**
+ * A note somebody wrote by hand beside the log. It is NOT an audit entry:
+ * `audit_logs` records what the app did, is redacted on write and cannot be
+ * added to by a person. A remark is the other half — why it was done — and
+ * it lives in its own table for exactly that reason.
+ */
+export type Remark = {
+  id: string;
+  body: string;
+  /** who wrote it */
+  who: string;
+  /** ISO 8601 */
+  when: string;
+};
+
+export const REMARKS: Remark[] = [
+  { id: 'r1', who: 'Rosi Owner', when: auditAt(1, 19, 5),
+    body: 'Lowered the Prenatal Yoga thresholds after the Saturday batch moved — expect more follow-ups for a fortnight.' },
 ];
 
 // --------------------------------------------------------------- sessions
