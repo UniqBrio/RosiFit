@@ -1,55 +1,93 @@
 -- 0040 · rewording a course is not rescheduling it
 --
 -- REPORTED
---   Edit course -> Postnatal -> open "Wording for this course", tap a detail
---   chip, Save Changes:
+--   Edit course -> Postnatal -> "Wording for this course" -> tap a detail chip
+--   -> Save Changes:
 --
 --     this offering has a completed session on 2026-09-07, so a schedule
 --     cannot start on or before it. Choose 2026-09-08 or later.
 --     Nothing has been saved.
 --
---   Nothing about the schedule had been touched. The days were the same days
---   the course already ran.
+--   Nothing about the schedule had been touched. Confirmed against production:
+--   the Postnatal offering at Main (13f554a0-c688-49cb-b3ed-4f480ee30fc4) has
+--   last_completed = 2026-09-07 and weekdays [1,2,4,5] in force -- the 4/week
+--   the dialog footer showed. The days being saved were the days already set.
 --
 -- ROOT CAUSE
---   save_course (0022, last re-issued by 0039) ends the offering block with an
---   UNCONDITIONAL
+--   save_course ends its offering block with an UNCONDITIONAL
 --
 --     perform public.set_offering_schedule(v_offering, p_weekdays, current_date, ...)
 --
 --   so EVERY save -- a renamed course, a changed sender, a different template,
 --   a reworded message, a moved threshold -- asks to open a schedule version
---   starting today. set_offering_schedule then applies its history guard
---   ("history may not be rewritten") and refuses, correctly, because a session
---   for this offering has already been marked completed today.
+--   starting today. set_offering_schedule then applies its history guard and
+--   refuses, correctly, because a session for this offering is already marked
+--   completed today.
 --
 --   The guard is right. The call was wrong: an unchanged schedule was being
 --   re-asserted as a change. That made the completed-session refusal reachable
---   from a form that has no date field and no schedule field open -- a dead end
---   with nothing on screen to act on -- and it took the wording down with it,
---   because save_course is one transaction.
+--   from a form that has no date field -- a dead end with nothing on screen to
+--   act on -- and it took the wording down with it, because save_course is one
+--   transaction.
 --
 -- THE FIX -- ONE BLOCK CHANGED
---   Compare the days being saved against the schedule in effect TODAY and call
+--   Compare the days being saved against the schedule in force TODAY and call
 --   set_offering_schedule only when they actually differ. A no-op is not sent.
 --
 --   set_offering_schedule keeps every guard it has and stays the only write
 --   path into offering_schedules (0005 leaves that table with no write policy
---   at all). Nothing is relaxed here: a real change of days on a day that
---   already has a completed session is still refused, in the same words, and
---   that refusal is still the correct one -- it names a date the operator can
---   act on.
+--   at all). Nothing is relaxed: a real change of days on a day that already
+--   has a completed session is still refused, in the same words, and that
+--   refusal is still the correct one -- it names a date to start from.
 --
 --   The comparison mirrors set_offering_schedule's own normalisation --
---   distinct, sorted, nulls dropped -- so [3,1,1] and [1,3] are the same
+--   distinct, sorted, nulls dropped -- so [4,2,2] and [2,4] are the same
 --   schedule to this check exactly as they are to the writer. Comparing the
 --   raw p_weekdays would make a reordered array look like a change and put the
 --   refusal straight back.
 --
--- WHY THE WHOLE BODY IS REPRODUCED
---   Postgres has no partial function edit. The body below is 0039's verbatim,
---   and the ONLY lines that differ are the schedule block and the declarations
---   it needs, each marked `0040:`.
+-- WHICH BODY THIS REPRODUCES, AND WHY IT MATTERS
+--   Postgres has no partial function edit, so changing one block means CREATE
+--   OR REPLACE with the whole body. The body below was lifted from
+--   pg_get_functiondef() on the LIVE project (lhpzhkzbnquwjljmbylo) on
+--   07-Sep-2026, which is 0030's -- is_super_admin(), and an offering lookup
+--   with no meet_code clause. It is NOT 0038's or 0039's.
+--
+--   That is deliberate. Neither 0038_staff_write_access nor
+--   0039_meeting_code_groups is applied to this project, and
+--   course_offerings.meet_code does not exist there. A body carrying 0039's
+--   `and meet_code is null` would be created without error and then fail at
+--   RUNTIME on every Add/Edit Course; a body carrying 0038's
+--   is_active_app_user() would ship a permissions decision this migration was
+--   never asked to make.
+--
+--   APPLIED to the live project on 07-Sep-2026 and verified there: the
+--   condition is present, is_super_admin() and SECURITY DEFINER are unchanged,
+--   there is still exactly one overload, and the `authenticated` EXECUTE grant
+--   survived the replace.
+--
+--   >> TWO THINGS THE NEXT PERSON MUST KNOW -- see TD-023.
+--   >>
+--   >> 1. 0038_staff_write_access re-issues save_course IN FULL from the 0030
+--   >>    baseline. Applying it as currently written silently reverts this fix
+--   >>    and brings the refusal back. Carry the schedule block below forward
+--   >>    into the body it re-issues.
+--   >>
+--   >> 2. 0039_meeting_code_groups no longer re-issues save_course, and its
+--   >>    header (line 87) says "0040 already carries it (`meet_code is null`,
+--   >>    naming this migration as its baseline)". THAT IS NOT TRUE OF THIS
+--   >>    FILE. It was true of an earlier draft written against 0039's own
+--   >>    body, before production was found to be missing both 0038 and 0039.
+--   >>    So save_course still needs the `meet_code is null` guard, in a
+--   >>    migration that lands WITH 0039 -- the same shape 0039 already plans
+--   >>    for bulk_import_members at 0041 -- and 0039's line 87 wants
+--   >>    correcting to name it.
+--
+--   The harness replays every file in this directory, so in a worktree that
+--   still holds the uncommitted 0038/0039 the chain runs 0038 -> 0039 -> 0040
+--   and this file reverts both. `npm run test:db` will fail 16_save_course's
+--   "a staff account CAN save a course, since 0038" for that reason. That is
+--   an artefact of unmerged work, not of this migration.
 
 create or replace function public.save_course(
   p_name        text,
@@ -77,34 +115,26 @@ declare
   v_in_force    smallint[];        -- 0040: the days in effect today, or null
   v_rescheduled boolean := false;  -- 0040: reported, so a caller can say so
 begin
-  -- SECURITY DEFINER bypasses RLS, so the predicate the organisation tables
-  -- carry is restated here or this function is a hole straight through them.
-  -- 0038: that predicate is is_active_app_user(), not is_super_admin() --
-  -- staff run the register and now own the courses it is kept for.
-  if not (public.is_active_app_user() and public.is_subscription_writable()) then
-    raise exception 'only a signed-in, active user can add or change a course, and only while the subscription is active'
+  if not (public.is_super_admin() and public.is_subscription_writable()) then
+    raise exception 'only the super admin can add or change a course, and only while the subscription is active'
       using errcode = '42501';
   end if;
   select id into v_actor from public.app_users
    where auth_user_id = auth.uid() and is_active;
 
   if p_weekdays is null or array_length(p_weekdays, 1) is null then
-    -- The canvas makes at least one day required, and the reason is not
-    -- cosmetic: with no weekdays nothing is expected of anyone, so no absence
-    -- can be counted and the course sits outside the engine entirely.
     raise exception 'a course needs at least one frequency day' using errcode = '23514';
   end if;
   if p_rule not in ('week', 'consec') then
     raise exception 'the follow-up trigger must be week or consec' using errcode = '23514';
   end if;
   -- Checked HERE and not only in the form: the form is one caller, and a
-  -- threshold of 0 would flag every member who ever attended everything.
+  -- threshold of 0 would flag every member who has missed nothing at all.
   if v_threshold < 1 or v_threshold > 7 then
     raise exception 'the follow-up threshold must be between 1 and 7, not %', v_threshold
       using errcode = '23514';
   end if;
 
-  -- ------------------------------------------------------------ the course
   if v_created then
     insert into public.courses (name) values (btrim(p_name)) returning id into v_course_id;
   else
@@ -115,12 +145,8 @@ begin
     end if;
   end if;
 
-  -- ---------------------------------------------------------- the offering
-  -- The course AT a branch. One per (course, branch): a second row for the
-  -- same pair would split one class's members across two rosters.
   select id into v_offering from public.course_offerings
-   where course_id = v_course_id and branch_id = p_branch_id and deleted_at is null
-     and meet_code is null;                                  -- 0039: never a group
+   where course_id = v_course_id and branch_id = p_branch_id and deleted_at is null;
   if v_offering is null then
     insert into public.course_offerings (course_id, branch_id)
     values (v_course_id, p_branch_id) returning id into v_offering;
@@ -153,12 +179,9 @@ begin
     v_rescheduled := true;
   end if;
 
-  -- -------------------------------------------------------------- the rule
-  -- The canvas offers two triggers, one or the other, never both -- so the
-  -- unchosen one is DISABLED rather than left at a threshold that still
-  -- counts. The COUNT is now the academy's (0030); it lands on whichever
-  -- trigger is enabled, and the disabled one keeps it only so that switching
-  -- back does not silently reset the number.
+  -- The COUNT is now the academy's. It lands on whichever trigger is enabled,
+  -- and the disabled one keeps it too, so switching back does not silently
+  -- reset the number.
   insert into public.course_follow_up_config
     (course_id, weekly_enabled, weekly_threshold,
      consecutive_enabled, consecutive_threshold, combination, updated_by)
@@ -170,7 +193,6 @@ begin
         consecutive_threshold = excluded.consecutive_threshold,
         updated_by            = excluded.updated_by;
 
-  -- ----------------------------------------------------- the communication
   insert into public.course_communication
     (course_id, from_email, template_id, subject, body_text, updated_by)
   values (v_course_id, p_from_email, p_template_id,

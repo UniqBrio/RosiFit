@@ -88,6 +88,17 @@ guard is untouched: a **real** change of days on a day that already has a comple
 still refused in the same words. `save_course` now also returns `rescheduled`, added beside the
 existing keys, so the condition is assertable rather than inferred.
 
+**Applied to the live project 07-Sep-2026** and verified there: `save_course` carries the
+condition, keeps `is_super_admin()` and SECURITY DEFINER, still has one overload, and its
+`authenticated` EXECUTE grant survived the replace. Diagnosis confirmed against real rows before
+and after — the Postnatal offering at Main (`13f554a0…`) has `last_completed = 2026-09-07` with
+weekdays `[1,2,4,5]` in force, so the old code refused and the new one does not reschedule.
+**The body it re-issues is the LIVE project's own (0030's), not the repo chain's** — neither
+`0038_staff_write_access` nor `0039_meeting_code_groups` is applied there and
+`course_offerings.meet_code` does not exist, so 0039's body would have failed at runtime on every
+Add/Edit Course. That divergence, and the fact that `0039`'s header claims `0040` carries a guard
+it does not, is **TD-023** — it must be settled by whoever lands 0038/0039.
+
 A second, quieter defect surfaced in the same screenshot: the chip row offered all thirteen
 tokens at once, and tapping along it produced `RosiFit Academy Main — 0 —` — every token resolved
 exactly as designed and the message was worse for each one. Each row now opens on what the seeded
