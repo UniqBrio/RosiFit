@@ -34,22 +34,48 @@ import type { Member } from './mock';
  * has to stay one line and scannable, and "Sessions she was due at" does not,
  * while "Sessions due" alone is not enough for somebody who cannot see the
  * field it sits under.
+ *
+ * `everyday` is which of the thirteen the chip row OFFERS before it is asked
+ * for more.
+ *
+ * WHY THE LIST IS SPLIT AND NOT SHORTENED
+ * All thirteen are real -- each one is a key the Edge Function builds, and the
+ * spec below pins that name for name. So none can be deleted: wording already
+ * written with `{{attendance_pct}}` must keep resolving, in the preview and in
+ * the inbox alike.
+ *
+ * What was wrong was offering all thirteen at once to somebody who came to
+ * change a sentence. Tapping along the row produced lines like
+ * "RosiFit Academy Main — 0 —": every token resolved correctly, and the
+ * message was worse for each one. Thirteen equally-weighted chips read as
+ * thirteen suggestions.
+ *
+ * `everyday: true` is exactly the seven the academy's own default template
+ * uses (0009) -- the ones that make a follow-up read as a follow-up. The other
+ * six are figures, and a figure belongs in a message only when somebody
+ * deliberately went looking for it. They are one tap away, never gone.
  */
-export const MESSAGE_TOKENS: { token: string; means: string; chip: string }[] = [
-  { token: '{{first_name}}', means: 'her first name', chip: 'Her first name' },
-  { token: '{{member_name}}', means: 'her full name', chip: 'Her full name' },
-  { token: '{{course_name}}', means: 'the course', chip: 'Course' },
-  { token: '{{branch_name}}', means: 'the branch', chip: 'Branch' },
-  { token: '{{period_from}}', means: 'start of the period', chip: 'Period from' },
-  { token: '{{period_to}}', means: 'end of the period', chip: 'Period to' },
-  { token: '{{expected_sessions}}', means: 'sessions she was due at', chip: 'Sessions due' },
-  { token: '{{attended_sessions}}', means: 'sessions she made', chip: 'Sessions made' },
-  { token: '{{missed_sessions}}', means: 'sessions she missed', chip: 'Sessions missed' },
-  { token: '{{attendance_pct}}', means: 'her attendance', chip: 'Attendance %' },
-  { token: '{{consecutive_missed}}', means: 'missed in a row', chip: 'Missed in a row' },
-  { token: '{{last_attendance_date}}', means: 'when she was last present', chip: 'Last present' },
-  { token: '{{academy_name}}', means: 'the academy', chip: 'Academy' },
+export const MESSAGE_TOKENS: {
+  token: string; means: string; chip: string; everyday: boolean;
+}[] = [
+  { token: '{{first_name}}', means: 'her first name', chip: 'Her first name', everyday: true },
+  { token: '{{member_name}}', means: 'her full name', chip: 'Her full name', everyday: false },
+  { token: '{{course_name}}', means: 'the course', chip: 'Course', everyday: true },
+  { token: '{{branch_name}}', means: 'the branch', chip: 'Branch', everyday: false },
+  { token: '{{period_from}}', means: 'start of the period', chip: 'Period from', everyday: true },
+  { token: '{{period_to}}', means: 'end of the period', chip: 'Period to', everyday: true },
+  { token: '{{expected_sessions}}', means: 'sessions she was due at', chip: 'Sessions due', everyday: true },
+  { token: '{{attended_sessions}}', means: 'sessions she made', chip: 'Sessions made', everyday: true },
+  { token: '{{missed_sessions}}', means: 'sessions she missed', chip: 'Sessions missed', everyday: false },
+  { token: '{{attendance_pct}}', means: 'her attendance', chip: 'Attendance %', everyday: false },
+  { token: '{{consecutive_missed}}', means: 'missed in a row', chip: 'Missed in a row', everyday: false },
+  { token: '{{last_attendance_date}}', means: 'when she was last present', chip: 'Last present', everyday: false },
+  { token: '{{academy_name}}', means: 'the academy', chip: 'Academy', everyday: true },
 ];
+
+/** The seven offered first. Order is MESSAGE_TOKENS' order, which is the
+ *  sender's -- so the two lists stay readable side by side (see the spec). */
+export const EVERYDAY_TOKENS = MESSAGE_TOKENS.filter(t => t.everyday);
 
 export type MessageContext = {
   member: Member;

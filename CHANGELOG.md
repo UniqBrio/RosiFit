@@ -1,5 +1,91 @@
 # Changelog
 
+## Unreleased — Changing what a course says no longer asks to change when it runs
+
+**Rewording a course's message saves again.** Opening *Wording for this course*, tapping a detail
+to add, and pressing **Save Changes** was answering:
+
+> this offering has a completed session on 2026-09-07, so a schedule cannot start on or before it.
+> Choose 2026-09-08 or later. Nothing has been saved.
+
+Nothing about the days had been touched, there is no date on that form to change, and the wording
+was lost with the refusal. Saving a course was re-stating its timetable every single time — for a
+rename, a new sender, a different template, a moved follow-up count — and on a day the class had
+already been marked complete, re-stating the timetable is rewriting history, which the academy
+database is built to refuse.
+
+**Now the timetable is only written when the days actually change.** Everything else on the form
+saves on its own. Changing the days themselves is still refused on a day already marked complete,
+in the same words, because that one really is a change to what was expected — and it names the
+date you can start from.
+
+**The details you can add to a message are seven, not thirteen.** *Her first name*, *Course*,
+*Period from*, *Period to*, *Sessions due*, *Sessions made* and *Academy* — the seven the
+academy's own template already uses. The other six are figures: her full name, the branch,
+sessions missed, attendance %, missed in a row and last present. They sit behind a **6 more**
+chip at the end of the row.
+
+Nothing was taken away. Wording already written with any of the six still reads exactly as it did,
+in the preview and in the inbox. The row simply stopped putting thirteen equally-weighted
+suggestions in front of somebody who came to change a sentence — tapping along it produced lines
+like *"RosiFit Academy Main — 0 —"*, every detail correct and the message worse for each one.
+
+## Unreleased — A member card tells you where she stands; it does not ask you to say
+
+**Present, Absent and Yet to mark are readings now, not buttons.** They sit on every roster card
+for the day the week strip has selected, and they report what the register holds:
+
+- the day's file has been uploaded — it shows **Present** or **Absent**, exactly as recorded;
+- the class runs that day and no file has arrived — it shows **Yet to mark**, in the same amber
+  the day above it wears for the same reason;
+- the class does not run that day — it shows **Not expected**, rather than asking you to mark a
+  session that never happens.
+
+**Nothing on that row can be tapped, and no attendance is written from it.** The register is
+what the uploaded session file says, and a day is corrected by uploading it again — which names
+the file already there and waits for you to confirm before it replaces anything.
+
+**The warning is gone with the tap that caused it.** Tapping a chip used to answer "The academy
+database cannot record attendance by hand yet", because the change that would have allowed it
+was never applied. There is nothing left to decline.
+
+## Unreleased — Reports will answer for a period you choose
+
+**Reports has a Period filter.** It offers the same ranges the Overview and the attendance
+register offer — this week, last week, the last four weeks, this month — and a custom range you
+date yourself on a calendar. Everything on the screen follows the one you pick: the bars, the
+figures, the words under the title, and the spreadsheet when you export it.
+
+**Until now the report only ever answered for the current month.** The month was printed under
+the title as though it had been chosen, but there was nothing on the screen to choose it with,
+so "how did last term go" was a question Reports could not be asked.
+
+**The filter stays on screen when there is nothing to report.** A period with no uploaded
+sessions still shows the Period field above the message, so you can ask for a different one
+without leaving the screen.
+
+## Unreleased — Staff run the register, so staff can change it
+
+**Staff can now add, edit and delete a course.** Add Course and Edit Course were already on the
+screen for a coach; the database refused them, so the form could be filled in and then declined
+on Save. Both work now, and Delete is offered to her too. Changing a course's days from the
+offering screen works for the same reason.
+
+**Add Member and Bulk Import are on the Attendance workspace for everyone.** Both buttons used
+to be hidden from a coach, and typing the import's address showed her a page explaining that
+only the academy admin could import a file. That page is gone with the rule it explained. The
+history of who imported what is still the admin's alone.
+
+**The bin on a member's row finally removes her.** It used to say "Removing Priya needs a
+confirmation" and do nothing. It now asks — naming what goes and what stays — and then removes
+her: she comes off the register and off every follow-up list, her enrolment ends today, and her
+email address is freed for whoever holds it next. **Every attendance record she has stays**,
+because that is the academy's record of what happened on a day rather than hers.
+
+**What a coach still cannot see or do:** the Overview, Staff & access, the audit log, branches,
+holidays, the follow-up rules, the email templates, and anybody's PIN. And nobody can change
+anything at all while the subscription is lapsed — that has not moved.
+
 ## Unreleased — Uploading over a day you already have says so first
 
 **A day that already has a register now asks before it is replaced.** Choose a corrected

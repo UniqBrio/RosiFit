@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
 import { SPACE, RADIUS, TAP_MIN } from '../theme/tokens';
-import { MESSAGE_TOKENS } from '../data/message';
+import { MESSAGE_TOKENS, EVERYDAY_TOKENS } from '../data/message';
 import { Icon } from './Icon';
 import { chipScroll, nextChipOffset } from './chipScroll';
 
@@ -39,12 +39,28 @@ import { chipScroll, nextChipOffset } from './chipScroll';
  * a token can be inserted many times or not at all, and there is nothing here
  * that is "on".
  *
+ * SEVEN FIRST, THIRTEEN ON REQUEST
+ * Offering all thirteen at once turned out to be its own defect. Somebody who
+ * opened this to change a sentence read the row as thirteen suggestions and
+ * tapped along it, and the wording came out as "RosiFit Academy Main — 0 —":
+ * every token resolved exactly as designed, and the message was worse for each
+ * one. The row now opens on the seven the academy's default template already
+ * uses -- the ones that make a follow-up read as a follow-up -- and the six
+ * figures sit behind one more chip.
+ *
+ * NOTHING IS REMOVED, and that is the difference between this and shortening
+ * the list. Wording already written with `{{attendance_pct}}` still resolves
+ * everywhere; the token is simply not pressed on somebody who did not ask for
+ * it. The count of what is hidden is ON the chip ("6 more details"), so the
+ * row still says out loud that it continues -- which is the belief this
+ * component exists to correct.
+ *
  * WHY THE ARROWS
- * Listing the thirteen details fixed only half of the problem. The row is a
- * horizontal scroller with its scrollbar hidden, and at the dialog's width it
- * shows five of them -- so a reader who does not think to drag a row sideways
- * still concludes those five are all there are, which is the exact belief
- * this component was built to correct. The arrows are the row saying, without
+ * Listing the details fixed only half of the problem. The row is a horizontal
+ * scroller with its scrollbar hidden, and at the dialog's width it shows five
+ * of them -- so a reader who does not think to drag a row sideways still
+ * concludes those five are all there are, which is the exact belief this
+ * component was built to correct. The arrows are the row saying, without
  * being dragged, that it continues.
  *
  * They step a PAGE at a time and they are never decorative: absent entirely
@@ -66,6 +82,11 @@ export function TokenChips({ label, onInsert, testIDPrefix }: {
   const [offset, setOffset] = useState(0);
   const [content, setContent] = useState(0);
   const [view, setView] = useState(0);
+  // Starts closed on every open of the form. A row that remembered would show
+  // thirteen chips to the next person for a reason they never saw.
+  const [showAll, setShowAll] = useState(false);
+  const shown = showAll ? MESSAGE_TOKENS : EVERYDAY_TOKENS;
+  const hidden = MESSAGE_TOKENS.length - EVERYDAY_TOKENS.length;
 
   const { overflows, canLeft, canRight } = chipScroll(offset, content, view);
 
@@ -112,7 +133,7 @@ export function TokenChips({ label, onInsert, testIDPrefix }: {
         onContentSizeChange={w => setContent(w)}
         style={{ flex: 1 }}
         contentContainerStyle={{ gap: 6, paddingRight: SPACE.md }}>
-        {MESSAGE_TOKENS.map(t => (
+        {shown.map(t => (
           <Pressable key={t.token} testID={`${testIDPrefix}-${t.token.slice(2, -2)}`}
             onPress={() => onInsert(t.token)}
             accessibilityRole="button"
@@ -127,6 +148,32 @@ export function TokenChips({ label, onInsert, testIDPrefix }: {
             <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.fg }}>{t.chip}</Text>
           </Pressable>
         ))}
+        {/* The last chip in the row, not a control beside it: it is reached by
+            the same drag and the same arrows as the details it reveals, and it
+            NAMES the number it is hiding. "More" alone would leave the reader
+            guessing whether it is worth a tap. */}
+        {hidden > 0 ? (
+          <Pressable testID={`${testIDPrefix}-more`}
+            onPress={() => setShowAll(v => !v)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: showAll }}
+            accessibilityLabel={showAll
+              ? `${label}: show the everyday details only`
+              : `${label}: show ${hidden} more details`}
+            style={({ pressed }) => ({
+              flexDirection: 'row', alignItems: 'center', gap: 4,
+              height: TAP_MIN, paddingHorizontal: SPACE.md, borderRadius: RADIUS.sm,
+              justifyContent: 'center',
+              backgroundColor: theme.control,
+              borderWidth: 1, borderColor: theme.lineStrong,
+              opacity: pressed ? 0.7 : 1,
+            })}>
+            <Icon name={showAll ? 'expand_less' : 'expand_more'} size={16} color={theme.accentInk} />
+            <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.accentInk }}>
+              {showAll ? 'Fewer' : `${hidden} more`}
+            </Text>
+          </Pressable>
+        ) : null}
       </ScrollView>
       {overflows ? arrow(1, 'chevron_right', 'more details', canRight) : null}
     </View>

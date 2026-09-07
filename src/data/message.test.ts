@@ -10,7 +10,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  fillTokens, unknownTokens, MESSAGE_TOKENS, insertToken,
+  fillTokens, unknownTokens, MESSAGE_TOKENS, EVERYDAY_TOKENS, insertToken,
   wordingProblem, SUBJECT_MAX, BODY_MIN, courseNameProblem, COURSE_NAME_MAX,
 } from './message';
 import type { Member } from './mock';
@@ -263,4 +263,49 @@ test('a course name longer than the database accepts is refused before Save', ()
 test('an empty course name is left to the form to report, not said twice', () => {
   assert.equal(courseNameProblem(''), null);
   assert.equal(courseNameProblem('   '), null);
+});
+
+/**
+ * The everyday split — appended 07-Sep-2026.
+ *
+ * Reported alongside the save failure: tapping along the chip row produced
+ * "RosiFit Academy Main — 0 —". Every token resolved exactly as designed and
+ * the message was worse for each one, because thirteen equally-weighted chips
+ * read as thirteen suggestions to somebody who came to change a sentence.
+ *
+ * The fix SPLITS the list, it does not shorten it. These pin the difference,
+ * which is the whole risk: a token quietly dropped is wording that stops
+ * resolving in courses that already use it.
+ */
+test('the everyday seven are a SUBSET — no token was dropped', () => {
+  // The list above still has to be the sender's map name for name; this only
+  // says which of it the row offers first.
+  assert.equal(MESSAGE_TOKENS.length, 13);
+  for (const t of EVERYDAY_TOKENS) {
+    assert.ok(MESSAGE_TOKENS.includes(t), `${t.token} is not in the full list`);
+  }
+});
+
+test('the everyday seven are exactly what the seeded template already uses', () => {
+  // 0009's default template is what every course starts life sending. A token
+  // it uses that the row does not offer is a detail nobody could re-add after
+  // deleting it; a token offered that it does not use is a suggestion.
+  const seeded = 'Hello {{first_name}},\n\nYou were down for {{expected_sessions}} sessions in '
+    + '{{course_name}} between {{period_from}} and {{period_to}}, and made {{attended_sessions}}.'
+    + '\n\nNothing is wrong -- we would just like to see you back on the mat.\n\n{{academy_name}}';
+  const used = new Set(seeded.match(/\{\{\w+\}\}/g) ?? []);
+  assert.deepEqual(
+    EVERYDAY_TOKENS.map(t => t.token).sort(),
+    [...used].sort());
+});
+
+test('the six behind the More chip still fill — hidden is not unknown', () => {
+  // The one way this change could break an academy: wording already written
+  // with {{attendance_pct}} must keep resolving in the preview and the inbox.
+  const rest = MESSAGE_TOKENS.filter(t => !t.everyday);
+  assert.equal(rest.length, 6);
+  const all = rest.reduce(
+    (acc, t) => insertToken(acc.text, t.token, -1, -1), { text: '', caret: 0 });
+  assert.deepEqual(unknownTokens(all.text), []);
+  assert.ok(!fillTokens(all.text, ctx()).includes('{{'));
 });

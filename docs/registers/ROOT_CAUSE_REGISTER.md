@@ -59,6 +59,72 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-027 — Every course save re-asserted the schedule, so a reword hit the history guard
+**Date:** 07-Sep-2026 · **Severity:** S2 · **Modules:** `supabase/migrations/0040_save_course_schedule_only_when_days_change.sql`,
+`app/course/edit.tsx`, `src/components/TokenChips.tsx`, `src/data/message.ts`
+
+**Symptom** — Edit course → Postnatal → *Wording for this course* → tap a detail chip →
+**Save Changes**:
+
+> this offering has a completed session on 2026-09-07, so a schedule cannot start on or before
+> it. Choose 2026-09-08 or later.. Nothing has been saved.
+
+Nothing about the schedule had been touched, the dialog has no date field, and the reworded
+message was lost with the refusal.
+
+**Root cause** — `save_course` ended its offering block with an **unconditional**
+`perform public.set_offering_schedule(v_offering, p_weekdays, current_date, …)`. Every save — a
+rename, a new sender, a different template, a reworded message, a moved threshold — therefore
+asked to open a schedule version starting *today*. `set_offering_schedule`'s history guard then
+refused, correctly, because a session for that offering was already `completed` today. The guard
+was right; the call was wrong. An **unchanged schedule was being re-asserted as a change**, which
+made a correct refusal reachable from a form that could not act on it — and, because `save_course`
+is one transaction, took the wording down with it.
+
+**Fix** — `0040` compares the days being saved against the schedule in force *today* and calls
+`set_offering_schedule` only when they actually differ; the comparison uses the same
+distinct-and-sorted normalisation the writer uses, so `[4,2,2]` is not a change to `[2,4]`. The
+guard is untouched: a **real** change of days on a day that already has a completed session is
+still refused in the same words. `save_course` now also returns `rescheduled`, added beside the
+existing keys, so the condition is assertable rather than inferred.
+
+A second, quieter defect surfaced in the same screenshot: the chip row offered all thirteen
+tokens at once, and tapping along it produced `RosiFit Academy Main — 0 —` — every token resolved
+exactly as designed and the message was worse for each one. The row now opens on the **seven** the
+seeded template already uses and keeps the six figures behind one `6 more` chip. The list is
+**split, never shortened** — wording already written with `{{attendance_pct}}` still resolves.
+
+**Files** — `supabase/migrations/0040_save_course_schedule_only_when_days_change.sql`,
+`supabase/tests/16_save_course.sql`, `src/data/message.ts`, `src/data/message.test.ts`,
+`src/components/TokenChips.tsx`
+
+**How to verify** — `supabase/tests/16_save_course.sql`, the `0040 · RC-027` block: mark a session
+`completed` on `current_date` for an offering, then call `save_course` with the **same** weekdays
+and new wording. It must return `rescheduled = false`, save the subject, and leave exactly one
+`offering_schedules` row. The same block asserts that changing the weekdays under those conditions
+is **still** rejected with `completed session`.
+
+**Recurrence risk** — Every write path that re-sends an unchanged sub-record through a validator
+built for changes. Swept with `grep -rn 'perform public\.' supabase/migrations/*.sql` — 29 nested
+calls, and every one other than this is `audit_log` / `audit_log_as`, `recompute_member_stats`,
+`refresh_session_counts` or `apply_holiday` / `remove_holiday`. None of those refuses a no-op, so
+`save_course → set_offering_schedule` is the only site of this shape in the schema today.
+
+**Prevention** — Prose plus the spec above. No rung: the general rule ("a validator written for a
+change must not be handed a no-op") is not mechanically checkable, but the specific case is now
+pinned by an assertion on `rescheduled`, which exists so a future reader cannot mistake "it did not
+raise" for "it did not write".
+
+**Process check** — **Yes.** `16_save_course.sql` covered create, edit, refusals and the role
+boundary, and every case ran against an offering with **no completed session** — so the one
+condition that makes the guard fire was never present in the fixture. The lesson is not "add a
+case": it is that a spec for a function which delegates to a guarded one must set up the state that
+makes the guard fire, or it only ever tests the happy branch. **No framework change is proposed
+at n=1** — parked as a candidate, in line with the register's own standing refusal to promote
+from a single instance.
+
+---
+
 ## RC-026 — A keypad sized in percentages beside a flex gap fitted two keys, not three
 **Date:** 07-Sep-2026 · **Severity:** S2 · **Modules:** `app/index.tsx`, `app/set-pin.tsx`,
 `src/components/keypadGrid.ts`, `src/data/nav.ts`
@@ -1109,6 +1175,24 @@ member source), aggregation moved to `src/data/report.ts`, a real period control
 caption, and the week table was pointed at `useWeekRows`. 14 assertions in
 `src/data/report.test.ts`, fail-first evidence in `TEST_SUMMARY.md`.
 
+**AMENDED 07-Sep-2026** — "a real period control replaced the caption" was **not true when it
+was written, and stayed untrue for four days** (`requests/2026-09-07-reports-date-filter.md`).
+What shipped on 03-Sep was the period as *state*: resolved, handed to the query, printed in the
+subtitle and stamped on every exported row — but with **no control anywhere on the screen**.
+`setPeriod` had no call site, so the report was pinned to whatever calendar month it opened on
+while the subtitle named that range as though somebody had chosen it. The screen had stopped
+showing figures it never counted, which is what this entry is about; it had not stopped naming
+a period nobody picked. The control exists now: the shared `PeriodPanel`, mounted above the
+state branch so it survives the loading, error and empty states.
+
+**The lesson is about the register, not the screen.** A fix paragraph is written from the plan,
+and here the plan's last item silently did not land. Nothing caught it because a claim about a
+*rendered control* has no rung: the typecheck was clean (the state was genuinely used), the
+specs were green (`report.test.ts` covers the arithmetic, which was correct), and no test
+asserted that anything on screen could reach `setPeriod`. Dead state reads exactly like live
+state from every angle except the running app. `src/components/reportsPeriodFilter.test.ts` is
+that missing rung — its first assertion is that `setPeriod` has a call site at all.
+
 **Guard** — `reportRows` sums expected and attended per group rather than averaging its members'
 percentages, and returns `null` — never `0` — where nothing was expected. Both are asserted.
 
@@ -1180,9 +1264,18 @@ a saved course missing from the list it was saved to reads exactly like a save t
 **Files** — `app/course/edit.tsx`, `src/data/repository.ts`, `src/data/hooks.ts`, `.env`
 
 **How to verify** — Sign in as the super admin, add a course, and read it back:
-`GET {SUPABASE_URL}/rest/v1/courses?select=name&name=eq.<name>` with the session's JWT. Then sign
-in as a non-super-admin staff member and add one: the screen must show the refusal and the row
-must not exist. Both are the point — a screen that cannot report a refusal is the defect.
+`GET {SUPABASE_URL}/rest/v1/courses?select=name&name=eq.<name>` with the session's JWT.
+
+**AMENDED 07-Sep-2026.** The second half of this step said: *"Then sign in as a non-super-admin
+staff member and add one: the screen must show the refusal and the row must not exist. Both are
+the point — a screen that cannot report a refusal is the defect."* Migration 0038 grants staff
+the course write, so that refusal no longer exists to be reported and the step as written now
+fails against correct behaviour. Sign in as staff, add a course, and the row **must** exist. What
+the step was really guarding — that a refusal reaches the screen instead of a false "saved" — is
+now exercised by letting the SUBSCRIPTION lapse rather than by the role, and that path is
+unchanged. Note the intervening period was the defect this migration also closed: between the
+`saveCourse` RPC landing and 0038, Add Course was offered to staff by
+`app/(tabs)/courses.tsx` and refused by `save_course` — this very shape, one role over.
 
 **Recurrence risk** — High, and it is a class rather than an incident. Every other "saves" in this
 app is the same shape and was written the same way: `app/holiday.tsx` (apply), `app/member/edit.tsx`
