@@ -9,6 +9,7 @@ import { useTheme } from '../../src/theme/ThemeProvider';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../../src/theme/tokens';
 import { primaryEmail, initials, AVATAR_TINTS } from '../../src/data/mock';
 import { recipientSplit } from '../../src/data/followup';
+import { enrolledIn } from '../../src/data/course';
 import { mergeSent, sentThisSession, recordSent, defaultSelection, sentLabel } from '../../src/data/sent';
 import { useCourses, useFollowUp, useCourseMessage, useSentForPeriod } from '../../src/data/hooks';
 import { currentWeek } from '../../src/data/period';
@@ -113,7 +114,10 @@ function SendDraftBody() {
   const flaggedAll = followUp.data?.flagged ?? [];
   const flagged = onlyMemberId
     ? flaggedAll.filter(m => m.id === onlyMemberId)
-    : course ? flaggedAll.filter(m => m.course === course.name) : flaggedAll;
+    // By the course's id. Scoped by name, a course created after one of the
+    // same name was deleted would have drafted this period's follow-up to
+    // the deleted course's members -- addressed, counted and ready to send.
+    : course ? enrolledIn(flaggedAll, course) : flaggedAll;
   // Both halves from ONE call, so the draft cannot claim to reach somebody it
   // will skip. Counted and NAMED, never silently dropped (C-76).
   const { recipients, excluded } = recipientSplit(flagged);

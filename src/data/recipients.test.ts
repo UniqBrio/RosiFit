@@ -15,10 +15,10 @@ import type { Member } from './mock';
 
 const member = (over: Partial<Member> = {}): Member => ({
   id: 'm', code: '', name: 'Test Member',
-  course: 'Prenatal Flow', branch: 'Coimbatore',
+  course: 'Prenatal Flow', course_id: 'c1', branch: 'Coimbatore',
   aliases: [], emails: [{ address: 'a@b.com', primary: true }],
   weekdays: null, status: 'active',
-  expected: 6, attended: 0, missed: 6, streak: 6, last: '—', joined: 'Mar 2026', ...over,
+  expected: 6, attended: 0, missed: 6, streak: 6, last: '—', joinedOn: '2026-03-01', joined: 'Mar 2026', ...over,
 });
 
 test('a member with an address is a recipient', () => {

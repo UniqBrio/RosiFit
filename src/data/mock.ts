@@ -122,6 +122,20 @@ export type MemberStatus = 'active' | 'paused' | 'inactive';
 export type Member = {
   id: string; name: string; course: string; branch: string;
   /**
+   * The course she is enrolled in BY IDENTITY -- `courses.id`, reached
+   * through her active enrolment's offering. null when she is enrolled at
+   * nothing, which is exactly what an ended enrolment leaves behind.
+   *
+   * `course` above is the course's NAME, and a name is not an identity. A
+   * course can be deleted and another created with the same name the next
+   * minute; every screen that gathered "this course's members" by name then
+   * handed the NEW course the deleted one's roster, and its card opened
+   * stating member counts belonging to a course that no longer exists.
+   * Names are for reading. This is for matching -- see enrolledIn() in
+   * src/data/course.ts, which is the only place the join is written.
+   */
+  course_id: string | null;
+  /**
    * Her RF- code, or '' for anyone added since 0026 retired the scheme.
    *
    * SEARCHABLE, never rendered. Nothing assigns one any more and no screen
@@ -156,6 +170,26 @@ export type Member = {
    */
   status: MemberStatus;
   /**
+   * The day `status` STARTS applying -- `members.inactive_from` (0044) --
+   * or null/absent when her record carries no date.
+   *
+   * `status` on its own could only ever say "now": the pill wrote it, and
+   * `status_changed_at` recorded the press. A member who is active today and
+   * leaving next month had no way to be recorded truthfully at all. This is
+   * the other half, and `src/data/inactiveFrom.ts` is the whole of what the
+   * pair means -- she is active on every day before it and off the register
+   * from it onward.
+   *
+   * NULL IS NOT "TODAY". Every row written before 0044 carries null, and
+   * null goes on meaning what those rows have always meant: inactive with no
+   * date on record, on every day anybody asks about.
+   *
+   * It dates the FOLLOW-UP, never the enrolment. Which sessions expect her
+   * is offering schedule -> enrolment window -> member override (0007), and
+   * this column is none of the three.
+   */
+  inactiveFrom?: string | null;
+  /**
    * Her OWN weekdays (1..7, Monday = 1), or null when she follows the days
    * her offering runs.
    *
@@ -172,6 +206,20 @@ export type Member = {
   streak: number;
   /** last time anyone reached out, or '\u2014' for never */
   last: string;
+  /**
+   * The day she joined, ISO ('2026-03-14'), exactly as `members.joined_on`
+   * holds it -- or null when her record carries no date.
+   *
+   * The record used to carry the LABEL below and nothing else, and a month is
+   * not a date: the Edit form opens a date field on this fact and had nothing
+   * to open it from, so "Joined on" came up blank on every member who had a
+   * joining date. Carrying the stored value is what lets the form show what
+   * the register actually holds.
+   *
+   * `joined` is derived from this by `joinedLabel` (src/data/period.ts), so
+   * the two can never tell different stories.
+   */
+  joinedOn: string | null;
   /**
    * When she joined, already formatted ("Mar 2026"), or '\u2014' when the
    * record carries no date.
@@ -191,14 +239,14 @@ export type Member = {
  * follow-up, which is exactly how those numbers drift apart.
  */
 export const MEMBERS: Member[] = [
-  { id: '1', code: 'RF-000102', name: 'Divya Ramesh',       course: 'Prenatal Flow',            branch: 'Coimbatore', aliases: ['Divya', 'Divya R'], emails: [{ address: 'divya.r@gmail.com', primary: true }],   weekdays: null, status: 'active', expected: 3, attended: 0, missed: 3, streak: 3, last: '14 Aug', joined: 'Mar 2026' },
-  { id: '2', code: 'RF-000118', name: 'Shazia Begum',       course: 'Postnatal Core',           branch: 'Madurai',    aliases: ['Shazia', 'Shazia F'], emails: [{ address: 'shazia.b@gmail.com', primary: true }], weekdays: [2, 6], status: 'active', expected: 3, attended: 1, missed: 2, streak: 2, last: '20 Aug', joined: 'Jan 2026' },
-  { id: '3', code: 'RF-000151', name: 'Meenakshi Sundaram', course: 'Trimester 3 Gentle',       branch: 'Chennai',    aliases: ['Meena S'],          emails: [{ address: 'meena.s@yahoo.in', primary: true }],    weekdays: null, status: 'active', expected: 4, attended: 0, missed: 4, streak: 6, last: '2 Aug', joined: 'Apr 2026' },
-  { id: '4', code: 'RF-000127', name: 'Aarthi Venkat',      course: 'Prenatal Flow',            branch: 'Coimbatore', aliases: [],                   emails: [{ address: 'aarthi.v@gmail.com', primary: true }],  weekdays: null, status: 'active', expected: 3, attended: 3, missed: 0, streak: 0, last: '\u2014', joined: 'Feb 2026' },
-  { id: '5', code: 'RF-000133', name: 'Nithya Krishnan',    course: 'Pelvic Floor Foundations', branch: 'Madurai',    aliases: [],                   emails: [],                    weekdays: null, status: 'inactive', expected: 0, attended: 0, missed: 0, streak: 0, last: '11 Aug', joined: 'May 2026' },
-  { id: '6', code: 'RF-000140', name: 'Fathima Rizwan',     course: 'Postnatal Core',           branch: 'Coimbatore', aliases: ['Fathima'],          emails: [],                    weekdays: null, status: 'active', expected: 3, attended: 0, missed: 3, streak: 4, last: '9 Aug', joined: 'Dec 2025' },
-  { id: '7', code: 'RF-000131', name: 'Lakshmi Priya',      course: 'Prenatal Flow',            branch: 'Chennai',    aliases: ['Lakshmi P'],        emails: [{ address: 'lakshmi.p@gmail.com', primary: true }], weekdays: null, status: 'active', expected: 4, attended: 2, missed: 2, streak: 1, last: '\u2014', joined: 'Nov 2025' },
-  { id: '8', code: 'RF-000146', name: 'Kavya Balaji',       course: 'Postnatal Core',           branch: 'Madurai',    aliases: [],                   emails: [],                    weekdays: null, status: 'active', expected: 3, attended: 0, missed: 3, streak: 3, last: '6 Aug', joined: 'Jun 2026' },
+  { id: '1', code: 'RF-000102', name: 'Divya Ramesh',       course: 'Prenatal Flow',            course_id: 'c1', branch: 'Coimbatore', aliases: ['Divya', 'Divya R'], emails: [{ address: 'divya.r@gmail.com', primary: true }],   weekdays: null, status: 'active', expected: 3, attended: 0, missed: 3, streak: 3, last: '14 Aug', joinedOn: '2026-03-01', joined: 'Mar 2026' },
+  { id: '2', code: 'RF-000118', name: 'Shazia Begum',       course: 'Postnatal Core',           course_id: 'c2', branch: 'Madurai',    aliases: ['Shazia', 'Shazia F'], emails: [{ address: 'shazia.b@gmail.com', primary: true }], weekdays: [2, 6], status: 'active', expected: 3, attended: 1, missed: 2, streak: 2, last: '20 Aug', joinedOn: '2026-01-01', joined: 'Jan 2026' },
+  { id: '3', code: 'RF-000151', name: 'Meenakshi Sundaram', course: 'Trimester 3 Gentle',       course_id: 'c3', branch: 'Chennai',    aliases: ['Meena S'],          emails: [{ address: 'meena.s@yahoo.in', primary: true }],    weekdays: null, status: 'active', expected: 4, attended: 0, missed: 4, streak: 6, last: '2 Aug', joinedOn: '2026-04-01', joined: 'Apr 2026' },
+  { id: '4', code: 'RF-000127', name: 'Aarthi Venkat',      course: 'Prenatal Flow',            course_id: 'c1', branch: 'Coimbatore', aliases: [],                   emails: [{ address: 'aarthi.v@gmail.com', primary: true }],  weekdays: null, status: 'active', expected: 3, attended: 3, missed: 0, streak: 0, last: '\u2014', joinedOn: '2026-02-01', joined: 'Feb 2026' },
+  { id: '5', code: 'RF-000133', name: 'Nithya Krishnan',    course: 'Pelvic Floor Foundations', course_id: 'c4', branch: 'Madurai',    aliases: [],                   emails: [],                    weekdays: null, status: 'inactive', expected: 0, attended: 0, missed: 0, streak: 0, last: '11 Aug', joinedOn: '2026-05-01', joined: 'May 2026' },
+  { id: '6', code: 'RF-000140', name: 'Fathima Rizwan',     course: 'Postnatal Core',           course_id: 'c2', branch: 'Coimbatore', aliases: ['Fathima'],          emails: [],                    weekdays: null, status: 'active', expected: 3, attended: 0, missed: 3, streak: 4, last: '9 Aug', joinedOn: '2025-12-01', joined: 'Dec 2025' },
+  { id: '7', code: 'RF-000131', name: 'Lakshmi Priya',      course: 'Prenatal Flow',            course_id: 'c1', branch: 'Chennai',    aliases: ['Lakshmi P'],        emails: [{ address: 'lakshmi.p@gmail.com', primary: true }], weekdays: null, status: 'active', expected: 4, attended: 2, missed: 2, streak: 1, last: '\u2014', joinedOn: '2025-11-01', joined: 'Nov 2025' },
+  { id: '8', code: 'RF-000146', name: 'Kavya Balaji',       course: 'Postnatal Core',           course_id: 'c2', branch: 'Madurai',    aliases: [],                   emails: [],                    weekdays: null, status: 'active', expected: 3, attended: 0, missed: 3, streak: 3, last: '6 Aug', joinedOn: '2026-06-01', joined: 'Jun 2026' },
 ];
 
 export const WEEK = { from: '18 Aug', to: '24 Aug 2026', label: '18\u201324 Aug 2026' };
@@ -311,6 +359,10 @@ export const COURSE_RULES: Record<string, FollowUpRule> = {
 // Supabase data are judged by exactly ONE implementation. Imported for use
 // below and re-exported because every screen already reaches for it here.
 import { isEligible, reasonFor, attendancePct } from './followup';
+// Same reason, for the other rule the fixtures have to obey: a member is
+// only in a day's data from the day she joined, and one implementation of
+// that decides it for the fixture generator and the screens alike.
+import { hasJoinedBy } from './joined';
 export { ruleHits, isEligible, reasonFor, attendancePct, ruleSentence, flagged, toCandidate } from './followup';
 
 // -------------------------------------------------------------- templates
@@ -701,6 +753,17 @@ export type AttendanceStatus = 'present' | 'absent' | 'extra';
 export type AttendanceRow = {
   id: string; member_id: string; member: string;
   course: string; branch: string;
+  /**
+   * The course this row's session belongs to, by identity, or null when the
+   * offering behind it can no longer be resolved.
+   *
+   * delete_course KEEPS completed sessions and every attendance record --
+   * that is the promise its confirmation makes -- so the deleted course's
+   * history stays readable for as long as the academy exists. Which means
+   * the week strip cannot ask "rows whose course is called this", or a new
+   * course would open showing the attendance of the one it replaced.
+   */
+  course_id: string | null;
   /** ISO yyyy-mm-dd — the query filters on this, the screen formats it */
   date: string;
   /** 'HH:MM' 24-hour, or '' when the offering carries no time */
@@ -745,12 +808,18 @@ export function attendanceFixture(from: string, to: string): AttendanceRow[] {
     if (d > new Date()) continue;                 // a future session has no attendance yet
     const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     MEMBERS.forEach((m, i) => {
+      // NOT BEFORE SHE JOINED. The generator used to give every member a row
+      // on every past Mon/Wed/Fri, so a member added this morning arrived
+      // with weeks of attendance behind her and the offline register told a
+      // story the live one never could -- the same defect the roster had,
+      // one layer down (src/data/joined.ts).
+      if (!hasJoinedBy(m, date)) return;
       // deterministic, so the same day always reads the same way
       const seed = (d.getDate() + i * 3) % 5;
       const status: AttendanceStatus = seed === 0 ? 'absent' : seed === 4 && i === 2 ? 'extra' : 'present';
       rows.push({
         id: `${date}-${m.id}`, member_id: m.id, member: m.name,
-        course: m.course, branch: m.branch, date,
+        course: m.course, course_id: m.course_id, branch: m.branch, date,
         time: m.course === 'Postnatal Core' ? '08:00' : '18:00',
         status,
         expected: status !== 'extra',
@@ -776,7 +845,7 @@ export function attendanceFixture(from: string, to: string): AttendanceRow[] {
     }
     rows.push({
       id: `${date}-${memberId}`, member_id: memberId, member: member.name,
-      course: member.course, branch: member.branch, date,
+      course: member.course, course_id: member.course_id, branch: member.branch, date,
       time: member.course === 'Postnatal Core' ? '08:00' : '18:00',
       status, expected: status !== 'extra',
       minutes: status === 'absent' ? null : 45,

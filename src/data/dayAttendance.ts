@@ -64,7 +64,7 @@ export function dayInWords(iso: string): string {
 export function dayAttendance(input: {
   /** every attendance row loaded for the week on screen */
   rows: AttendanceRow[];
-  member: Pick<Member, 'id' | 'name' | 'course' | 'weekdays'>;
+  member: Pick<Member, 'id' | 'name' | 'course' | 'course_id' | 'weekdays'>;
   /** the day the strip has selected, ISO */
   dayIso: string;
   /** the offerings of THIS course, already narrowed to the branches in scope */
@@ -76,9 +76,12 @@ export function dayAttendance(input: {
 
   // Her own row for that day. member_id and date identify it -- one active
   // enrolment (0006) means she cannot have two -- but where a stale row for
-  // another course is in the loaded week, hers wins.
+  // another course is in the loaded week, hers wins. Matched on the course's
+  // ID: a row kept from a DELETED course carries that course's name, and a
+  // new course of the same name would otherwise pick it up as its own.
   const mine = rows.filter(r => r.member_id === member.id && r.date === dayIso);
-  const row = mine.find(r => r.course === member.course) ?? mine[0] ?? null;
+  const row = mine.find(r => r.course_id !== null && r.course_id === member.course_id)
+    ?? mine[0] ?? null;
 
   // Expectation: the row is the server's own answer where one exists. Where
   // none does, her OWN days override the offering's, the way

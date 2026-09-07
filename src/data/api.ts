@@ -9,6 +9,7 @@
  */
 import { supabase } from '../lib/supabase';
 import type { OverrideCounts } from './uploadOverride';
+import type { AlreadyImported, ImportChanges } from './uploadOutcome';
 
 async function callFn<T>(name: string, body: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.functions.invoke(name, { body });
@@ -177,6 +178,16 @@ export type PreviewResult = {
   session_date?: string;
   /** a completed import already covers this day: this file will update it */
   supersedes?: { file_name: string; completed_at: string } | null;
+  /**
+   * THIS EXACT FILE has already been imported, so nothing was staged and
+   * `import_id` is empty. Not an error and never rendered as one: it carries
+   * what the earlier import did and what its register says now, which is the
+   * question somebody re-uploading a file is actually asking.
+   *
+   * Read BEFORE anything else on this result — every other field is the
+   * empty shape when it is set.
+   */
+  already_imported?: AlreadyImported | null;
 };
 
 export function csvPreview(input: {
@@ -207,6 +218,13 @@ export function csvCommit(importId: string, decisions: ImportDecision[]):
      * for work that was never done.
      */
     overridden?: OverrideCounts | null;
+    /**
+     * What this file MOVED (0045). Optional and read as such, for the same
+     * reason `overridden` is: a project still on 0044's commit_csv_import
+     * answers without it, and a screen that has not been told what changed
+     * must say nothing rather than claim nothing changed.
+     */
+    changes?: ImportChanges | null;
   }> {
   return callFn('csv-import', { action: 'commit', import_id: importId, decisions });
 }

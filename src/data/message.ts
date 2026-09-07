@@ -1,5 +1,6 @@
 /**
- * Filling a course's wording with a real member's figures, for the preview.
+ * Filling a course's wording with real figures — or sample ones — for the
+ * preview.
  *
  * THIS MIRRORS THE SENDER, and that is the whole point of it existing.
  * supabase/functions/send-followups/index.ts renders a template with
@@ -22,6 +23,7 @@
  * that course will ever send.
  */
 import type { Member } from './mock';
+import { currentWeek } from './period';
 
 /**
  * The tokens the Edge Function actually builds. Kept in this order because it
@@ -111,6 +113,88 @@ export type MessageContext = {
   periodFrom: string;
   periodTo: string;
 };
+
+/**
+ * The member a preview stands in for when the screen has no real one.
+ *
+ * WHY A PREVIEW MUST NEVER SHOW A TOKEN
+ * The preview exists to answer one question -- "what will she actually
+ * read?" -- and it can only answer it in VALUES. A preview that renders
+ * `{{expected_sessions}}` back at the person answers a different question,
+ * the one they can already see for themselves in the box above it, and it
+ * teaches the wrong lesson twice over: that the token is what arrives, and
+ * that the preview is not worth reading.
+ *
+ * So there is always a context. Where the academy has a real member on this
+ * course, that is the one used -- a token that resolves for a fixture and not
+ * for her is exactly what the preview exists to catch. Where it has none (a
+ * course being added, an academy on its first day, a template line in the
+ * picker that belongs to no member at all), these figures stand in, and the
+ * screen SAYS they are a sample rather than passing them off as hers.
+ *
+ * THE NUMBERS ARE DELIBERATELY ALL DIFFERENT. Three due, one made, two
+ * missed, two in a row, 33% -- so a person reading the preview can tell which
+ * token produced which figure. A sample of 0, 0, 0 resolves every token
+ * correctly and demonstrates nothing.
+ */
+export const SAMPLE_MEMBER: Member = {
+  // She belongs to no course row and no register: `course_id` is null and the
+  // id is the word 'sample', so a sample that ever reached a query would fail
+  // loudly rather than quietly stand for member 1.
+  id: 'sample', code: '', course_id: null, name: 'Divya Ramesh',
+  course: 'Prenatal Flow', branch: 'Coimbatore',
+  aliases: [], emails: [{ address: 'divya.r@gmail.com', primary: true }],
+  status: 'active', weekdays: null,
+  expected: 3, attended: 1, missed: 2, streak: 2,
+  last: '1 Sep', joinedOn: '2026-03-01', joined: 'Mar 2026',
+};
+
+/** The academy's name where the screen has not loaded one yet. */
+export const SAMPLE_ACADEMY = 'RosiFit';
+
+/** Blank, and the em dash a screen uses for "nothing here", are both ABSENT.
+ *  Either one substituted into the wording reads as a value the person chose. */
+const filled = (v: string | undefined | null): string | null => {
+  const t = String(v ?? '').trim();
+  return t.length > 0 && t !== '—' ? t : null;
+};
+
+/**
+ * A context in which EVERY supported token resolves -- real figures where the
+ * screen has them, the sample above where it has not.
+ *
+ * The fallbacks are not arbitrary. Course and branch fall back to the
+ * PREVIEW MEMBER'S OWN, never to a second sample, so the resolved message
+ * describes one coherent person: "Divya, three sessions in Prenatal Flow at
+ * Coimbatore" and never "Divya ... in Prenatal Flow at —".
+ *
+ * THE PERIOD IS THIS WEEK'S, in the sender's own format. The form does not
+ * choose a period, so this used to read "between the period start and the
+ * period end" -- prose standing where a date belongs, which is the same
+ * defect as an unresolved token wearing different clothes. The send flow
+ * passes `currentWeek()` as ISO dates (app/send/index.tsx), and the Edge
+ * Function substitutes them verbatim, so this is what a send made today
+ * actually puts in the email.
+ */
+export function previewContext(
+  /* Every field NULLABLE, because "I do not have one" is what the screens
+     actually hold -- `branch?.name` before a branch is picked, an academy
+     row still loading. Partial<MessageContext> would make each of those an
+     error at the call site and push the fallback back out into the form. */
+  over: { [K in keyof MessageContext]?: MessageContext[K] | null } = {},
+  today = new Date(),
+): MessageContext {
+  const week = currentWeek(today);
+  const member = over.member ?? SAMPLE_MEMBER;
+  return {
+    member,
+    courseName: filled(over.courseName) ?? member.course,
+    branchName: filled(over.branchName) ?? member.branch,
+    academyName: filled(over.academyName) ?? SAMPLE_ACADEMY,
+    periodFrom: filled(over.periodFrom) ?? week.from,
+    periodTo: filled(over.periodTo) ?? week.to,
+  };
+}
 
 /** The same map the send function builds, from the rows this app already has. */
 function variables(ctx: MessageContext): Record<string, string> {

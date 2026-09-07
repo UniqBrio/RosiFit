@@ -24,6 +24,23 @@ export function parseISO(value: string): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+/**
+ * The month she joined, the way the register writes it -- "Mar 2026" -- or
+ * '\u2014' when her record carries no date.
+ *
+ * ONE derivation, called by every producer of a `Member`. The record carries
+ * the stored date AND this label, and two fields for one fact is exactly how
+ * the two drift apart; deriving the second from the first is what stops it.
+ *
+ * Locale-free, for the same reason `label()` below is: this was
+ * `toLocaleDateString`, which writes a different month name per device, and
+ * the canvas writes one.
+ */
+export function joinedLabel(joinedOn: string | null): string {
+  const d = parseISO(joinedOn ?? '');
+  return d ? `${MONTHS[d.getMonth()]} ${d.getFullYear()}` : '\u2014';
+}
+
 function shiftDays(d: Date, days: number): Date {
   const next = new Date(d);
   next.setDate(next.getDate() + days);

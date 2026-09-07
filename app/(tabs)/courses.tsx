@@ -10,7 +10,7 @@ import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, STATUS, statusSurface } from '../../src/theme/tokens';
 import { ruleSentence, AVATAR_TINTS, initials } from '../../src/data/mock';
 import { useCourses, useFollowUp } from '../../src/data/hooks';
-import { courseSummary, coursesHeadline } from '../../src/data/course';
+import { courseSummary, coursesHeadline, enrolledIn } from '../../src/data/course';
 import { ALL_BRANCHES } from '../../src/state/academy';
 import { ConfirmDialog } from '../../src/components/Sheet';
 import { deleteCourse, dataSource } from '../../src/data/repository';
@@ -48,7 +48,11 @@ export default function Courses() {
   useEffect(() => { setMeasured(true); }, []);
   const compact = (measured ? width : 0) < 768;
 
-  const enrolledIn = (name: string) => (followUp.data?.members ?? []).filter(m => m.course === name).length;
+  /** How many members the deletion will actually un-enrol. By the course's
+   *  id, so the confirmation counts THIS course's roster and not that of a
+   *  course which happened to carry the same name before it. */
+  const enrolmentCount = (course: Course) =>
+    enrolledIn(followUp.data?.members ?? [], course).length;
 
   /**
    * The canvas' DELETE COURSE CONFIRM, behind a real deletion. The row's
@@ -98,7 +102,7 @@ export default function Courses() {
   const needFollowUp = all.reduce((n, c) => {
     const rule = rules?.byCourseName[c.name] ?? rules?.global;
     if (!rule) return n;
-    const enrolled = members.filter(m => m.course === c.name);
+    const enrolled = enrolledIn(members, c);
     const days = c.offerings.reduce((d, o) => Math.max(d, o.weekdays.length), 0);
     return n + courseSummary(enrolled, days, rule).flagged;
   }, 0);
@@ -208,7 +212,11 @@ export default function Courses() {
 
       <View style={{ gap: SPACE.md, marginTop: SPACE.md }}>
         {list.map((c, i) => {
-          const enrolled = members.filter(m => m.course === c.name);
+          // BY ID, never by name. A course deleted and re-created under the
+          // same name is a different course with an empty roster, and this
+          // card is where saying otherwise was visible: it opened claiming
+          // the deleted course's members, addresses and follow-ups.
+          const enrolled = enrolledIn(members, c);
           const rule = rules?.byCourseName[c.name] ?? rules?.global;
           // Every line this card states, computed where it can be tested.
           const summary = rule
@@ -345,7 +353,7 @@ export default function Courses() {
         onClose={() => setConfirmDelete(null)}
         title={confirmDelete ? `Delete ${confirmDelete.name}?` : ''}
         body={confirmDelete
-          ? `${(() => { const n = enrolledIn(confirmDelete.name);
+          ? `${(() => { const n = enrolmentCount(confirmDelete);
               return n === 0 ? 'Nobody is enrolled.'
                 : `${n} ${n === 1 ? 'member is' : 'members are'} enrolled, and their enrolment ends today.`; })()} `
             + 'Their attendance history stays: every completed session and every record of who was there is untouched. '

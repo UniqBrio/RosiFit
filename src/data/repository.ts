@@ -17,11 +17,13 @@ import { phoneDigits } from './signin';
 import { cleanAlias, aliasProblem, aliasSaveError, MERGE_FAILED } from './alias';
 import { sentenceOpening } from './refusalCase';
 import { personReadable } from './engineWording';
-import type { Period } from './period';
+import { iso, joinedLabel, type Period } from './period';
 import { SUBJECT_MIN, SUBJECT_MAX, BODY_MIN, COURSE_NAME_MIN, COURSE_NAME_MAX } from './message';
 import { bucketFixture, type BucketMetrics } from './buckets';
 import type { SentMap } from './sent';
 import { currentSchedules, today } from './schedule';
+import { inactiveFromProblem } from './inactiveFrom';
+import { enrolledIn, endEnrolment } from './course';
 import { isoWeekday, storedStatus, dayInWords } from './dayAttendance';
 import {
   NOTIFICATION_LIMIT, orderNotifications,
@@ -112,10 +114,23 @@ export async function isRegisteredNumber(digits: string): Promise<boolean> {
 type MetricRow = { member_id: string; expected: number; attended: number; missed: number };
 
 export async function fetchMembers(period: Period): Promise<Member[]> {
-  if (!isConfigured) return MEMBERS;
+  // A COPY, not the fixture array itself.
+  //
+  // Offline this used to hand back `MEMBERS` by reference, and every write
+  // below replaces an ELEMENT of it (`MEMBERS[i] = {...}`) while the array
+  // keeps its identity. So a screen that narrows the list in a `useMemo`
+  // keyed on it -- the course roster does, `enrolledIn(members, course)` --
+  // held the member objects from before the edit and went on drawing them:
+  // the toast said saved, her own record showed the change, and the roster
+  // behind it did not. That is RC-008's shape again, and the live path never
+  // had it because every fetch builds a fresh array.
+  //
+  // Shallow is enough and is the point: the elements are replaced whole, so
+  // a new array is a new identity for every memo that depends on one.
+  if (!isConfigured) return [...MEMBERS];
 
   const [membersRes, emailsRes, aliasesRes, statsRes, enrolRes, schedRes, metricsRes] = await Promise.all([
-    supabase.from('members').select('id, member_code, full_name, status, joined_on').is('deleted_at', null).order('full_name'),
+    supabase.from('members').select('id, member_code, full_name, status, inactive_from, joined_on').is('deleted_at', null).order('full_name'),
     supabase.from('member_emails').select('member_id, email, is_primary, status').is('deleted_at', null),
     supabase.from('member_aliases').select('member_id, alias_display').eq('alias_type', 'name'),
     supabase.from('member_stats').select('member_id, current_streak, last_emailed_at'),
@@ -131,13 +146,20 @@ export async function fetchMembers(period: Period): Promise<Member[]> {
   if (schedRes.error) fail('Could not load the days members have of their own', schedRes.error);
 
   const offeringIds = [...new Set((enrolRes.data ?? []).map(e => e.offering_id as string))];
+  // `deleted_at is null` on BOTH joins below, the same filter fetchCourses
+  // applies. Without it a member could resolve onto a course the course list
+  // does not have -- delete_course ends her enrolment, but a row that somehow
+  // stayed active would still name the deleted course, and the next course
+  // created with that name would inherit her. The course list and the member
+  // list have to be reading the same set of courses or they cannot agree.
   const offerings = offeringIds.length
-    ? await supabase.from('course_offerings').select('id, course_id, branch_id').in('id', offeringIds)
+    ? await supabase.from('course_offerings').select('id, course_id, branch_id')
+        .in('id', offeringIds).is('deleted_at', null)
     : { data: [], error: null };
   const courseIds = [...new Set((offerings.data ?? []).map(o => o.course_id as string))];
   const branchIds = [...new Set((offerings.data ?? []).map(o => o.branch_id as string))];
   const [coursesRes, branchesRes] = await Promise.all([
-    courseIds.length ? supabase.from('courses').select('id, name').in('id', courseIds) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+    courseIds.length ? supabase.from('courses').select('id, name').in('id', courseIds).is('deleted_at', null) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
     branchIds.length ? supabase.from('branches').select('id, name').in('id', branchIds) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
   ]);
 
@@ -184,6 +206,14 @@ export async function fetchMembers(period: Period): Promise<Member[]> {
       code: (m.member_code as string) ?? '',
       name: m.full_name as string,
       course: offering ? (courseName.get(offering.course_id as string) ?? '—') : '—',
+      // The id her enrolment actually points at. Carried BESIDE the name
+      // because a name is not an identity: screens join on this, and print
+      // that. null when she is enrolled at nothing, or at an offering whose
+      // course has been deleted -- either way she belongs to no course, and
+      // no course created afterwards may claim her (src/data/course.ts).
+      course_id: offering
+        ? (courseName.has(offering.course_id as string) ? (offering.course_id as string) : null)
+        : null,
       branch: offering ? (branchName.get(offering.branch_id as string) ?? '—') : '—',
       aliases: aliasesByMember.get(m.id as string) ?? [],
       emails: emailsByMember.get(m.id as string) ?? [],
@@ -199,17 +229,29 @@ export async function fetchMembers(period: Period): Promise<Member[]> {
       // "not on the register" is the safe answer for an unrecognised value,
       // because it withholds mail rather than sending it.
       status: (m.status === 'active' || m.status === 'paused' ? m.status : 'inactive') as MemberStatus,
+      // FROM WHEN that status applies (0044). Null on every row written
+      // before it, and null goes on meaning "on every day" -- so carrying
+      // the column changes no reading of any existing record, and lets the
+      // roster answer a question about a past week with the fact that was
+      // true in that week (src/data/inactiveFrom.ts).
+      inactiveFrom: (m.inactive_from as string | null) ?? null,
+      // The stored date `joined` below is the LABEL of, carried EXACTLY as
+      // the column holds it. This read used to format the column and throw
+      // the date away, and a month is neither comparable nor openable: the
+      // Edit form refuses an inactive date that falls before she arrived and
+      // cannot compare one against "Mar 2026", and its "Joined on" row came
+      // up blank on every member who had a joining date.
+      joinedOn: (m.joined_on as string | null) ?? null,
       expected: metric?.expected ?? 0,
       attended: metric?.attended ?? 0,
       missed: metric?.missed ?? 0,
       streak: (stat?.current_streak as number) ?? 0,
       last: stat?.last_emailed_at ? new Date(stat.last_emailed_at as string).toLocaleDateString() : '—',
       // "Mar 2026", the way the canvas writes it. A day number would be
-      // precision nobody asked for under a name.
-      joined: m.joined_on
-        ? new Date(`${m.joined_on as string}T00:00:00`).toLocaleDateString(undefined,
-            { month: 'short', year: 'numeric' })
-        : '—',
+      // precision nobody asked for under a name. Derived from the date above
+      // by the one function every producer of a Member calls, so the label
+      // and the date cannot disagree.
+      joined: joinedLabel((m.joined_on as string | null) ?? null),
     };
   });
 }
@@ -486,11 +528,29 @@ export async function deleteCourse(id: string): Promise<CourseDeletion> {
                enrolmentsEnded: 0, alreadyDeleted: true };
     }
     const [course] = COURSE_LIST.splice(at, 1);
+    // Offline the arrays ARE the store, so the deletion has to do to them
+    // what delete_course does to the tables: END the enrolments. Leaving the
+    // members pointing at the course that has just gone is how the next
+    // course created with this name inherited them -- the defect this whole
+    // path exists to close. Matched on the course's id, so a course that
+    // merely SHARES the name keeps its own roster.
+    const ended = enrolledIn(MEMBERS, course);
+    // In place: the exported array IS the store, and every screen already
+    // holds a reference to it. The RULE for what ending an enrolment leaves
+    // behind lives in one tested place, so this path and the live one cannot
+    // come to different answers about what she belongs to afterwards.
+    for (const m of ended) Object.assign(m, endEnrolment(m, course.id));
     coursesChanged();
+    // Her enrolment changed, so the MEMBER lists have to hear about it too.
+    // Without this the Courses tab refetched its courses and went on reading
+    // the member list it loaded before the deletion -- every screen still
+    // holding the deleted course's roster in memory, ready to hand it to the
+    // next course of that name.
+    membersChanged();
     return {
       name: course.name, offerings: course.offerings.length,
       sessionsRemoved: 0, sessionsKept: 0,
-      enrolmentsEnded: MEMBERS.filter(m => m.course === course.name).length,
+      enrolmentsEnded: ended.length,
       alreadyDeleted: false,
     };
   }
@@ -508,6 +568,12 @@ export async function deleteCourse(id: string): Promise<CourseDeletion> {
     throw new Error(`${personReadable(error.message, 'The course could not be deleted')}. Nothing has been changed.`);
   }
   coursesChanged();
+  // delete_course ENDS every active enrolment on the course's offerings, so
+  // this is a member write as much as a course write and both lists have to
+  // be re-read. Announcing only the course list left the members cached as
+  // they were a moment ago -- still naming the deleted course -- which is
+  // what put its counts on the next course created with the same name.
+  membersChanged();
 
   const r = (data ?? {}) as Record<string, unknown>;
   return {
@@ -1835,6 +1901,7 @@ export async function fetchAttendance(period: Period): Promise<AttendanceRow[]> 
       // row, instead of an unexplained blank
       member: (member?.full_name as string) ?? '—',
       course: offering ? (courseName.get(offering.course_id as string) ?? '—') : '—',
+      course_id: (offering?.course_id as string | undefined) ?? null,
       branch: offering ? (branchName.get(offering.branch_id as string) ?? '—') : '—',
       date: (session?.session_date as string) ?? '',
       time: (session?.start_time as string | null)?.slice(0, 5) ?? '',
@@ -2104,15 +2171,18 @@ export async function createMember(input: MemberInput): Promise<{ id: string }> 
       code: '',
       name: input.full_name,
       course: course?.name ?? '—',
+      // The course she is enrolled AT, by id -- the offering names it, so it
+      // is known here and never inferred from the name afterwards.
+      course_id: course?.id ?? null,
       branch: offering?.branch ?? '—',
       // what the form decided, kept the same way live does: null is "she
       // follows the offering", not "no days"
       weekdays: input.weekdays,
       aliases: input.aliases,
-      joined: input.joined_on
-        ? new Date(`${input.joined_on}T00:00:00`).toLocaleDateString(undefined,
-            { month: 'short', year: 'numeric' })
-        : new Date().toLocaleDateString(undefined, { month: 'short', year: 'numeric' }),
+      // create_member (0016) coalesces a null date to current_date; offline
+      // says the same, and says it once -- the label is derived from the date.
+      joinedOn: input.joined_on ?? iso(new Date()),
+      joined: joinedLabel(input.joined_on ?? iso(new Date())),
       emails: input.emails.map((address, i) => ({ address, primary: i === 0 })),
       // create_member (0016) inserts 'active' explicitly; offline says the same.
       status: 'active',
@@ -2179,12 +2249,18 @@ export async function bulkImportMembers(input: {
       }
       const id = `local-${Date.now()}-${r.row}`;
       MEMBERS.push({
-        id, code: '', name: r.full_name, course: course.name, branch: offering.branch,
+        id, code: '', name: r.full_name, course: course.name, course_id: course.id,
+        branch: offering.branch,
         aliases: r.aliases, emails: r.email ? [{ address: r.email, primary: true }] : [],
         // the import gives nobody days of her own; every row follows its course
         weekdays: null,
         status: 'active',
-        expected: 0, attended: 0, missed: 0, streak: 0, last: '\u2014', joined: 'today',
+        expected: 0, attended: 0, missed: 0, streak: 0, last: '\u2014',
+        // The file carries no joining date, so create_member's current_date
+        // is what she joins on; offline says the same, in the same words the
+        // rest of the register uses. It used to say 'today', which is the one
+        // label that stops being true tomorrow.
+        joinedOn: iso(new Date()), joined: joinedLabel(iso(new Date())),
       });
       result.inserted++;
       result.rows.push({ row: r.row, full_name: r.full_name, status: 'inserted', member_id: id });
@@ -2230,9 +2306,13 @@ export async function fetchAcademyName(): Promise<string> {
  * shows the complete set is how a removal turns into a silent no-op.
  *
  * `joined_on` is deliberately NOT a parameter. The day she joined is a fact
- * about the past; the form does not offer it on an existing member, and a
- * write path that could rewrite it would let a typo move every session she
- * was ever expected at.
+ * about the past; a write path that could rewrite it would let a typo move
+ * every session she was ever expected at.
+ *
+ * The Edit form SHOWS it -- read-only, seeded from `Member.joinedOn` -- which
+ * is a different thing from offering to change it. Saving her therefore
+ * cannot clear or overwrite the date, because no save carries one:
+ * src/data/memberJoined.test.ts holds both halves of that.
  */
 export type MemberUpdate = Omit<MemberInput, 'joined_on'> & { id: string };
 
@@ -2253,6 +2333,11 @@ export async function updateMember(input: MemberUpdate): Promise<{ moved: boolea
       branch: offering?.branch ?? MEMBERS[i].branch,
       aliases: input.aliases,
       emails: input.emails.map((address, n) => ({ address, primary: n === 0 })),
+      // `joinedOn` and `joined` are NOT among the fields written here, and
+      // the spread above is what keeps them: saving a member without touching
+      // her joining date must leave the date she actually joined on alone.
+      // Live, the same guarantee is structural -- update_member takes no
+      // p_joined_on, so there is nothing to send (see MemberUpdate).
     };
     membersChanged();
     return { moved };
@@ -2417,16 +2502,31 @@ export async function mergeMemberInto(strayId: string, targetId: string):
  * It is not a toggle server-side. The caller states the status it wants, so
  * two people tapping at once land on a value one of them chose rather than on
  * whichever order the round-trips happened to arrive in.
+ *
+ * FROM WHEN, since 0044. `inactiveFrom` is the first day the status applies:
+ * omit it (or pass null) and the status applies on every day, which is what
+ * the one-tap roster pill has always meant and what every row written before
+ * 0044 carries. Marking her active clears it server-side -- coming back on
+ * has no date to it -- and the fixture path does the same, or the two stores
+ * would tell different stories about the same tap.
  */
-export async function setMemberStatus(id: string, status: MemberStatus):
+export async function setMemberStatus(
+  id: string, status: MemberStatus, inactiveFrom: string | null = null):
   Promise<{ changed: boolean }> {
+  const from = status === 'active' ? null : inactiveFrom;
   if (!isConfigured) {
     // Offline the fixture list IS the store -- a pill that flips and a list
     // that did not change is the lie RC-008 was about.
     const i = MEMBERS.findIndex(m => m.id === id);
     if (i < 0) throw new Error('That member is not on the register. Nothing has been saved.');
-    const changed = MEMBERS[i].status !== status;
-    MEMBERS[i] = { ...MEMBERS[i], status };
+    // The same refusal set_member_status raises, run against the fixture
+    // register: a form that saves offline what the database would decline is
+    // a form nobody can trust the offline mode of.
+    const problem = from ? inactiveFromProblem(from, MEMBERS[i].joinedOn ?? null) : null;
+    if (problem) throw new Error(`${problem}. Nothing has been saved.`);
+    const changed = MEMBERS[i].status !== status
+      || (MEMBERS[i].inactiveFrom ?? null) !== from;
+    MEMBERS[i] = { ...MEMBERS[i], status, inactiveFrom: from };
     membersChanged();
     return { changed };
   }
@@ -2434,6 +2534,7 @@ export async function setMemberStatus(id: string, status: MemberStatus):
   const { data, error } = await supabase.rpc('set_member_status', {
     p_member_id: id,
     p_status: status,
+    p_inactive_from: from,
   });
   if (error || !data) {
     console.error('setMemberStatus:', error?.message ?? 'no row returned');

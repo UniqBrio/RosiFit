@@ -12,9 +12,11 @@ import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../../src/theme/t
 import { DAY_NAMES } from '../../src/data/mock';
 import {
   fillTokens, unknownTokens, insertToken, wordingProblem, courseNameProblem,
+  previewContext,
 } from '../../src/data/message';
 import { TokenChips } from '../../src/components/TokenChips';
 import { clampThreshold, MIN_THRESHOLD, MAX_THRESHOLD } from '../../src/data/followup';
+import { enrolledIn } from '../../src/data/course';
 import {
   useCourses, useBranchUsage, useTemplates, useSenders, useCourseMessage, useFollowUp,
   useAcademyDetails,
@@ -207,20 +209,22 @@ export default function CourseEdit() {
 
   /* The preview renders against a REAL member of this course where there is
    * one, because a token that resolves for a fixture and not for her is
-   * exactly what the preview exists to catch. */
-  const sample = (followUp.data?.members ?? []).find(m => m.course === course?.name)
+   * exactly what the preview exists to catch.
+   *
+   * WHERE THERE IS NONE THE PREVIEW STILL RENDERS, against the sample
+   * (`previewContext`). It used to go silent and say so -- which is the state
+   * EVERY course is in at the moment it is added, so the one screen where the
+   * wording is authored showed `{{first_name}}` in the box and nothing at all
+   * underneath it. A preview that answers "there is nobody to show this
+   * against" leaves the person to read the braces as the answer. */
+  const sample = enrolledIn(followUp.data?.members ?? [], course)[0]
     ?? (followUp.data?.members ?? [])[0] ?? null;
-  const previewCtx = sample
-    ? {
-        member: sample,
-        courseName: name || 'this course',
-        branchName: branch?.name ?? '—',
-        academyName: academy.data?.name ?? 'RosiFit',
-        // The period is stated at SEND time, not here; the preview says so in
-        // words rather than showing a date this form never chose.
-        periodFrom: 'the period start', periodTo: 'the period end',
-      }
-    : null;
+  const previewCtx = previewContext({
+    member: sample,
+    courseName: name,
+    branchName: branch?.name,
+    academyName: academy.data?.name,
+  });
   const stray = [...new Set([...unknownTokens(shownSubject), ...unknownTokens(shownBody)])];
 
   /* Inserting works on the SHOWN value, not on `subject`/`body`. Those are
@@ -462,7 +466,16 @@ export default function CourseEdit() {
               {open === 'template' ? (
                 <DropdownPanel>
                   <DropdownList testID="course-template"
-                    options={templateList.map(t => ({ label: t.name, meta: t.preview }))}
+                    /* The template's own line, RESOLVED like everything else
+                       in this form -- it is a preview, and a picker that
+                       offers "Hello {{first_name}}," is asking somebody to
+                       choose between templates by reading their source. Live
+                       templates take this line from the first line of the
+                       body (fetchTemplates), which is where the tokens are
+                       thickest. */
+                    options={templateList.map(t => ({
+                      label: t.name, meta: fillTokens(t.preview, previewCtx),
+                    }))}
                     value={template?.name ?? ''}
                     onSelect={l => {
                       const picked = templateList.find(t => t.name === l)?.id ?? null;
@@ -589,19 +602,22 @@ export default function CourseEdit() {
                 marginTop: SPACE.md, padding: SPACE.md, borderRadius: RADIUS.md,
                 backgroundColor: theme.surface2, borderWidth: 1, borderColor: theme.line,
               }}>
-                <Label>{previewCtx ? `Preview · ${previewCtx.member.name}` : 'Preview'}</Label>
-                {previewCtx ? (
-                  <>
-                    <Text style={{ fontSize: 13, fontWeight: '800', color: theme.fgStrong, marginTop: 6 }}>
-                      {fillTokens(shownSubject, previewCtx)}
-                    </Text>
-                    <Text style={{ fontSize: 12.5, color: theme.fg, marginTop: 5, lineHeight: 19 }}>
-                      {fillTokens(shownBody, previewCtx)}
-                    </Text>
-                  </>
-                ) : (
-                  <Muted style={{ marginTop: 6 }}>
-                    No member is enrolled yet, so there are no real figures to show this against.
+                {/* The label SAYS WHOSE figures these are. Naming her is the
+                    claim that makes the real preview worth trusting, so the
+                    sample must not borrow it -- "sample values" is the same
+                    honesty in the other direction. */}
+                <Label>{sample ? `Preview · ${sample.name}` : 'Preview · sample values'}</Label>
+                <Text testID="course-preview-subject"
+                  style={{ fontSize: 13, fontWeight: '800', color: theme.fgStrong, marginTop: 6 }}>
+                  {fillTokens(shownSubject, previewCtx)}
+                </Text>
+                <Text testID="course-preview-body"
+                  style={{ fontSize: 12.5, color: theme.fg, marginTop: 5, lineHeight: 19 }}>
+                  {fillTokens(shownBody, previewCtx)}
+                </Text>
+                {sample ? null : (
+                  <Muted style={{ marginTop: SPACE.sm }}>
+                    Nobody is enrolled yet, so these are stand-in figures. Each member receives her own.
                   </Muted>
                 )}
               </View>

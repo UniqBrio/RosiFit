@@ -59,6 +59,193 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-031 — Edit Member opened "Joined on" blank, because the form was seeded from a month
+**Date:** 07-Sep-2026  ·  **Severity:** S3  ·  **Modules:** `src/data/period.ts`, `src/data/repository.ts`, `app/member/edit.tsx`, `src/components/DateTimePicker.tsx`
+
+**Symptom** — In the requester's words: *"a member's Joined Date is not populated when opening
+Edit Course."* Every member, however long she had been on the register: her name, her course, her
+branch, her display names and her addresses all arrived in the form, and the one row under them
+read as a date nobody had ever filled in.
+
+**Root cause** — The same lossy read as **RC-029**, arriving from the form's side.
+`members.joined_on` was in the SELECT and was mapped one line later to `joined` — a FORMATTED
+MONTH, "Mar 2026" — and the record carried nothing else. A month is not a date: the form's date
+row can only open on `yyyy-mm-dd`, so there was no value on the record it could open on, and the
+once-only seeding effect that fills every other field from her record had no field to fill.
+
+The comment in the form said the blank was deliberate — *"the EDIT form keeps it blank: it does
+not save this field"* — and that reasoning covered the defect for as long as it stood. Not saving
+a field is a reason not to WRITE it. It was never a reason not to SHOW it, on the one screen that
+shows the rest of her record.
+
+**Fix** — `Member.joinedOn` carries the column exactly as stored (nullable as the column is), and
+`joined` is derived from it by `joinedLabel` (`src/data/period.ts`) — one derivation, so the date
+and its label cannot tell different stories, and locale-free so the label does not change per
+device. The seeding effect fills the row from `existing.joinedOn`, beside her name and her
+status, under the same once-only guard. Null seeds `''`, which the row reads as *Not on record*
+rather than as an unknown day; today's date is still never defaulted onto an edit.
+
+The row is READ-ONLY on the Edit form and editable on Add. `update_member` (0027) takes no
+`p_joined_on` — deliberately, so a typo cannot move the day every session she was ever expected
+at is counted from — so a picker here would accept a change this form cannot save. A field that
+quietly discards what it was told is the worse of the two answers. `DateField readOnly` draws it
+as a row rather than a control: a padlock and a hint under it, never colour alone (guardrail 3).
+
+**Files** — `src/data/period.ts` (`joinedLabel`), `src/data/mock.ts` (`Member.joinedOn` +
+fixtures), `src/data/repository.ts` (the read, both offline writers, the `MemberUpdate` note),
+`app/member/edit.tsx`, `src/components/DateTimePicker.tsx` (`readOnly`),
+`src/data/memberJoinedOn.test.ts` (new).
+
+**How to verify** — `npx tsx --test src/data/memberJoinedOn.test.ts`. Twelve cases in three
+groups: the record carries the date and derives the label from it; opening an existing member
+seeds the row from `existing.joinedOn` and never from today; and no save carries a joining date
+at all. Each group was run against a copy of the tree with the fix reverted and each fired. In
+the app: open any member from her course — the row states the month she joined, and Save leaves
+the stored date exactly as it was.
+
+**Recurrence risk** — Two classes, both swept. (1) Every stored fact this form seeds. The state
+it declares (`grep -n 'const \[' app/member/edit.tsx`, 16 hooks) against what the once-only
+effect fills: name, course, branch, aliases, emails, status, inactiveFrom and now joined. Her
+days are seeded by their own effect under `seededDays`, for the reason recorded there. What is
+left unseeded is the alias draft, the email draft, the open picker and the form's own machinery
+(`seeded`, `saving`, `refusal`) — no stored fact among them. (2) Every value the repository
+formats on the way out: `grep -n 'toLocaleDateString' src/data/repository.ts` finds two, both
+labels and neither compared or opened by any control — `last` (`last_emailed_at`), which RC-029
+already names as the same trap, and the staff row's `when()` over `created_at` / `pin_set_at` /
+`last_login_at`. The day a screen needs to compare either, it gets carried the way this one now
+is.
+
+**Prevention** — `src/data/memberJoinedOn.test.ts` holds both halves as executable claims: the
+seeding effect must fill this field, and the update path must send no joining date (asserted
+against the RPC arguments, the `MemberUpdate` type, and the offline writer's field list). The
+standing rule is RC-029's: **carry the stored value and derive the label from it, never the
+reverse.**
+
+**Process check** — **No.** The blank was documented in the file as intended behaviour, so it
+read as a decision rather than a defect to everyone who passed it, including the tracks that
+edited the lines around it. What is new is the spec that states what the form must show; no
+process rung would have found a comment that was simply wrong about its own consequence.
+
+---
+
+## RC-030 — The preview of the wording rendered the tokens, because the context was optional
+**Date:** 07-Sep-2026  ·  **Severity:** S3  ·  **Modules:** `src/data/message.ts`, `app/course/edit.tsx`
+
+**Symptom** — reported as *"the Edit Email Template preview shows variable names/placeholders
+instead of their values"* — `{{first_name}}`, `{{course_name}}` and the rest arriving on screen
+in the one panel whose entire job is to show what a member will actually read.
+
+**Root cause** — the preview context was assembled inline in the form, so it could only exist
+when the form happened to hold every part of one. Two consequences, one cause:
+
+1. `previewCtx` was `null` whenever the register had no member to sample — which is the state
+   **every course is in at the moment it is added**. The panel then rendered a sentence saying
+   there was nothing to show it against, directly under a box reading `Hello {{first_name}},`.
+   The braces were the only rendering of the wording anywhere on the screen.
+2. The template picker's one-line preview (`meta: t.preview`) was never filled at all. Live
+   templates build that line from the **first line of the body** (`fetchTemplates`), which is
+   where the tokens are thickest, so choosing between templates meant reading their source.
+
+A third, smaller instance of the same shape: `period_from` / `period_to` were filled with the
+prose *"the period start"* and *"the period end"* — words standing where a date belongs, which
+is an unresolved token wearing different clothes.
+
+**Fix** — `previewContext()` in `src/data/message.ts`: one builder, **no null case**. Real
+figures where the screen holds them, `SAMPLE_MEMBER` where it does not; course and branch fall
+back to the preview member's *own*, never to `''` or `—`, so the resolved message describes one
+coherent person. The period is `currentWeek()` in the sender's own ISO shape — what a send made
+today actually puts in the email. The form now always renders the preview and labels it
+`Preview · <her name>` or `Preview · sample values`, and the picker line is filled like
+everything else. The tokens in the **editor** are untouched: this is the preview only.
+
+**Files** — `src/data/message.ts`, `src/data/message.test.ts`, `app/course/edit.tsx`.
+
+**How to verify** — `npx tsx --test src/data/message.test.ts`. The load-bearing case is
+*"previewContext given NOTHING still resolves every documented token"*, backed by *"no token
+resolves to blank, an em dash, or the word undefined"* — resolving is not the whole job, since
+`Hello ,` clears a brace check and is the same defect. In the app: open Add a course on an
+academy with nobody enrolled and read the preview panel; then open the Message template
+dropdown and read each option's second line. Neither may contain `{{`.
+
+**Recurrence risk** — the class is *"a preview whose context is optional"*. Grepped for
+`fillTokens` across `app/` and `src/`: the course form was the only caller, and the send dialog
+renders no wording at all since C-68 removed the preview there. Any future screen that shows
+stored wording must take its context from `previewContext()` rather than assembling one, which
+is why the fallbacks live in that function and not at the call site.
+
+**Prevention** — `src/data/message.test.ts`, the block appended 07-Sep-2026. It asserts on
+`{{` rather than on values, because the failure mode is a brace on the screen; and *"every
+seeded template previews clean — subject, body AND picker line"* covers the picker path that
+had no spec at all.
+
+**Process check** — would a correctly functioning process have caught this? Yes, partly. The
+"every state exists and was looked at: empty, loading, error" item in
+`checklists/DEFINITION_OF_DONE.md` covers the empty-register state, and the panel's empty state
+was written deliberately — what was missed is that *empty* is the **default** state of this
+screen, not an edge of it. No framework change: the item is right and was applied too shallowly.
+
+---
+
+## RC-029 — the joining date was read, formatted, and thrown away, so every date-scoped screen showed every member
+**Date:** 07-Sep-2026  ·  **Severity:** S2  ·  **Modules:** `src/data/joined.ts`, `src/data/mock.ts`, `app/course/[id].tsx`, `app/(tabs)/index.tsx`, `app/(tabs)/reports.tsx`
+
+**Symptom** — In the requester's words: *"If a student is added on September 7, 2026, they should
+not appear when viewing attendance or other date-based student data for September 6 or any
+earlier date."* She did. On the course roster for a past day her card carried an attendance
+reading — *Yet to mark* — for a session she could not have attended; on Reports for last month
+she was a row with 0 expected and 0 attended; offline she had generated present/absent rows going
+back weeks.
+
+**Root cause** — Not a missing rule; a **lossy read**. `members.joined_on` has existed since 0006
+and the database has always honoured it — `create_member` (0026) opens the enrolment at
+`coalesce(p_joined_on, current_date)` and `expected_members_for_session` (0007) will not expect
+anybody whose `member_enrollments.effective_from` falls after the session date. But
+`fetchMembers` mapped the column straight to a formatted month (`joined: "Mar 2026"`), so the
+only thing that ever reached a screen was a subtitle. Nothing downstream of the repository could
+compare the date to anything, and every date-scoped derivation therefore ran over the whole
+member list whatever date it claimed to be about.
+
+One cause, four symptoms — the roster, the Overview, Reports, and the offline register — not
+four defects.
+
+**Fix** — The date is carried as `Member.joinedOn` (ISO, nullable exactly as the column is) and
+the rule that reads it lives in one pure module, `src/data/joined.ts`: `hasJoinedBy`,
+`membersOnDay`, `membersInPeriod`. The day-scoped roster and the two period-scoped screens call
+it; no screen compares dates itself. The boundary is inclusive on the joining day, matching
+`session_date >= effective_from`. A **missing** date never hides anybody — the column is nullable
+and the bulk import may leave it null (0029), so reading a blank as "joined later than every date
+you can ask about" would empty the register of everybody imported before it was being filled in.
+
+The register itself is untouched, on the requester's second condition: the Members tab, the
+search, the course card's member count and every send list pass no date and narrow nothing.
+
+**Files** — `src/data/joined.ts` (new), `src/data/joined.test.ts` (new), `src/data/mock.ts`
+(`attendanceFixture` no longer generates rows before a member joined),
+`app/course/[id].tsx`, `app/(tabs)/index.tsx`, `app/(tabs)/reports.tsx`,
+`src/data/attendance.test.ts` (appended).
+
+**How to verify** — `npx tsx --test src/data/joined.test.ts src/data/attendance.test.ts`. The
+three cases that matter are named for the dates: *NOT there on 6 Sep*, *IS there on 7 Sep — the
+boundary is inclusive*, *there on 8 Sep and every day after*. In the app: add a member today,
+open her course, step the week strip back a day — she is off the roster and the line under the
+heading says how many members joined later and that they are still on the course.
+
+**Recurrence risk** — Every column the repository *formats* on the way out. `last`
+(`last_emailed_at` → a locale date string) is the same shape and the same trap: a screen that
+ever needs to compare it has nothing to compare. The rule: **carry the stored value and derive
+the label from it**, never the reverse — which is what `joinedLabel` now does for `joined`.
+
+**Prevention** — the derivation is a pure module with specs, so a second screen that needs the
+rule imports it rather than re-writing the comparison. Class relatives already in this register:
+**RC-014** (a joining date cast without being checked) and **RC-012** (a derivation that imported
+the fixture and so could not be tested).
+
+**Process check** — **No.** The defect is older than any of the tracks that touched the file; no
+request ever stated the rule, because everybody assumed the screens had it. The prevention is the
+module, not a process change.
+
+---
+
 ## RC-028 — A migration that was never applied answered the operator in PostgREST's own words
 **Date:** 07-Sep-2026  ·  **Severity:** S2  ·  **Modules:** `src/data/repository.ts`, `src/data/engineWording.ts`, `supabase/migrations/0032_merge_member.sql`
 

@@ -98,3 +98,65 @@ test('the button names its day for a screen reader', () => {
 test('the strip never draws the clock', () => {
   assert.doesNotMatch(src, /'scheduled'/, 'STATUS.scheduled is back on the course screen');
 });
+
+/* ------------------------------------------- THE WEEK THE BUTTON IS OFFERED IN
+ *
+ * "Fix the Awaiting Upload button visibility on the date cards. It should
+ *  only be shown for dates in the current week. It must not appear on future
+ *  weeks."
+ *
+ * Round 3 above put the button on every AWAITING day. The strip steps 26
+ * weeks either way, and an un-uploaded day wears the cloud whether the date
+ * has passed or not (0034) -- so stepping forward gave next week's cards a
+ * button each, offering to upload a file for a class that had not happened.
+ * `fetchPendingSessions` never returns those days (`session_date <= today`),
+ * so the press landed on "That session is no longer waiting for a file"
+ * about a session that had not started.
+ *
+ * The window is now derived, not drawn: `src/data/uploadWindow` answers it
+ * from the same Monday-start week the rest of the app uses, and the cell
+ * carries the answer as `canUpload`. These guard the wiring -- the arithmetic
+ * itself is src/data/uploadWindow.test.ts.
+ */
+
+test('the cell carries a canUpload of its own, not just a status', () => {
+  assert.match(src, /canUpload: boolean;/,
+    'DayCell no longer records whether the day may offer an upload');
+});
+
+test('canUpload is derived from the shared window, not computed in the strip', () => {
+  assert.match(src, /canUpload: offersUpload\(dateIso, todayIso\)/,
+    'the day cells no longer ask uploadWindow which days may offer an upload');
+});
+
+test('the window module is the one the specs cover', () => {
+  assert.match(src, /import \{ offersUpload \} from '\.\.\/\.\.\/src\/data\/uploadWindow';/);
+});
+
+test('the button is gated on that window as well as on the awaiting state', () => {
+  const gate = strip.slice(strip.lastIndexOf('const waiting =', uploadAt));
+  assert.match(gate, /const waiting = d\.key === 'awaiting' && d\.canUpload;/,
+    'the upload button is drawn for an awaiting day the file cannot exist for yet');
+});
+
+test('the visibility is not a UI-only test of the step counter', () => {
+  // `weekOffset === 0` would answer "is this the current week" a second time,
+  // in the render, from a counter rather than from the calendar -- and it
+  // would still offer Sunday's button on Monday.
+  assert.doesNotMatch(strip, /weekOffset === 0/,
+    'the strip decides the current week from the arrow counter');
+});
+
+test('the screen reads the clock once, and the strip shares it', () => {
+  assert.match(src, /const todayIso = iso\(new Date\(\)\);/,
+    'the course screen no longer holds one todayIso for the strip');
+});
+
+test('a day whose file cannot exist yet keeps its icon in the cell', () => {
+  // Same branch as an uploaded day: `waiting` is now "awaiting AND
+  // pressable", so a future day falls through to the icon rather than
+  // leaving the slot empty. Colour is never the only signal (guardrail 3).
+  const cell = strip.slice(selectAt, uploadAt);
+  assert.match(cell, /waiting \? null : <Icon name=\{tone\.icon\}/,
+    'a day with nothing to press draws no status icon either');
+});

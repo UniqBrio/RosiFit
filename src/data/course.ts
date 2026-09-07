@@ -36,6 +36,66 @@ export type CourseSummary = {
   noDays: boolean;
 };
 
+/**
+ * The members of ONE course -- joined on the course's IDENTITY, never on its
+ * name.
+ *
+ * WHY THIS FUNCTION EXISTS AT ALL
+ * Every screen wrote this join itself, inline, as
+ * `members.filter(m => m.course === c.name)`. That is a join on a LABEL, and
+ * a label is reused: delete "Prenatal Flow" and create "Prenatal Flow"
+ * again, and the new course -- a different row, with no offerings, no
+ * schedule and nobody enrolled -- was handed the deleted course's members.
+ * Its card opened saying "2 members · 1 with email · 1 without" on the day it
+ * was created, and every one of those was a fact about a course that had
+ * been deleted.
+ *
+ * `course_id` is what her enrolment actually points at, so a member follows
+ * her enrolment: when delete_course ENDS it (0020), she stops being anyone's
+ * member until she is enrolled again, and the new course starts empty
+ * because it IS empty.
+ *
+ * Written once, here, beside the summary it feeds -- the same reason
+ * courseSummary is not computed in a render body. Both are claims about the
+ * academy, and a claim nobody can test is one nobody can trust.
+ */
+export function enrolledIn<T extends { course_id: string | null }>(
+  members: T[], course: { id: string } | null | undefined,
+): T[] {
+  if (!course) return [];
+  return members.filter(m => m.course_id === course.id);
+}
+
+/** What a member's course reads as when she is enrolled at nothing. The
+ *  register's own dash, not a blank -- there is no course, which is a fact,
+ *  rather than a course whose name we failed to load. */
+export const NO_COURSE = '—';
+
+/**
+ * A member after the course she was enrolled in is deleted.
+ *
+ * delete_course (0020) ENDS her enrolment rather than removing it: the row
+ * goes to status 'ended' with effective_to today, so her history of having
+ * attended the course survives the course. Once it is ended she is enrolled
+ * at NOTHING, and that is the state this returns -- no course id to match
+ * on, and the register's dash where a course name used to be.
+ *
+ * It matters that this is a step and not an omission. Leaving her pointing
+ * at the deleted course is precisely how the next course created with that
+ * name inherited her: the card asked for "members of a course called this",
+ * and she still answered to the name. She stops being anyone's member here,
+ * and stays that way until somebody enrols her again.
+ *
+ * A member of a DIFFERENT course is returned untouched, identity compared,
+ * so deleting one of two courses that share a name cannot empty the other.
+ */
+export function endEnrolment<T extends { course: string; course_id: string | null }>(
+  member: T, courseId: string,
+): T {
+  if (member.course_id !== courseId) return member;
+  return { ...member, course: NO_COURSE, course_id: null };
+}
+
 export function courseSummary(
   members: Member[], weekdayCount: number, rule: FollowUpRule,
 ): CourseSummary {

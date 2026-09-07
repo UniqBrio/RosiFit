@@ -119,6 +119,10 @@ const ACTION_TITLE: Record<string, string> = {
   'csv_import.matched_existing': 'Upload row matched to a member',
   'csv_import.email_added': 'Email address added from the upload',
   'csv_import.row_skipped': 'Upload row skipped',
+  // The same file offered a second time. Nothing was written, which is the
+  // whole point of recording it: the question "why is there no import for
+  // that upload?" has an answer on this screen.
+  'csv_import.already_imported': 'Attendance file offered again, already imported',
   'holiday.applied': 'Holiday applied',
   'holiday.removed': 'Holiday removed',
   'auth.staff_created': 'Staff account created',
@@ -249,6 +253,9 @@ const FIELD_LABEL: Record<string, string> = {
   member_code: 'Member code',
   joined_on: 'Joined on',
   status: 'Status',
+  // The audit trigger reports every changed column by name; without a
+  // label this one would reach an end user as `inactive_from` (0045).
+  inactive_from: 'Inactive from',
   notes: 'Notes',
   email: 'Email address',
   is_primary: 'Main address',

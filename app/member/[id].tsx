@@ -15,7 +15,7 @@ import {
 import { TabStrip } from '../../src/components/TabStrip';
 import { sessionsFor, attendancePct, primaryEmail, hasEmail, type Member } from '../../src/data/mock';
 import { flagged, isReachable } from '../../src/data/followup';
-import { currentWeek } from '../../src/data/period';
+import { currentWeek, iso } from '../../src/data/period';
 import { mergeSent, sentThisSession, sentOn } from '../../src/data/sent';
 import { reachOutState, REACH_OUT, warnsBeforeReachOut } from '../../src/data/reachOut';
 
@@ -334,7 +334,10 @@ function HerDetails({ m }: { m: Member }) {
   const { theme } = useTheme();
   const ink = (k: keyof typeof STATUS) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
 
-  const status = memberStatusReading(m.status);
+  // Her status ON TODAY, which since 0045 is not the same as the stored word:
+  // a member marked inactive from the 1st of next month is active now, and a
+  // pop-up somebody is about to reach out from has to say the true one.
+  const status = memberStatusReading(m.status, m.inactiveFrom ?? null, iso(new Date()));
   const statusInk = status.active ? ink('present') : theme.muted;
   const days = memberDayNames(m.weekdays);
   const addresses = addressesInOrder(m.emails);
@@ -356,6 +359,16 @@ function HerDetails({ m }: { m: Member }) {
         <Muted style={{ fontSize: 11.5, lineHeight: 16, marginTop: 2 }}>
           {status.active ? 'In the follow-up rule' : 'Left out of the follow-up rule'}
         </Muted>
+        {/* WHEN, when there is a when. The word above is true today and says
+            nothing about the date that produced it or the one coming; this
+            is that date, and it is only drawn when her record carries one --
+            every member marked inactive before 0045 carries none, and a row
+            reading "Inactive since —" would invent a day nobody recorded. */}
+        {status.note ? (
+          <Muted style={{ fontSize: 11.5, lineHeight: 16, marginTop: 2 }}>
+            {status.note}
+          </Muted>
+        ) : null}
       </Detail>
 
       {/* Course, branch and joining month are on the subtitle too -- as ONE

@@ -20,6 +20,7 @@ import {
   matchesSelection, fieldValue, scopeSentence, toggle, pruned, attentionFirst,
   withScope, MEMBER_ROWS_SHOWN, type Selection,
 } from '../../src/data/overview';
+import { membersInPeriod } from '../../src/data/joined';
 import { resolvePeriod, type PeriodChoice } from '../../src/data/period';
 import { ALL_BRANCHES } from '../../src/state/academy';
 import { useAdminRedirect } from '../../src/components/AdminOnly';
@@ -148,7 +149,14 @@ export default function Home() {
   // C-84/85/86. The filters are not decoration: they NARROW the set every
   // figure below is counted from, so a label and a number on this screen can
   // never describe different populations.
-  const members = (followUp.data?.members ?? []).filter(m => matchesSelection(m, selection));
+  // ...and narrowed FIRST to the members the period could be about at all. A
+  // member who joined after the whole range had passed was not in it: her row
+  // arrives with 0 expected and 0 attended, which is not a member with a
+  // perfect record or a bad one -- it is a member the academy did not have
+  // that month, padding the count above every figure on this screen
+  // (src/data/joined.ts).
+  const members = membersInPeriod(followUp.data?.members ?? [], range)
+    .filter(m => matchesSelection(m, selection));
 
   const periodLabel = range.label;             // the dates the queries ran over
   const caption = scopeSentence(selection, periodLabel);
@@ -157,7 +165,8 @@ export default function Home() {
   // member and course bars are two groupings of it, and the period bars are
   // the same members' figures per sub-range (C-84/85/86/87).
   const { attended, missed } = distribution(members);
-  const flaggedHere = (followUp.data?.flagged ?? []).filter(m => matchesSelection(m, selection));
+  const flaggedHere = membersInPeriod(followUp.data?.flagged ?? [], range)
+    .filter(m => matchesSelection(m, selection));
 
   // Each member row also names the course and branch it is counted under --
   // the ranking says who to chase, and this says what about.

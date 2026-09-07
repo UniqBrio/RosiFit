@@ -13,6 +13,8 @@
  * it counts cannot disagree.
  */
 import type { Member, FollowUpRule, FollowUpCandidate } from './mock';
+import { isActiveOn } from './inactiveFrom';
+import { iso } from './period';
 
 /**
  * The follow-up threshold's bounds: 1..7.
@@ -66,11 +68,23 @@ export function ruleHits(m: Member, r: FollowUpRule) {
  * Checked before the rule rather than folded into ruleHits, because ruleHits
  * answers "did a condition fire" and the answer to that is unchanged by her
  * being off the register. She is excluded; her figures are not rewritten.
+ *
+ * ON A DAY, since 0044. Her status carries a date now (`inactive_from`), so
+ * "is she followable" is a question about a day and this one answers it for
+ * TODAY by default -- which is the day a follow-up would actually leave.
+ * `follow_up_candidates()` judges on `current_date` for the same reason, so
+ * the two ends go on agreeing: a member whose date is still ahead of her is
+ * listed and written to, and stops being listed the moment it arrives, with
+ * nobody having to press anything on the day.
+ *
+ * The default is read at CALL time, not at module load -- a list left open
+ * across midnight must not go on answering for yesterday.
  */
-export const isFollowable = (m: Member): boolean => m.status === 'active';
+export const isFollowable = (m: Member, onIso: string = iso(new Date())): boolean =>
+  isActiveOn(m, onIso);
 
-export function isEligible(m: Member, r: FollowUpRule): boolean {
-  if (!isFollowable(m)) return false;
+export function isEligible(m: Member, r: FollowUpRule, onIso: string = iso(new Date())): boolean {
+  if (!isFollowable(m, onIso)) return false;
   const h = ruleHits(m, r);
   return r.combination === 'AND' && r.weekly_enabled && r.consecutive_enabled
     ? h.weekly && h.consecutive
@@ -193,10 +207,16 @@ export function toCandidate(m: Member, r: FollowUpRule): FollowUpCandidate {
 }
 
 /** The flagged set for any member list and any rule. `rulesByCourse` lets a
- *  course-specific rule (C-60) override the global default per member. */
+ *  course-specific rule (C-60) override the global default per member.
+ *
+ *  `onIso` is the day the STATUS is judged on -- today, unless a caller is
+ *  asking about another one. The figures are already about whatever period
+ *  produced them; this is the one thing that was being answered for today
+ *  whether or not the question was about today (0044). */
 export function flagged(
   members: Member[], globalRule: FollowUpRule,
   rulesByCourseName: Record<string, FollowUpRule> = {},
+  onIso: string = iso(new Date()),
 ): Member[] {
-  return members.filter(m => isEligible(m, rulesByCourseName[m.course] ?? globalRule));
+  return members.filter(m => isEligible(m, rulesByCourseName[m.course] ?? globalRule, onIso));
 }

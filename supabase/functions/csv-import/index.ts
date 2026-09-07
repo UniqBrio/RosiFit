@@ -71,27 +71,125 @@ async function preview(admin: SupabaseClient, actorId: string, body: Record<stri
     .from('course_offerings').select('id, branch_id').eq('id', offeringId).maybeSingle();
   if (offErr || !offering) throw new HttpError(404, 'That session offering was not found.');
 
-  const { count: dupCount } = await admin.from('csv_imports')
-    .select('id', { count: 'exact', head: true }).eq('file_sha256', fileSha256).eq('status', 'completed');
-  if (dupCount && dupCount > 0) throw new HttpError(409, 'This file has already been imported.');
+  // THE SAME FILE, BYTE FOR BYTE, A SECOND TIME.
+  //
+  // This was `409 · "This file has already been imported."` -- true, and the
+  // whole of what anybody was told. The screen paints a 409 in the red
+  // failure panel and appends "Nothing was written.", so an operator who
+  // re-uploaded the file she already sent -- because she was not sure it went
+  // through, which is the only reason anybody does this -- read a failure and
+  // still did not know whether the attendance was marked.
+  //
+  // Nothing is wrong here and nothing needs doing, so this answers with WHAT
+  // THE EARLIER IMPORT DID instead of a refusal: which file, which register,
+  // and how many women are marked on it right now. The screen turns that into
+  // "there is nothing to update" (src/data/uploadOutcome.ts).
+  //
+  // It still writes nothing and stages nothing -- the early return is above
+  // the csv_imports insert -- so a second upload cannot duplicate an
+  // attendance record by any path. csv_imports_sha_completed (0008) is the
+  // structural half of the same rule and is unchanged.
+  const { data: sameFile } = await admin.from('csv_imports')
+    .select('id, file_name, session_date, completed_at, session_id, offering_id')
+    .eq('file_sha256', fileSha256).eq('status', 'completed')
+    .order('completed_at', { ascending: false }).limit(1);
+  const earlier = sameFile?.[0];
+  if (earlier) {
+    // WHAT THE REGISTER SAYS NOW, not what the import said then. "Attendance
+    // is already marked" is a claim about today, and a session somebody
+    // deleted or a mark somebody changed since would make it false.
+    let marked = 0;
+    let registerLive = false;
+    if (earlier.session_id) {
+      const { data: session } = await admin.from('sessions')
+        .select('id').eq('id', earlier.session_id).is('deleted_at', null).maybeSingle();
+      registerLive = !!session;
+      if (registerLive) {
+        const { count } = await admin.from('attendance_records')
+          .select('id', { count: 'exact', head: true })
+          .eq('session_id', earlier.session_id).is('deleted_at', null)
+          .in('status', ['present', 'extra']);
+        marked = count ?? 0;
+      }
+    }
+    // WHICH COURSE it landed in, named. The fingerprint is unique across the
+    // whole table, so the file may well have gone to a DIFFERENT course from
+    // the one she has open -- and "already imported" without saying where is
+    // exactly the sentence that sends somebody hunting.
+    const { data: earlierOffering } = await admin.from('course_offerings')
+      .select('id, course_id, branch_id').eq('id', earlier.offering_id).maybeSingle();
+    const { data: earlierCourse } = earlierOffering
+      ? await admin.from('courses').select('name').eq('id', earlierOffering.course_id).maybeSingle()
+      : { data: null };
+    const { data: earlierBranch } = earlierOffering
+      ? await admin.from('branches').select('name').eq('id', earlierOffering.branch_id).maybeSingle()
+      : { data: null };
+
+    const alreadyImported = {
+      file_name: earlier.file_name as string,
+      completed_at: earlier.completed_at as string,
+      session_date: earlier.session_date as string,
+      course_name: (earlierCourse?.name as string) ?? '—',
+      branch_name: (earlierBranch?.name as string) ?? '—',
+      same_course: earlier.offering_id === offeringId,
+      marked,
+      register_live: registerLive,
+    };
+
+    await admin.rpc('audit_log_as', {
+      p_actor: actorId,
+      p_action: 'csv_import.already_imported', p_entity_type: 'csv_import', p_entity_id: earlier.id,
+      p_metadata: {
+        file_name: fileName, file_sha256: fileSha256, offering_id: offeringId,
+        session_date: sessionDate, marked, register_live: registerLive,
+      },
+    });
+
+    // A 200 carrying an empty import: there is nothing staged to commit, and
+    // the client reads `already_imported` before anything else.
+    return json({
+      import_id: '', rows: [], dropped_count: 0, dropped_names: [], staff_names: [],
+      counts: { matched: 0, noEmail: 0, possible: 0, ambiguous: 0, unmatched: 0 },
+      meeting_code: meetingCode, session_date: sessionDate, supersedes: null,
+      already_imported: alreadyImported,
+    });
+  }
 
   // A DIFFERENT file for THE SAME MEETING on a day already imported. Not
   // refused -- a corrected export is a real thing and the commit resolves it
   // member by member -- but never silent either: it will REPLACE what its
   // earlier version wrote, and the person deciding has to be told first.
   //
-  // Scoped by meeting code (0042). A course may run several meetings a day,
-  // each with its own members and its own file, and they all land on the one
+  // Scoped to the meeting INSTANCE -- the code AND the created-on timestamp
+  // (0042, narrowed by 0044). A course may run several meetings a day, each
+  // with its own members and its own file, and they all land on the one
   // session for that day. A second meeting's file is not a correction of the
   // first's: it supersedes nothing, and commit_csv_import's override -- keyed
-  // on the same code -- leaves the first meeting's rows exactly as they were.
-  // Only a second file for the SAME code and date replaces anything.
+  // on the same pair -- leaves the other meeting's rows exactly as they were.
+  //
+  // THE CODE ALONE WAS NOT ENOUGH, which is why the timestamp joins it here.
+  // The code is the Meet LINK, so a course that keeps one link writes the same
+  // code on every export and two genuine meetings read as a file and its
+  // correction; a file with no code line at all matched every other code-less
+  // file for that day. The created-on line is the CALL, and a re-export of one
+  // call carries the same one.
+  //
+  // THIS QUERY AND THE OVERRIDE MUST AGREE ON SCOPE. The dialog it feeds says
+  // the register "is replaced by what this file says" -- so asking it on a
+  // wider scope than commit_csv_import overrides on would put a warning about
+  // something that is not going to happen in front of an ordinary second
+  // upload, which is how a person learns to click past the one that matters.
   const alreadyQuery = admin.from('csv_imports')
     .select('id, file_name, completed_at').eq('offering_id', offeringId)
     .eq('session_date', sessionDate).eq('status', 'completed');
-  const { data: already } = await (meetingCode
-      ? alreadyQuery.eq('meeting_code', meetingCode)
-      : alreadyQuery.is('meeting_code', null))
+  const sameCode = meetingCode
+    ? alreadyQuery.eq('meeting_code', meetingCode)
+    : alreadyQuery.is('meeting_code', null);
+  // The literal is sent as the insert below stores it, so both go through the
+  // same timestamptz cast and are compared as instants, never as text.
+  const { data: already } = await (meetingStartedAt
+      ? sameCode.eq('meeting_started_at', meetingStartedAt)
+      : sameCode.is('meeting_started_at', null))
     .order('completed_at', { ascending: false }).limit(1);
   const supersedes = already?.[0]
     ? { file_name: already[0].file_name as string, completed_at: already[0].completed_at as string }

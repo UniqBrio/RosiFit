@@ -24,6 +24,10 @@ import {
   importAsk, askWords, overrideSummary,
   type ImportAsk, type OverrideCounts, type Supersedes,
 } from '../src/data/uploadOverride';
+import {
+  alreadyImportedWords, nothingChanged, noChangeWords, changeSummary,
+  type ImportChanges, type OutcomeWords,
+} from '../src/data/uploadOutcome';
 import { FormDialog } from '../src/components/FormDialog';
 
 /**
@@ -119,6 +123,19 @@ type Outcome = {
    * these three numbers are the check (uploadOverride.ts).
    */
   override: OverrideCounts | null;
+  /**
+   * What this file MOVED, as opposed to what it wrote (0045).
+   *
+   * `imported` above counts the rows the file NAMED, and it is the same
+   * number whether every one of them was new or every one was already
+   * marked — which is exactly why the second upload of a class read like the
+   * first. These four say which: added, updated, already-marked-and-skipped,
+   * and newly-recorded-absent.
+   *
+   * Null when the server does not report them, and treated as "say nothing"
+   * rather than "nothing changed": see nothingChanged().
+   */
+  changes: ImportChanges | null;
 };
 
 /**
@@ -189,6 +206,16 @@ function UploadBody() {
   const [failure, setFailure] = useState<string | null>(null);
   /** what the import did, once it has done it */
   const [outcome, setOutcome] = useState<Outcome | null>(null);
+  /**
+   * THE FILE WAS ALREADY IMPORTED, so nothing ran at all.
+   *
+   * Not a `failure`: the red panel says the upload went wrong, and somebody
+   * who re-sent a file because she was not sure the first one arrived would
+   * read that as "and it still has not". Nothing went wrong here and nothing
+   * needs doing — which is a RESULT, and is shown as one. The words are in
+   * src/data/uploadOutcome.ts so a spec can read them.
+   */
+  const [already, setAlready] = useState<OutcomeWords | null>(null);
   /**
    * THE ONE QUESTION THIS FLOW STILL ASKS, now with two reasons to be asked:
    * a file whose own day is not the day she opened, and a day that already
@@ -323,6 +350,9 @@ function UploadBody() {
    */
   const stage = async (source: NonNullable<typeof file>, day: string) => {
     setFailure(null);
+    // Cleared with the failure, and for the same reason: the last file's
+    // answer must not still be on screen underneath this one's.
+    setAlready(null);
     setPhase('working');
 
     try {
@@ -361,6 +391,26 @@ function UploadBody() {
           // file describes: one person, one session, one day.
           rows: deduped.rows,
         });
+
+        /**
+         * THIS EXACT FILE IS ALREADY IN. Nothing was staged, so there is
+         * nothing to commit and nothing to ask about: what is owed is an
+         * answer to the question that makes somebody upload a file twice,
+         * which is whether the first one worked.
+         *
+         * Ahead of the ask deliberately. Asking her to confirm an override
+         * that cannot happen — the fingerprint is refused by
+         * csv_imports_sha_completed either way — would be a dialog about
+         * nothing.
+         */
+        if (preview.already_imported) {
+          setAlready(alreadyImportedWords(preview.already_imported, {
+            fileName: source.name, course: chosen, label: dayLabel,
+          }));
+          setPhase('done');
+          return;
+        }
+
         staged = {
           day, preview, supersedes: preview.supersedes ?? null,
           duplicates: [...new Set(deduped.duplicates)],
@@ -440,6 +490,10 @@ function UploadBody() {
         // Absent until the migration that returns it is applied, which is why
         // it is read defensively rather than assumed.
         override: result.overridden ?? null,
+        // Same reading, same reason (0045): a server that does not count
+        // changes says nothing about them, and the screen says nothing
+        // either rather than reporting four zeroes as "nothing changed".
+        changes: result.changes ?? null,
       });
       setPhase('done');
     } catch (err) {
@@ -455,6 +509,25 @@ function UploadBody() {
   const warnInk = theme.isDark ? STATUS.awaiting.fgDark : STATUS.awaiting.fgLight;
   const okInk = theme.isDark ? STATUS.present.fgDark : STATUS.present.fgLight;
   const dangerInk = theme.isDark ? STATUS.absent.fgDark : STATUS.absent.fgLight;
+
+  /* -------------------------------------------- did this import move anything
+   *
+   * The same class exported twice is not the same FILE twice: Meet writes a
+   * new export each time, so the fingerprint differs, the import runs, and it
+   * writes a register that already says exactly what it says. Nothing is
+   * duplicated -- every row is an upsert on attendance_unique_live -- but
+   * "12 marked present" was the whole of what the second upload reported, and
+   * it is word for word what the first one reported too.
+   *
+   * These two decide which result the screen shows. `nothingChanged` answers
+   * false when the server did not send the counts at all, so an older project
+   * gets the result it always got rather than a claim nobody measured.
+   */
+  const noChange = nothingChanged(outcome?.changes ?? null, outcome?.override ?? null);
+  const noChangeText = outcome && noChange && outcome.changes
+    ? noChangeWords(outcome.changes, { day: outcome.session_date, course: chosen, label: dayLabel })
+    : null;
+  const changed = outcome && !noChange ? changeSummary(outcome.changes) : null;
 
   /* ----------------------------------------------- what the file says it is
    *
@@ -558,7 +631,7 @@ function UploadBody() {
                       setSession(sn);
                       setTarget({ offering_id: sn.offering_id, course: sn.course,
                         branch: sn.meta.split(' · ')[0] ?? '' });
-                      setFile(null); setOutcome(null); setFailure(null); setPhase('pick');
+                      setFile(null); setOutcome(null); setAlready(null); setFailure(null); setPhase('pick');
                     }}
                     accessibilityRole="button" accessibilityLabel={`${sn.title}. ${sn.meta}`}
                     style={({ pressed }) => ({
@@ -595,7 +668,7 @@ function UploadBody() {
               <Pressable key={t.offering_id} testID={`upload-offering-${t.offering_id}`}
                 onPress={() => {
                   setTarget(t); setSession(null);
-                  setFile(null); setOutcome(null); setFailure(null); setPhase('pick');
+                  setFile(null); setOutcome(null); setAlready(null); setFailure(null); setPhase('pick');
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={`Upload a file for ${t.course} at ${t.branch}`}
@@ -651,7 +724,7 @@ function UploadBody() {
                 session she is trying to get away from. */}
             <Pressable testID="upload-change-session" onPress={() => {
                 setSession(null); setTarget(null); setAsk(null);
-                setFile(null); setOutcome(null); setFailure(null); setPhase('choose');
+                setFile(null); setOutcome(null); setAlready(null); setFailure(null); setPhase('choose');
                 router.replace('/upload');
               }}
               accessibilityRole="button" accessibilityLabel="Choose a different session"
@@ -796,13 +869,24 @@ function UploadBody() {
           }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
               <Icon name="check_circle" size={20} color={okInk} />
-              <Text style={{ flex: 1, fontSize: 13.5, fontWeight: '800', color: okInk }}>
-                {`Imported · ${dayLabel(outcome.session_date)}`}
+              {/* THE HEADING IS THE ANSWER. "Imported · Mon 31 Aug" over a
+                  register this file did not move is true and useless: it is
+                  what the first upload said, so it cannot tell her this one
+                  was the second. The word carries it, never the colour --
+                  nothing here went wrong (CP-010). */}
+              <Text testID="upload-done-title"
+                style={{ flex: 1, fontSize: 13.5, fontWeight: '800', color: okInk }}>
+                {`${noChange ? 'Nothing to update' : 'Imported'} · ${dayLabel(outcome.session_date)}`}
               </Text>
             </View>
             <Muted style={{ marginTop: 4, color: theme.fg }}>
-              {`${outcome.imported} marked present on the ${chosen} register.`}
+              {noChangeText
+                ? noChangeText.lines[0]
+                : `${outcome.imported} marked present on the ${chosen} register.`}
             </Muted>
+            {noChangeText ? (
+              <Muted style={{ marginTop: SPACE.sm }}>{noChangeText.note}</Muted>
+            ) : null}
           </View>
 
           {/* THE TWO COUNTS, side by side, each saying where that group is
@@ -817,6 +901,15 @@ function UploadBody() {
               word="No email" ink={dangerInk}
               note="Marked present, listed under No email on the course." />
           </View>
+
+          {/* ADDED, UPDATED, SKIPPED -- the requester's three words, over a
+              file that is part new and part already there. The two tiles
+              above say who landed; this says which of them the register did
+              not already have, which is the half that was missing. */}
+          {changed ? (
+            <Note testID="upload-changes" ink={theme.accentInk} icon="list"
+              title="What this file changed" body={changed} />
+          ) : null}
 
           {outcome.new_members > 0 ? (
             <Muted style={{ marginTop: SPACE.md }}>
@@ -873,7 +966,46 @@ function UploadBody() {
             style={{ marginTop: SPACE.sm }}
             onPress={() => {
               setAsk(null);
-              setFile(null); setOutcome(null); setFailure(null); setPhase('pick');
+              setFile(null); setOutcome(null); setAlready(null); setFailure(null); setPhase('pick');
+            }} />
+        </View>
+      ) : null}
+
+      {/* -------------------------------------------- already imported, exactly
+          The fingerprint matched a completed import, so csv-import staged
+          nothing and there is nothing to commit. A RESULT, not a failure:
+          the file is in, the register says so, and the only thing owed is
+          that sentence. The words are in src/data/uploadOutcome.ts. */}
+      {phase === 'done' && !outcome && already ? (
+        <View testID="upload-already">
+          <View style={{
+            padding: SPACE.xl, borderRadius: RADIUS.lg,
+            backgroundColor: statusSurface(theme.accentInk).bg,
+            borderWidth: 1, borderColor: statusSurface(theme.accentInk).border,
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+              <Icon name="history" size={20} color={theme.accentInk} />
+              {/* the word, never the colour alone (CP-010) */}
+              <Text testID="upload-already-title"
+                style={{ flex: 1, fontSize: 13.5, fontWeight: '800', color: theme.accentInk }}>
+                {already.title}
+              </Text>
+            </View>
+            {already.lines.map((line, i) => (
+              <Body key={line} style={{ marginTop: i === 0 ? SPACE.md : SPACE.sm, lineHeight: 20 }}>
+                {line}
+              </Body>
+            ))}
+            <Muted style={{ marginTop: SPACE.md }}>{already.note}</Muted>
+          </View>
+
+          <Button testID="upload-already-close" label="Done" style={{ marginTop: SPACE.lg }}
+            onPress={() => router.back()} />
+          <Button testID="upload-already-another" label="Upload another file" variant="secondary"
+            style={{ marginTop: SPACE.sm }}
+            onPress={() => {
+              setAsk(null);
+              setFile(null); setOutcome(null); setAlready(null); setFailure(null); setPhase('pick');
             }} />
         </View>
       ) : null}
@@ -957,6 +1089,11 @@ function fixtureOutcome(day: string, source: { text: string }, supersedes: Super
     // The fixtures describe a register being replaced; they do not invent
     // numbers for what the replacing moved, because only the commit knows.
     override: null,
+    // A walkthrough is always a FIRST import of these five rows: every name
+    // it lands is new to the register. Saying so keeps the fixture result
+    // honest -- and keeps a "nothing to update" panel, which is about a
+    // second upload, out of a walkthrough that has only ever had one.
+    changes: { added: withEmail + noEmail, updated: 0, unchanged: 0, absent_added: 0 },
   };
 }
 

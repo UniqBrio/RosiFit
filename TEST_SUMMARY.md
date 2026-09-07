@@ -1,3 +1,49 @@
+<!-- MULTIPLE CSV FILES FOR ONE COURSE ON ONE DAY
+     (requests/2026-09-07-multiple-files-same-course-same-day.md).
+     Same four FAILs and one BLOCKED this repo has carried since 02-Sep-2026,
+     every one a MISSING RUNNER, none caused by this change: G1/G2/G3 want
+     design/tokens.json (TD-001..TD-003), G6 wants eslint (TD-004), G8 wants
+     test:functional (TD-006). Substitute rungs: test:unit 937/937,
+     2840/2840 contrast, 75/75 icons, audit:testids and audit:colors with no
+     new violations.
+
+     DATABASE: every migration replayed from scratch against a fresh
+     PostgreSQL 16.14 and the whole spec suite run against it, twice -- once
+     with this change and once with it stripped out -- and diffed. 548
+     assertions pass. Eleven specs fail byte-identically in BOTH runs and
+     belong to other sessions' work in flight in this tree. `npm run
+     typecheck` is red on src/data/joined.test.ts:109, also another
+     session's. -->
+
+FAIL-FIRST: supabase/tests/34_multiple_files_same_day.sql - 23 assertions, new
+file. Replayed on a fresh PostgreSQL 16.14 against a migration set with 0044's
+three instance clauses stripped out (0042 semantics restored inside 0045):
+assertion 3 fails -- "a second call on the same meeting link reverts nobody --
+got 2 want 0". Those 2 are the morning class's attendees, put back to absent by
+the evening class's file on the same Meet link, which is the defect itself.
+23/23 on the changed tree. The suite was run twice, with and without the
+change, and diffed: exactly one spec's result moves, and it is this one.
+Evidence: `.evidence/multiple-files-same-course-same-day-fail-first.txt`.
+
+FAIL-FIRST: src/components/multipleFilesSameDay.test.ts - 16 cases, new file.
+12 of 16 observed failing against a reconstructed pre-change tree (HEAD's
+csv-import and app/course/[id].tsx, with 0042 standing in for 0044): cases
+1-5, 7, 8 and 11-15. The 4 that pass in BOTH trees do so on purpose -- 6 holds
+the meeting-code scoping 0042 already had, 9 the file-fingerprint guard, 10
+that `supersedes` leaves the preview as information rather than a refusal, and
+16 that an uploaded day keeps its status icon. Each is something this change
+must NOT break, so passing before and after is the point. 16/16 on the changed
+tree. Case 15 also depends on a peer session's `&& d.canUpload`, absent at
+HEAD.
+
+NOT OBSERVED FAILING: src/components/memberInactiveFromField.test.ts,
+src/data/inactiveFrom.test.ts, src/data/joined.test.ts,
+src/data/memberJoinedOn.test.ts, src/data/uploadOutcome.test.ts,
+src/data/uploadWindow.test.ts - written by other sessions working in this
+shared tree and swept into this commit at the owner's request. Their pre-fix
+states were not reconstructed here, and whatever evidence their authors hold
+is not mine to report as if I had seen it.
+
 
 <!-- AWAITING UPLOAD BUTTON ON EACH DAY (requests/2026-09-07-awaiting-upload-button-on-each-day.md).
      Same four FAILs and one BLOCKED this repo has carried since 02-Sep-2026, every
@@ -196,6 +242,46 @@ NOT OBSERVED FAILING: src/components/reportsPeriodFilter.test.ts,
      spec passes and that each file maps to a request file in requests/. It
      did NOT design, review or hand-test the six features it did not build.
      The commit messages say which session's work each one is. -->
+
+## Gate run - 2026-09-07 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
 
 ## Gate run - 2026-09-07 - VERDICT: FAIL
 

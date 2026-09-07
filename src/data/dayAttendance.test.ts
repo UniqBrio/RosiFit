@@ -18,13 +18,15 @@ const TUE = '2026-09-01';   // deliberately not
 const WED = '2026-09-02';
 const FUTURE = '2026-09-30';
 
-const member = (over: Partial<Member> = {}): Pick<Member, 'id' | 'name' | 'course' | 'weekdays'> => ({
-  id: 'm1', name: 'Anitha Rajesh', course: 'Prenatal Flow', weekdays: null, ...over,
+const member = (over: Partial<Member> = {}):
+  Pick<Member, 'id' | 'name' | 'course' | 'course_id' | 'weekdays'> => ({
+  id: 'm1', name: 'Anitha Rajesh', course: 'Prenatal Flow', course_id: 'c1',
+  weekdays: null, ...over,
 });
 
 const row = (over: Partial<AttendanceRow> = {}): AttendanceRow => ({
   id: 'a1', member_id: 'm1', member: 'Anitha Rajesh',
-  course: 'Prenatal Flow', branch: 'Coimbatore',
+  course: 'Prenatal Flow', course_id: 'c1', branch: 'Coimbatore',
   date: MON, time: '06:00', status: 'present', expected: true, minutes: 45, ...over,
 });
 
@@ -115,8 +117,8 @@ test('a row for another day is never read as this day', () => {
 
 test('with a row in two courses for one date, hers is the one that counts', () => {
   const d = ask({ rows: [
-    row({ id: 'a2', course: 'Postnatal Core', status: 'absent' }),
-    row({ id: 'a3', course: 'Prenatal Flow', status: 'present' }),
+    row({ id: 'a2', course: 'Postnatal Core', course_id: 'c2', status: 'absent' }),
+    row({ id: 'a3', course: 'Prenatal Flow', course_id: 'c1', status: 'present' }),
   ] });
   assert.equal(d.state, 'present');
 });

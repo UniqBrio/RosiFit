@@ -65,22 +65,52 @@ export function formatTime(hhmm: string): string {
   return `${hr}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
 }
 
-function PickerRow({ label, display, placeholder, icon, hint, error, onPress, testID, required, anchorRef }:
+function PickerRow({ label, display, placeholder, icon, hint, error, onPress, testID, required, readOnly, anchorRef }:
   { label: string; display: string; placeholder: string; icon: string;
     hint?: string; error?: string; onPress: () => void; testID: string;
     required?: boolean;
+    /** A value this form SHOWS and does not offer to change. It is drawn as
+     *  a row, not as a control: no press, no arrow, a padlock, and the
+     *  quieter surface -- so the difference from the field above it is read
+     *  before it is discovered by tapping. Colour carries none of that
+     *  (guardrail 3): the padlock and the hint under the row do. */
+    readOnly?: boolean;
     /** The field the calendar hangs under. It is the ROW that is measured,
      *  not the label above it or the hint below, because the panel opens
      *  against the control the person just pressed. */
     anchorRef?: React.Ref<View> }) {
   const { theme } = useTheme();
   const filled = display.length > 0;
+  const box = {
+    flexDirection: 'row' as const, alignItems: 'center' as const, gap: SPACE.md,
+    minHeight: TAP_MIN + 8, paddingHorizontal: SPACE.lg,
+    borderWidth: 1, borderRadius: RADIUS.md,
+    borderColor: error ? theme.danger : theme.lineStrong,
+  };
+  const value = (
+    <Text style={{
+      flex: 1, fontSize: 15,
+      fontWeight: filled ? '700' : '400',
+      color: filled ? theme.fgStrong : theme.muted,
+    }}>{filled ? display : placeholder}</Text>
+  );
   return (
     <View style={{ marginBottom: SPACE.md }}>
       <Text style={{
         fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase',
         color: theme.muted, marginBottom: 6,
       }}>{label}{required ? <RequiredMark /> : null}</Text>
+      {readOnly ? (
+        <View
+          testID={testID}
+          accessibilityRole="text"
+          accessibilityLabel={`${label}. ${filled ? display : placeholder}. Shown, not editable`}
+          style={{ ...box, backgroundColor: theme.surface2 }}>
+          <Icon name={icon} size={19} color={theme.accentInk} />
+          {value}
+          <Icon name="lock" size={17} color={theme.muted} />
+        </View>
+      ) : (
       <Pressable
         ref={anchorRef}
         onPress={onPress}
@@ -88,21 +118,15 @@ function PickerRow({ label, display, placeholder, icon, hint, error, onPress, te
         accessibilityRole="button"
         accessibilityLabel={`${label}${required ? ', required' : ''}. ${filled ? display : 'Nothing chosen'}. Opens a picker`}
         style={({ pressed }) => ({
-          flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
-          minHeight: TAP_MIN + 8, paddingHorizontal: SPACE.lg,
-          borderWidth: 1, borderRadius: RADIUS.md,
-          borderColor: error ? theme.danger : theme.lineStrong,
+          ...box,
           backgroundColor: theme.surface,
           opacity: pressed ? 0.75 : 1,
         })}>
         <Icon name={icon} size={19} color={theme.accentInk} />
-        <Text style={{
-          flex: 1, fontSize: 15,
-          fontWeight: filled ? '700' : '400',
-          color: filled ? theme.fgStrong : theme.muted,
-        }}>{filled ? display : placeholder}</Text>
+        {value}
         <Icon name="arrow_drop_down" size={20} color={theme.muted} />
       </Pressable>
+      )}
       {error
         ? <Text accessibilityLiveRegion="polite" style={{ fontSize: 12, color: theme.danger, marginTop: 5 }}>{error}</Text>
         : hint ? <Text style={{ fontSize: 12, color: theme.muted, marginTop: 5, lineHeight: 17 }}>{hint}</Text> : null}
@@ -322,10 +346,15 @@ const PANEL_H = 430;
  * `yyyy-mm-dd`; '' means nothing is chosen yet, which is a real state and
  * not the same as today.
  */
-export function DateField({ label, value, onChange, placeholder = 'Choose a date', hint, error, min, max, testID, required }:
+export function DateField({ label, value, onChange, placeholder = 'Choose a date', hint, error, min, max, testID, required, readOnly }:
   { label: string; value: string; onChange: (value: string) => void;
     placeholder?: string; hint?: string; error?: string;
     min?: string; max?: string; testID: string;
+    /** Shows the date and offers no way to change it -- for a date the form
+     *  DISPLAYS but has no write path for (a member's joining date, which
+     *  update_member takes no parameter for). A picker that accepts an edit
+     *  nothing saves is the worse of the two answers. */
+    readOnly?: boolean;
     /** Marks the date mandatory. TimeField deliberately has no such prop:
      *  no time field in this app blocks a save, and a prop nothing passes is
      *  a promise nothing keeps. */
@@ -351,6 +380,16 @@ export function DateField({ label, value, onChange, placeholder = 'Choose a date
       <Text style={{ fontSize: 13.5, fontWeight: '700', color: theme.fg }}>{text}</Text>
     </Pressable>
   );
+
+  // No panel is rendered at all when the date is only shown: the calendar
+  // that cannot be opened is not built, and `onChange` is never called.
+  if (readOnly) {
+    return (
+      <PickerRow label={label} display={formatDate(value)} placeholder={placeholder}
+        icon="calendar_today" hint={hint} error={error} required={required}
+        readOnly onPress={() => {}} testID={testID} />
+    );
+  }
 
   return (
     <>

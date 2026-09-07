@@ -12,15 +12,18 @@ import assert from 'node:assert/strict';
 import {
   fillTokens, unknownTokens, MESSAGE_TOKENS, EVERYDAY_TOKENS, SUBJECT_TOKENS, insertToken,
   wordingProblem, SUBJECT_MAX, BODY_MIN, courseNameProblem, COURSE_NAME_MAX,
+  previewContext, SAMPLE_MEMBER, SAMPLE_ACADEMY,
 } from './message';
 import type { Member } from './mock';
+import { TEMPLATES } from './mock';
+import { currentWeek } from './period';
 
 const member = (over: Partial<Member> = {}): Member => ({
   id: 'm', code: '', name: 'Divya Ramesh',
-  course: 'Prenatal Flow', branch: 'Coimbatore',
+  course: 'Prenatal Flow', course_id: 'c1', branch: 'Coimbatore',
   aliases: [], emails: [{ address: 'a@b.com', primary: true }],
   weekdays: null,   status: 'active',
-  expected: 6, attended: 3, missed: 3, streak: 2, last: '—', joined: 'Mar 2026', ...over,
+  expected: 6, attended: 3, missed: 3, streak: 2, last: '—', joinedOn: '2026-03-01', joined: 'Mar 2026', ...over,
 });
 const ctx = (over: Partial<Member> = {}) => ({
   member: member(over), courseName: 'Prenatal Flow', branchName: 'Coimbatore',
@@ -349,4 +352,138 @@ test('every token the subject row hides is still reachable and still fills', () 
     (acc, t) => insertToken(acc.text, t.token, -1, -1), { text: '', caret: 0 });
   assert.deepEqual(unknownTokens(all.text), []);
   assert.ok(!fillTokens(all.text, ctx()).includes('{{'));
+});
+
+/**
+ * The preview shows VALUES, never tokens — appended 07-Sep-2026.
+ *
+ * Reported: the Edit-email-template preview "shows variable names/placeholders
+ * instead of their values". Two paths produced that, and both were the same
+ * hole in one place — the form built its own context inline, so it could only
+ * offer one when it happened to hold every part of one:
+ *
+ *   1. NO CONTEXT AT ALL. `previewCtx` was null whenever the register had no
+ *      member to sample, which is the state EVERY course is in at the moment
+ *      it is added. The panel then rendered a sentence about having nothing to
+ *      show, directly under a box reading "Hello {{first_name}},". The braces
+ *      were the only rendering of the wording on the screen.
+ *   2. THE TEMPLATE PICKER's line, which was never filled at all — live
+ *      templates take it from the first line of the body (fetchTemplates),
+ *      which is where the tokens are thickest, so choosing between templates
+ *      meant reading their source.
+ *
+ * `previewContext` closes both by having no null case: real figures where the
+ * screen holds them, the sample where it does not. These specs pin that it
+ * cannot regress to a partial context — the failure mode is not "wrong value",
+ * it is "a brace on the screen", so most of them assert on `{{`.
+ */
+test('previewContext given NOTHING still resolves every documented token', () => {
+  const all = MESSAGE_TOKENS.map(t => t.token).join(' ');
+  const out = fillTokens(all, previewContext());
+  assert.ok(!out.includes('{{'), out);
+  assert.deepEqual(unknownTokens(out), []);
+});
+
+test('no token resolves to blank, an em dash, or the word undefined', () => {
+  // Resolving is not the whole job. "Hello ," clears the brace check and is
+  // the same defect wearing different clothes.
+  const c = previewContext();
+  for (const t of MESSAGE_TOKENS) {
+    const out = fillTokens(t.token, c);
+    assert.ok(out.trim().length > 0, `${t.token} filled blank`);
+    assert.notEqual(out, '—', `${t.token} filled with an em dash`);
+    assert.ok(!/undefined|null|NaN/.test(out), `${t.token} filled with ${out}`);
+  }
+});
+
+test('the sample figures are all DIFFERENT, so each token is identifiable', () => {
+  // The point of a preview is telling which token produced which number. A
+  // sample of 0, 0, 0 resolves everything correctly and demonstrates nothing.
+  const figures = [
+    '{{expected_sessions}}', '{{attended_sessions}}',
+    '{{missed_sessions}}', '{{attendance_pct}}',
+  ].map(t => fillTokens(t, previewContext()));
+  assert.equal(new Set(figures).size, figures.length, figures.join(' · '));
+});
+
+test('the sample attendance is a real percentage, not the nothing-expected dash', () => {
+  // She must have been DUE at something, or {{attendance_pct}} previews as
+  // '—' and the one token whose formatting has a rule is never demonstrated.
+  assert.ok(SAMPLE_MEMBER.expected > 0);
+  assert.equal(fillTokens('{{attendance_pct}}', previewContext()), '33%');
+});
+
+test('the sample name splits, so first and full name differ in the preview', () => {
+  const c = previewContext();
+  assert.notEqual(fillTokens('{{first_name}}', c), fillTokens('{{member_name}}', c));
+});
+
+test('a REAL member is preferred over the sample', () => {
+  // The sample is a fallback and never a substitute: a token that resolves
+  // for a fixture and not for her is what the preview exists to catch.
+  const her = member({ name: 'Aarthi Venkat', expected: 4, attended: 4 });
+  const c = previewContext({ member: her });
+  assert.equal(fillTokens('{{member_name}} {{attendance_pct}}', c), 'Aarthi Venkat 100%');
+});
+
+test('course and branch fall back to the PREVIEW MEMBER’s own, not to a dash', () => {
+  // What the Add-a-course form holds before a name is typed and a branch
+  // picked. Both were rendering as '' and '—' into the middle of a sentence.
+  const c = previewContext({ member: member({ course: 'Postnatal Core', branch: 'Madurai' }),
+    courseName: '', branchName: '—' });
+  assert.equal(fillTokens('{{course_name}} at {{branch_name}}', c), 'Postnatal Core at Madurai');
+});
+
+test('a course name that HAS been typed wins over the member’s course', () => {
+  const c = previewContext({ member: member({ course: 'Postnatal Core' }), courseName: 'Aqua Natal' });
+  assert.equal(fillTokens('{{course_name}}', c), 'Aqua Natal');
+});
+
+test('a still-loading academy name falls back rather than blanking the sign-off', () => {
+  assert.equal(fillTokens('{{academy_name}}', previewContext({ academyName: null })), SAMPLE_ACADEMY);
+  assert.equal(fillTokens('{{academy_name}}', previewContext({ academyName: 'RosiFit Madurai' })),
+    'RosiFit Madurai');
+});
+
+test('the period is THIS WEEK, in the ISO shape the sender is handed', () => {
+  // app/send/index.tsx passes currentWeek().from/.to straight to the Edge
+  // Function, which substitutes them verbatim — so this is what a send made
+  // today actually puts in the email. It used to read "the period start",
+  // which is prose standing where a date belongs.
+  const wednesday = new Date(2026, 8, 9);
+  const week = currentWeek(wednesday);
+  assert.equal(fillTokens('{{period_from}} to {{period_to}}', previewContext({}, wednesday)),
+    `${week.from} to ${week.to}`);
+  assert.match(fillTokens('{{period_from}}', previewContext({}, wednesday)), /^\d{4}-\d{2}-\d{2}$/);
+});
+
+test('a period the screen DOES hold is kept', () => {
+  const c = previewContext({ periodFrom: '2026-08-18', periodTo: '2026-08-24' });
+  assert.equal(fillTokens('{{period_from}}', c), '2026-08-18');
+});
+
+test('every seeded template previews clean — subject, body AND picker line', () => {
+  // The picker line is a preview too. Live templates build it from the first
+  // line of the body (fetchTemplates), which is where the tokens are thickest.
+  const c = previewContext();
+  for (const t of TEMPLATES) {
+    for (const [what, text] of [['subject', t.subject], ['body', t.body], ['preview', t.preview]]) {
+      assert.deepEqual(unknownTokens(text), [], `${t.name} ${what} has a stray token`);
+      assert.ok(!fillTokens(text, c).includes('{{'), `${t.name} ${what} previewed a brace`);
+    }
+  }
+});
+
+test('filling stays a ONE-pass substitution through previewContext', () => {
+  // The sample must not reopen the hole the single-pass fill closed: a member
+  // called "{{branch_name}}" comes out as her name, never as the branch.
+  const c = previewContext({ member: member({ name: '{{branch_name}} Kumar' }) });
+  assert.equal(fillTokens('{{first_name}}', c), '{{branch_name}}');
+});
+
+test('the sample is a stand-in and says so — it is on no course row', () => {
+  // A sample that carried a real course_id could be handed to a query and
+  // quietly stand for somebody. It cannot: it belongs to no row.
+  assert.equal(SAMPLE_MEMBER.course_id, null);
+  assert.equal(SAMPLE_MEMBER.id, 'sample');
 });

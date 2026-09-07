@@ -1,5 +1,109 @@
 # Changelog
 
+## Unreleased — A member can be marked inactive from a date, not just from now
+
+**A member is active today and leaving at the end of next month.** The register had two ways
+to hold that and both were wrong: leave her active and remember to come back on the day, or
+mark her inactive now and stop writing to her five weeks early.
+
+Inactive now carries a date. On her record — Edit member, the form the course roster opens —
+picking **Inactive** shows **Inactive from**, filled in with today so the ordinary case still
+takes one tap, and it accepts any day from the day she joined onward. She stays in the
+follow-up rule right up to the day before, drops out on the day, and nobody has to be there
+to press anything. Picking **Active** again takes the date off.
+
+**It is a date her follow-up stops, not a date she leaves.** Her enrolment is open, the
+classes after that date still expect her, and every attendance record she has stays exactly
+where it is — the same promise marking somebody inactive has always made, now with a day on
+it. The Edit form and the roster confirmation both say so before anything is saved.
+
+**Her status now answers for the day you are looking at.** Step the course roster back three
+weeks and a member who left last Tuesday reads as she was that week. A departure still to
+come is written on her card — *Inactive from 1 October 2026* — under a pill that truthfully
+reads Active, so it is never a surprise on the day.
+
+
+## Unreleased — A new course starts empty, even when it carries a deleted course's name
+
+**Delete a course, add another with the same name, and its card opened stating the old
+course's members.** *2 members · 1 with email · 1 without*, on a course nobody had been
+enrolled in yet — and tapping through showed those members by name, with their addresses,
+and drafted this week's follow-up to them. The counts were not stale numbers left on
+screen; they were a live answer to the wrong question.
+
+The question the card asked was *"which members are in a course called this"*, and a name is
+not an identity. The academy is allowed to reuse one — only the names of courses that
+currently exist have to be unique — so the moment the new course was saved, every member of
+the deleted one answered to it. Every screen that gathers a course's people asked the same
+way: the card, the roster behind it, the members list opened from it, the week strip, and
+the send draft.
+
+They now ask by the course's identity, which is what a member's enrolment actually points
+at. A member deleted out of a course is enrolled at nothing until somebody enrols her
+again, and a course created afterwards cannot claim her — not because her record was
+cleaned up in time, but because she was never pointing at it.
+
+**The deletion tells the member lists as well as the course list.** Ending forty enrolments
+is a change to the register, and it used to be announced only as a change to the courses.
+A screen already open went on reading the members it had loaded a minute earlier — the
+deleted course's roster, held in memory, ready for the next course of that name.
+
+Nothing changed in the database: `delete_course` already ended enrolments and kept every
+completed session and attendance record, which is the promise its confirmation makes. What
+changed is that the app now reads those kept records by the course they belong to rather
+than by the name they were filed under, so a deleted course's history stays readable
+without turning up on its successor's screen.
+
+## Unreleased — The message preview shows what she will read, not the words that build it
+
+**The preview under the course wording no longer prints `{{first_name}}`.** It prints Divya.
+That was always the intention and it worked — for an academy that already had somebody enrolled
+on the course being edited. Every course is added before it has anybody on it, so on the one
+screen where this wording is written, the preview panel usually said *"No member is enrolled
+yet, so there are no real figures to show this against"* and showed nothing, directly beneath a
+box reading *Hello {{first_name}},*. The braces were the only rendering of the message on the
+screen, so they read as the answer.
+
+There is now always a preview. Where the course has a real member, it is still hers, and the
+panel still says whose figures these are — that claim is what makes it worth trusting. Where it
+has nobody, the panel is headed *Preview · sample values*, fills in stand-in figures chosen so
+that no two are the same number (three due, one made, two missed, 33%, so it is clear which
+detail produced which figure), and says underneath that each member receives her own.
+
+**The template picker's second line is filled in too.** Choosing between *Gentle check-in* and
+*Long absence* meant reading their source: the line under each name is taken from the first line
+of that template's message, which is exactly where the details are thickest.
+
+And the two dates read as dates. The period used to fill in as *"the period start"* and *"the
+period end"* — words standing where a date belongs. It is now this week's, in the same form the
+send itself uses.
+
+**Nothing changed in the wording you edit.** The boxes still hold `{{first_name}}` and the chips
+still insert it; only the preview resolves. What is sent is unchanged.
+
+## Unreleased — A member is only shown on the days she was actually a member
+
+**A student added on 7 September no longer appears in attendance for the 6th.** She used to:
+the course roster for any past day listed her with a reading beside her name — *Yet to mark* —
+for a class that ran before she was on the register, and a report for last month counted her as
+a member with nothing attended. She now appears from her joining day onward, and on that day
+itself.
+
+The academy's records always held the date; the app read it, formatted it into the *joined Mar
+2026* line under her name, and kept nothing it could compare. So every screen that is about a
+date — a day's attendance, a period's figures — was showing every member whatever date it
+claimed to be about.
+
+**She is not hidden from the course.** The Members tab, the search, the course's own member
+count and every send list are unchanged: none of them is about a date. Only the day-scoped
+roster narrows, and when it does it says so underneath — *"1 member joined after Sun 6 Sep 2026
+and is not listed for it. She is still on the course."* — rather than letting the count change
+with nothing to explain it. A member whose record carries no joining date at all is never
+hidden by this.
+
+Offline demo data was telling the same untruth one layer down, generating weeks of attendance
+for a member added that morning. It no longer does.
+
 ## Unreleased — The course header stops eating half the screen, and four controls become addressable
 
 **The course page no longer opens on a wall of purple.** Its header — the course name, the

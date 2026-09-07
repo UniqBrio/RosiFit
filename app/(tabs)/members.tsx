@@ -42,20 +42,30 @@ export default function Members() {
   /**
    * The roster of ONE course, when the chevron on a course card opened this.
    *
-   * Scoped by NAME rather than by id, because that is the only key the member
-   * rows carry -- Member.course is the course's name, and the follow-up
-   * derivation joins on it (guardrail 1: one member source). courseId still
-   * travels so "Add" enrols into the right course rather than asking again.
+   * TWO KEYS, DELIBERATELY, AND THEY DO DIFFERENT JOBS.
    *
-   * Resolved against the academy's OWN course list rather than trusted: the
-   * name arrives in a URL, and this screen speaks it as a heading. See
+   * `courseName` is what the screen SAYS -- and it arrives in a URL, so it is
+   * resolved against the academy's own course list rather than trusted; see
    * rosterScope in src/data/course.ts for what that would otherwise let a
    * link put in the app's mouth.
+   *
+   * `courseId` is what the screen MATCHES on. It used to travel only so
+   * "Add" enrolled into the right course, while the roster itself was
+   * gathered by name -- and a name is reusable. A course deleted and
+   * re-created under the same name opened this roster on the deleted
+   * course's members: their names, their addresses, and a remove button
+   * beside each. Members carry `course_id` now (src/data/mock.ts), so the
+   * roster joins on the thing the enrolment actually points at. The name
+   * remains the fallback for a link kept from before that field existed.
    */
   // slice(1): the option list is headed by the "All courses" sentinel, and a
   // link asking for a course by that name would otherwise resolve to it --
   // an empty roster under a heading naming a course nobody teaches.
   const scopedTo = rosterScope((filters.data?.courses ?? []).slice(1), courseName);
+  /** True for a member this roster is scoped TO -- by id where the link
+   *  carries one, by name only where it does not. */
+  const inCourse = (m: Member) =>
+    courseId ? m.course_id === courseId : m.course === scopedTo;
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [confirmRemove, setConfirmRemove] = useState<Member | null>(null);
@@ -93,8 +103,9 @@ export default function Members() {
   /** Everyone in the course, before the search box and the chips narrow it --
    *  so the subtitle counts the roster, not the current filter. */
   const scoped = useMemo(
-    () => (scopedTo ? members.filter(m => m.course === scopedTo) : members),
-    [members, scopedTo]);
+    () => (scopedTo ? members.filter(inCourse) : members),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [members, scopedTo, courseId]);
 
   const list = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -111,7 +122,7 @@ export default function Members() {
       // "No email" means that course's members with no email, not the
       // academy's. A chip that quietly widened back to everyone would be a
       // list claiming to be a roster and showing strangers.
-      const inScope = !scopedTo || m.course === scopedTo;
+      const inScope = !scopedTo || inCourse(m);
       const passes =
         filter === 'all' ? true
         : filter === 'nomail' ? !hasEmail(m)
@@ -120,7 +131,8 @@ export default function Members() {
         : m.branch === 'Coimbatore';
       return inScope && matches && passes;
     });
-  }, [query, filter, members, rules, scopedTo]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, filter, members, rules, scopedTo, courseId]);
 
   const chips: { key: Filter; label: string; icon: string }[] = [
     { key: 'all',        label: 'All',             icon: 'group' },

@@ -392,3 +392,74 @@ test('every sample row carries an address — the template cannot teach a row it
   });
   assert.deepEqual(v.map(x => x.state), ['ready', 'ready']);
 });
+
+// ------------------------------------------- the retired column is retired
+
+/**
+ * The Joined On column was retired, but the instructions sheet kept an entry
+ * for it in the "Columns" list -- row 15 of Sheet 1 for a one-branch academy,
+ * sitting between Display Names and the samples as though it were a column
+ * the file still has. It reads as a column because the list it is in is
+ * titled "Columns"; the fact it carried belongs where the import screen puts
+ * it, in the prose above, not in a list of cells to fill in.
+ *
+ * Both halves are asserted, because either alone regresses the other: no cell
+ * anywhere in the workbook names the retired column, AND the fact it used to
+ * carry is still stated.
+ */
+test('the retired Joined On column is named nowhere in the template', async () => {
+  for (const openedFrom of [{ course: 'Yoga Flow', branch: 'Velachery' }, null]) {
+    for (const offer of [offerings, [{ course: 'Yoga Flow', branch: 'Velachery' }]]) {
+      const bytes = await buildMemberTemplate({ academy: 'RosiFit Academy', offerings: offer, openedFrom });
+      const wb = new (await excel()).Workbook();
+      await wb.xlsx.load(bytes);
+      const where = `${offer.length} offering(s), ${openedFrom ? 'opened from a course' : 'no course'}`;
+      wb.eachSheet(ws => {
+        ws.eachRow(row => {
+          row.eachCell(cell => {
+            assert.ok(!/joined\s*on/i.test(String(cell.value ?? '')),
+              `${ws.name} row ${row.number} still names Joined On (${where})`);
+          });
+        });
+      });
+    }
+  }
+});
+
+test('the Columns list on the instructions sheet is exactly the columns the file has', async () => {
+  for (const offer of [offerings, [{ course: 'Yoga Flow', branch: 'Velachery' }]]) {
+    const bytes = await buildMemberTemplate({ academy: 'RosiFit Academy', offerings: offer, openedFrom: null });
+    const wb = new (await excel()).Workbook();
+    await wb.xlsx.load(bytes);
+    const info = wb.getWorksheet(SHEET_INSTRUCTIONS)!;
+
+    // the rows between the "Columns" heading and the blank row after it
+    let heading = 0;
+    info.eachRow((r, n) => { if (!heading && String(r.getCell(1).value ?? '') === 'Columns') heading = n; });
+    assert.ok(heading, 'the instructions sheet has a Columns heading');
+    const listed: string[] = [];
+    for (let n = heading + 1; n <= info.rowCount; n++) {
+      const name = String(info.getRow(n).getCell(1).value ?? '').trim();
+      if (!name) break;
+      listed.push(name);
+    }
+    assert.deepEqual(listed, [...templateColumns(offer)],
+      'every row under "Columns" is a column of this file, and every column is there');
+  }
+});
+
+test('the instructions still say a member joins today, as prose and not as a column', async () => {
+  const bytes = await buildMemberTemplate(opts);
+  const wb = new (await excel()).Workbook();
+  await wb.xlsx.load(bytes);
+  const info = wb.getWorksheet(SHEET_INSTRUCTIONS)!;
+  let said = 0;
+  info.eachRow(r => {
+    if (/joins today/i.test(String(r.getCell(2).value ?? ''))) {
+      said++;
+      assert.equal(String(r.getCell(1).value ?? ''), '',
+        'the joining-date line is prose in the how-to block, so its first cell is empty');
+    }
+  });
+  assert.equal(said, 1, 'stated once');
+});

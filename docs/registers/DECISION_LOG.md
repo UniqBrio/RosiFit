@@ -49,6 +49,8 @@
 
 | 036 | [The upload lives on the day; the message does not come back](../decisions/029-the-upload-lives-on-the-day.md) | Accepted | 07-Sep-2026 | third round on the course week strip. Puts a labelled **Awaiting upload** button on each awaiting date card, opening `/upload` with that day's `date` — the dated push round 1 wrote and 0024 reads — and brings back nothing under the strip. States what round 2 missed: the day card was a message AND a button, and only the message was the complaint. Rejects restoring the card (the exact thing the requester removed), a button beside the roster caption (one day at a time, and not on the day), and overloading the date press (tapping a day SELECTS it, ADR 030). The card becomes a frame holding two sibling controls, never a button inside a button; a phone gets the cloud alone with the word in the legend |
 
+| 037 | [A member's status carries a DATE, and dates follow-up only](../decisions/030-a-status-is-a-date-not-a-moment.md) | Accepted | 07-Sep-2026 | extends 018 and 025 — the same column, the same write path, with `members.inactive_from` (0045) saying from WHEN it applies. Rejects closing `member_enrollments.effective_to` (that dates EXPECTATION, and 0031 promises the status moves no enrolment, session or attendance record) and rejects an effective-dated status table (a second list of one fact, against guardrail 1). Null reads as it always did, so no existing row moves. `follow_up_candidates()` judges on `current_date`; every status reading in the app becomes a reading about a day |
+
 Status: `Proposed` · `Accepted` · `Superseded by NNN` · `Deprecated`
 
 ---

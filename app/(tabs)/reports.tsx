@@ -15,6 +15,7 @@ import {
   reportRows, reportBars, reportMeta,
   REPORT_SCOPES, type ReportScope,
 } from '../../src/data/report';
+import { membersInPeriod } from '../../src/data/joined';
 import { toCsv } from '../../src/data/csvFormat';
 import { downloadCsv } from '../../src/data/csv';
 
@@ -59,7 +60,12 @@ export default function Reports() {
 
   const ink = (k: keyof typeof STATUS) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
 
-  const members = followUp.data?.members ?? [];
+  // The members the PERIOD could be about. A member who joined after the
+  // whole range had passed was not in it, and her row -- 0 expected, 0
+  // attended, "no sessions scheduled" -- is not a reading of her attendance
+  // but a member the academy did not have that month, in the report and in
+  // the CSV somebody keeps (src/data/joined.ts).
+  const members = membersInPeriod(followUp.data?.members ?? [], range);
   const rows = reportRows(members, scope);
   const bars = reportBars(rows);
 

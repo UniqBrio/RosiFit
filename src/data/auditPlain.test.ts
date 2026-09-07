@@ -226,6 +226,9 @@ test('every action the backend can emit reads as words', () => {
     'communication.batch_sent',
     'csv_import.completed', 'csv_import.email_added', 'csv_import.matched_existing',
     'csv_import.member_created', 'csv_import.row_skipped',
+    // written by csv-import's preview when the same file is offered twice, so
+    // the log can say why an upload produced no import at all
+    'csv_import.already_imported',
     'holiday.applied', 'holiday.removed',
     'member.bulk_imported', 'member.created', 'member.merged', 'member.updated',
   ];

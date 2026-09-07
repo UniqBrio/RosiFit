@@ -137,7 +137,7 @@ export function templateFileName(academy: string): string {
  *      protected so the samples cannot be edited into a real row by mistake.
  *   2. Member Data — the header, then MEMBER_IMPORT_MAX_ROWS blank rows with
  *      a dropdown on Course and on Branch fed from the lookup sheet, and a
- *      date rule on Joined On. This is the only sheet the importer reads.
+ *      rule on every other column. This is the only sheet the importer reads.
  *   3. Courses — hidden; the lookup the dropdowns point at.
  */
 export async function buildMemberTemplate(opts: TemplateOptions): Promise<ArrayBuffer> {
@@ -157,6 +157,7 @@ export async function buildMemberTemplate(opts: TemplateOptions): Promise<ArrayB
   info.addRow(['', `Fill in the "${SHEET_DATA}" sheet, one member per row. "${MEMBER_IMPORT_REQUIRED}" and "Email" are both required.`]);
   info.addRow(['', `Up to ${MEMBER_IMPORT_MAX_ROWS} members per file. Blank rows are ignored.`]);
   info.addRow(['', 'A member already on the register is skipped, never changed — edit her in the app instead.']);
+  info.addRow(['', 'No joining date is asked for — every member this file imports joins today.']);
   info.addRow(['', 'THE COURSE IS PER ROW. One file can carry members for as many courses as you run — pick each row’s course from the dropdown.']);
   info.addRow(['', 'The dropdown lists the courses this academy has TODAY. A course typed by hand is refused; add it in RosiFit first, then download the template again.']);
   if (opts.openedFrom) {
@@ -167,7 +168,6 @@ export async function buildMemberTemplate(opts: TemplateOptions): Promise<ArrayB
   for (const h of MEMBER_IMPORT_HELP) {
     if (cols.includes(h.column as MemberImportColumn)) info.addRow([h.column, h.means]);
   }
-  info.addRow(['Joined On', 'not asked for — every member imported by this file joins today.']);
   info.addRow([]);
   info.addRow(['Sample rows (do not import these — they are here to show the shape)']).font = { bold: true };
   info.addRow(cols.map(c => MEMBER_IMPORT_HEADERS[c])).font = { bold: true };

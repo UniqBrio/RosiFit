@@ -17,6 +17,7 @@
 
 import type { StatusKey } from '../theme/tokens';
 import { DAY_NAMES, type MemberStatus } from '../data/mock';
+import { statusOn, statusNote } from '../data/inactiveFrom';
 
 /**
  * `course · branch · joined <month>` -- or just `course · branch` when there
@@ -68,14 +69,32 @@ export type MemberTab = typeof MEMBER_TABS[number]['key'];
  * SAME fact to every part of the app that acts on the column. The roster
  * pill already folds them this way; this is the same reading, named, so the
  * pop-up and the row behind it cannot start calling one member two things.
+ *
+ * SINCE 0045 IT READS A DAY. `members.inactive_from` says from when the
+ * stored status applies, so a member stored 'inactive' from the 1st of next
+ * month is ACTIVE today and the word has to say so -- the alternative is a
+ * dialog calling her Inactive for five weeks while the follow-up rule goes
+ * on reaching her, which is the two ends disagreeing again in a new place.
+ *
+ * Both date arguments are optional and are honoured only TOGETHER: a caller
+ * with no date to give gets exactly the reading this returned before, which
+ * is what the pre-0045 rows mean anyway. `note` is the date said in words,
+ * or null when there is nothing to add -- never the only signal, the word
+ * and the icon carry the status itself (guardrail 3).
  */
-export function memberStatusReading(status: MemberStatus):
-  { word: string; icon: string; active: boolean } {
-  const active = status === 'active';
+export function memberStatusReading(
+  status: MemberStatus,
+  inactiveFrom: string | null = null,
+  todayIso: string = '',
+): { word: string; icon: string; active: boolean; note: string | null } {
+  const dated = Boolean(inactiveFrom && todayIso);
+  const effective = dated ? statusOn({ status, inactiveFrom }, todayIso) : status;
+  const active = effective === 'active';
   return {
     active,
     word: active ? 'Active' : 'Inactive',
     icon: active ? 'check_circle' : 'pause_circle',
+    note: dated ? statusNote({ status, inactiveFrom }, todayIso) : null,
   };
 }
 

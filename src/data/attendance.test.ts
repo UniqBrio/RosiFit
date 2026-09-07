@@ -123,3 +123,50 @@ test('the current week resolves to a range the fixture accepts', () => {
   const rows = attendanceFixture(week.from, week.to);
   for (const r of rows) assert.ok(r.date >= week.from && r.date <= week.to);
 });
+
+/**
+ * APPENDED for requests/2026-09-07-member-visible-only-from-her-joining-date.md.
+ *
+ * The offline register is the half of the defect a person actually saw: a
+ * member added this morning came back with a present/absent row on every
+ * Mon/Wed/Fri for weeks before she existed. The generator now asks the same
+ * question the screens ask (src/data/joined.ts), so demo mode and live data
+ * tell one story.
+ */
+test('a member generates no attendance before the day she joined', () => {
+  const joined = daysFromNow(-3);
+  const her = MEMBERS[0];
+  const original = her.joinedOn;
+  try {
+    her.joinedOn = joined;
+    const rows = attendanceFixture(daysFromNow(-20), daysFromNow(-1));
+    const hers = rows.filter(r => r.member_id === her.id);
+    assert.ok(hers.length > 0, 'she should still have rows from her joining day on');
+    for (const r of hers) {
+      assert.ok(r.date >= joined,
+        `${r.date} is before ${her.name} joined on ${joined}`);
+    }
+    // ...and the day itself is hers: the boundary is inclusive, the same way
+    // expected_members_for_session reads session_date >= effective_from.
+    const others = rows.filter(r => r.member_id !== her.id && r.date < joined);
+    assert.ok(others.length > 0,
+      'the members who were already there must be unaffected');
+  } finally {
+    her.joinedOn = original;
+  }
+});
+
+test('a member with no joining date on record keeps her whole register', () => {
+  // joined_on is nullable (0006). A missing date is thin paperwork, not a
+  // reason to erase weeks of attendance from the screen.
+  const her = MEMBERS[1];
+  const original = her.joinedOn;
+  try {
+    her.joinedOn = null;
+    const rows = attendanceFixture(daysFromNow(-20), daysFromNow(-1))
+      .filter(r => r.member_id === her.id);
+    assert.ok(rows.length > 3, 'every session in the range should still be hers');
+  } finally {
+    her.joinedOn = original;
+  }
+});

@@ -18,6 +18,7 @@ import { memberWeekdays, openingDays } from '../../src/data/memberDays';
 import { useCourses, useMembers } from '../../src/data/hooks';
 import { createMember, updateMember, setMemberStatus } from '../../src/data/repository';
 import { namesADisplayName } from '../../src/data/refusalCase';
+import { inactiveFromProblem, dateInWords, dayBefore } from '../../src/data/inactiveFrom';
 
 const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -125,9 +126,16 @@ export default function MemberEdit() {
   const [branch, setBranch] = useState(existing?.branch ?? '');
   // Today, on the ADD form only. Almost every member is entered on the day
   // she walks in, so a blank field made the common case a date-picker trip
-  // and left `joined_on` null whenever it was skipped. The EDIT form keeps it
-  // blank: it does not save this field, and today's date on a record that
-  // joined last year reads as a fact it isn't.
+  // and left `joined_on` null whenever it was skipped.
+  //
+  // The EDIT form opens EMPTY here and is seeded from her record below, for
+  // the same reason every other field is: her record has not arrived on the
+  // first render. It used to stay empty -- "the Edit form keeps it blank" --
+  // and the reason given was that this form does not save the field. That
+  // reasoning covered a defect: a member who joined in March opened a form
+  // that said nothing about when she joined, on the one screen that shows
+  // the rest of her record. Today's date is still never defaulted in on an
+  // edit; what is shown is what the register holds.
   const [joined, setJoined] = useState(editing ? '' : iso(new Date()));
   const [aliases, setAliases] = useState<string[]>(existing?.aliases ?? []);
   const [aliasDraft, setAliasDraft] = useState('');
@@ -145,6 +153,24 @@ export default function MemberEdit() {
    * control at all -- create_member (0016) inserts 'active' itself.
    */
   const [status, setStatus] = useState<MemberStatus>('active');
+  /**
+   * FROM WHEN that status applies -- `members.inactive_from` (0045), ISO, or
+   * '' for "no date on record".
+   *
+   * The whole of what this request adds. Her status could only ever say
+   * "now", so a member who is active today and leaving next month had two
+   * ways of being recorded and both were wrong: left active and remembered,
+   * or marked inactive five weeks early and withheld follow-up she is still
+   * owed. She is active on every day before this date and off the register
+   * from it onward (src/data/inactiveFrom.ts).
+   *
+   * '' IS A REAL VALUE, not a missing one: it is what every member marked
+   * inactive before 0045 carries, and it means the status applies on every
+   * day. Left alone, it stays '' -- this form does not backfill a date onto
+   * a record that never had one, because inventing one would claim she left
+   * on a day nobody recorded.
+   */
+  const [inactiveFrom, setInactiveFrom] = useState('');
   const [picker, setPicker] = useState<null | 'course' | 'branch'>(null);
   // The fields the two lists hang under, measured at the press.
   const courseRow = useAnchor();
@@ -173,6 +199,18 @@ export default function MemberEdit() {
     // a pick must not undo the pick. A stored 'paused' seeds the Inactive
     // choice, which is what it means.
     setStatus(existing.status === 'active' ? 'active' : 'inactive');
+    // And FROM WHEN it applies. Null seeds '', which is the same fact said
+    // the way a date field can hold it -- no date on record. It is not
+    // seeded to today: a record that never carried a date must not acquire
+    // one just because somebody opened the form.
+    setInactiveFrom(existing.inactiveFrom ?? '');
+    // The day she joined, ISO, exactly as members.joined_on holds it. The
+    // record used to carry only the formatted month ("Mar 2026"), which a
+    // date field cannot open on -- so this seeded nothing and the row read
+    // as a date nobody had filled in. `joinedOn` is that column, carried
+    // (src/data/repository.ts). Null stays '', which the row reads as "not
+    // on record" rather than as an unknown day.
+    setJoined(existing.joinedOn ?? '');
     setSeeded(true);
   }, [seeded, existing]);
 
@@ -214,8 +252,6 @@ export default function MemberEdit() {
   // with no offering cannot be enrolled, and an unenrolled member is expected
   // at no session and appears in no follow-up list -- so the offering is
   // required too, and the form says which piece is missing.
-  const valid = name.trim().length > 0 && !!offering && emails.length > 0;
-
   /**
    * What her record HOLDS, in the two words this form offers.
    *
@@ -227,7 +263,45 @@ export default function MemberEdit() {
    */
   const storedStatus: MemberStatus = !existing ? 'active'
     : existing.status === 'active' ? 'active' : 'inactive';
-  const statusChanged = !!existing && status !== storedStatus;
+  /** Her stored date, in the shape the field holds it. '' is "no date". */
+  const storedInactiveFrom = existing?.inactiveFrom ?? '';
+  /**
+   * The date the Save would WRITE -- '' whenever the pick is Active, because
+   * coming back onto the register is not a dated act and
+   * `members_inactive_from_needs_status` (0045) will not hold a date beside
+   * an active status.
+   */
+  const wantedInactiveFrom = status === 'active' ? '' : inactiveFrom.trim();
+  /**
+   * A change is a change to the PAIR. Moving only the date -- "she is
+   * leaving on the 30th, not the 12th" -- is a real edit, and a form that
+   * measured the status alone would offer to save it and then write nothing.
+   */
+  const statusChanged = !!existing
+    && (status !== storedStatus || wantedInactiveFrom !== storedInactiveFrom);
+
+  /**
+   * Why the date cannot be saved, or null. The same three refusals
+   * `set_member_status` raises (src/data/inactiveFrom.ts), so the form does
+   * not offer a Save the database is going to decline.
+   *
+   * A BLANK is not one of them. '' means "no date on record", which is what
+   * every member marked inactive before 0045 carries and is a legal thing to
+   * leave alone; the field only defaults to today when somebody actually
+   * moves the pick to Inactive, so a blank that survives is one that was
+   * already there.
+   */
+  const inactiveFromError = wantedInactiveFrom
+    ? inactiveFromProblem(wantedInactiveFrom, existing?.joinedOn ?? null)
+    : null;
+
+  // Her name and an address are the fields of HERS the save needs (C-70/C-73;
+  // requests/2026-09-06-add-member-email-required.md, both forms). A member
+  // with no offering cannot be enrolled, and an unenrolled member is expected
+  // at no session and appears in no follow-up list -- so the offering is
+  // required too, and the form says which piece is missing.
+  const valid = name.trim().length > 0 && !!offering && emails.length > 0
+    && !inactiveFromError;
 
   // days she may pick are only days her course's offerings actually run
   const courseDays = useMemo(() => {
@@ -303,6 +377,29 @@ export default function MemberEdit() {
    */
   const clearRefusal = () => setRefusal(r => (r && namesADisplayName(r) ? null : r));
 
+  /**
+   * Picking a status, and the one thing the pick has to decide for itself:
+   * WHEN.
+   *
+   * Moving to Inactive on a record that carries no date fills TODAY in,
+   * because that is what the control meant before it had a date at all --
+   * "she is off the register now" -- and a form that made somebody choose a
+   * date to say the ordinary thing would have made the common case worse.
+   * The field is right there and takes any other day.
+   *
+   * A date already in the box is left alone: re-picking Inactive after
+   * setting the 30th must not throw the 30th away (RC-020's shape -- a
+   * gesture that re-states a value is not a gesture that changes it).
+   *
+   * Moving to Active does NOT clear the box. Save writes null either way
+   * (`wantedInactiveFrom`), and clearing it here would lose the date on a
+   * mis-tap of a two-row radio group, with nothing left to put it back.
+   */
+  const pickStatus = (next: MemberStatus) => {
+    setStatus(next);
+    if (next !== 'active' && !inactiveFrom.trim()) setInactiveFrom(iso(new Date()));
+  };
+
   const changeAliasDraft = (v: string) => { clearRefusal(); setAliasDraft(v); };
 
   const addAlias = () => {
@@ -374,11 +471,13 @@ export default function MemberEdit() {
          */
         if (statusChanged) {
           try {
-            await setMemberStatus(existing.id, status);
+            await setMemberStatus(existing.id, status, wantedInactiveFrom || null);
           } catch (err) {
             // The pick goes back to what her record actually holds, so the
-            // form stops showing a change that did not happen.
+            // form stops showing a change that did not happen -- BOTH halves
+            // of it, or the date would sit there as a change nobody made.
             setStatus(storedStatus);
+            setInactiveFrom(storedInactiveFrom);
             const why = err instanceof Error
               ? err.message.replace(/\s*Nothing has been saved\.\s*$/, '')
               : 'Her status could not be changed';
@@ -393,8 +492,14 @@ export default function MemberEdit() {
         const said = moved ? `${first} moved to ${course} · ${branch}` : `${first} saved`;
         // Her status is the other one, and for the same reason: it decides
         // whether the academy writes to her at all.
+        // A date still ahead of her is the one thing the short word would
+        // get wrong: "now inactive" over a member who is on the register for
+        // another five weeks is the misreading this request exists to stop.
+        const stillToCome = status !== 'active' && wantedInactiveFrom > iso(new Date());
         flash(statusChanged
-          ? `${said} · ${status === 'active' ? 'active again' : 'now inactive'}`
+          ? `${said} · ${status === 'active' ? 'active again'
+              : stillToCome ? `inactive from ${dateInWords(wantedInactiveFrom)}`
+              : 'now inactive'}`
           : said);
       } else {
         await createMember({
@@ -425,6 +530,10 @@ export default function MemberEdit() {
       : !course ? 'Choose the course she joins'
       : !offering ? `Choose the branch — ${course} runs at ${branchOptions.length || 'no'} of them`
       : !emails.length ? 'Add her email address — follow-ups are sent there'
+      // The Save is disabled for this too, so the line under it has to say
+      // which field is holding it -- a dead button with "Prenatal Flow ·
+      // Coimbatore" under it explains nothing.
+      : inactiveFromError ? inactiveFromError
       : `${course} · ${branch}`;
 
   return (
@@ -507,9 +616,20 @@ export default function MemberEdit() {
       <View style={{ marginTop: SPACE.md }}>
         {/* No future joining date: a member cannot have started next week,
             and a picker that offers one invites the typo it then has to
-            validate. */}
+            validate.
+
+            READ-ONLY on the Edit form, and shown rather than hidden. Her
+            joining date is a fact about the past that update_member (0027)
+            takes no parameter for, so a picker here would accept a change
+            this form cannot save -- a field that quietly discards what it
+            was told is worse than one that says it is not editable. The
+            date shown is hers; Save leaves it exactly as it is. */}
         <DateField label="Joined on" value={joined} onChange={setJoined}
-          placeholder="When she started" max={iso(new Date())}
+          placeholder={editing ? 'Not on record' : 'When she started'}
+          max={iso(new Date())} readOnly={Boolean(editing)}
+          hint={editing
+            ? 'The day she joined is not changed here — her sessions are counted from it.'
+            : undefined}
           testID="member-joined-on" />
       </View>
 
@@ -529,7 +649,8 @@ export default function MemberEdit() {
           <Label style={{ marginTop: SPACE.xl }}>Status</Label>
           <Muted style={{ marginTop: 4 }}>
             Only an active member is reached by the follow-up rule. Her enrolment, her sessions
-            and her attendance history are not touched either way.
+            and her attendance history are not touched either way, on either side of any date
+            set here.
           </Muted>
           <View style={{ gap: SPACE.sm, marginTop: SPACE.md }}
             accessibilityRole="radiogroup" accessibilityLabel="Status">
@@ -541,8 +662,8 @@ export default function MemberEdit() {
               const tone = choice.value === 'active' ? ink('present') : theme.dim;
               return (
                 <Pressable key={choice.value} testID={`member-status-${choice.value}`}
-                  onPress={() => setStatus(choice.value)}
-                  {...spaceSelects(() => setStatus(choice.value))}
+                  onPress={() => pickStatus(choice.value)}
+                  {...spaceSelects(() => pickStatus(choice.value))}
                   accessibilityRole="radio"
                   // `aria-checked`, not `accessibilityState` -- the same
                   // React Native Web 0.21 hole Dropdown.tsx documents, and
@@ -575,6 +696,45 @@ export default function MemberEdit() {
               );
             })}
           </View>
+
+          {/* ------------------------------------------ inactive from (0045)
+              "A member is active today but wants to leave next month ... set
+              a future inactive date"
+              (requests/2026-09-07-member-inactive-from-date.md).
+
+              Only under the Inactive pick, because it is that pick's own
+              second half: an active member has no date to give, and a date
+              beside Active is one `members_inactive_from_needs_status` will
+              not hold.
+
+              NO `max`. A future date is the whole request, so the picker
+              that refuses one would refuse the only thing being asked for --
+              which is the opposite of "Joined on" above, where a future date
+              is a typo. `min` is her joining day: a departure before an
+              arrival is the one date the database refuses outright, and the
+              calendar greys it out rather than letting somebody pick it and
+              read a refusal afterwards.
+
+              The hint NAMES both consequences, in dates rather than in
+              adjectives -- the last day she is still reached, and what
+              carries on regardless. "Inactive" without those two facts is
+              the ambiguity the roster's confirmation was written to remove,
+              and this control is where it is now decided. */}
+          {status !== 'active' ? (
+            <View style={{ marginTop: SPACE.md }}>
+              <DateField label="Inactive from" value={inactiveFrom} onChange={setInactiveFrom}
+                placeholder="No date on record"
+                min={existing.joinedOn ?? undefined}
+                error={inactiveFromError ?? undefined}
+                hint={inactiveFromError ? undefined
+                  : inactiveFrom.trim()
+                    ? `She is in the follow-up rule up to ${dateInWords(dayBefore(inactiveFrom.trim()))}`
+                      + ` and left out from ${dateInWords(inactiveFrom.trim())}.`
+                      + ' Her enrolment, her sessions and her attendance are unchanged on both sides of it.'
+                    : 'No date on record — she is left out of the follow-up rule on every day.'}
+                testID="member-inactive-from" />
+            </View>
+          ) : null}
         </>
       ) : null}
 
@@ -823,6 +983,17 @@ export default function MemberEdit() {
               ? 'Saving puts her back into the follow-up rule: she is listed and written to again '
                 + 'when she misses sessions. Her enrolment and her attendance history are unchanged — '
                 + 'they never went anywhere.'
+              /* A date still ahead of her is a different sentence, not a
+                 softer one: nothing changes for her today, and the tense has
+                 to say so or the banner claims a consequence that has not
+                 happened yet. */
+              : wantedInactiveFrom > iso(new Date())
+              ? `Saving schedules it: she stays in the follow-up rule up to `
+                + `${dateInWords(dayBefore(wantedInactiveFrom))} and is left out from `
+                + `${dateInWords(wantedInactiveFrom)} — nobody has to come back on the day. `
+                + 'She stays on the roster and her attendance goes on being recorded, her enrolment '
+                + 'and her history are untouched, and picking Active again puts her straight back. '
+                + 'Recorded in the audit log.'
               : 'Saving leaves her out of the follow-up rule: she will not be listed for follow-up and '
                 + 'nothing will be sent to her. She stays on the roster and her attendance goes on '
                 + 'being recorded, her enrolment and her history are untouched, and picking Active '

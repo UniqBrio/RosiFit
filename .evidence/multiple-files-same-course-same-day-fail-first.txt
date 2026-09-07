@@ -1,0 +1,35 @@
+FAIL-FIRST evidence - multiple CSV files for one course on one day
+requests/2026-09-07-multiple-files-same-course-same-day.md
+
+=== 1. supabase/tests/34_multiple_files_same_day.sql, pre-change (0044 clauses stripped) ===
+PostgreSQL 16.14, fresh database, every migration replayed:
+
+  PASS  the first file marks its own people present (= present)
+  PASS  and everyone else due absent (= absent)
+  ERROR:  FAIL  a second call on the same meeting link reverts nobody  got 2 want 0
+
+The 2 are the morning class's attendees, put back to absent by the evening
+class's file on the same Meet link. 23/23 on the changed tree.
+
+=== 2. src/components/multipleFilesSameDay.test.ts, pre-change tree ===
+MULTI_FILE_SPEC_ROOT = HEAD csv-import + HEAD app/course/[id].tsx + 0042, no 0044:
+
+not ok 1 - the migration that scopes the override to a meeting instance is present
+not ok 2 - every clause that reaches an earlier file also asks its created-on line
+not ok 3 - the override still reaches three statements, not fewer
+not ok 4 - nothing here loosens one row per member per day
+not ok 5 - a member an earlier file marked present is never swept back by the next one
+ok 6 - the preview asks for an earlier file on the same meeting code
+not ok 7 - and on the same created-on line, so it matches what the commit overrides
+not ok 8 - a file with no created-on line is compared against the others that have none
+ok 9 - the one thing a repeat upload is stopped for is the identical file
+ok 10 - a day that already has a register is REPORTED to the screen, never refused
+not ok 11 - a day that already has a register carries a press of its own
+not ok 12 - it is offered on a day that recorded something, not on an awaiting one
+not ok 13 - it asks the same question about WHEN a file may be attached
+not ok 14 - the press keeps the date, so the file can still be asked about
+not ok 15 - the two presses are exclusive, so no day shows both
+ok 16 - an uploaded day still keeps its status icon in the cell
+# tests 16
+# pass 4
+# fail 12

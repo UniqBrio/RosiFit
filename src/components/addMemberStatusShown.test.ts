@@ -94,8 +94,14 @@ test('the Edit form keeps its own pick, untouched', () => {
     'the Edit status rows keep their testIDs');
   assert.match(src, /if \(statusChanged\) \{/,
     'Save still writes her status only when the pick differs from her record');
-  assert.match(src, /await setMemberStatus\(existing\.id, status\)/,
-    'set_member_status (0031) is still the only path that writes the column');
+  // Open at the end of the argument list on purpose: 0045 gave the RPC a
+  // third parameter (the date the status applies from), and pinning the
+  // exact call TEXT made this assertion fail for a change that is precisely
+  // what it is guarding -- her status still going through set_member_status,
+  // with her id and the form's pick. That is what is asserted; the arity is
+  // the migration's business.
+  assert.match(src, /await setMemberStatus\(existing\.id, status[,)]/,
+    'set_member_status (0031/0045) is still the only path that writes the column');
 });
 
 test('one source for the Active words', () => {

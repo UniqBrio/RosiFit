@@ -14,6 +14,10 @@ import { useCourses, useFollowUp, useAttendance } from '../../src/data/hooks';
 import { weekStart, iso, label as periodLabel } from '../../src/data/period';
 import { setMemberStatus, mergeMemberInto, dataSource } from '../../src/data/repository';
 import { dayAttendance, dayInWords, type DayState } from '../../src/data/dayAttendance';
+import { enrolledIn } from '../../src/data/course';
+import { offersUpload } from '../../src/data/uploadWindow';
+import { membersOnDay, joinedLaterNote } from '../../src/data/joined';
+import { isActiveOn, pendingInactiveFrom, dateInWords } from '../../src/data/inactiveFrom';
 import type { AttendanceRow } from '../../src/data/mock';
 import type { ScreenState } from '../../src/data/useScreenState';
 import { MERGE_FAILED } from '../../src/data/alias';
@@ -70,6 +74,8 @@ type DayCell = {
   mon: string;
   dow: string;
   key: StatusKey;
+  /** may this day offer its own upload button -- see ../src/data/uploadWindow */
+  canUpload: boolean;
   /** the rows behind the cell, for the day's own summary line */
   present: number;
   absent: number;
@@ -142,6 +148,11 @@ function CourseDetailBody() {
     return { from: iso(start), to: iso(end), label: periodLabel(start, end) };
   }, [weekOffset]);
 
+  // ONE read of the clock for this screen. The strip asks it twice -- which
+  // day is selected by default, and which days may offer an upload -- and two
+  // reads is how those two answers end up on different sides of midnight.
+  const todayIso = iso(new Date());
+
   const attendance = useAttendance(week, forced);
 
   const course = (courses.data ?? []).find(c => c.id === id);
@@ -158,22 +169,14 @@ function CourseDetailBody() {
     return [ALL_BRANCHES, ...own];
   }, [course]);
 
+  // The roster, by the course's IDENTITY. Gathering it by name meant a
+  // course created after one of the same name was deleted opened on the
+  // deleted course's members -- and this screen is where their names, their
+  // addresses and their attendance were then printed.
   const scoped = useMemo(
-    () => members.filter(m => m.course === course?.name
-      && (branch === ALL_BRANCHES || m.branch === branch)),
+    () => enrolledIn(members, course)
+      .filter(m => branch === ALL_BRANCHES || m.branch === branch),
     [members, course, branch]);
-
-  // What the roster shows: the scoped members, less anything the search box
-  // hides. Name or address, because those are the two things written on a card.
-  const shown = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return scoped;
-    return scoped.filter(m => m.name.toLowerCase().includes(q)
-      || m.emails.some(e => e.address.toLowerCase().includes(q)));
-  }, [scoped, query]);
-
-  const withEmail = shown.filter(m => m.emails.length > 0);
-  const withoutEmail = shown.filter(m => m.emails.length === 0);
 
   /**
    * The seven cells, built from the attendance rows for this course so the
@@ -191,9 +194,21 @@ function CourseDetailBody() {
    * sentence, and that panel has since been removed. So the strip now speaks
    * the four states its legend names, and an un-uploaded day wears the
    * cloud whether the date has passed or not (0034).
+   *
+   * WEARING THE CLOUD AND OFFERING THE UPLOAD ARE TWO DIFFERENT CLAIMS.
+   * `key` is what the day IS; `canUpload` is whether a file can be attached
+   * to it yet, and it is the narrower of the two -- the current week, and
+   * only as far as today, which is the same window fetchPendingSessions
+   * queries (`session_date <= today`). A future day keeps its cloud and its
+   * word and simply has nothing to press, the way an uploaded day has
+   * nothing to press. See src/data/uploadWindow for why, and for the week
+   * boundary.
    */
   const days: DayCell[] = useMemo(() => {
-    const rows = (attendance.data ?? []).filter(r => r.course === course?.name
+    // By course id: a deleted course's COMPLETED sessions are kept on
+    // purpose (0020), so its rows are still in the week's load under its old
+    // name, and a strip asking for rows "called this" would show them.
+    const rows = (attendance.data ?? []).filter(r => r.course_id === course?.id
       && (branch === ALL_BRANCHES || r.branch === branch));
     const byDate = new Map<string, typeof rows>();
     for (const r of rows) {
@@ -233,10 +248,10 @@ function CourseDetailBody() {
         dayNum: String(date.getDate()),
         mon: date.toLocaleDateString(undefined, { month: 'short' }).toUpperCase(),
         dow: DAY_NAMES[weekday],
-        key, present, absent, expected,
+        key, canUpload: offersUpload(dateIso, todayIso), present, absent, expected,
       };
     });
-  }, [attendance.data, course, branch, week.from]);
+  }, [attendance.data, course, branch, week.from, todayIso]);
 
   /**
    * The weekdays this course runs across the branches in scope, hoisted out
@@ -258,8 +273,42 @@ function CourseDetailBody() {
   // strip with nothing selected has no detail panel, and an empty panel is
   // worse than a default one.
   const chosen = days.find(d => d.iso === selectedDay)
-    ?? days.find(d => d.iso === iso(new Date()))
+    ?? days.find(d => d.iso === todayIso)
     ?? days[0];
+
+  /**
+   * THE ROSTER IS ABOUT THE SELECTED DAY, so it holds the members who were
+   * members that day.
+   *
+   * The line under the heading says "Attendance for Sun 6 September" and
+   * every card carries a reading for that date -- which made a member added
+   * on the 7th read as *Yet to mark* on the 6th: the academy blamed for
+   * failing to record a session she could not have attended, in the one place
+   * somebody acts on it. `members.joined_on` (0006) has always held the
+   * answer; the rule that reads it is in src/data/joined.ts, with its specs.
+   *
+   * SHE IS NOT OFF THE COURSE. The Members tab, the search, the course card's
+   * own member count and every send list are untouched -- none of them is
+   * about a date. Only this list, and only while a day is selected, and the
+   * note below says so in words rather than letting a count change silently.
+   */
+  const onDay = useMemo(
+    () => membersOnDay(scoped, chosen?.iso ?? null), [scoped, chosen?.iso]);
+  const joinedLater = chosen ? joinedLaterNote(scoped.length - onDay.length,
+    dayLabel(chosen.iso)) : null;
+
+  // What the roster shows: the members of that day, less anything the search
+  // box hides. Name or address, because those are the two things written on a
+  // card.
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return onDay;
+    return onDay.filter(m => m.name.toLowerCase().includes(q)
+      || m.emails.some(e => e.address.toLowerCase().includes(q)));
+  }, [onDay, query]);
+
+  const withEmail = shown.filter(m => m.emails.length > 0);
+  const withoutEmail = shown.filter(m => m.emails.length === 0);
 
 
 
@@ -380,15 +429,15 @@ function CourseDetailBody() {
               alignItems: compact ? 'stretch' : 'center',
               justifyContent: 'flex-end', gap: SPACE.sm,
             }}>
-              <HeaderAction testID="course-send" icon="send" label="Send Communication" primary
-                accessibilityLabel={`Send communication for ${course.name}`}
-                onPress={() => router.push({ pathname: '/send', params: { id } })} />
               {/* The COURSE, not a date. The awaiting day below keeps its own
                   button because that one arrives already scoped to the session
                   she tapped; this one opens the flow asking which. */}
-              <HeaderAction testID="course-upload" icon="cloud_upload" label="Upload Session"
+              <HeaderAction testID="course-upload" icon="cloud_upload" label="Upload Session" primary
                 accessibilityLabel={`Upload a session for ${course.name}`}
                 onPress={() => router.push({ pathname: '/upload', params: { courseId: course.id } })} />
+              <HeaderAction testID="course-send" icon="send" label="Send Communication"
+                accessibilityLabel={`Send communication for ${course.name}`}
+                onPress={() => router.push({ pathname: '/send', params: { id } })} />
               <HeaderAction testID="course-add-member" icon="person_add" label="Add Member"
                 accessibilityLabel={`Add a member to ${course.name}`}
                 onPress={() => router.push({ pathname: '/member/edit', params: { courseId: course.id } })} />
@@ -471,7 +520,27 @@ function CourseDetailBody() {
                     const on = chosen?.iso === d.iso;
                     const tone = STATUS[d.key];
                     const ink = theme.isDark ? tone.fgDark : tone.fgLight;
-                    const waiting = d.key === 'awaiting';
+                    // The cell hands its icon slot to the upload button, so
+                    // this is "awaiting AND pressable", not "awaiting". A day
+                    // awaiting a file it cannot be given yet -- a future day,
+                    // or one in a week that is not this one -- falls to the
+                    // other branch and keeps the cloud in the cell, with
+                    // nothing to press (src/data/uploadWindow).
+                    const waiting = d.key === 'awaiting' && d.canUpload;
+                    /* A DAY THAT ALREADY HAS A REGISTER can still take another
+                       file. A course runs several meetings on one day -- a
+                       morning batch and an evening one, each with its own Meet
+                       export -- and "awaiting a file" is a state the day leaves
+                       the moment the FIRST one lands, so the press left with it
+                       and the second export had no route in from the day it is
+                       about. The register is the union of its files and no file
+                       undoes another's (0044), so this adds nothing to reverse:
+                       it adds the way to reach it.
+
+                       Gated on the SAME d.canUpload, deliberately. "May this day
+                       take a file" is one question with one answer, and asking
+                       it twice is the defect uploadWindow was written to end. */
+                    const second = d.canUpload && (d.key === 'present' || d.key === 'absent');
                     const dayWords = `${d.dow} ${d.dayNum} ${d.mon}`;
                     const box = statusSurface(ink);
                     return (
@@ -497,7 +566,7 @@ function CourseDetailBody() {
                           accessibilityLabel={`${dayWords}, ${tone.word}`}
                           style={{
                             alignItems: 'center', gap: 1,
-                            paddingTop: 7, paddingBottom: waiting ? 5 : 7,
+                            paddingTop: 7, paddingBottom: waiting || second ? 5 : 7,
                             paddingHorizontal: compact ? 1 : 2,
                           }}>
                           <Text style={{ fontSize: 8.5, fontWeight: '800', color: on ? theme.accentInk : theme.dim }}>
@@ -523,8 +592,13 @@ function CourseDetailBody() {
                             pair "a dialog in the way". The button and the message
                             were two things; only the message was the complaint.
                             So the button is back on the day it is about -- only a
-                            day AWAITING a file has one, because that is the day
-                            the register is waiting on -- and it opens the upload
+                            day AWAITING a file has one, and only in the week the
+                            file could exist for: the current week, as far as
+                            today. That is the window fetchPendingSessions itself
+                            queries, so a button is never offered for a session
+                            the upload screen would then say is not waiting
+                            (requests/2026-09-07-awaiting-upload-current-week-only.md).
+                            It opens the upload
                             with that date, which is what lets the import ASK when
                             the file turns out to be from another day (0024). The
                             undated Upload Session in the course bar stays.
@@ -557,6 +631,51 @@ function CourseDetailBody() {
                                 flexShrink: 1, fontSize: 9.5, fontWeight: '800', lineHeight: 12,
                                 color: ink, textAlign: 'center',
                               }}>{tone.word}</Text>
+                            )}
+                          </Pressable>
+                        ) : null}
+
+                        {/* ------------------------------ another file, ON THE DAY
+                            The same press for the day that is no longer waiting.
+                            It carries no status word: the word belongs to the
+                            tick above it, which still says what the day
+                            recorded, and this says what can be done next. Quiet
+                            on purpose -- an ordinary uploaded day wants its tick
+                            read first, not a second call to action.
+
+                            It keeps the date, which is the whole point of a
+                            press that lives on a day: the upload screen compares
+                            the file's own "Created on" against it and ASKS when
+                            the two disagree (0024). The undated Upload Session in
+                            the course bar cannot. */}
+                        {second ? (
+                          <Pressable testID={`course-day-add-${d.iso}`}
+                            onPress={() => router.push({
+                              pathname: '/upload', params: { courseId: course.id, date: d.iso },
+                            })}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Upload another file for ${dayWords}`}
+                            style={({ pressed }) => ({
+                              flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+                              gap: 4, minHeight: compact ? 26 : 24,
+                              marginHorizontal: compact ? 3 : 5, marginBottom: compact ? 3 : 5,
+                              paddingHorizontal: compact ? 0 : 5, paddingVertical: 2,
+                              borderRadius: RADIUS.sm,
+                              backgroundColor: theme.surface2,
+                              borderWidth: 1, borderColor: theme.lineStrong,
+                              opacity: pressed ? 0.7 : 1,
+                            })}>
+                            <Icon name="add" size={13} color={theme.accentInk} />
+                            {/* Under 768pt a card is about 33pt wide, narrower
+                                than any legible word, so the phone gets the sign
+                                alone -- the same trade the awaiting button makes
+                                one branch up. The spoken label above is what
+                                carries the meaning either way. */}
+                            {compact ? null : (
+                              <Text numberOfLines={2} style={{
+                                flexShrink: 1, fontSize: 9.5, fontWeight: '800', lineHeight: 12,
+                                color: theme.fg, textAlign: 'center',
+                              }}>Add file</Text>
                             )}
                           </Pressable>
                         ) : null}
@@ -654,6 +773,17 @@ function CourseDetailBody() {
                 fontSize: 11.5, color: theme.muted,
               }}>{`Attendance for ${dayLabel(chosen.iso)}`}</Text>
             ) : null}
+
+            {/* A COUNT THAT DROPS ROWS SILENTLY IS THE SAME DEFECT, INVERTED.
+                "Members (7)" on Monday and "Members (8)" on Wednesday with
+                nothing on screen to explain it reads as a member who has
+                disappeared. So the day-scoped roster states what it is
+                leaving out, and that they are still on the course. */}
+            {joinedLater ? (
+              <Text testID="course-joined-later" style={{
+                fontSize: 11.5, color: theme.muted,
+              }}>{joinedLater}</Text>
+            ) : null}
           </View>
         </View>
 
@@ -671,13 +801,23 @@ function CourseDetailBody() {
                 title={branch === ALL_BRANCHES ? 'Nobody is enrolled yet' : `Nobody is enrolled at ${branch}`}
                 body="Adding a member names the OFFERING, the course at one branch, so she is expected at the days that offering runs." />
             </View>
+          ) : onDay.length === 0 ? (
+            /* ENROLLED, but not yet on the day being shown -- every member of
+               this course joined after it. Distinct from "nobody is enrolled",
+               which is a fact about the course, and it says which day it is
+               about so the strip above is the way out of it. */
+            <View style={{ marginTop: SPACE.md }}>
+              <EmptyState
+                title={`Nobody had joined by ${chosen ? dayLabel(chosen.iso) : 'that day'}`}
+                body={`All ${scoped.length} ${scoped.length === 1 ? 'member' : 'members'} of this course joined later, so there is no attendance to show for that day. Pick a later day on the strip above.`} />
+            </View>
           ) : shown.length === 0 ? (
             /* SEARCHED away, not absent. The count it offers to bring back is
-               the scoped roster, so the two states can never be confused. */
+               the day's roster, so the two states can never be confused. */
             <View style={{ marginTop: SPACE.md }}>
               <EmptyState
                 title="No member matches that"
-                body={`Nothing on this roster matches “${query.trim()}”. Clearing the search brings all ${scoped.length} back.`}
+                body={`Nothing on this roster matches “${query.trim()}”. Clearing the search brings all ${onDay.length} back.`}
                 action="Clear search" onAction={() => setQuery('')} />
             </View>
           ) : (
@@ -858,6 +998,8 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
   const dangerInk = theme.isDark ? STATUS.absent.fgDark : STATUS.absent.fgLight;
   const okInk = theme.isDark ? STATUS.present.fgDark : STATUS.present.fgLight;
 
+  const todayIso = iso(new Date());
+
   /**
    * ON the register, or off it -- `members.status`, not `expected === 0`.
    *
@@ -866,8 +1008,39 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
    * fact about her membership, and nobody could change it, because nothing
    * anywhere wrote the column it was pretending to show. Now it shows the
    * column, and tapping it sets it (0031).
+   *
+   * TWO READINGS, NOT ONE, since her status carries a date (0045).
+   *
+   *   `inactive`      -- where she stood on the day THE STRIP IS SHOWING.
+   *                      This is what the pill draws, because the rest of
+   *                      the card is about that day and a pill answering for
+   *                      today beside chips answering for 17 August is two
+   *                      different questions wearing one row.
+   *   `inactiveToday` -- where she stands NOW. This is what the tap is
+   *                      about: a control on a past week that flipped the
+   *                      state as it was three weeks ago would undo every
+   *                      change made since, which is not what anybody
+   *                      pressing it means.
+   *
+   * They differ only for a member whose date falls between the two days, and
+   * where they differ the pill says so rather than letting the reader assume
+   * the word is about today -- see the label and the confirmation below.
    */
-  const inactive = member.status !== 'active';
+  const statusDay = dayIso ?? todayIso;
+  const inactive = !isActiveOn(member, statusDay);
+  const inactiveToday = !isActiveOn(member, todayIso);
+  /** The day she is DUE off, when it has not arrived: what "Active" leaves out. */
+  const pending = pendingInactiveFrom(member, todayIso);
+  /** The pill is about another day than the tap is. Said, never assumed. */
+  const readingIsHistoric = inactive !== inactiveToday;
+  /**
+   * "was", or "will be". The strip runs Monday to Sunday, so on a Monday
+   * four of its seven cells are days that have not happened -- and a member
+   * whose date falls on the Wednesday of this week reads differently there
+   * in the FUTURE tense, not the past one. One word, and getting it wrong is
+   * a sentence claiming something already happened.
+   */
+  const wasOrWillBe = dayIso && dayIso > todayIso ? 'will be' : 'was';
   const statusInk = inactive ? theme.dim : okInk;
   const box = statusSurface(statusInk);
   // The threshold the canvas paints the miss line at. A READING aid, not the
@@ -886,18 +1059,22 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
 
   /** Where she stands on the selected day -- read here, never written. */
   const day = dayIso
-    ? dayAttendance({ rows, member, dayIso, weekdays, todayIso: iso(new Date()) })
+    ? dayAttendance({ rows, member, dayIso, weekdays, todayIso })
     : null;
 
   const applyStatus = async () => {
     if (saving) return;
     setConfirmStatus(false);
     setSaving(true);
-    const wanted: MemberStatus = inactive ? 'active' : 'inactive';
+    // From TODAY's reading, never the strip's: this pill is a one-tap "now"
+    // control and always has been. Scheduling a departure is the Edit form's
+    // date field (0045); this writes today's date, which is what the tap has
+    // always meant -- "she is off the register from now on".
+    const wanted: MemberStatus = inactiveToday ? 'active' : 'inactive';
     const first = member.name.split(' ')[0];
     const said = wanted === 'active' ? 'active again' : 'inactive';
     try {
-      await setMemberStatus(member.id, wanted);
+      await setMemberStatus(member.id, wanted, wanted === 'active' ? null : todayIso);
       flash(dataSource === 'live'
         ? `${first} is ${said}`
         : `${first} is ${said} on this device only. The academy database is not configured.`,
@@ -963,6 +1140,17 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
             }}>
               {`Missed ${weekLabel}: ${member.missed} · consecutive ${member.streak}`}
             </Text>
+            {/* A departure that has not happened yet -- the one fact the
+                pill's word cannot carry. It reads "Active", truthfully, and
+                would go on reading it right up to the day; this is what
+                stops that being a surprise. Only when there IS one, so no
+                card gains a line for a member nobody is leaving. */}
+            {pending ? (
+              <Text numberOfLines={1} testID={`course-member-pending-${member.id}`}
+                style={{ fontSize: 11, marginTop: 1, color: theme.dim }}>
+                {`Inactive from ${dateInWords(pending)}`}
+              </Text>
+            ) : null}
           </View>
         </Pressable>
 
@@ -975,9 +1163,18 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
           disabled={saving}
           accessibilityRole="button"
           accessibilityState={{ disabled: saving }}
-          accessibilityLabel={inactive
-            ? `${member.name} is inactive. Mark her active.`
-            : `${member.name} is active. Mark her inactive.`}
+          /* What she IS, and what the tap will do -- separately, because
+             since 0045 they can be about two different days. A label reading
+             "is active" over a pill that will mark her active again is the
+             control nobody can read, arriving from the other direction. */
+          accessibilityLabel={[
+            readingIsHistoric && dayIso
+              ? `${member.name} ${wasOrWillBe} ${inactive ? 'inactive' : 'active'} on ${dayInWords(dayIso)}.`
+                + ` She is ${inactiveToday ? 'inactive' : 'active'} today.`
+              : `${member.name} is ${inactive ? 'inactive' : 'active'}.`,
+            pending ? `She is due to become inactive on ${dateInWords(pending)}.` : '',
+            inactiveToday ? 'Mark her active.' : 'Mark her inactive from today.',
+          ].filter(Boolean).join(' ')}
           hitSlop={6}
           style={({ pressed }) => ({
             flexDirection: 'row', alignItems: 'center', gap: 4,
@@ -1229,12 +1426,33 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
       <ConfirmDialog
         open={confirmStatus}
         onClose={() => setConfirmStatus(false)}
-        title={inactive ? `Mark ${member.name} active?` : `Mark ${member.name} inactive?`}
-        body={inactive
-          ? 'She goes back into the follow-up rule from now on, and is listed and written to again when she misses sessions. Her enrolment and her attendance history are unchanged — they never went anywhere.'
-          : 'She stays on the roster and her attendance goes on being recorded, but she is left out of the follow-up rule: she will not be listed for follow-up and nothing will be sent to her. Her enrolment and her history are untouched, and marking her active again puts her straight back. Recorded in the audit log.'}
+        /* TODAY's reading, in the title, the body and the button -- the
+           three places the decision is stated. The pill above may be drawing
+           a past day (0045); the act is always about now, and the body's
+           first sentence says which day it is about whenever those two
+           differ, rather than leaving the reader to notice. */
+        title={inactiveToday ? `Mark ${member.name} active?` : `Mark ${member.name} inactive?`}
+        body={[
+          readingIsHistoric && dayIso
+            ? `The pill is showing ${dayInWords(dayIso)}, when she ${wasOrWillBe} `
+              + `${inactive ? 'inactive' : 'active'}. Today she is `
+              + `${inactiveToday ? 'inactive' : 'active'}, and this changes that.`
+            : '',
+          /* A date already set is what this tap would OVERWRITE, and the one
+             thing nobody would guess from a button reading "Mark inactive".
+             Naming it is what makes the tap recoverable: whoever set the
+             30th finds out here, not next month. */
+          pending && !inactiveToday
+            ? `She is already due to become inactive on ${dateInWords(pending)}. `
+              + 'Marking her inactive now brings that forward to today; use Edit to change '
+              + 'the date instead.'
+            : '',
+          inactiveToday
+            ? 'She goes back into the follow-up rule from now on, and is listed and written to again when she misses sessions. Any inactive date on her record is cleared. Her enrolment and her attendance history are unchanged — they never went anywhere.'
+            : 'She stays on the roster and her attendance goes on being recorded, but she is left out of the follow-up rule from today: she will not be listed for follow-up and nothing will be sent to her. Her enrolment and her history are untouched, and marking her active again puts her straight back. Recorded in the audit log.',
+        ].filter(Boolean).join(' ')}
         cancelLabel="Cancel"
-        confirmLabel={saving ? 'Saving…' : inactive ? 'Mark active' : 'Mark inactive'}
+        confirmLabel={saving ? 'Saving…' : inactiveToday ? 'Mark active' : 'Mark inactive'}
         onConfirm={() => { void applyStatus(); }} />
     </View>
   );
