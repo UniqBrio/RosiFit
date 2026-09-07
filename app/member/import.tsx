@@ -29,7 +29,6 @@ import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, STATUS, statusSurface, onStatusFill } from '../../src/theme/tokens';
 import { useCourses, useMembers } from '../../src/data/hooks';
-import { useIdentity } from '../../src/data/session';
 import { bulkImportMembers, fetchAcademyName } from '../../src/data/repository';
 import { pickFile, downloadBlob } from '../../src/data/csv';
 import {
@@ -61,7 +60,6 @@ function MemberImportBody() {
   const router = useRouter();
   const { courseId } = useLocalSearchParams<{ courseId?: string }>();
 
-  const { identity, loading: identityLoading } = useIdentity();
   const courses = useCourses();
   const roster = useMembers();
 
@@ -228,19 +226,20 @@ function MemberImportBody() {
   // answers to one question, and the way out is the same close in the same
   // corner for every one of them.
   const dark = theme.isDark;
-  const loading = identityLoading || courses.state === 'loading' || roster.state === 'loading';
-  // PERMISSION-DENIED: an honest no-access state, never an empty form. The
-  // buttons that lead here are hidden for staff, but a route can be typed,
-  // and the RPC refuses staff regardless -- this just says so first.
-  const denied = !loading && !identity?.isSuperAdmin;
-  const failed = !loading && !denied && courses.state === 'error';
+  const loading = courses.state === 'loading' || roster.state === 'loading';
+  // NO PERMISSION-DENIED STATE, since 0038. Bulk import was owner-only and
+  // this screen said so; the repo owner opened it to staff on 07-Sep-2026
+  // (requests/2026-09-07-staff-write-access.md) and bulk_import_members now
+  // asks only for an active user, so there is no role left to refuse. The
+  // subscription still can: that refusal arrives from the RPC, on the result.
+  const failed = !loading && courses.state === 'error';
   // NOT CONFIGURED, and the ONLY gate before the file. The template's Course
   // column is a dropdown fed from the academy's own courses, and a course
   // typed by hand is refused by Excel itself -- so a template built with no
   // courses in it would offer an empty list and every row would fail on
   // upload. The template is not offered at all until there is something for
   // it to list.
-  const unconfigured = !loading && !denied && !failed && courseList.length === 0;
+  const unconfigured = !loading && !failed && courseList.length === 0;
   // THE RESULT IS THIS DIALOG, not a second one over it. A card over a card,
   // with two scrims and two closes for one action, was what it took while the
   // import was a page underneath; the import is a dialog now, so the answer
@@ -248,11 +247,7 @@ function MemberImportBody() {
   const showResult = result !== null && file !== null;
 
   const body = loading ? <Skeleton lines={6} />
-    : denied ? (
-      <EmptyState title="Only the academy admin can bulk import"
-        body="Adding members one at a time is open to everyone; a file of them changes the shape of the register, and that is the admin's decision."
-        action="Back" onAction={() => router.back()} />
-    ) : failed ? (
+    : failed ? (
       <ErrorState onRetry={courses.retry}
         message={courses.error ?? 'The courses could not be loaded. Nothing has been changed.'} />
     ) : unconfigured ? (

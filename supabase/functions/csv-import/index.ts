@@ -68,8 +68,37 @@ async function preview(admin: SupabaseClient, actorId: string, body: Record<stri
   if (rawRows.length === 0) throw new HttpError(400, 'The file has no rows to import.');
 
   const { data: offering, error: offErr } = await admin
-    .from('course_offerings').select('id, branch_id').eq('id', offeringId).maybeSingle();
+    .from('course_offerings').select('id, course_id, branch_id').eq('id', offeringId).maybeSingle();
   if (offErr || !offering) throw new HttpError(404, 'That session offering was not found.');
+
+  /**
+   * WHICH MEETING THIS FILE IS (0039).
+   *
+   * A course may run N meetings a day, each with its own members and its own
+   * Meet code, and one file per meeting is uploaded as each one ends. The
+   * REGISTER those files write to is a meeting GROUP -- a course_offerings row
+   * bound to the code -- not the course itself, which is what the operator
+   * picked. Resolving it here rather than in the commit is what makes the
+   * requester's rule fall out for free: everything downstream keys on
+   * (offering_id, session_date), so once the offering IS the meeting, that
+   * pair becomes "the same meeting code AND the same date" -- the only
+   * condition under which a file may override an existing register.
+   *
+   * A file with no meeting code resolves to the course's own offering, which
+   * is exactly where every file landed before 0039.
+   */
+  const { data: resolved, error: grpErr } = await admin.rpc('offering_for_meeting', {
+    p_course_id: offering.course_id,
+    p_branch_id: offering.branch_id,
+    p_meet_code: meetingCode,
+    p_actor: actorId,
+  });
+  // The one refusal it raises is a code already bound to ANOTHER course --
+  // i.e. this file is being uploaded against the wrong course. Its message
+  // names the meeting and says what to do, so it is passed through rather
+  // than replaced with a generic one.
+  if (grpErr) throw new HttpError(409, grpErr.message);
+  const registerOfferingId = String(resolved ?? offeringId);
 
   const { count: dupCount } = await admin.from('csv_imports')
     .select('id', { count: 'exact', head: true }).eq('file_sha256', fileSha256).eq('status', 'completed');
@@ -80,8 +109,13 @@ async function preview(admin: SupabaseClient, actorId: string, body: Record<stri
   // never silent either: one session per offering per day is a database
   // invariant, so this file will UPDATE that register rather than add to it,
   // and the person deciding has to be told before she decides.
+  //
+  // Keyed on the RESOLVED offering since 0039, which is what confines the
+  // warning -- and the override behind it -- to the same MEETING. A second
+  // meeting on the same day is a different offering, so it supersedes
+  // nothing; only a second file for the same code and date does.
   const { data: already } = await admin.from('csv_imports')
-    .select('id, file_name, completed_at').eq('offering_id', offeringId)
+    .select('id, file_name, completed_at').eq('offering_id', registerOfferingId)
     .eq('session_date', sessionDate).eq('status', 'completed')
     .order('completed_at', { ascending: false }).limit(1);
   const supersedes = already?.[0]
@@ -259,7 +293,11 @@ async function preview(admin: SupabaseClient, actorId: string, body: Record<stri
   const duplicatesInFile = rawRows.length - new Set(rawRows.map(r => normalizeName(r.full_name))).size;
 
   const { data: inserted, error: insErr } = await admin.from('csv_imports').insert({
-    file_name: fileName, file_sha256: fileSha256, offering_id: offeringId, session_date: sessionDate,
+    // The MEETING GROUP, not the course the operator picked (0039). Everything
+    // the commit does -- which session, who was due, what an override may
+    // reach -- follows from this one id.
+    file_name: fileName, file_sha256: fileSha256, offering_id: registerOfferingId,
+    session_date: sessionDate,
     row_count: rawRows.length, matched_count: counts.matched, unmatched_count: counts.unmatched,
     ambiguous_count: counts.ambiguous, possible_count: counts.possible, missing_email_count: counts.noEmail,
     duplicates_in_file: duplicatesInFile, status: 'previewed',

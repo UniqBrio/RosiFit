@@ -27,14 +27,6 @@ begin;
   insert into public.members (full_name, joined_on, status) values ('Kavitha Ramesh', '2026-07-19', 'active');
 commit;
 
--- ============================================================== the gate
-select t.rejects($$
-  set local role authenticated;
-  set local request.jwt.claim.sub = 'a0000000-0000-0000-0000-000000000002';
-  select public.bulk_import_members('[{"row":2,"full_name":"Anitha Rajesh"}]'::jsonb,
-    (select o.id from public.course_offerings o join public.courses c on c.id=o.course_id where c.name='Yoga Flow'), 'x.xlsx')$$,
-  'staff may NOT bulk import -- owner-only, as the reference has it', 'only the academy admin');
-
 select t.rejects($$
   set local role anon;
   select public.bulk_import_members('[]'::jsonb, null, null)$$,
@@ -171,3 +163,42 @@ select t.eq((select joined_on from public.members where full_name = 'ZZ Shape Go
 select t.eq((select count(*)::int from public.members where full_name in
               ('ZZ Shape Slash','ZZ Shape NoDay','ZZ Shape Future')), 0,
   'not one of the three refused rows wrote a member');
+
+-- ================================================= the role (0038)
+-- AMENDED 07-Sep-2026. Until today the file OPENED with the opposite
+-- assertion, at 'the gate':
+--   t.rejects(bulk_import_members(...) as staff,
+--             'staff may NOT bulk import -- owner-only, as the reference has
+--              it', 'only the academy admin')
+-- The owner overruled it (requests/2026-09-07-staff-write-access.md): staff
+-- run the register, so staff fill it. Every row still goes through
+-- create_member, which was open to staff all along.
+--
+-- It is asserted at the END, not where the refusal used to be, for the same
+-- reason the date-shape block above is: a successful import writes a run, an
+-- audit row and a member, and three assertions in the middle of this file
+-- count exactly those. Proving the grant where the refusal used to sit would
+-- have failed them, and the failure would have read as a bug in the duplicate
+-- rule rather than as this block's doing.
+--
+-- The name is hers alone for the same reason -- importing 'Anitha Rajesh'
+-- again would turn one of the six-row file's inserts into a skip.
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'a0000000-0000-0000-0000-000000000002';
+  create temp table staff_run as
+  select public.bulk_import_members('[{"row":2,"full_name":"Staff Imported Member"}]'::jsonb,
+    (select o.id from public.course_offerings o join public.courses c on c.id=o.course_id where c.name='Yoga Flow'),
+    'staff.xlsx') as r;
+commit;
+
+select t.eq((select (r->>'inserted')::int from staff_run), 1,
+  'staff MAY bulk import, since 0038');
+select t.eq((select count(*)::int from public.members where full_name = 'Staff Imported Member'), 1,
+  'and the row she imported is on the register');
+select t.ok(exists (select 1 from public.member_import_runs where file_name = 'staff.xlsx'),
+  'and her run is recorded, like anyone else''s');
+select t.ok(exists (select 1 from public.audit_logs
+             where action='member.bulk_imported'
+               and actor_app_user_id='a0000000-1111-0000-0000-000000000002'),
+  'and the act is attributed to HER, not to the admin who used to be the only one who could');
