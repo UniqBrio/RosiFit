@@ -105,8 +105,13 @@ test('the period that CONTAINS her joining day keeps her -- she was in part of i
 });
 
 test('a period ending the day before she joined leaves her out', () => {
-  assert.deepEqual(
-    membersInPeriod([old, her], { from: '2026-08-31', to: BEFORE }).map(m => m.id), ['old']);
+  // Through a variable, like the two periods above. membersInPeriod declares
+  // only `to` on purpose -- the start of a period cannot hide anybody -- so an
+  // inline literal carrying `from` trips the excess-property check, which
+  // fires on literals and not on variables. Keeping the realistic {from, to}
+  // shape is the point: it is what every caller actually passes.
+  const ended = { from: '2026-08-31', to: BEFORE };
+  assert.deepEqual(membersInPeriod([old, her], ended).map(m => m.id), ['old']);
 });
 
 /* ----------------------------------------------- a member with no date on record */
