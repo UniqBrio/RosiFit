@@ -143,6 +143,25 @@
 >    can fix it — the from-address, the credentials and the region were all
 >    already correct when this was hit on 05-Sep-2026 (ap-south-1); the
 >    recipient check is the last thing SES does.
+>
+>    **VERIFYING THE SENDING DOMAIN DOES NOT LIFT THIS.** Domain verification
+>    is about what the academy may send AS. The sandbox restricts who it may
+>    send TO, and the two are independent — `getfit.rosifit.com` being a
+>    verified identity does nothing for a member on gmail.
+>
+>    **Measured on production 07-Sep-2026, from `email_messages` itself**, and
+>    recorded because it is the exact evidence that misleads: five sends exist,
+>    and the LAST ONE SUCCEEDED to a gmail address. That is not proof the
+>    account left the sandbox. The chronology on 05-Sep reads
+>    09:58 `400 Email address is not verified … AP-SOUTH-1:
+>    shaziafarheen74@gmail.com`, then 10:07 `sent`, nine minutes later.
+>    Production access takes about a day; verifying ONE address takes one
+>    click in a confirmation email. So the likely state is still **sandbox,
+>    with a single recipient identity verified** — which looks exactly like a
+>    working deployment until the second member is mailed.
+>
+>    Check it in the SES console under Account dashboard, not by sending. A
+>    send to the one verified address cannot tell the two states apart.
 >    - **To test**, verify the one recipient: SES -> Identities -> Create
 >      identity -> Email address, in the SAME region as `AWS_SES_REGION`.
 >      AWS mails a confirmation link that has to be clicked.
