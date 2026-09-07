@@ -64,6 +64,12 @@ import type { Member } from './mock';
  * them beside the subject box invited exactly that, and
  * "We missed you this week, {{first_name}} {{member_name}}" is what it got.
  *
+ * TWO CHIPS SAY "name". Course and Academy alone name a THING; the tokens
+ * insert that thing's NAME, and in a row that opens with "Her first name" and
+ * "Her full name" a bare "Course" reads as a heading over the chips beside it
+ * rather than as one of them. "Course name" and "Academy name" say what lands
+ * in the box, which is the only question a chip has to answer.
+ *
  * Neither row LOSES anything. Both end in one More chip that opens the full
  * thirteen, so a subject that genuinely wants to name the course is one tap
  * away -- it is simply no longer suggested.
@@ -77,7 +83,7 @@ export const MESSAGE_TOKENS: {
 }[] = [
   { token: '{{first_name}}', means: 'her first name', chip: 'Her first name', everyday: true, subjectLine: true },
   { token: '{{member_name}}', means: 'her full name', chip: 'Her full name', everyday: false, subjectLine: false },
-  { token: '{{course_name}}', means: 'the course', chip: 'Course', everyday: true, subjectLine: false },
+  { token: '{{course_name}}', means: 'the course name', chip: 'Course name', everyday: true, subjectLine: false },
   { token: '{{branch_name}}', means: 'the branch', chip: 'Branch', everyday: false, subjectLine: false },
   { token: '{{period_from}}', means: 'start of the period', chip: 'Period from', everyday: true, subjectLine: false },
   { token: '{{period_to}}', means: 'end of the period', chip: 'Period to', everyday: true, subjectLine: false },
@@ -87,7 +93,7 @@ export const MESSAGE_TOKENS: {
   { token: '{{attendance_pct}}', means: 'her attendance', chip: 'Attendance %', everyday: false, subjectLine: false },
   { token: '{{consecutive_missed}}', means: 'missed in a row', chip: 'Missed in a row', everyday: false, subjectLine: false },
   { token: '{{last_attendance_date}}', means: 'when she was last present', chip: 'Last present', everyday: false, subjectLine: false },
-  { token: '{{academy_name}}', means: 'the academy', chip: 'Academy', everyday: true, subjectLine: false },
+  { token: '{{academy_name}}', means: 'the academy name', chip: 'Academy name', everyday: true, subjectLine: false },
 ];
 
 /** What the MESSAGE row offers first. Order is MESSAGE_TOKENS' order, which is
