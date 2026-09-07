@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Text, TextInput, Pressable, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,6 +8,8 @@ import { Icon } from '../src/components/Icon';
 import { RADIUS, SPACE, TAP_MIN, STATUS } from '../src/theme/tokens';
 import { isConfigured } from '../src/lib/supabase';
 import { authLogin, adoptSession } from '../src/data/api';
+import { restoreSession } from '../src/data/session';
+import { restoreDestination } from '../src/data/sessionRestore';
 import { groupPhone, phoneDigits, isCompletePhone, needsRegistration, continueDestination } from '../src/data/signin';
 import { isRegisteredNumber } from '../src/data/repository';
 import { homeHref } from '../src/data/access';
@@ -27,6 +29,43 @@ export default function SignIn() {
   const [typing, setTyping] = useState(false);
   const [onNumber, setOnNumber] = useState(false);
   const pinRef = useRef<TextInput>(null);
+
+  /**
+   * IS SHE ALREADY SIGNED IN? -- the question this screen never asked.
+   *
+   * '/' is this route AND the PWA's `startUrl` (app.json), so every revisit,
+   * every reload and every launch from the home-screen icon arrives here. It
+   * rendered the number field unconditionally, over a GoTrue session that was
+   * live in storage the whole time -- which is the entire "it asks for my PIN
+   * again every time" complaint. Nothing about the session needed building;
+   * this screen needed to ask.
+   *
+   * The answer comes from the SERVER (restoreSession, src/data/session.ts) --
+   * a refresh against GoTrue and an identity read back under RLS. A token
+   * sitting in storage is not on its own an answer to anything.
+   *
+   * Fixtures mode is skipped deliberately: there is no project to have a
+   * session with, and auto-resuming would leave the prototype with no way to
+   * reach its own sign-in screen.
+   */
+  const [restoring, setRestoring] = useState(isConfigured);
+
+  useEffect(() => {
+    if (!isConfigured) return;
+    let live = true;
+    restoreSession()
+      .then(restored => {
+        if (!live) return;
+        const next = restoreDestination(restored);
+        // On a resume `restoring` is left ON. The replace unmounts this
+        // screen; turning it off first would paint the number field for a
+        // frame on the way out -- the exact flash this change is about.
+        if (next.resume) router.replace(next.href);
+        else setRestoring(false);
+      })
+      .catch(() => { if (live) setRestoring(false); });
+    return () => { live = false; };
+  }, [router]);
 
   const digits = phoneDigits(phone);
   const phoneOk = isCompletePhone(phone);
@@ -152,6 +191,15 @@ export default function SignIn() {
 
   const badInk = theme.isDark ? STATUS.absent.fgDark : STATUS.absent.fgLight;
 
+  /** The bottom sheet's chrome. Named once because TWO things are drawn in
+   *  it now -- the sign-in form and the resuming line -- and a second copy is
+   *  how they end up disagreeing about the corner radius. */
+  const sheet = {
+    backgroundColor: theme.shell, borderTopLeftRadius: 30, borderTopRightRadius: 30,
+    borderTopWidth: 1, borderColor: theme.line,
+    paddingHorizontal: SPACE.xl, paddingTop: 26, paddingBottom: 34,
+  } as const;
+
   /* One status line for both steps. It used to live inside the PIN branch
      only, so a Continue that failed had nowhere to say so -- and Continue can
      now fail, because it calls the server. The word and the icon carry the
@@ -194,11 +242,29 @@ export default function SignIn() {
             </View>
           </View>
 
-          <View style={{
-            backgroundColor: theme.shell, borderTopLeftRadius: 30, borderTopRightRadius: 30,
-            borderTopWidth: 1, borderColor: theme.line,
-            paddingHorizontal: SPACE.xl, paddingTop: 26, paddingBottom: 34,
-          }}>
+          {/* RESUMING WEARS THE SAME SHEET. Not a spinner laid over the
+              number field, and not a blank screen: this sheet is where the
+              screen has always spoken, so "checking whether you are already
+              in" belongs in it too. A WORD as well as the icon -- motion is
+              never the only signal (guardrail 3).
+
+              THE SENTENCE IS WORDED FOR THE PERSON WHO IS *NOT* SIGNED IN.
+              `restoring` starts true whenever the app is configured, so this
+              is what `expo export` PRERENDERS into dist/index.html -- it is
+              the first paint every visitor gets, signed in or not, before any
+              effect has run. "Signing you back in" was the first wording and
+              it tells a first-time visitor something untrue for as long as
+              the check takes. This one is true either way. */}
+          {restoring ? (
+            <View testID="signin-restoring" accessibilityLiveRegion="polite"
+              style={[sheet, { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }]}>
+              <Icon name="hourglass_top" size={18} color={theme.muted} />
+              <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: theme.fg }}>
+                Checking if you are already signed in…
+              </Text>
+            </View>
+          ) : (
+          <View style={sheet}>
             {step === 'phone' ? (
               <>
                 <Text style={{ fontSize: 26, fontWeight: '800', color: theme.fgStrong, letterSpacing: -0.5 }}>
@@ -357,6 +423,7 @@ export default function SignIn() {
               </>
             )}
           </View>
+          )}
         </View>
       </SafeAreaView>
     </DeepBackground>

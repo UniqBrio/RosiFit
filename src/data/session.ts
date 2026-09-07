@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase, isConfigured } from '../lib/supabase';
 import { STAFF, FIXTURE_SELF_ID, initials as toInitials } from './mock';
+import type { RestoredSession } from './sessionRestore';
 
 export type AppUser = {
   id: string;
@@ -18,6 +19,9 @@ export type AppUser = {
   role_label: string;
   phone_e164: string;
   must_change_pin: boolean;
+  /** Read for one reason: a session that survives reloads must not
+   *  outlive the account. See restoreSession below. */
+  is_active: boolean;
 };
 
 export async function currentAppUser(): Promise<AppUser | null> {
@@ -29,7 +33,7 @@ export async function currentAppUser(): Promise<AppUser | null> {
   // app_users_read lets an account read its OWN row whatever its kind, so
   // this is the one identity query a staff member can always make.
   const { data, error } = await supabase.from('app_users')
-    .select('id, name, kind, role_label, phone_e164, must_change_pin')
+    .select('id, name, kind, role_label, phone_e164, must_change_pin, is_active')
     .eq('auth_user_id', authUserId).is('deleted_at', null).maybeSingle();
   if (error || !data) return null;
   return data as AppUser;
@@ -131,5 +135,84 @@ export function useIdentity(): IdentityState {
 
 export async function signOut(): Promise<void> {
   if (!isConfigured) return;
-  await supabase.auth.signOut();
+  // 'local', NOT supabase-js' default of 'global'.
+  //
+  // Both revoke server-side -- GoTrue deletes the refresh token rows, so this
+  // is a real invalidation and not just a cleared browser. The difference is
+  // WHOSE: 'global' kills every session this account has anywhere, so signing
+  // out of the academy laptop at closing time also signed her out of her own
+  // phone. One device signing out is a statement about one device.
+  //
+  // Global revocation still exists and is still used where it MEANS something:
+  // signOutEverywhere() in supabase/functions/_shared/identity.ts, called by
+  // pin-reset, because a PIN that has just been reset should not leave old
+  // devices holding a live session.
+  await supabase.auth.signOut({ scope: 'local' });
+}
+
+/**
+ * IS ANYBODY ALREADY SIGNED IN? -- asked once, by the sign-in screen, before
+ * it decides whether to show a number field.
+ *
+ * WHAT MAKES THIS A SERVER ANSWER AND NOT A CLIENT ONE
+ * Finding a token in storage proves nothing; anyone can put a string in
+ * localStorage. Two things happen here, in order, and only the second one
+ * counts:
+ *
+ *   1. `getSession()` hands back the stored session, REFRESHING it against
+ *      GoTrue when the access token has expired. A refresh token that has been
+ *      revoked -- signed out here, signed out everywhere by a PIN reset, or
+ *      deleted with the account -- fails that exchange and there is no session.
+ *   2. The identity is then read back through PostgREST UNDER RLS, where
+ *      `app_users_read` is `is_super_admin() or auth_user_id = auth.uid()`.
+ *      That query can only answer for the account the presented JWT actually
+ *      belongs to, which is what "validate session ownership server-side"
+ *      means here: the database resolves the owner, the app never claims one.
+ *
+ * The states are kept APART rather than collapsed to a boolean because they
+ * mean different things and one of them must not sign anybody out. A dropped
+ * connection is 'unverified' and leaves the stored token alone; a server that
+ * ANSWERED and gave nothing back is 'none', and the dead session is cleared so
+ * the next launch does not retry it. Collapsing the two logs a coach out of
+ * her own phone every time the academy wifi drops.
+ */
+export async function restoreSession(): Promise<RestoredSession> {
+  if (!isConfigured) return { state: 'none' };
+
+  let authUserId: string | undefined;
+  try {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) return { state: 'unverified' };
+    authUserId = data.session?.user?.id;
+  } catch {
+    return { state: 'unverified' };
+  }
+  if (!authUserId) return { state: 'none' };
+
+  const { data, error } = await supabase.from('app_users')
+    .select('kind, must_change_pin, is_active')
+    .eq('auth_user_id', authUserId).is('deleted_at', null).maybeSingle();
+
+  // The token refreshed but the row could not be read. That is the network
+  // again, not a verdict -- `error` here is a transport or a policy failure,
+  // and neither is "she is signed out".
+  if (error) return { state: 'unverified' };
+
+  // Answered, and there is no live row for this identity: the account was
+  // deleted while the session was still in a browser somewhere.
+  if (!data) { await signOut(); return { state: 'none' }; }
+
+  // THE CHECK PERSISTENCE MAKES NECESSARY. Before a session survived reloads,
+  // a disabled account met `is_active` at auth-login on every entry ("This
+  // account has been disabled"). A session that outlives the browser would
+  // walk straight past that, so it is asked again here -- and her session is
+  // ended rather than merely refused, so disabling an account actually turns
+  // the device off instead of asking it to be polite.
+  if (!data.is_active) { await signOut(); return { state: 'closed' }; }
+
+  return {
+    state: 'active',
+    kind: data.kind as 'super_admin' | 'staff',
+    mustChangePin: Boolean(data.must_change_pin),
+  };
 }
