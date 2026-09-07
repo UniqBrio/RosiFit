@@ -1,0 +1,234 @@
+Upload override / date-clash confirmation — driven in Chromium against the exported
+web bundle in fixtures mode (EXPO_NO_DOTENV=1 expo export), both themes forced through
+the app's own preference key (rosifit.theme.mode), 07-Sep-2026.
+
+Contrast is measured on the LIVE DOM with every background layer composited — a status
+panel is a 13% tint of its own ink, so reading the first non-transparent layer and
+ignoring its alpha measures a colour nothing on screen shows.
+
+THE SIX FAILURES BELOW ARE ALL ON THE UNTOUCHED RESULT PANEL, light theme only:
+the 'present' ink on its own tint, 4.18:1. Pre-existing, confirmed at token level, and
+logged as TD-036 — the contrast gate sweeps status inks on OPAQUE surfaces only, and
+every status panel in the app draws them on a 13% tint of themselves. The panel this
+change adds uses 'warn', which clears at 4.98 light / 9.16 dark.
+
+
+===== A · re-upload for a day that already has a register (no day chosen) · light =====
+
+===== A · re-upload for a day that already has a register (no day chosen) · light =====
+  [upload-confirm]  | Tue 18 Aug already has a register | meet_18-08_prenatal-flow.csv was already imported for Prenatal Flow · Coimbatore on Tue 18 Aug. Importing meet_18-08_corrected.csv OVERRIDES that register: the Tue 18 Aug attendance you have now is replaced by what this file says, and nobody is counted twice. | Marks you made by hand on the roster are kept. Nothing has been written yet. | Override the Tue 18 Aug register | Choose another file
+  [upload-confirm-go] Override the Tue 18 Aug register
+  [upload-confirm-cancel] Choose another file
+  OK  4.98 (needs 3)  ""
+  OK  4.98 (needs 4.5)  "Tue 18 Aug already has a register"
+  OK  12.03 (needs 4.5)  "meet_18-08_prenatal-flow.csv was already imported for Prenatal Flow · "
+  OK  4.91 (needs 4.5)  "Marks you made by hand on the roster are kept. Nothing has been writte"
+  OK  4.91 (needs 3)  "Override the Tue 18 Aug register"
+  OK  15.71 (needs 3)  "Choose another file"
+
+===== A · re-upload for a day that already has a register (no day chosen) · dark =====
+  [upload-confirm]  | Tue 18 Aug already has a register | meet_18-08_prenatal-flow.csv was already imported for Prenatal Flow · Coimbatore on Tue 18 Aug. Importing meet_18-08_corrected.csv OVERRIDES that register: the Tue 18 Aug attendance you have now is replaced by what this file says, and nobody is counted twice. | Marks you made by hand on the roster are kept. Nothing has been written yet. | Override the Tue 18 Aug register | Choose another file
+  [upload-confirm-go] Override the Tue 18 Aug register
+  [upload-confirm-cancel] Choose another file
+  OK  9.16 (needs 3)  ""
+  OK  9.16 (needs 4.5)  "Tue 18 Aug already has a register"
+  OK  13.44 (needs 4.5)  "meet_18-08_prenatal-flow.csv was already imported for Prenatal Flow · "
+  OK  5.61 (needs 4.5)  "Marks you made by hand on the roster are kept. Nothing has been writte"
+  OK  4.91 (needs 3)  "Override the Tue 18 Aug register"
+  OK  18.17 (needs 3)  "Choose another file"
+
+===== B · 3 Sep opened, an 18 Aug file, 18 Aug already has a register · light =====
+  [upload-confirm]  | This file overrides the Tue 18 Aug register | You opened Thu 3 Sep. meet_18-08_corrected.csv says it covers Tue 18 Aug, so importing it updates the Tue 18 Aug register for Prenatal Flow · Coimbatore — not Thu 3 Sep. | meet_18-08_prenatal-flow.csv was already imported for Prenatal Flow · Coimbatore on Tue 18 Aug. Importing meet_18-08_corrected.csv OVERRIDES that register: the Tue 18 Aug attendance you have now is replaced by what this file says, and nobody is counted twice. | Marks you made by hand on the roster are kept. Nothing has been written yet. | Override the Tue 18 Aug register | Choose another file
+  [upload-confirm-go] Override the Tue 18 Aug register
+  [upload-confirm-cancel] Choose another file
+  OK  4.98 (needs 3)  ""
+  OK  4.98 (needs 4.5)  "This file overrides the Tue 18 Aug register"
+  OK  12.03 (needs 4.5)  "You opened Thu 3 Sep. meet_18-08_corrected.csv says it covers Tue 18 A"
+  OK  12.03 (needs 4.5)  "meet_18-08_prenatal-flow.csv was already imported for Prenatal Flow · "
+  OK  4.91 (needs 4.5)  "Marks you made by hand on the roster are kept. Nothing has been writte"
+  OK  4.91 (needs 3)  "Override the Tue 18 Aug register"
+  OK  15.71 (needs 3)  "Choose another file"
+
+===== B · 3 Sep opened, an 18 Aug file, 18 Aug already has a register · dark =====
+  [upload-confirm]  | This file overrides the Tue 18 Aug register | You opened Thu 3 Sep. meet_18-08_corrected.csv says it covers Tue 18 Aug, so importing it updates the Tue 18 Aug register for Prenatal Flow · Coimbatore — not Thu 3 Sep. | meet_18-08_prenatal-flow.csv was already imported for Prenatal Flow · Coimbatore on Tue 18 Aug. Importing meet_18-08_corrected.csv OVERRIDES that register: the Tue 18 Aug attendance you have now is replaced by what this file says, and nobody is counted twice. | Marks you made by hand on the roster are kept. Nothing has been written yet. | Override the Tue 18 Aug register | Choose another file
+  [upload-confirm-go] Override the Tue 18 Aug register
+  [upload-confirm-cancel] Choose another file
+  OK  9.16 (needs 3)  ""
+  OK  9.16 (needs 4.5)  "This file overrides the Tue 18 Aug register"
+  OK  13.44 (needs 4.5)  "You opened Thu 3 Sep. meet_18-08_corrected.csv says it covers Tue 18 A"
+  OK  13.44 (needs 4.5)  "meet_18-08_prenatal-flow.csv was already imported for Prenatal Flow · "
+  OK  5.61 (needs 4.5)  "Marks you made by hand on the roster are kept. Nothing has been writte"
+  OK  4.91 (needs 3)  "Override the Tue 18 Aug register"
+  OK  18.17 (needs 3)  "Choose another file"
+
+===== C · 3 Sep opened, a 30 Aug file, 30 Aug has no register (clash only) · light =====
+  [upload-confirm]  | This file is from Sun 30 Aug | You opened Thu 3 Sep. meet_30-08.csv says it covers Sun 30 Aug, so importing it updates the Sun 30 Aug register for Prenatal Flow · Coimbatore — not Thu 3 Sep. | The day always comes from the file, never from the screen. Nothing has been written yet. | Import for Sun 30 Aug | Choose another file
+  [upload-confirm-go] Import for Sun 30 Aug
+  [upload-confirm-cancel] Choose another file
+  OK  4.98 (needs 3)  ""
+  OK  4.98 (needs 4.5)  "This file is from Sun 30 Aug"
+  OK  12.03 (needs 4.5)  "You opened Thu 3 Sep. meet_30-08.csv says it covers Sun 30 Aug, so imp"
+  OK  4.91 (needs 4.5)  "The day always comes from the file, never from the screen. Nothing has"
+  OK  4.91 (needs 3)  "Import for Sun 30 Aug"
+  OK  15.71 (needs 3)  "Choose another file"
+
+===== C · 3 Sep opened, a 30 Aug file, 30 Aug has no register (clash only) · dark =====
+  [upload-confirm]  | This file is from Sun 30 Aug | You opened Thu 3 Sep. meet_30-08.csv says it covers Sun 30 Aug, so importing it updates the Sun 30 Aug register for Prenatal Flow · Coimbatore — not Thu 3 Sep. | The day always comes from the file, never from the screen. Nothing has been written yet. | Import for Sun 30 Aug | Choose another file
+  [upload-confirm-go] Import for Sun 30 Aug
+  [upload-confirm-cancel] Choose another file
+  OK  9.16 (needs 3)  ""
+  OK  9.16 (needs 4.5)  "This file is from Sun 30 Aug"
+  OK  13.44 (needs 4.5)  "You opened Thu 3 Sep. meet_30-08.csv says it covers Sun 30 Aug, so imp"
+  OK  5.61 (needs 4.5)  "The day always comes from the file, never from the screen. Nothing has"
+  OK  4.91 (needs 3)  "Import for Sun 30 Aug"
+  OK  18.17 (needs 3)  "Choose another file"
+
+===== D · an ordinary import — nothing to say, nothing asked · light =====
+  [upload-done]  | Imported · Sun 30 Aug | 5 marked present on the Prenatal Flow · Coimbatore register. |  | With email | 1 | On the register, and counted for follow-up. |  | No email | 4 | Marked present, listed under No email on the course. | 3 of them are new — a name the register did not know, added to this course with no email. If she is somebody you already have, “Add display name to existing member” on the course folds her in and carries her attendance across. |  | MAPPED TO THIS SESSION | Meeting code | gzj-yhru-ehp |  | Session date | Sun 30 Aug |  | Started at | 18:02:00 |  | Course | Prenatal Flow · Coimbatore |  | Rows read | 3 |  | The meeting code and date come from the lines above the table in the Meet file — that is what says which session this is. The course and branch come from RosiFit, never from the file. | Done | Upload another file
+  OK  4.18 (needs 3)  ""
+  FAIL 4.18 (needs 4.5)  "Imported · Sun 30 Aug"
+  OK  12.14 (needs 4.5)  "5 marked present on the Prenatal Flow · Coimbatore register."
+  FAIL 4.18 (needs 4.5)  ""
+  FAIL 4.18 (needs 4.5)  "With email"
+  OK  13.92 (needs 3)  "1"
+  OK  4.96 (needs 4.5)  "On the register, and counted for follow-up."
+  OK  4.65 (needs 4.5)  ""
+  OK  4.65 (needs 4.5)  "No email"
+  OK  13.52 (needs 3)  "4"
+  OK  4.81 (needs 4.5)  "Marked present, listed under No email on the course."
+  OK  5.91 (needs 4.5)  "3 of them are new — a name the register did not know, added to this co"
+  OK  5.49 (needs 4.5)  ""
+  OK  6.76 (needs 4.5)  "Mapped to this session"
+  OK  6.76 (needs 4.5)  "Meeting code"
+  OK  19 (needs 4.5)  "gzj-yhru-ehp"
+  OK  5.7 (needs 4.5)  ""
+  OK  6.76 (needs 4.5)  "Session date"
+  OK  19 (needs 4.5)  "Sun 30 Aug"
+  OK  5.7 (needs 4.5)  ""
+  OK  6.76 (needs 4.5)  "Started at"
+  OK  19 (needs 4.5)  "18:02:00"
+  OK  5.7 (needs 4.5)  ""
+  OK  6.76 (needs 4.5)  "Course"
+  OK  19 (needs 4.5)  "Prenatal Flow · Coimbatore"
+  OK  6.32 (needs 4.5)  ""
+  OK  6.76 (needs 4.5)  "Rows read"
+  OK  19 (needs 4.5)  "3"
+  OK  5.7 (needs 4.5)  ""
+  OK  6.76 (needs 4.5)  "The meeting code and date come from the lines above the table in the M"
+  OK  4.91 (needs 3)  "Done"
+  OK  15.71 (needs 3)  "Upload another file"
+
+===== D · an ordinary import — nothing to say, nothing asked · dark =====
+  [upload-done]  | Imported · Sun 30 Aug | 5 marked present on the Prenatal Flow · Coimbatore register. |  | With email | 1 | On the register, and counted for follow-up. |  | No email | 4 | Marked present, listed under No email on the course. | 3 of them are new — a name the register did not know, added to this course with no email. If she is somebody you already have, “Add display name to existing member” on the course folds her in and carries her attendance across. |  | MAPPED TO THIS SESSION | Meeting code | gzj-yhru-ehp |  | Session date | Sun 30 Aug |  | Started at | 18:02:00 |  | Course | Prenatal Flow · Coimbatore |  | Rows read | 3 |  | The meeting code and date come from the lines above the table in the Meet file — that is what says which session this is. The course and branch come from RosiFit, never from the file. | Done | Upload another file
+  OK  7.38 (needs 3)  ""
+  OK  7.38 (needs 4.5)  "Imported · Sun 30 Aug"
+  OK  13.97 (needs 4.5)  "5 marked present on the Prenatal Flow · Coimbatore register."
+  OK  7.38 (needs 4.5)  ""
+  OK  7.38 (needs 4.5)  "With email"
+  OK  17.49 (needs 3)  "1"
+  OK  5.83 (needs 4.5)  "On the register, and counted for follow-up."
+  OK  5.82 (needs 4.5)  ""
+  OK  5.82 (needs 4.5)  "No email"
+  OK  17.92 (needs 3)  "4"
+  OK  5.98 (needs 4.5)  "Marked present, listed under No email on the course."
+  OK  6.79 (needs 4.5)  "3 of them are new — a name the register did not know, added to this co"
+  OK  10.44 (needs 4.5)  ""
+  OK  6.43 (needs 4.5)  "Mapped to this session"
+  OK  6.43 (needs 4.5)  "Meeting code"
+  OK  19.27 (needs 4.5)  "gzj-yhru-ehp"
+  OK  8.13 (needs 4.5)  ""
+  OK  6.43 (needs 4.5)  "Session date"
+  OK  19.27 (needs 4.5)  "Sun 30 Aug"
+  OK  8.13 (needs 4.5)  ""
+  OK  6.43 (needs 4.5)  "Started at"
+  OK  19.27 (needs 4.5)  "18:02:00"
+  OK  8.13 (needs 4.5)  ""
+  OK  6.43 (needs 4.5)  "Course"
+  OK  19.27 (needs 4.5)  "Prenatal Flow · Coimbatore"
+  OK  4.87 (needs 4.5)  ""
+  OK  6.43 (needs 4.5)  "Rows read"
+  OK  19.27 (needs 4.5)  "3"
+  OK  8.13 (needs 4.5)  ""
+  OK  6.43 (needs 4.5)  "The meeting code and date come from the lines above the table in the M"
+  OK  4.91 (needs 3)  "Done"
+  OK  18.17 (needs 3)  "Upload another file"
+
+===== E · confirm the override, from 3 Sep, for an 18 Aug file · light =====
+  [upload-done]  | Imported · Tue 18 Aug | 5 marked present on the Prenatal Flow · Coimbatore register. |  | With email | 1 | On the register, and counted for follow-up. |  | No email | 4 | Marked present, listed under No email on the course. | 3 of them are new — a name the register did not know, added to this course with no email. If she is somebody you already have, “Add display name to existing member” on the course folds her in and carries her attendance across. |  | This day already had a file | meet_18-08_prenatal-flow.csv was imported for this course on this date. This file CORRECTED that register rather than adding to it — nobody is counted twice. |  | MAPPED TO THIS SESSION | Meeting code | gzj-yhru-ehp |  | Session date | Tue 18 Aug |  | Started at | 18:02:00 |  | Course | Prenatal Flow · Coimbatore |  | Rows read | 3 |  | The meeting code and date come from the lines above the table in the Meet file — that is what says which session this is. The course and branch come from RosiFit, never from the file. | Done | Upload another file
+  [upload-superseded]  | This day already had a file | meet_18-08_prenatal-flow.csv was imported for this course on this date. This file CORRECTED that register rather than adding to it — nobody is counted twice.
+  OK  4.18 (needs 3)  ""
+  FAIL 4.18 (needs 4.5)  "Imported · Tue 18 Aug"
+  OK  12.14 (needs 4.5)  "5 marked present on the Prenatal Flow · Coimbatore register."
+  FAIL 4.18 (needs 4.5)  ""
+  FAIL 4.18 (needs 4.5)  "With email"
+  OK  13.92 (needs 3)  "1"
+  OK  4.96 (needs 4.5)  "On the register, and counted for follow-up."
+  OK  4.65 (needs 4.5)  ""
+  OK  4.65 (needs 4.5)  "No email"
+  OK  13.52 (needs 3)  "4"
+  OK  4.81 (needs 4.5)  "Marked present, listed under No email on the course."
+  OK  5.91 (needs 4.5)  "3 of them are new — a name the register did not know, added to this co"
+  OK  4.98 (needs 4.5)  ""
+  OK  4.98 (needs 4.5)  "This day already had a file"
+  OK  12.03 (needs 4.5)  "meet_18-08_prenatal-flow.csv was imported for this course on this date"
+  OK  5.49 (needs 4.5)  ""
+  OK  6.76 (needs 4.5)  "Mapped to this session"
+  OK  6.76 (needs 4.5)  "Meeting code"
+  OK  19 (needs 4.5)  "gzj-yhru-ehp"
+  OK  5.7 (needs 4.5)  ""
+  OK  6.76 (needs 4.5)  "Session date"
+  OK  19 (needs 4.5)  "Tue 18 Aug"
+  OK  5.7 (needs 4.5)  ""
+  OK  6.76 (needs 4.5)  "Started at"
+  OK  19 (needs 4.5)  "18:02:00"
+  OK  5.7 (needs 4.5)  ""
+  OK  6.76 (needs 4.5)  "Course"
+  OK  19 (needs 4.5)  "Prenatal Flow · Coimbatore"
+  OK  6.32 (needs 4.5)  ""
+  OK  6.76 (needs 4.5)  "Rows read"
+  OK  19 (needs 4.5)  "3"
+  OK  5.7 (needs 4.5)  ""
+  OK  6.76 (needs 4.5)  "The meeting code and date come from the lines above the table in the M"
+  OK  4.91 (needs 3)  "Done"
+  OK  15.71 (needs 3)  "Upload another file"
+
+===== E · confirm the override, from 3 Sep, for an 18 Aug file · dark =====
+  [upload-done]  | Imported · Tue 18 Aug | 5 marked present on the Prenatal Flow · Coimbatore register. |  | With email | 1 | On the register, and counted for follow-up. |  | No email | 4 | Marked present, listed under No email on the course. | 3 of them are new — a name the register did not know, added to this course with no email. If she is somebody you already have, “Add display name to existing member” on the course folds her in and carries her attendance across. |  | This day already had a file | meet_18-08_prenatal-flow.csv was imported for this course on this date. This file CORRECTED that register rather than adding to it — nobody is counted twice. |  | MAPPED TO THIS SESSION | Meeting code | gzj-yhru-ehp |  | Session date | Tue 18 Aug |  | Started at | 18:02:00 |  | Course | Prenatal Flow · Coimbatore |  | Rows read | 3 |  | The meeting code and date come from the lines above the table in the Meet file — that is what says which session this is. The course and branch come from RosiFit, never from the file. | Done | Upload another file
+  [upload-superseded]  | This day already had a file | meet_18-08_prenatal-flow.csv was imported for this course on this date. This file CORRECTED that register rather than adding to it — nobody is counted twice.
+  OK  7.38 (needs 3)  ""
+  OK  7.38 (needs 4.5)  "Imported · Tue 18 Aug"
+  OK  13.97 (needs 4.5)  "5 marked present on the Prenatal Flow · Coimbatore register."
+  OK  7.38 (needs 4.5)  ""
+  OK  7.38 (needs 4.5)  "With email"
+  OK  17.49 (needs 3)  "1"
+  OK  5.83 (needs 4.5)  "On the register, and counted for follow-up."
+  OK  5.82 (needs 4.5)  ""
+  OK  5.82 (needs 4.5)  "No email"
+  OK  17.92 (needs 3)  "4"
+  OK  5.98 (needs 4.5)  "Marked present, listed under No email on the course."
+  OK  6.79 (needs 4.5)  "3 of them are new — a name the register did not know, added to this co"
+  OK  9.16 (needs 4.5)  ""
+  OK  9.16 (needs 4.5)  "This day already had a file"
+  OK  13.44 (needs 4.5)  "meet_18-08_prenatal-flow.csv was imported for this course on this date"
+  OK  10.44 (needs 4.5)  ""
+  OK  6.43 (needs 4.5)  "Mapped to this session"
+  OK  6.43 (needs 4.5)  "Meeting code"
+  OK  19.27 (needs 4.5)  "gzj-yhru-ehp"
+  OK  8.13 (needs 4.5)  ""
+  OK  6.43 (needs 4.5)  "Session date"
+  OK  19.27 (needs 4.5)  "Tue 18 Aug"
+  OK  8.13 (needs 4.5)  ""
+  OK  6.43 (needs 4.5)  "Started at"
+  OK  19.27 (needs 4.5)  "18:02:00"
+  OK  8.13 (needs 4.5)  ""
+  OK  6.43 (needs 4.5)  "Course"
+  OK  19.27 (needs 4.5)  "Prenatal Flow · Coimbatore"
+  OK  4.87 (needs 4.5)  ""
+  OK  6.43 (needs 4.5)  "Rows read"
+  OK  19.27 (needs 4.5)  "3"
+  OK  8.13 (needs 4.5)  ""
+  OK  6.43 (needs 4.5)  "The meeting code and date come from the lines above the table in the M"
+  OK  4.91 (needs 3)  "Done"
+  OK  18.17 (needs 3)  "Upload another file"
+
+2 PROBLEM GROUP(S)

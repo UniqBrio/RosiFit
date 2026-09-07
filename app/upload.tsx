@@ -11,12 +11,19 @@ import { usePendingSessions, useCourses } from '../src/data/hooks';
 import type { PendingSession } from '../src/data/repository';
 import { isConfigured } from '../src/lib/supabase';
 import {
-  parseMeetCsv, meetMatchesSession, meetCreatedDate, meetCreatedTime, dedupeRows,
+  // meetMatchesSession is gone from here: the day the file covers is derived
+  // ONCE by meetCreatedDate (which is where the local-day rule lives), and
+  // importAsk compares that ISO day with the ISO day she opened.
+  parseMeetCsv, meetCreatedDate, meetCreatedTime, dedupeRows,
   CSV_COLUMNS, type MeetMeta,
 } from '../src/data/meetCsv';
 import { sha256Hex, pickCsvFile } from '../src/data/csv';
 import { csvPreview, csvCommit, type ImportDecision, type PreviewResult } from '../src/data/api';
 import { scopeSessions } from '../src/data/uploadScope';
+import {
+  importAsk, askWords, overrideSummary,
+  type ImportAsk, type OverrideCounts, type Supersedes,
+} from '../src/data/uploadOverride';
 import { FormDialog } from '../src/components/FormDialog';
 
 /**
@@ -33,8 +40,15 @@ import { FormDialog } from '../src/components/FormDialog';
  * without stopping to ask.
  */
 
-/** the phases this dialog actually has, which is not the same as steps */
-type Phase = 'choose' | 'pick' | 'clash' | 'working' | 'done';
+/**
+ * the phases this dialog actually has, which is not the same as steps
+ *
+ * `clash` became `confirm` when the ask grew a second reason to exist: the
+ * file being for another day, and the day already holding a register that
+ * this file REPLACES. One phase, because they are one question with one
+ * answer -- see src/data/uploadOverride.ts.
+ */
+type Phase = 'choose' | 'pick' | 'confirm' | 'working' | 'done';
 
 /**
  * WHAT THE IMPORT DOES WITH A ROW NOBODY WAS ASKED ABOUT.
@@ -99,6 +113,44 @@ type Outcome = {
   duplicates: string[];
   /** the file this one corrected, when the day already had one */
   supersedes: string | null;
+  /**
+   * What replacing that register actually moved. A promise that data will be
+   * overridden is only worth making if it can be checked afterwards, and
+   * these three numbers are the check (uploadOverride.ts).
+   */
+  override: OverrideCounts | null;
+};
+
+/**
+ * A file that has been READ, MATCHED AND STAGED, and not yet written.
+ *
+ * The preview classifies every row and parks it in `csv_imports` at
+ * `previewed`; nothing reaches the register until the commit. Holding that
+ * between the two is what lets the screen ask a question the answer to which
+ * only the server has -- "this day already has a file, and it is this one" --
+ * without having written anything to ask about.
+ */
+type Staged = {
+  /** the day the file covers. Where the import lands, whatever was on screen. */
+  day: string;
+  /** the staged import. Null with no project configured: the fixtures answer. */
+  preview: PreviewResult | null;
+  /** the completed import already covering this day, when there is one */
+  supersedes: Supersedes;
+};
+
+/**
+ * The days the FIXTURES say already have a register, and the file that put it
+ * there. `supersedes` is a fact only the server holds, so without this the
+ * override ask was undemonstrable offline -- exactly the reason PENDING_SESSIONS
+ * carries a `date` at all (mock.ts).
+ *
+ * Both days are ones MONTH_DAYS already reports as `completed`, and neither is
+ * one of the two days AWAITING a file (22 and 23 Aug): a day cannot be both.
+ */
+const FIXTURE_IMPORTED: Record<string, string> = {
+  '2026-08-18': 'meet_18-08_prenatal-flow.csv',
+  '2026-08-20': 'meet_20-08_postnatal-core.csv',
 };
 
 /** ISO day -> "Sun 31 Aug", the way every other date on this screen reads */
@@ -146,13 +198,19 @@ function UploadBody() {
   /** what the import did, once it has done it */
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   /**
-   * A file whose own day is not the day she opened. Held here until she says
-   * which day wins -- the ONE question this flow still asks, because the file
-   * updating a register from last week is not something to discover
+   * THE ONE QUESTION THIS FLOW STILL ASKS, now with two reasons to be asked:
+   * a file whose own day is not the day she opened, and a day that already
+   * holds a register this file REPLACES. Neither is something to discover
    * afterwards.
+   *
+   * `staged` is the preview that has already run: the rows are classified and
+   * an import row is waiting at `previewed`, but NO attendance has been
+   * written. That is what lets the ask name the file it is about to override
+   * -- which only the server knows -- while "nothing has been written yet" is
+   * still true.
    */
-  const [clash, setClash] = useState<
-    { file: NonNullable<typeof file>; fileDay: string; openedDay: string } | null>(null);
+  const [ask, setAsk] = useState<
+    { file: NonNullable<typeof file>; ask: ImportAsk; staged: Staged } | null>(null);
 
   const scope = scopeSessions(pending.data ?? [], courseId, date);
   const sessions = scope.sessions;
@@ -245,89 +303,140 @@ function UploadBody() {
       // there to try another export.
       if (!fileDay) return;
 
-      /**
-       * THE ONE QUESTION LEFT, and the requester asked for it by name.
-       *
-       * The day has always come from the FILE, never from the day she
-       * tapped -- so a 31-Aug export opened from 6-Sep silently updated the
-       * 31-Aug register, and the only warning was a line of grey text she had
-       * already scrolled past. It is the right behaviour and the wrong way to
-       * find out about it, so now it is asked: which day did you mean.
-       *
-       * Only when a day was actually CHOSEN. Opened from the Attendance list
-       * or a course header there is no day to disagree with, and inventing a
-       * question there would put a dialog in front of every ordinary import.
-       */
-      if (openedDay && !meetMatchesSession(parsed.meta.created, openedDay)) {
-        setClash({ file: picked, fileDay, openedDay });
-        setPhase('clash');
-        return;
-      }
-      void run(picked, fileDay);
+      void stage(picked, fileDay);
     } catch (err) {
       setFailure(err instanceof Error ? err.message : 'That file could not be read.');
     }
   };
 
   /**
-   * READ, MATCHED AND WRITTEN, in one go.
+   * READ AND MATCHED, BUT NOT WRITTEN.
    *
-   * `source` and `day` are passed rather than read from state: setFile has
-   * not landed yet in the tick that calls this, and importing the PREVIOUS
-   * file is exactly how the wrong register gets written.
+   * The preview classifies every row and stages it; the register is untouched
+   * until the commit below. This step exists on its own so that the question
+   * -- when there is one -- is asked with everything known: which day the file
+   * covers, AND whether that day already has a register this file replaces.
+   * The second of those comes back from the preview and nowhere else.
+   *
+   * An ask that is declined leaves a staged `previewed` row behind. That is
+   * inert by construction: both the already-imported check and the
+   * supersede lookup count only `completed` imports.
    */
-  const run = async (source: NonNullable<typeof file>, day: string) => {
+  const stage = async (source: NonNullable<typeof file>, day: string) => {
     setFailure(null);
     setPhase('working');
 
-    if (!isConfigured) {
-      // No project configured: the fixtures answer, and they answer at once.
-      setOutcome(fixtureOutcome(day, source));
-      setPhase('done');
-      return;
-    }
-    // NOT folded into the line above, deliberately. Reaching here with no
-    // offering is a bug -- the file step is only reachable once one is
-    // chosen -- and answering a bug with fixture numbers would report an
-    // import that never happened, against a course nobody picked.
-    if (!target?.offering_id) {
-      setFailure('No course is selected, so there is nothing to import into. Nothing was written.');
+    try {
+      let staged: Staged;
+      if (!isConfigured) {
+        // No project configured: the fixtures answer, and they answer at once.
+        const name = FIXTURE_IMPORTED[day];
+        staged = {
+          day, preview: null,
+          supersedes: name ? { file_name: name, completed_at: `${day}T12:00:00Z` } : null,
+        };
+      } else {
+        // NOT folded into the line above, deliberately. Reaching here with no
+        // offering is a bug -- the file step is only reachable once one is
+        // chosen -- and answering a bug with fixture numbers would report an
+        // import that never happened, against a course nobody picked.
+        if (!target?.offering_id) {
+          setFailure('No course is selected, so there is nothing to import into. Nothing was written.');
+          setPhase('pick');
+          return;
+        }
+        const parsed = parseMeetCsv(source.text);
+        const deduped = dedupeRows(parsed.rows);
+        const preview: PreviewResult = await csvPreview({
+          offering_id: target.offering_id,
+          // FROM THE FILE, not from a list. The session this belongs to is
+          // whatever day the meeting ran; if no such session exists yet, the
+          // import creates it (0024).
+          session_date: day,
+          file_name: source.name,
+          file_sha256: await sha256Hex(source.text),
+          meeting_code: parsed.meta.code,
+          meeting_started_at: parsed.meta.created,
+          // Deduped before it is sent, so the count imported is the count the
+          // file describes: one person, one session, one day.
+          rows: deduped.rows,
+        });
+        staged = { day, preview, supersedes: preview.supersedes ?? null };
+      }
+
+      /**
+       * THE ONE QUESTION LEFT, and the requester asked for both halves of it
+       * by name.
+       *
+       * The day has always come from the FILE, never from the day she
+       * tapped -- so a 31-Aug export opened from 3-Sep silently updated the
+       * 31-Aug register. And a second file for a day already imported has
+       * always REPLACED that register, with the only warning arriving on the
+       * result screen, after the replacing was done. Both are the right
+       * behaviour and the wrong way to find out about it.
+       *
+       * The day half is only asked when a day was actually CHOSEN: opened from
+       * the Attendance list or a course header there is no day to disagree
+       * with. The override half is asked wherever she came from -- a register
+       * being replaced does not depend on which screen she started on.
+       */
+      const pending = importAsk({ fileDay: day, openedDay, supersedes: staged.supersedes });
+      if (pending) {
+        setAsk({ file: source, ask: pending, staged });
+        setPhase('confirm');
+        return;
+      }
+      await commit(source, staged);
+    } catch (err) {
+      // The sentence the commit's own catch already ships. It is true of this
+      // path too -- the preview writes no attendance -- and a second wording
+      // for the same fact is a new string this change was not asked for.
+      setFailure(err instanceof Error
+        ? `${err.message} Nothing was written.`
+        : 'The import did not run. Nothing was written.');
       setPhase('pick');
+    }
+  };
+
+  /**
+   * WRITTEN, in one transaction.
+   *
+   * `source` and `staged` are passed rather than read from state: setFile has
+   * not landed yet in the tick that calls this, and importing the PREVIOUS
+   * file is exactly how the wrong register gets written.
+   *
+   * NO STOP BETWEEN THE ROWS. The decisions a person used to make one row at
+   * a time are made by autoDecisions, and this follows the preview
+   * immediately unless an ask stood in between.
+   */
+  const commit = async (source: NonNullable<typeof file>, staged: Staged) => {
+    setFailure(null);
+    setPhase('working');
+
+    if (!staged.preview) {
+      // No project configured: the fixtures answer, and they answer at once.
+      setOutcome(fixtureOutcome(staged.day, source, staged.supersedes));
+      setPhase('done');
       return;
     }
 
     try {
-      const parsed = parseMeetCsv(source.text);
-      const deduped = dedupeRows(parsed.rows);
-      const preview: PreviewResult = await csvPreview({
-        offering_id: target.offering_id,
-        // FROM THE FILE, not from a list. The session this belongs to is
-        // whatever day the meeting ran; if no such session exists yet, the
-        // import creates it (0024).
-        session_date: day,
-        file_name: source.name,
-        file_sha256: await sha256Hex(source.text),
-        meeting_code: parsed.meta.code,
-        meeting_started_at: parsed.meta.created,
-        // Deduped before it is sent, so the count imported is the count the
-        // file describes: one person, one session, one day.
-        rows: deduped.rows,
-      });
-      // NO STOP HERE. This is the whole of the change: the decisions that a
-      // person used to make one row at a time are made by autoDecisions, and
-      // the commit follows immediately.
+      const preview = staged.preview;
       const result = await csvCommit(preview.import_id, autoDecisions(preview.rows));
       const c = preview.counts;
       setOutcome({
-        session_date: day,
+        session_date: staged.day,
         with_email: c.matched ?? 0,
         no_email: (c.noEmail ?? 0) + (c.possible ?? 0) + (c.ambiguous ?? 0) + (c.unmatched ?? 0),
         new_members: result.new_members,
         imported: result.present_or_extra,
         dropped: preview.dropped_names ?? [],
         staff: preview.staff_names ?? [],
-        duplicates: [...new Set(deduped.duplicates)],
-        supersedes: preview.supersedes?.file_name ?? null,
+        duplicates: [...new Set(dedupeRows(parseMeetCsv(source.text).rows).duplicates)],
+        supersedes: staged.supersedes?.file_name ?? null,
+        // Absent until the migration that returns it is applied, which is why
+        // it is read defensively rather than assumed.
+        override: result.overridden ?? null,
       });
       setPhase('done');
     } catch (err) {
@@ -624,47 +733,53 @@ function UploadBody() {
         </>
       )}
 
-      {/* ----------------------------------------------------- the date clash
-          THE ONE CONFIRMATION LEFT. The requester asked for it by name: the
-          file is from another day, say so, and on confirm import it for THAT
-          day -- not for the day on the screen. */}
-      {phase === 'clash' && clash ? (
-        <View testID="upload-clash">
-          <View style={{
-            padding: SPACE.xl, borderRadius: RADIUS.lg,
-            backgroundColor: statusSurface(warnInk).bg,
-            borderWidth: 1, borderColor: statusSurface(warnInk).border,
-          }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-              <Icon name="history" size={20} color={warnInk} />
-              {/* the word as well as the colour (CP-010) */}
-              <Text style={{ flex: 1, fontSize: 13.5, fontWeight: '800', color: warnInk }}>
-                {`This file is from ${dayLabel(clash.fileDay)}`}
-              </Text>
+      {/* ------------------------------------------------------- the one ask
+          The file is from another day, or the day already holds a register
+          this file replaces, or both -- and both are answered by one confirm.
+          The words are in src/data/uploadOverride.ts, where a spec can read
+          them; what is here is only how they are drawn. */}
+      {phase === 'confirm' && ask ? (() => {
+        const words = askWords(ask.ask, {
+          fileName: ask.file.name, course: chosen, label: dayLabel,
+        });
+        return (
+          <View testID="upload-confirm">
+            <View style={{
+              padding: SPACE.xl, borderRadius: RADIUS.lg,
+              backgroundColor: statusSurface(warnInk).bg,
+              borderWidth: 1, borderColor: statusSurface(warnInk).border,
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                {/* history for "this is about a day gone by", warning for
+                    "something you have is about to be replaced" */}
+                <Icon name={ask.ask.overrides ? 'warning' : 'history'} size={20} color={warnInk} />
+                {/* the word as well as the colour (CP-010) */}
+                <Text style={{ flex: 1, fontSize: 13.5, fontWeight: '800', color: warnInk }}>
+                  {words.title}
+                </Text>
+              </View>
+              {words.lines.map((line, i) => (
+                <Body key={line} style={{ marginTop: i === 0 ? SPACE.md : SPACE.sm, lineHeight: 20 }}>
+                  {line}
+                </Body>
+              ))}
+              <Muted style={{ marginTop: SPACE.md }}>{words.note}</Muted>
             </View>
-            <Body style={{ marginTop: SPACE.md, lineHeight: 20 }}>
-              {`You opened ${dayLabel(clash.openedDay)}. ${clash.file.name} says it covers `
-               + `${dayLabel(clash.fileDay)}, so importing it updates the `
-               + `${dayLabel(clash.fileDay)} register for ${chosen} — not ${dayLabel(clash.openedDay)}.`}
-            </Body>
-            <Muted style={{ marginTop: SPACE.md }}>
-              The day always comes from the file, never from the screen. Nothing has been written yet.
-            </Muted>
-          </View>
 
-          <Button testID="upload-clash-confirm"
-            label={`Import for ${dayLabel(clash.fileDay)}`}
-            style={{ marginTop: SPACE.lg }}
-            onPress={() => {
-              const held = clash;
-              setClash(null);
-              void run(held.file, held.fileDay);
-            }} />
-          <Button testID="upload-clash-cancel" label="Choose another file" variant="secondary"
-            style={{ marginTop: SPACE.sm }}
-            onPress={() => { setClash(null); setFile(null); setPhase('pick'); }} />
-        </View>
-      ) : null}
+            <Button testID="upload-confirm-go"
+              label={words.confirm}
+              style={{ marginTop: SPACE.lg }}
+              onPress={() => {
+                const held = ask;
+                setAsk(null);
+                void commit(held.file, held.staged);
+              }} />
+            <Button testID="upload-confirm-cancel" label={words.cancel} variant="secondary"
+              style={{ marginTop: SPACE.sm }}
+              onPress={() => { setAsk(null); setFile(null); setPhase('pick'); }} />
+          </View>
+        );
+      })() : null}
 
       {/* ---------------------------------------------------------- the result
           "just show how many student with email and no email" -- the two
@@ -740,7 +855,11 @@ function UploadBody() {
           {outcome.supersedes ? (
             <Note testID="upload-superseded" ink={warnInk} icon="history"
               title="This day already had a file"
-              body={`${outcome.supersedes} was imported for this course on this date. This file CORRECTED that register rather than adding to it — nobody is counted twice.`} />
+              body={`${outcome.supersedes} was imported for this course on this date. This file CORRECTED that register rather than adding to it — nobody is counted twice.`
+                // What the override actually moved, when the server said. A
+                // promise that existing data would be replaced is worth
+                // nothing if nobody can see what it replaced.
+                + (overrideSummary(outcome.override) ? ` ${overrideSummary(outcome.override)}` : '')} />
           ) : null}
 
           {sessionMapPanel}
@@ -816,7 +935,7 @@ function Note({ testID, ink, icon, title, body }: {
  * used to walk through, so the numbers on the screen are the numbers the
  * fixtures actually describe rather than a pleasing invention.
  */
-function fixtureOutcome(day: string, source: { text: string }): Outcome {
+function fixtureOutcome(day: string, source: { text: string }, supersedes: Supersedes): Outcome {
   const kinds = MATCH_ROWS.map(r => r.kind);
   const withEmail = kinds.filter(k => k === 'matched').length;
   const newMembers = kinds.filter(k => k === 'possible' || k === 'ambiguous' || k === 'unmatched').length;
@@ -830,7 +949,10 @@ function fixtureOutcome(day: string, source: { text: string }): Outcome {
     dropped: [],
     staff: [],
     duplicates: [...new Set(dedupeRows(parseMeetCsv(source.text).rows).duplicates)],
-    supersedes: null,
+    supersedes: supersedes?.file_name ?? null,
+    // The fixtures describe a register being replaced; they do not invent
+    // numbers for what the replacing moved, because only the commit knows.
+    override: null,
   };
 }
 

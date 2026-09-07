@@ -8,6 +8,7 @@
  * callFn turns that into a thrown Error carrying that same sentence.
  */
 import { supabase } from '../lib/supabase';
+import type { OverrideCounts } from './uploadOverride';
 
 async function callFn<T>(name: string, body: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.functions.invoke(name, { body });
@@ -197,7 +198,16 @@ export type ImportDecision = {
 };
 
 export function csvCommit(importId: string, decisions: ImportDecision[]):
-  Promise<{ session_id: string; new_members: number; skipped: number; present_or_extra: number }> {
+  Promise<{
+    session_id: string; new_members: number; skipped: number; present_or_extra: number;
+    /**
+     * What replacing an existing register moved (0037). OPTIONAL, and read as
+     * such: a project still on 0026's commit_csv_import answers without it,
+     * and the result screen simply says nothing rather than reporting zeroes
+     * for work that was never done.
+     */
+    overridden?: OverrideCounts | null;
+  }> {
   return callFn('csv-import', { action: 'commit', import_id: importId, decisions });
 }
 

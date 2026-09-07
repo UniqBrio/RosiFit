@@ -1,0 +1,26 @@
+FAIL-FIRST — src/data/uploadOverride.test.ts against the behaviour that SHIPPED.
+
+importAsk() is stubbed to ignore `supersedes`, which is what app/upload.tsx did before
+this change: a day that already held a register was never asked about, only said out loud
+on the result screen after the register had been replaced.
+
+ok 1 - an ordinary import asks nothing at all
+ok 2 - and neither does one opened without choosing a day
+ok 3 - a file for another day is asked about, in round 3 s words exactly
+not ok 4 - the requester s own case: 3 Sep opened, a 31 Aug file, and 31 Aug already has a register
+  error: |-
+    + actual - expected
+  expected: 'meet-31-aug-first.csv'
+  actual: ~
+not ok 5 - a re-upload for the day she opened is still an override, and still asked
+  error: 'null == true'
+  expected: true
+  actual: ~
+not ok 6 - an override says out loud what it will not take back
+  error: 'null == true'
+  expected: true
+  actual: ~
+ok 7 - what the override did is reported, or not mentioned at all
+# tests 7
+# pass 4
+# fail 3

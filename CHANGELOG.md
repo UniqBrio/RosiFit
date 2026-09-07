@@ -1,5 +1,172 @@
 # Changelog
 
+## Unreleased — Uploading over a day you already have says so first
+
+**A day that already has a register now asks before it is replaced.** Choose a corrected
+export for a day already imported and the upload says which file is there, that importing this
+one overrides it, and waits for **Confirm override**. It used to say it on the result screen —
+after the register had been replaced.
+
+**One question, not two.** Pick 3 Sep, choose a file Meet created on 31 Aug, and the same panel
+says both things: this file is for 31 Aug, and 31 Aug already has a register that importing
+will override. One confirm, and it imports for the file's day — never for the day on screen.
+
+**And an ordinary upload still asks nothing.** No clash, no register already there, no dialog:
+the file imports on the pick exactly as before.
+
+**"Overridden" now means it.** A member the first file marked present and the corrected file
+does not name goes back to absent, and somebody who was never expected has her record removed
+— instead of keeping a present from a file that has been replaced. The one thing an override
+never touches is a mark somebody made **by hand** on the roster: the dialog says so before you
+confirm, and the result says how many were kept.
+
+**A class nobody scheduled is unchanged and still works:** a file whose day has no session
+creates that session, marks it held, and writes present or absent for every member.
+
+## Unreleased — The cursor is already in the first field
+
+**Open a form and you can type.** Add a course, Add member, Add staff, Add holiday, Add
+branch, Register, Change mobile, Forgot PIN, Set PIN — the first field holds the caret as the
+form appears, so the name goes in without a tap first. The list searches do the same: Members,
+Attendance and a course's own member list open ready for the first letter, and a picker with a
+search box opens with the caret in it.
+
+**The field it lands in does not move the screen.** A browser scrolls to whatever it focuses,
+and not every first field is at the top — the member search on a course sits under the
+course's header. The caret is placed without the scroll, so the screen still opens where it
+always opened, showing what you tapped.
+
+**One field per screen, and only the first.** The two security answers on Register, the second
+field of a two-field form, every field further down: unchanged. Nothing about what a field
+does, validates or saves has changed — only where the caret starts.
+
+**Focus is shown on the box now, not inside it.** With the caret arriving on its own, the
+browser's own focus ring became the first thing every form showed — and it is drawn around the
+inner field, a second rectangle inside the one the app draws. The box takes the accent border
+instead, the way the sign-in field always meant to: moved, never removed, because a field with
+no visible focus is unusable on a keyboard.
+
+Three layers used to blur whatever was focused whenever they rendered — including while they
+were shut, which is how every form renders its pickers. That blur now happens only when a
+layer actually opens, and never to a field inside the layer itself.
+
+## Unreleased — Edit course opens on the course, not on an empty form
+
+**The pencil beside a course now opens its form filled in** — the name, the branch, the
+weekday chips it runs on, and the follow-up trigger it was saved with. It was opening blank:
+the dialog named the course in its own subtitle and then offered nothing but placeholders,
+*Choose a branch*, no day selected, and a Save Changes that could not be pressed. Anyone
+wanting to change one day of the week had to retype the whole course to get the button back —
+and a form that arrives empty is one Save away from replacing a course with whatever was typed
+to make it usable.
+
+The form was always waiting for two things: the course itself, and the follow-up rule saved
+against it. Yesterday's fix taught it to wait properly, so it could no longer fill itself in
+from a course that had not arrived yet. What it did not do was wake the form up when the wait
+ended. The rule always lands last — it is fetched with the whole member list behind it — so
+the form waited, the rule arrived, and nothing told the form to look again. It sat there empty
+for as long as it was open.
+
+Nothing else about the form changed. It still shows a skeleton while it is loading, still says
+so plainly if the course cannot be read or is no longer on the list, and still never overwrites
+what is being typed when something behind it reloads.
+
+## Unreleased — Welcome a new member: the form says she is being added active
+
+**The Add member form now shows her status** — a toggle, switched on, reading *Active · In
+the follow-up rule* — with a line under the heading: *She is added active, so the follow-up
+rule reaches her. To make her inactive, add her first, then open her record and use Edit.*
+
+Every member has always been created active. The form simply never said so, and the column it
+was quietly setting is the one that decides whether the academy ever writes to her at all —
+the difference between a member the weekly follow-up reaches and one it leaves alone. The
+answer was there; nothing on the screen carried it.
+
+**The toggle states her status; it does not set it.** It cannot be switched off here, and the
+sentence beside it says where it can be: her own record, under Edit, where Status has been a
+field since 06-Sep. That is not a shortcut left undone — a member is created in one write that
+has no room for a status, so offering the choice on this form would mean a second write after
+she already exists, and a second write can be refused on its own. She would be on the register
+as active while the form that just added her said otherwise. A form should not be able to tell
+that lie about somebody it has only just met.
+
+The word and the icon carry the status, not the position of the switch, so it reads the same
+to anyone who cannot see the colour — and the same in both themes. Nothing about editing a
+member changed: the Active/Inactive pick on her record, the pill on a course roster, and what
+Inactive means (out of the follow-up rule, and nothing else) are all exactly as they were.
+
+## Unreleased — A member is marked present or absent from her own card
+
+**Every member on a course roster now carries three small labels — Present · Absent · Yet to
+mark — for the day the week strip has selected**, and tapping one records it. The roster says
+which day it means once, under the search box: *Attendance for Mon 7 Sept*.
+
+Until now attendance had exactly one way into RosiFit — a Google Meet export, uploaded and
+committed — and **no way to correct**. A member who joined the class from another device was
+missing from that file, recorded absent, counted towards the follow-up rule and emailed about a
+class she had attended, and nobody could fix it anywhere in the app.
+
+**What the chips will not do is as deliberate as what they will.**
+
+- **Yet to mark is a state, not a button.** It shows when nothing is recorded. Clearing an
+  attendance record would be a hole in the register rather than a correction, and the mistake it
+  would fix is fixed by tapping the other chip.
+- **Absent is refused on a day she was never expected**, and the chip says why rather than
+  disappearing: *"Divya Ramesh was not expected on Tuesday 1 September. Mark her present and it
+  is recorded as extra."* Marking her present on such a day records **extra** — she turned up
+  when nobody expected her, and that never counts as a miss.
+- **A day still to come offers nothing.** A class that has not happened has no attendance.
+- **A cancelled class and a holiday are refused**, in those words.
+- **A chip fills when the write comes back, never when it is tapped.** A register that shows a
+  mark it failed to save is worse than one with no chips at all.
+
+Correcting what the upload said keeps what it said: the original status, who changed it and
+when are all recorded on the row, in four columns that have existed since the attendance schema
+was written and had never been used.
+
+Her *Missed* and *consecutive* figures, the week strip above her, the dashboard count and the
+follow-up list all re-read in the same beat — they are derived from attendance, and this is the
+first thing that has ever moved it by hand.
+
+**Not live yet.** The write goes through a new database function, `set_attendance` (migration
+`0035`), which has not been applied to the academy's database — it needs the raw SQL read and
+approved first, and it could not be rehearsed here because this machine has no PostgreSQL 16.
+Until it is applied, the chips read correctly and a tap answers honestly: *"The academy database
+cannot record attendance by hand yet — migration 0035 has not been applied. Nothing has been
+saved."* No permission was widened to make this possible: signed-in users still hold no write
+grant on the attendance tables, so a stolen key still cannot forge attendance.
+
+## Unreleased — Her record says whether an email is going, and Reach out asks before it repeats one
+
+**Every member's record now states, in a line of its own, whether the follow-up rule has
+flagged her and whether her message has gone.** One of four answers, under her email panel:
+
+- **Rule is met, Email sent** — she was over the threshold and this week's follow-up has gone out.
+- **Rule is met, Email not sent yet** — she is over the threshold and nothing has been sent.
+- **Rule is met, No email to send** — she is over the threshold and has no address, so she is
+  counted but cannot be written to.
+- **Rule is not met, No email to send** — the rule has not flagged her. Nothing is owed, and the
+  line is deliberately quiet rather than a warning.
+
+**Reach out now writes to the member whose record is open.** It opened a draft for every course
+in the academy and left you to find her in it. It opens *her* draft: her name in the subtitle,
+her course's stored wording, one recipient. If the rule has not flagged her, it says so with her
+name — *"Aarthi Venkat is not over the follow-up threshold for 7–13 Sep 2026. Nothing to send."*
+
+**And it asks before it sends a second identical email.** If this week's message has already
+gone to her, Reach out stops on *"She has already had this week's message"*, names the day it
+went, and offers **Not yet** or **Reach out anyway**. Writing to her twice is still allowed — it
+is now a decision rather than an accident. The label on her record corrects itself the moment a
+send comes back, without closing and reopening her record.
+
+**A member already written to is still not ticked when several go at once.** That was already
+true and is unchanged; the send draft's counts, its Select all, its confirmation and its
+*excluded, counted, not dropped* list all behave exactly as before.
+
+**Known and not fixed here:** the weekly screen's *Reach out to N members* button still opens
+on *"The draft could not be loaded"* — it passes no course, and an all-courses send has no
+course wording to use. That needs its own decision (TD-033).
+
 ## Unreleased — Who is she: the picker shows her address, searches by it, and stops mixing two people up
 
 **The *Who is "…"?* list now prints each member's email address under her name, and finds her by

@@ -33,6 +33,9 @@
 | 024 | [The calendar sizes itself and hangs under the field, in every place a date is chosen](../decisions/016-the-date-picker-hangs-under-the-field.md) | Accepted | 06-Sep-2026 | |
 | 025 | [Her status is a FIELD on the edit form, written by Save](../decisions/017-member-status-on-the-edit-form-applies-on-save.md) | Accepted | 06-Sep-2026 | extends 018 — a second control, the same write path, a different mechanism |
 | 026 | [The Overview's sections sit two to a row, and course and period are rings](../decisions/018-overview-sections-two-up-and-rings.md) | Accepted | 06-Sep-2026 | amends 023 — replaces its course and period marks on the requester's instruction |
+| 027 | [A second file REPLACES the day's register, and says so before it does](../decisions/019-a-second-file-replaces-the-register-and-says-so-first.md) | Accepted | 07-Sep-2026 | extends 022 — the import still runs on the pick; the one ask gains a second reason, and “override” is made true (0037, unrehearsed) |
+
+| 027 | [Reach out sends to the member whose record is open](../decisions/020-reach-out-is-one-members-send.md) | Accepted | 07-Sep-2026 | narrows a shipped route on the requester's own choice; the all-courses button stays broken and is TD-033 |
 
 Status: `Proposed` · `Accepted` · `Superseded by NNN` · `Deprecated`
 
