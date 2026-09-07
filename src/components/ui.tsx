@@ -230,13 +230,27 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
  * gradient; a vertical one through the same three stops reads the same at
  * phone width and needs no platform-specific shim.
  */
-export function DeepBackground({ children, style }: { children: React.ReactNode; style?: ViewStyle }) {
+/**
+ * `fill` is the difference between the gradient being a SCREEN and being a
+ * BAR, and it defaults to the screen because that is what three of the four
+ * callers are. The fourth is the course header, which is a sibling ABOVE a
+ * roster's ScrollView -- and `flex: 1` on both siblings split the viewport
+ * down the middle, so a 56pt header painted 417pt of empty purple and shoved
+ * the roster onto the bottom half of the screen. That is not something a
+ * caller can fix from the outside: overriding the shorthand leaves
+ * `flexBasis: 0%` behind, and the bar collapses to nothing instead. So the
+ * choice is named here rather than patched at the call site.
+ */
+export function DeepBackground(
+  { children, style, fill = true }:
+  { children: React.ReactNode; style?: ViewStyle; fill?: boolean },
+) {
   const { theme } = useTheme();
   return (
     <LinearGradient
       colors={[theme.accentDeep, theme.accentDeep2, theme.accentDeep3]}
       locations={[0, 0.55, 1]}
-      style={[{ flex: 1 }, style]}>
+      style={[fill ? { flex: 1 } : null, style]}>
       {children}
     </LinearGradient>
   );

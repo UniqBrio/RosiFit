@@ -1,0 +1,56 @@
+"fix the ui" - course detail's dead purple band, 07-Sep-2026
+
+REPORTED
+A screenshot of /course/<id> (Postnatal) showing the deep purple course header
+running from just under the Overview/Attendance tabs down to roughly the middle
+of the screen, empty apart from the course name and the three action buttons at
+its very top. The follow-up sentence, the week strip and the member list were all
+pushed into the bottom half.
+
+CAUSE
+Not in the course screen. src/components/ui.tsx's DeepBackground hardcoded
+`flex: 1`:
+
+    style={[{ flex: 1 }, style]}
+
+Correct for three of its four callers, where the gradient IS the screen -
+app/index.tsx (sign-in) and `Screen deep` for Help and the PIN screens. The
+fourth is the course header, which requests/2026-09-07-pin-screen-header-on-scroll.md
+made a SIBLING ABOVE the roster's ScrollView. Both siblings carrying flex: 1
+split the viewport down the middle.
+
+MEASURED, fixtures build (EXPO_NO_DOTENV=1 CI=1 npx expo export --platform web),
+Playwright / Chromium 1243, both themes. "slack" = gradient bottom minus the
+bottom of the lowest action button, i.e. purple carrying nothing.
+
+  viewport      header height        slack under last action
+                before -> after      before -> after
+  1900x915       417  ->  74          361  ->  18
+  1280x800       417  ->  74          361  ->  18
+   390x844       381  -> 244          249  ->  12
+
+  The follow-up line moved from y=530 to y=188 at 1900x915. 244pt on a phone is
+  the correct height: below the compact breakpoint the three actions stack into a
+  column, so the bar really is that tall. 18pt and 12pt of remaining slack are
+  the header's own paddingBottom (SPACE.md), not dead space.
+
+FIX
+DeepBackground gains `fill`, defaulting to true, and the course header passes
+fill={false}. The default keeps every other caller's compiled output identical -
+`fill ? { flex: 1 } : null` with fill=true is the same array as before - so no
+full-screen deep surface changed. A style override at the call site was tried
+first and is wrong: `flex: 1` compiles to `flex: 1 1 0%`, so overriding flexGrow
+alone leaves flexBasis at 0% and the bar collapses to 0pt instead of hugging.
+
+NO REGRESSION on the screens that must still fill, same build, 390x844:
+  /          dark & light   gradient 844 of 844 viewport - covers, unchanged
+  /help      dark & light   gradient 668 - pre-existing, sits under the shell header
+  /set-pin   dark & light   gradient 780 - pre-existing, same reason
+  /profile   dark & light   no gradient element (not a deep screen)
+  None of these pass `fill`, so their code path is byte-identical to before.
+
+Spec: src/components/deepBackgroundFill.test.ts (4 tests) - guards the fill
+default, the conditional style, the course header's fill={false}, and that no
+full-screen caller ever passes fill={false}.
+Scripts: scratchpad/course-gap.mjs, gap2.mjs, deepfill.mjs.
+Screenshots: fixed-{1900,1280,390}-{dark,light}.png.

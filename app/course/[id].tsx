@@ -327,7 +327,12 @@ function CourseDetailBody() {
             three things a person opens this screen to do, so they are one
             group, in one place. Deleting a course is not one of them: that
             lives on the Courses tab, so this header carries no trash icon. */}
-        <DeepBackground style={{
+        {/* fill={false}: this gradient is a BAR, not the screen. It is a
+            sibling above the roster's ScrollView, and both defaulting to
+            flex: 1 split the viewport in half -- 417pt of header carrying
+            56pt of content, with the week strip and the members pushed below
+            the fold. It hugs its three rows now. */}
+        <DeepBackground fill={false} style={{
           paddingHorizontal: SPACE.lg, paddingTop: SPACE.sm, paddingBottom: SPACE.md,
         }}>
           <View style={{
