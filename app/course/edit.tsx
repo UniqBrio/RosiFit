@@ -86,7 +86,12 @@ export default function CourseEdit() {
   const [name, setName] = useState('');
   const [branchId, setBranchId] = useState<string | null>(null);
   const [days, setDays] = useState<number[]>([]);
-  const [rule, setRule] = useState<'week' | 'consec'>('week');
+  /* The form used to offer TWO triggers, weekly or consecutive, as a radio
+   * pair. It now offers the weekly one only, so there is no `rule` state left
+   * to hold -- every save sends 'week'. What survives is this flag: whether
+   * the course being edited is STORED as consecutive, which is the one thing
+   * the form must not convert without saying so. */
+  const [storedConsec, setStoredConsec] = useState(false);
   // The COUNT, which used to be hard-coded 4 in save_course. A course running
   // once a week could never reach four in a week, so its trigger was switched
   // on and unreachable by arithmetic (0030).
@@ -145,10 +150,13 @@ export default function CourseEdit() {
       setBranchId(branchList.find(b => b.name === first?.branch)?.id ?? branchList[0]?.id ?? null);
       setDays(first?.weekdays ?? []);
       const r = rules?.byCourseName[course.name];
-      // The canvas offers one trigger or the other. A course whose stored rule
-      // has consecutive enabled reads as 'consec' whatever else is set.
+      // A course whose stored rule has consecutive enabled reads as consecutive
+      // whatever else is set. The form no longer OFFERS that trigger, but it
+      // still has to recognise it: the count below is read off whichever
+      // trigger is actually ON, so a course keeps the number the academy set
+      // rather than having a stale weekly_threshold surface in its place.
       const isConsec = Boolean(r?.consecutive_enabled && !r?.weekly_enabled);
-      setRule(isConsec ? 'consec' : 'week');
+      setStoredConsec(isConsec);
       // read the threshold of the trigger that is actually ON
       setThreshold(clampThreshold(
         (isConsec ? r?.consecutive_threshold : r?.weekly_threshold) ?? 4));
@@ -237,7 +245,11 @@ export default function CourseEdit() {
     setFailure(null);
     try {
       const result = await saveCourse({
-        id: editing, name: name.trim(), branch_id: branchId, weekdays: days, rule, threshold,
+        /* Always 'week'. save_course still ACCEPTS 'consec' -- the parameter,
+           both config columns and supabase/tests/16_save_course.sql are
+           untouched -- the form simply no longer offers it. */
+        id: editing, name: name.trim(), branch_id: branchId, weekdays: days,
+        rule: 'week', threshold,
         from_email: sender, template_id: templateId,
         subject: subject ?? '', body: body ?? '',
       });
@@ -265,7 +277,7 @@ export default function CourseEdit() {
     // far above the button, and a Save that is off for no stated reason is the
     // same dead end as the refusal it replaces.
     : wording ? wording
-    : `${branch?.name ?? '—'} · ${days.length}/week · ${threshold} ${rule === 'week' ? 'weekly' : 'consecutive'}`;
+    : `${branch?.name ?? '—'} · ${days.length}/week · ${threshold} weekly`;
 
   return (
     <FormDialog
@@ -376,40 +388,43 @@ export default function CourseEdit() {
                 disabled={threshold >= MAX_THRESHOLD}
                 onPress={() => setThreshold(t => clampThreshold(t + 1))} />
             </View>
-            <View style={{ gap: SPACE.sm, marginTop: SPACE.sm }}>
-              {([
-                { key: 'week' as const, label: `${threshold} missed ${threshold === 1 ? 'session' : 'sessions'} in a week`,
-                  desc: 'Counted across the current week’s scheduled sessions.' },
-                { key: 'consec' as const, label: `${threshold} consecutive missed ${threshold === 1 ? 'session' : 'sessions'}`,
-                  desc: 'Counted as an unbroken run, however long it takes.' },
-              ]).map(r => {
-                const on = rule === r.key;
-                return (
-                  <Pressable key={r.key} testID={`course-rule-${r.key}`}
-                    onPress={() => setRule(r.key)}
-                    accessibilityRole="radio" accessibilityState={{ selected: on }}
-                    accessibilityLabel={`${r.label}. ${r.desc}`}
-                    style={{
-                      flexDirection: 'row', gap: SPACE.md, padding: SPACE.lg,
-                      borderRadius: RADIUS.lg, minHeight: TAP_MIN,
-                      backgroundColor: on ? statusSurface(theme.accent).bg : theme.surface,
-                      borderWidth: 1.5, borderColor: on ? theme.accent : theme.line,
-                    }}>
-                    <Icon name={on ? 'radio_button_checked' : 'radio_button_unchecked'}
-                      size={20} color={on ? theme.accentInk : theme.muted} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 14, fontWeight: '800', color: theme.fgStrong }}>{r.label}</Text>
-                      <Text style={{ fontSize: 12, color: theme.muted, marginTop: 3, lineHeight: 17 }}>{r.desc}</Text>
-                    </View>
-                  </Pressable>
-                );
-              })}
+            {/* THERE IS ONE TRIGGER. This was a radio pair -- "N missed
+                sessions in a week" against "N consecutive missed sessions" --
+                and the second is gone. A radio group of one is a control with
+                nothing to choose, so what is left is not a card with the dot
+                removed: it is a SENTENCE saying what the count above means.
+                The stepper is the only control in this block now. */}
+            {/* No accessibilityLabel on the container: the two Text nodes ARE
+                the words, and an aria-label repeating them on a generic View
+                is announced instead of them, not as well as them. */}
+            <View testID="course-rule-week" style={{ marginTop: SPACE.sm }}>
+              <Text style={{ fontSize: 14, fontWeight: '800', color: theme.fgStrong }}>
+                {`${threshold} missed ${threshold === 1 ? 'session' : 'sessions'} in a week`}
+              </Text>
+              <Text style={{ fontSize: 12, color: theme.muted, marginTop: 3, lineHeight: 17 }}>
+                Counted across the current week’s scheduled sessions.
+              </Text>
             </View>
+
+            {/* A course SAVED under the old consecutive trigger still exists in
+                course_follow_up_config -- save_course accepts it and the engine
+                still evaluates it. This form can no longer express it, so the
+                next Save converts the course to the weekly trigger. That
+                changes who gets followed up, so it is said here rather than
+                discovered afterwards from a follow-up list that moved. */}
+            {storedConsec ? (
+              <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.md }}>
+                <Icon name="error" size={16} color={dangerInk} />
+                <Text style={{ flex: 1, fontSize: 11.5, lineHeight: 17, color: dangerInk }}>
+                  {`This course currently follows up on ${threshold} consecutive missed ${threshold === 1 ? 'session' : 'sessions'}. Saving changes it to the weekly trigger above, and who is listed for follow-up will change with it.`}
+                </Text>
+              </View>
+            ) : null}
 
             {/* The one thing the card said that the stepper cannot: a weekly
                 count above the days the course runs is a trigger nobody can
                 ever reach. Shown only when it is true. */}
-            {threshold > days.length && rule === 'week' && days.length > 0 ? (
+            {threshold > days.length && days.length > 0 ? (
               <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.md }}>
                 <Icon name="error" size={16} color={dangerInk} />
                 <Text style={{ flex: 1, fontSize: 11.5, lineHeight: 17, color: dangerInk }}>
@@ -421,7 +436,7 @@ export default function CourseEdit() {
             <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.md }}>
               <Icon name="rule" size={16} color={okInk} />
               <Muted style={{ flex: 1 }}>
-                One or the other, never both. Holidays and cancelled classes never count toward a miss.
+                Holidays and cancelled classes never count toward a miss.
               </Muted>
             </View>
 
