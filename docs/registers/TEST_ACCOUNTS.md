@@ -73,14 +73,25 @@ from a real person.
 
 | Channel | Destination | Notes |
 |---|---|---|
-| email (AWS SES via `send-followups`) | **none** | No destination is pre-approved. A send in any non-production environment stops and asks. |
+| email (AWS SES via `send-followups`) | `support@getfit.rosifit.com` **and `support+*@getfit.rosifit.com`** | **Added 07-Sep-2026, on the repo owner's instruction, in the change that makes it reachable.** The academy's own mailbox on its own SES-verified domain. Plus-addressing is what lets fifteen member records point at one inbox without colliding on `member_emails_unique_live`. Reached only via `supabase/seed_send_test.sql`; reverse with its teardown. |
 | SMS / chat | ➖ | RosiFit has no SMS or chat channel. |
 
-**Why the email row is empty rather than filled with a sink address.** Today it holds by
-construction: SES credentials are Edge Function secrets that exist only on the live project, so
-fixtures and harness *cannot* send. Adding a sink address now would create the appearance of an
-approved path before anything enforces it. When a send needs exercising end to end, add the
-destination here first, in the same change that makes it reachable.
+**Why this row was empty until 07-Sep-2026.** It held by construction: SES credentials are Edge
+Function secrets that exist only on the live project, so fixtures and harness *cannot* send.
+Adding a sink address before then would have created the appearance of an approved path before
+anything enforced it. The rule was to add the destination here first, in the same change that
+makes it reachable — which is what the seed above did.
+
+**A live breach of rule 1 that the seed also closes.** Before the seed, the member register held
+two real personal gmail addresses as customer records, one of them not the owner's. Rule 1 says
+contact details in test data are always fake; a send against that data would have reached a
+person who never asked for it. While the seed is applied, no member is reachable at a real
+address. **Running the teardown restores that hazard**, so the real fix is separate: those two
+records need fake addresses, or consent.
+
+**The seed is not a permanent state.** While it is applied, no member can be reached at her own
+address, so the register is wrong about every member. Run
+`supabase/seed_send_test_teardown.sql` when the send test is finished.
 
 There is also no free-form send path anywhere in the product (guardrail 5, DR-5): every message
 goes out through a stored template, so "what could be sent" is a reviewable list rather than
