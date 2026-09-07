@@ -6,12 +6,16 @@ import { Icon } from '../../src/components/Icon';
 import { ConfirmDialog, SearchPicker } from '../../src/components/Sheet';
 import { DropdownRow, DropdownField, DropdownPanel, DropdownList } from '../../src/components/Dropdown';
 import { useTheme } from '../../src/theme/ThemeProvider';
+import { useAutoFocus } from '../../src/components/openingFocus';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, STATUS, statusSurface, type StatusKey } from '../../src/theme/tokens';
 import { DAY_NAMES, ruleSentence, AVATAR_TINTS, initials, primaryEmail, type Member, type MemberStatus } from '../../src/data/mock';
 import { useCourses, useFollowUp, useAttendance } from '../../src/data/hooks';
 import { weekStart, iso, label as periodLabel } from '../../src/data/period';
-import { setMemberStatus, mergeMemberInto, dataSource } from '../../src/data/repository';
+import { setMemberStatus, mergeMemberInto, setAttendance, dataSource } from '../../src/data/repository';
+import { dayAttendance, dayInWords, type DayState } from '../../src/data/dayAttendance';
+import type { AttendanceRow } from '../../src/data/mock';
+import type { ScreenState } from '../../src/data/useScreenState';
 import { MERGE_FAILED } from '../../src/data/alias';
 import { ALL_BRANCHES } from '../../src/state/academy';
 import { ShellScreen } from '../../src/components/AppShell';
@@ -42,6 +46,32 @@ import { ShellScreen } from '../../src/components/AppShell';
  *  happened last month", short enough that each fetch stays one week wide. */
 const WEEK_LIMIT = 26;
 
+/** "Mon 31 Aug" -- the day named on the roster caption. Short, because it
+ *  sits under a search box; the sentences say it in full (dayInWords). */
+function dayLabel(dayIso: string): string {
+  return new Date(`${dayIso}T00:00:00`).toLocaleDateString(undefined,
+    { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+/** The three chips, in the order the requester listed them. `state` is which
+ *  one is true; a chip is a CONTROL only for the two that can be chosen. */
+const CHIPS: { state: DayState; word: string; icon: string; tone: StatusKey | null }[] = [
+  { state: 'present',  word: 'Present',      icon: 'check',                   tone: 'present' },
+  { state: 'absent',   word: 'Absent',       icon: 'close',                   tone: 'absent'  },
+  { state: 'unmarked', word: 'Yet to mark',  icon: 'radio_button_unchecked',  tone: null      },
+];
+
+/** KL-003: Pressable binds Enter and not Space, so Space scrolls the page
+ *  instead of picking the chip under the caret. Same helper, same reason, as
+ *  the Status radios on app/member/edit.tsx. */
+const spaceSelects = (pick: () => void) => ({
+  onKeyDown: (e: { nativeEvent: { key: string }; preventDefault: () => void }) => {
+    if (e.nativeEvent.key !== ' ') return;
+    e.preventDefault();
+    pick();
+  },
+}) as object;
+
 type DayCell = {
   iso: string;
   dayNum: string;
@@ -56,6 +86,12 @@ type DayCell = {
 
 function CourseDetailBody() {
   const { theme } = useTheme();
+  // The caret starts in the member search: this screen's first field. It sits
+  // below the course's own header, which is why the focus is placed without
+  // scrolling to it (openingFocus.ts) -- the screen opens where it always did.
+  const search = useAutoFocus<TextInput>(true);
+  // The box carries the focus, not a ring inside it -- see Field.tsx.
+  const [searching, setSearching] = useState(false);
   const { flash } = useToast();
   const router = useRouter();
   const { id, state: forced } = useLocalSearchParams<{ id?: string; state?: string }>();
@@ -205,6 +241,22 @@ function CourseDetailBody() {
       };
     });
   }, [attendance.data, course, branch, week.from]);
+
+  /**
+   * The weekdays this course runs across the branches in scope, hoisted out
+   * of the strip's own memo so the roster chips answer "was she expected"
+   * from the SAME set the strip drew its cells from. Two derivations of one
+   * schedule is how a day reads "not expected" in the strip and offers
+   * Absent on the card below it.
+   */
+  const scopeWeekdays = useMemo(() => {
+    const runs = new Set<number>();
+    for (const o of course?.offerings ?? []) {
+      if (branch !== ALL_BRANCHES && o.branch !== branch) continue;
+      for (const d of o.weekdays) runs.add(d);
+    }
+    return [...runs];
+  }, [course, branch]);
 
   // Today when it falls in the week being shown, otherwise the first day: a
   // strip with nothing selected has no detail panel, and an empty panel is
@@ -509,16 +561,31 @@ function CourseDetailBody() {
             <View style={{
               flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
               height: 42, borderRadius: RADIUS.md, backgroundColor: theme.surface,
-              borderWidth: 1, borderColor: theme.lineStrong, paddingHorizontal: 12,
+              borderWidth: 1, borderColor: searching ? theme.accent : theme.lineStrong,
+              paddingHorizontal: 12,
             }}>
               <Icon name="search" size={18} color={theme.muted} />
-              <TextInput testID="course-member-search"
+              <TextInput ref={search} testID="course-member-search"
                 value={query} onChangeText={setQuery}
                 placeholder="Search by name or email"
                 placeholderTextColor={theme.muted}
                 accessibilityLabel="Search the members of this course"
-                style={{ flex: 1, minWidth: 0, color: theme.fgStrong, fontSize: 13.5, fontWeight: '600' }} />
+                onFocus={() => setSearching(true)} onBlur={() => setSearching(false)}
+                selectionColor={theme.accent}
+                style={{ flex: 1, minWidth: 0, color: theme.fgStrong, fontSize: 13.5, fontWeight: '600',
+                  outlineWidth: 0, outlineStyle: 'solid' }} />
             </View>
+
+            {/* WHICH DAY the chips below are about, said once for the whole
+                roster rather than on every card. The strip above highlights
+                it, but the strip scrolls away and the chips do not -- and a
+                register where you cannot tell which day you are marking is
+                worse than one with no chips at all. */}
+            {chosen ? (
+              <Text testID="course-attendance-day" style={{
+                fontSize: 11.5, color: theme.muted,
+              }}>{`Attendance for ${dayLabel(chosen.iso)}`}</Text>
+            ) : null}
           </View>
         </View>
 
@@ -550,7 +617,9 @@ function CourseDetailBody() {
               <View style={{ gap: SPACE.sm, marginTop: SPACE.md }}>
                 {withEmail.map((m, i) => (
                   <MemberCard key={m.id} member={m} tint={AVATAR_TINTS[(i + 3) % AVATAR_TINTS.length]}
-                    weekLabel={week.label} noEmail={false} allMembers={members} />
+                    weekLabel={week.label} noEmail={false} allMembers={members}
+                    dayIso={chosen?.iso ?? null} weekdays={scopeWeekdays}
+                    rows={attendance.data ?? []} attendanceState={attendance.state} />
                 ))}
               </View>
 
@@ -580,7 +649,9 @@ function CourseDetailBody() {
                   <View style={{ gap: SPACE.sm, marginTop: 10 }}>
                     {withoutEmail.map((m, i) => (
                       <MemberCard key={m.id} member={m} tint={AVATAR_TINTS[i % AVATAR_TINTS.length]}
-                        weekLabel={week.label} noEmail allMembers={members} />
+                        weekLabel={week.label} noEmail allMembers={members}
+                        dayIso={chosen?.iso ?? null} weekdays={scopeWeekdays}
+                        rows={attendance.data ?? []} attendanceState={attendance.state} />
                     ))}
                   </View>
                 </View>
@@ -695,12 +766,23 @@ function DayLegend() {
  * no-email sections draw the SAME card with a different reason attached, and
  * two copies would be two places for the miss counts to drift.
  */
-function MemberCard({ member, tint, weekLabel, noEmail, allMembers }:
+function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
+  dayIso, weekdays, rows, attendanceState }:
   { member: Member; tint: string; weekLabel: string; noEmail: boolean;
     /** the register this member's display name can be linked INTO -- only a
      *  no-email card offers it, but the prop is passed by both call sites so
      *  the two cards stay one component */
-    allMembers: Member[] }) {
+    allMembers: Member[];
+    /** the day the strip has selected -- what the three chips are about */
+    dayIso: string | null;
+    /** the weekdays this course runs across the branches in scope */
+    weekdays: number[];
+    /** the week's attendance rows, already loaded by the screen */
+    rows: AttendanceRow[];
+    /** so a card can say the week failed rather than guess a state from an
+     *  empty list -- an unloaded week and a member nobody has marked look
+     *  identical from here, and they mean opposite things */
+    attendanceState: ScreenState }) {
   const { theme } = useTheme();
   const { flash } = useToast();
   const router = useRouter();
@@ -733,6 +815,35 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers }:
   // "Add display name to existing member" -- open, and mid-save.
   const [linking, setLinking] = useState(false);
   const [linkingSave, setLinkingSave] = useState(false);
+  // Which chip is being written, or null. It disables the group rather than
+  // filling anything: the chip moves when the WRITE resolves and the week is
+  // re-read, never on the tap (RC-008, RC-017 -- both in these files).
+  const [marking, setMarking] = useState<'present' | 'absent' | null>(null);
+
+  /** Where she stands on the selected day, and which chips may be tapped. */
+  const day = dayIso
+    ? dayAttendance({ rows, member, dayIso, weekdays, todayIso: iso(new Date()) })
+    : null;
+
+  const mark = async (chosen: 'present' | 'absent') => {
+    if (marking || !dayIso) return;
+    setMarking(chosen);
+    const first = member.name.split(' ')[0];
+    const when = dayLabel(dayIso);
+    try {
+      const result = await setAttendance(member.id, dayIso, chosen);
+      const said = result.status === 'extra' ? 'present (extra)' : result.status;
+      flash(dataSource === 'live'
+        ? `${first} is marked ${said} on ${when}`
+        : `${first} is marked ${said} on ${when} on this device only. The academy database is not configured.`,
+        dataSource === 'live' ? 'ok' : 'warn');
+    } catch (err) {
+      flash(err instanceof Error ? err.message
+        : 'Her attendance was not changed. Nothing has been saved.', 'warn');
+    } finally {
+      setMarking(null);
+    }
+  };
 
   const applyStatus = async () => {
     if (saving) return;
@@ -852,6 +963,95 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers }:
             color={noEmail ? dangerInk : theme.accentInk} />
         </Pressable>
       </View>
+
+      {/* ------------------------------------------------- attendance chips
+          Present · Absent · Yet to mark, for the day the strip has selected.
+          Their own row, for the reason the two buttons below have one: three
+          controls squeezed in beside an avatar, a pill and an edit button
+          truncate, and the WORD is half of what a status carries (DR-3).
+
+          The chip fills when the WRITE RESOLVES and the week is re-read --
+          never on the tap. RC-008 and RC-017 are both "the app reported
+          something it had not done", both in these files, and a register
+          that fills in a chip it failed to save is that defect again.
+
+          "Yet to mark" is a STATE, not a control: clearing an attendance
+          record is a hole in the register rather than a correction, and the
+          mistake it would fix is fixed by tapping the other chip. */}
+      {attendanceState === 'error' ? (
+        <Text style={{ fontSize: 11, color: theme.dim, marginTop: 11 }}>
+          Her attendance for this week could not be loaded.
+        </Text>
+      ) : attendanceState === 'loading' ? (
+        // 44 + 4, the exact height the chip row occupies once it lands, so
+        // the card does not jump under the reader when the week arrives.
+        <View style={{ height: 44, marginTop: 4 }} />
+      ) : day && dayIso ? (
+        <View accessibilityRole="radiogroup"
+          accessibilityLabel={`Attendance for ${member.name} on ${dayInWords(dayIso)}`}
+          // marginTop 4, not 11: each chip carries 7pt of its own padding
+          // above, so the gap a reader sees under the name block is the same
+          // 11pt the no-email action row leaves.
+          style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: SPACE.sm, marginTop: 4 }}>
+          {CHIPS.map(chip => {
+            const on = day.state === chip.state;
+            // A chip is a control only when it is not already the answer and
+            // the day allows it. "Yet to mark" is never one.
+            const usable = !on && (chip.state === 'present' ? day.canPresent
+              : chip.state === 'absent' ? day.canAbsent : false);
+            const tone = chip.tone ? STATUS[chip.tone] : null;
+            const ink = !on ? theme.muted
+              : tone ? (theme.isDark ? tone.fgDark : tone.fgLight)
+              : theme.dim;
+            const box = on ? statusSurface(ink) : null;
+            const said = chip.state === 'present'
+              ? `Mark ${member.name} present on ${dayInWords(dayIso)}`
+              : chip.state === 'absent'
+              ? `Mark ${member.name} absent on ${dayInWords(dayIso)}`
+              : `${member.name} has no attendance recorded for ${dayInWords(dayIso)}`;
+            return (
+              <Pressable key={chip.state}
+                testID={`course-member-attendance-${chip.state}-${member.id}`}
+                onPress={() => { if (chip.state !== 'unmarked') void mark(chip.state); }}
+                disabled={!usable || marking !== null}
+                {...(usable ? spaceSelects(() => { if (chip.state !== 'unmarked') void mark(chip.state); }) : {})}
+                accessibilityRole="radio"
+                // aria-checked, not accessibilityState: react-native-web 0.21
+                // drops the latter entirely (KL-002), so a reader would
+                // announce all three chips as unpicked.
+                aria-checked={on}
+                aria-disabled={!usable}
+                // The reason a chip cannot be used is said HERE rather than
+                // withheld: a control that is simply missing teaches nobody
+                // why marking her absent on a Tuesday is not a thing.
+                accessibilityLabel={!usable && !on && day.reason ? `${said}. ${day.reason}` : said}
+                // The TOUCH TARGET is the Pressable and the PILL is the box
+                // inside it. hitSlop is what every other 30pt control on this
+                // screen uses to reach the 44pt minimum, and hitSlop does
+                // nothing on react-native-web -- measured on the built page,
+                // by clicking 5pt outside a chip and watching nothing happen
+                // (KL-004). 7pt of padding above and below is the same 44pt,
+                // in the one currency this platform actually spends.
+                style={({ pressed }) => ({
+                  paddingVertical: 7,
+                  opacity: marking === chip.state ? 0.6
+                    : !usable && !on ? 0.45
+                    : pressed ? 0.6 : 1,
+                })}>
+                <View style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 4,
+                  minHeight: 30, paddingHorizontal: 8, borderRadius: RADIUS.pill,
+                  backgroundColor: box ? box.bg : 'transparent',
+                  borderWidth: 1, borderColor: box ? box.border : theme.line,
+                }}>
+                  <Icon name={chip.icon} size={13} color={ink} />
+                  <Text style={{ fontSize: 9.5, fontWeight: '800', color: ink }}>{chip.word}</Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
 
       {/* ------------------------------------------ the two no-email actions
           A name with no address reached the register one of two ways: she is

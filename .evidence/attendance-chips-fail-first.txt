@@ -1,0 +1,9 @@
+FAIL-FIRST: src/data/dayAttendance.ts - `canAbsent` is unconditional -- the chip offers a write `absent_must_be_expected` (0008) will refuse. Produced: not ok 5 - a day the course does not run offers Present only, with the reason; not ok 8 - her OWN days override the offering the way member_schedules override offering_schedules; not ok 9 - a recorded row is the server's own answer about expectation, not the schedule. 10/13.
+
+FAIL-FIRST: src/data/dayAttendance.ts - the future guard removed -- a class that has not happened can be marked. Produced: not ok 6 - a date still to come offers neither, and says why. 12/13.
+
+FAIL-FIRST: src/data/dayAttendance.ts - her OWN days are ignored, so the offering's schedule decides for everybody. Produced: not ok 8 - her OWN days override the offering the way member_schedules override offering_schedules. 12/13.
+
+FAIL-FIRST: src/data/dayAttendance.ts - `expected` is taken from the schedule even when a ROW says otherwise. Produced: not ok 9 - a recorded row is the server's own answer about expectation, not the schedule. 12/13.
+
+FAIL-FIRST: src/data/dayAttendance.ts - the row lookup ignores which member it belongs to. Produced: not ok 10 - another member's row is never read as hers. 12/13.

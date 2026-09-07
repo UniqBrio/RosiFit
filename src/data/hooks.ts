@@ -24,14 +24,14 @@ import {
   fetchNotifications, type Notification,
   fetchSentForPeriod,
   type Branch, type BranchUsage, type OfferingDetail,
-  fetchAttendance, onCoursesChanged, onMembersChanged,
+  fetchAttendance, onCoursesChanged, onMembersChanged, onAttendanceChanged,
   fetchHolidays, onHolidaysChanged,
   type Rules, type PendingSession, type Holiday,
 } from './repository';
 import { flagged } from './followup';
 import type { BucketMetrics } from './buckets';
 import type { Member, Course, Template, Staff, AuditEntry, SessionDay, WeekRow, AttendanceRow } from './mock';
-import type { SentMap } from './sent';
+import { onSentChanged, type SentMap } from './sent';
 
 export type Async<T> = {
   state: ScreenState;
@@ -191,9 +191,15 @@ export function useMonthSessions(year: number, month: number, forced?: string): 
 
 /** Every attendance fact in the period, for the Attendance tab. The period
  *  is part of the key, so changing the filter refetches rather than
- *  re-labelling rows that were counted over a different range. */
+ *  re-labelling rows that were counted over a different range.
+ *
+ *  Refetched whenever attendance is written, for the reason useCourses
+ *  carries a version: a member marked present whose week strip still says
+ *  "awaiting upload" is two answers to one question on one screen. */
 export function useAttendance(period: Period, forced?: string): Async<AttendanceRow[]> {
-  return useAsync(() => fetchAttendance(period), [period.from, period.to], forced);
+  const [version, setVersion] = useState(0);
+  useEffect(() => onAttendanceChanged(() => setVersion(v => v + 1)), []);
+  return useAsync(() => fetchAttendance(period), [period.from, period.to, version], forced);
 }
 
 /** Holidays, refetched whenever one is added or removed -- the list a person
@@ -234,7 +240,13 @@ export function useCourseMessage(courseId: string | null, forced?: string): Asyn
  * addition to the draft, never a precondition for it.
  */
 export function useSentForPeriod(period: Period, forced?: string): Async<SentMap> {
-  return useAsync(() => fetchSentForPeriod(period), [period.from, period.to], forced);
+  // Every mounted screen hears the same notification, the way the member and
+  // course lists do: the member pop-up stays mounted UNDER the send dialog it
+  // opened, so a send made from it has to reach the label on it without
+  // waiting for a remount.
+  const [version, setVersion] = useState(0);
+  useEffect(() => onSentChanged(() => setVersion(v => v + 1)), []);
+  return useAsync(() => fetchSentForPeriod(period), [period.from, period.to, version], forced);
 }
 
 /** The addresses this deployment may send as. */

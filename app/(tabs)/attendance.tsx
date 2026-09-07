@@ -8,6 +8,7 @@ import { Icon } from '../../src/components/Icon';
 import { DropdownRow, DropdownField, DropdownPanel, DropdownList } from '../../src/components/Dropdown';
 import { PeriodPanel, periodFieldValue } from '../../src/components/PeriodFilter';
 import { useTheme } from '../../src/theme/ThemeProvider';
+import { useAutoFocus } from '../../src/components/openingFocus';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface, type StatusKey } from '../../src/theme/tokens';
 import { useAttendance, useFilterOptions } from '../../src/data/hooks';
 import { resolvePeriod, type PeriodChoice } from '../../src/data/period';
@@ -68,6 +69,10 @@ export default function Attendance() {
   // names its origin instead; `from` is a URL parameter, so it is validated
   // (src/data/nav.ts) rather than navigated to on trust.
   const backTo = safeBackTarget(from, '/courses');
+  // The caret starts in the search box: this screen's first, and only, field.
+  const search = useAutoFocus<TextInput>(true);
+  // The box carries the focus, not a ring inside it -- see Field.tsx.
+  const [searching, setSearching] = useState(false);
   const { branch, chooseBranch } = useAcademy();
 
   const [choice, setChoice] = useState<PeriodChoice>({ key: 'This week' });
@@ -198,12 +203,16 @@ export default function Attendance() {
       <View style={{
         flexDirection: 'row', alignItems: 'center', gap: SPACE.md, marginTop: SPACE.sm,
         height: 46, borderRadius: RADIUS.md, backgroundColor: theme.surface,
-        borderWidth: 1, borderColor: theme.lineStrong, paddingHorizontal: 13,
+        borderWidth: 1, borderColor: searching ? theme.accent : theme.lineStrong,
+        paddingHorizontal: 13,
       }}>
         <Icon name="search" size={19} color={theme.muted} />
-        <TextInput value={query} onChangeText={setQuery} placeholder="Search a member or code"
+        <TextInput ref={search} value={query} onChangeText={setQuery} placeholder="Search a member or code"
           placeholderTextColor={theme.muted} accessibilityLabel="Search attendance by member or code"
-          style={{ flex: 1, color: theme.fgStrong, fontSize: 13.5, fontWeight: '600' }} />
+          onFocus={() => setSearching(true)} onBlur={() => setSearching(false)}
+          selectionColor={theme.accent}
+          style={{ flex: 1, color: theme.fgStrong, fontSize: 13.5, fontWeight: '600',
+            outlineWidth: 0, outlineStyle: 'solid' }} />
       </View>
     </>
   );
