@@ -8,7 +8,7 @@ import { handlePreflight } from '../_shared/cors.ts';
 import { json, errorJson, HttpError } from '../_shared/response.ts';
 import { adminClient } from '../_shared/db.ts';
 import { requireCaller } from '../_shared/authz.ts';
-import { normalizeName, similarity } from '../_shared/match.ts';
+import { normalizeName, similarity, splitByCourse } from '../_shared/match.ts';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 /**
@@ -149,6 +149,7 @@ async function preview(admin: SupabaseClient, actorId: string, body: Record<stri
     // the client reads `already_imported` before anything else.
     return json({
       import_id: '', rows: [], dropped_count: 0, dropped_names: [], staff_names: [],
+      other_course_names: [],
       counts: { matched: 0, noEmail: 0, possible: 0, ambiguous: 0, unmatched: 0 },
       meeting_code: meetingCode, session_date: sessionDate, supersedes: null,
       already_imported: alreadyImported,
@@ -324,13 +325,37 @@ async function preview(admin: SupabaseClient, actorId: string, body: Record<stri
       }
     }
 
-    let kind: MatchKind;
-    if (candidateIds.length === 0) kind = 'unmatched';
-    else if (candidateIds.length > 1) kind = 'ambiguous';
-    else if (tier === 'fuzzy') kind = 'possible';       // never auto-accepted (C-79)
-    else kind = hasEmail.has(candidateIds[0]) ? 'matched' : 'noEmail';
+    /**
+     * THE NAME IS NOT THE IDENTITY -- THE NAME AND THE COURSE ARE.
+     *
+     * Everything above asks the academy "is there a member called this",
+     * which is a wider question than the one being answered: this file is
+     * the register of ONE offering, and a member has one live enrolment
+     * (0006). A candidate enrolled in another course is therefore not a
+     * member of this one, and taking her as an exact `matched` hit marked
+     * the wrong woman present -- the Prenatal member, on the Postnatal
+     * register -- with nothing on any screen saying it had happened, since
+     * `matched` is accepted without asking anybody (autoDecisions).
+     *
+     * So the candidates are split, and only the ones this course could
+     * actually claim decide the kind. `elsewhere` is kept and offered
+     * AFTER them: the commit reads candidates[0] for a matched row, so a
+     * member of another course must never be able to sit first, but she is
+     * still worth showing -- she is what makes the row's
+     * `confirm_different_person` a real acknowledgement, and she is the name
+     * the result screen puts in front of the operator so a woman who really
+     * has moved course can be folded in by hand (0032).
+     */
+    const { here, elsewhere } = splitByCourse(
+      candidateIds, id => offeringByMember.get(id) ?? null, offeringId);
 
-    const candidates = candidateIds.map(id => {
+    let kind: MatchKind;
+    if (here.length === 0) kind = 'unmatched';
+    else if (here.length > 1) kind = 'ambiguous';
+    else if (tier === 'fuzzy') kind = 'possible';       // never auto-accepted (C-79)
+    else kind = hasEmail.has(here[0]) ? 'matched' : 'noEmail';
+
+    const candidates = [...here, ...elsewhere].map(id => {
       const m = memberById.get(id)!;
       const offering = offeringById.get(offeringByMember.get(id) ?? '');
       return {
@@ -342,11 +367,19 @@ async function preview(admin: SupabaseClient, actorId: string, body: Record<stri
         branch_name: offering ? (branchNameById.get(offering.branch_id as string) ?? '—') : '—',
         aliases: aliasNamesByMember.get(id) ?? [],
         last_present_date: lastPresentBy.get(id) ?? null,
-        // why THIS candidate is being offered, in one line
-        hint: tier === 'alias' ? 'Matched on a confirmed display name'
+        // why THIS candidate is being offered, in one line. A candidate from
+        // another course is offered for a DIFFERENT reason from the rest --
+        // not "this is probably her" but "this is the name you collided
+        // with" -- so she says so rather than borrowing the tier's wording,
+        // which would read as a match that was then quietly ignored.
+        hint: elsewhere.includes(id)
+              ? `Same name, but she is enrolled in ${
+                  offering ? (courseNameById.get(offering.course_id as string) ?? 'another course') : 'another course'
+                } — not this one`
+            : tier === 'alias' ? 'Matched on a confirmed display name'
             : tier === 'canonical' ? 'Matched on her canonical name'
             : 'Fuzzy match — nothing is assumed',
-        hint_tone: tier === 'fuzzy' ? 'unsure' : 'sure',
+        hint_tone: elsewhere.includes(id) || tier === 'fuzzy' ? 'unsure' : 'sure',
       };
     });
 
@@ -365,6 +398,23 @@ async function preview(admin: SupabaseClient, actorId: string, body: Record<stri
   };
   const duplicatesInFile = rawRows.length - new Set(rawRows.map(r => normalizeName(r.full_name))).size;
 
+  /**
+   * THE NAMES THIS FILE COLLIDED WITH, NAMED.
+   *
+   * A row whose only candidates belong to another course is filed as somebody
+   * new here -- which is the right call (a wrong CREATE is visible and two
+   * taps to undo; a wrong LINK is invisible and permanent), but it is still a
+   * call, and it is the one place this import can be wrong about a woman who
+   * genuinely moved from Prenatal to Postnatal.
+   *
+   * Counted silently it would be the same defect wearing the other face: a
+   * duplicate member nobody knows to fold in. So it goes back with the names,
+   * for the same reason dropped_names and staff_names do.
+   */
+  const otherCourseNames = rows
+    .filter(r => r.kind === 'unmatched' && r.candidates.length > 0)
+    .map(r => r.raw_name).filter(Boolean);
+
   const { data: inserted, error: insErr } = await admin.from('csv_imports').insert({
     file_name: fileName, file_sha256: fileSha256, offering_id: offeringId, session_date: sessionDate,
     row_count: rawRows.length, matched_count: counts.matched, unmatched_count: counts.unmatched,
@@ -374,6 +424,7 @@ async function preview(admin: SupabaseClient, actorId: string, body: Record<stri
     summary: {
       rows, dropped_count: dropped.length,
       dropped_names: dropped.map(r => r.full_name).filter(Boolean),
+      other_course_names: otherCourseNames,
       supersedes,
     },
     uploaded_by: actorId,
@@ -405,6 +456,11 @@ async function preview(admin: SupabaseClient, actorId: string, body: Record<stri
     // instructor off the register silently is how somebody concludes the
     // import missed her.
     staff_names: staff.map(r => r.full_name).filter(Boolean),
+    // Filed as somebody new because the only member of that name is enrolled
+    // in ANOTHER course. Named for the third time for the same reason: this
+    // is the one row the import had to make a judgement about, and a
+    // judgement nobody is told about is a judgement nobody can correct.
+    other_course_names: otherCourseNames,
     meeting_code: meetingCode,
     session_date: sessionDate,
     supersedes,

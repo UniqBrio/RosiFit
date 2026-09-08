@@ -1,0 +1,63 @@
+0049_imported_member_joins_on_the_upload_date — APPLIED TO PRODUCTION (lhpzhkzbnquwjljmbylo)
+08-Sep-2026, on the repo owner's explicit go-ahead ("go ahead") after the raw SQL was shown.
+RC-033. Applied with `npx supabase db query --linked -f`, never `db push` (the local files and
+the remote ledger have zero overlap, so a push would replay from 0001).
+
+The local harness could NOT stand in for any of this: `bash db/harness/test.sh` fails at
+`reset.sh: line 9: psql: command not found` (TD-050, ADR 005). What follows is ADR 007's
+rolled-back rehearsal against production in its place.
+
+1. IS THE LIVE FUNCTION THE ONE 0049 RE-ISSUES? (the RC-027 hazard: a re-issue from a stale
+   body silently reverts whatever came after it)
+
+   select length/md5(pg_get_functiondef) for public.create_member
+     -> deflen 4569, md5 8b2b2854ba004bf94b065a472d23af21   (one function, one arity)
+
+   Diffed line by line against the create_member block of 0026_retire_member_code.sql, comments
+   and whitespace ignored: 94 code lines each, IDENTICAL but for the dollar-quote tag Postgres
+   rewrites ($$ -> $function$). Nothing had drifted; 0049 reverts nothing.
+
+2. ROLLED-BACK REHEARSAL — the migration and a real call, against real production data:
+
+   begin;
+     <0049 in full>
+     set local role authenticated;  request.jwt.claim.sub = a live super_admin
+     select public.create_member('Rehearsal Zero Zero Four Nine', <a live offering>,
+                                 null,            -- exactly what bulk_import_members passes
+                                 '{}', '{}', null);
+     -> member_joined_on   2026-09-08
+        enrolment_from     2026-09-08
+        dated_today        true
+        one_fact_one_value true      (m.joined_on = e.effective_from — the whole of RC-033)
+        audit_joined_on    2026-09-08
+   rollback;
+
+   Rollback confirmed: md5 still 8b2b2854ba004bf94b065a472d23af21, `full_name like 'Rehearsal%'`
+   count 0.
+
+3. APPLIED:  npx supabase db query --linked -f supabase/migrations/0049_...sql
+
+   Post-apply survey of public.create_member:
+     stores_v_from     true    ("values (btrim(p_full_name), v_from,")
+     audits_v_from     true    ("'joined_on', v_from")
+     security_definer  true
+     settings          {search_path=public}
+     anon EXECUTE      0 grants
+     deflen            6882    (4569 before — the difference is the comments 0049 adds)
+
+4. LEDGER, written by hand as this project requires (a timestamp version, never the bare file
+   number, because several sessions share this tree and duplicate numbers are normal):
+     insert into supabase_migrations.schema_migrations (version, name)
+     values ('20260908031112','0049_imported_member_joins_on_the_upload_date');
+
+5. THE LIVE FUNCTION, PROVEN AFTER THE APPLY — the same call as (2), rolled back again:
+     member_joined_on 2026-09-08 · enrolment_from 2026-09-08 · dated_today true ·
+     one_fact_one_value true · audit_joined_on 2026-09-08
+   Nothing left behind: rehearsal rows 0, members (live) 22 before and after.
+
+NOT DONE, DELIBERATELY: no bulk import was run against the live academy. Creating a real member
+to prove a function is how a test seed hijacked a real upload on 07-Sep-2026; a rolled-back call
+proves the same thing and leaves the register untouched.
+
+STILL OPEN: 5 of the 22 live members have joined_on null — imported before today. 0049 does not
+touch an existing row. Back-filling them is a separate migration and a separate decision.

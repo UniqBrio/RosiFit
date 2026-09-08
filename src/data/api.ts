@@ -171,6 +171,17 @@ export type PreviewResult = {
    * dropped row, because nothing was wrong with the row.
    */
   staff_names?: string[];
+  /**
+   * Names the file carries that belong to a member of ANOTHER course, and so
+   * were filed as somebody new on this one.
+   *
+   * A member has one live enrolment (0006), so a name that resolves only to a
+   * member of a different course is not that member. The import files her as
+   * new here rather than marking the other course's woman present — and says
+   * so, because it is the one row it had to make a judgement about, and a
+   * woman who really has moved course is folded in by hand (0032).
+   */
+  other_course_names?: string[];
   counts: Record<MatchKindLive, number>;
   /** the meeting the file names, echoed back so the screen can show it */
   meeting_code?: string | null;

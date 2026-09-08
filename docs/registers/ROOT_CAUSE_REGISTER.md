@@ -59,6 +59,190 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-033 — a bulk-imported member had no joining date, because create_member stored the date it was PASSED and enrolled her from the date it COMPUTED
+**Date:** 08-Sep-2026  ·  **Severity:** S3  ·  **Modules:** `supabase/migrations/0049_imported_member_joins_on_the_upload_date.sql`, `supabase/tests/38_imported_member_joined_on.sql`, `src/data/repository.ts`, `src/data/joined.ts`
+
+**Symptom** — In the requester's words: *"when member is imported from bulk import then joined on
+should be default as the current uploaded date"*. A member created by the member `.xlsx` import
+opened with **Joined on** blank and her `Joined` line reading `—`, however recently she had been
+imported — while her enrolment, invisibly, had started on the day of the upload.
+
+**Root cause** — One function holding two values for one fact. `create_member` (0016, re-issued
+0026) declares `v_from date := coalesce(p_joined_on, current_date)` and uses it for the enrolment's
+`effective_from`, for her own schedule, for the schedule lookup and for the future-date refusal —
+but inserts the RAW `p_joined_on` into `members.joined_on`, and reports the raw argument in the
+audit entry. For every caller that names a date the two are the same value and nothing is visible.
+The bulk import names none by design: the member file has carried no Joined On column since 0029
+(*"today is the only answer, so there is no cell left to write a date into the wrong shape"*), so
+`bulk_import_members` passes null and the member landed enrolled-from-today and dated nothing.
+
+Both sides of the boundary asserted the opposite in prose while the INSERT said otherwise:
+`src/data/repository.ts` said *"create_member coalesces null to current_date, so a bulk-imported
+member joins the day she was imported"*, and 0046's own header said *"`joined_on` defaults to
+current_date (0016/0026)"*. Two readers had read the declaration; neither had read the write four
+lines below it.
+
+Not the same defect as RC-029 (the date was read and thrown away on the way OUT) or RC-031 (the
+form seeded a month instead of a date). This is the write side of the same column, and it is the
+one that made RC-029's deliberate null-tolerance load-bearing: `hasJoinedBy` shows a dateless
+member on every past date, which was right for her and wrong about the import that made her.
+
+**Fix** — `0049_imported_member_joins_on_the_upload_date.sql` re-issues `create_member` whole with
+two changed values: the `members` INSERT stores `v_from`, and the audit entry reports `v_from`. The
+record, the enrolment, her schedule and the audit log now state one day. The default is
+`current_date` evaluated in the database, not a date the client sends — the upload date that
+matters is the one her enrolment already opens at, and a browser in another timezone must not be
+able to date her a day either side of it.
+
+`bulk_import_members` is deliberately NOT restated: it has been re-issued by 0028, 0029 and 0038
+already, and 0046's second reason applies exactly — restating a much-restated function to change a
+line that is not in it is how a concurrent change to it gets reverted by whichever number is
+higher. Members imported BEFORE 0049 keep their null; back-filling means deciding which day to
+write over "not recorded" for rows 0046's trigger may already have moved, which is the academy's
+decision and a separate migration.
+
+**Files** — `supabase/migrations/0049_imported_member_joins_on_the_upload_date.sql` (new),
+`supabase/tests/38_imported_member_joined_on.sql` (new),
+`src/data/importedMemberJoinedOn.test.ts` (new), `src/data/repository.ts` (the comment that
+asserted the fix already existed), `src/data/joined.ts` (the same, on the null it tolerates),
+`docs/registers/FEATURE_TRUTH.md`, `requests/2026-09-08-imported-member-joins-on-the-upload-date.md`.
+
+**How to verify** — `npx tsx --test src/data/importedMemberJoinedOn.test.ts`. Against the pre-fix
+tree it fails twice, naming the migration in force: *"0026_retire_member_code.sql: create_member
+must store v_from"* and *"an audit entry saying joined_on: null beside a record dated today is a
+third answer to the same question"*. Against a live database, `supabase/tests/38_imported_member_joined_on.sql`
+imports one row with no `joined_on` key and reads `members.joined_on`, `member_enrollments.effective_from`
+and the audit entry back, comparing them to each other rather than to a literal.
+
+**Applied** — 08-Sep-2026, to `lhpzhkzbnquwjljmbylo`, on the owner's explicit go-ahead. The
+local harness cannot run (`psql: command not found`, TD-050), so ADR 007's rolled-back rehearsal
+stood in for it: the live `create_member` was diffed line by line against 0026 first — 94 code
+lines, identical but for the dollar-quote tag — because re-issuing from a body that has drifted is
+RC-027 exactly; then the migration and a real `create_member(..., null, ...)` call ran inside a
+transaction that was rolled back, returning `joined_on 2026-09-08`, `effective_from 2026-09-08` and
+an audit entry saying the same day. Applied with `supabase db query --linked -f`, never `db push`,
+and the ledger row (`20260908031112`) written by hand. Re-proven on the live function afterwards,
+again rolled back. **No bulk import was run against the academy** — creating a real member to prove
+a function is how a test seed hijacked a real upload the day before.
+`.evidence/imported-member-joins-on-the-upload-date-prod.txt`. **5 of the 22 live members carry a
+null joining date** and 0049 does not touch them.
+
+**Recurrence risk** — The class is *a default computed into a local and then not used at the one
+write that needed it*. Swept with `grep -n "insert into public.members" supabase/migrations/*.sql`:
+11 sites, every one a re-issue of the same two functions — `create_member` (fixed here) and
+`commit_csv_import`'s `add_as_new`, which has always written `v_import.session_date` and never a
+null. The second is pinned by the third group of the new spec so a later re-issue cannot quietly
+null it. No other writer of `members` exists.
+
+**Prevention** — `src/data/importedMemberJoinedOn.test.ts`, which resolves the LATEST migration
+that defines a function rather than naming one, so a re-issue that drops the line fails
+`npm run check` on the next commit rather than at the next import.
+
+**Process check** — **Yes.** `supabase/tests/22_bulk_import_members.sql` covers exactly this row
+("blank joining date -> today") and asserts it by reading `member_enrollments.effective_from` — the
+half that was always right. Nothing in the suite ever read `members.joined_on` back, so the spec
+that existed to catch this could pass with the defect present. The rule that would have caught it:
+**a spec for a writer reads back every column the write is ABOUT, not one of them**. That is a
+framework finding (`/framework-update`) and it has NOT been run — flagged here so it is not lost.
+The second half is RC-014's, unchanged: 22 has never executed anywhere (no Postgres on this
+machine, TD-050), so even a complete assertion would have been read rather than run — which is why
+the new claim is duplicated into a node spec that runs on every `npm run check`.
+
+---
+
+## RC-032 — A name matched a member of another course, so one course's register marked a different course's member
+**Date:** 08-Sep-2026  ·  **Severity:** S2  ·  **Modules:** `supabase/functions/_shared/match.ts`, `supabase/functions/csv-import/index.ts`, `src/data/api.ts`, `app/upload.tsx`
+
+**Symptom** — In the requester's words: *"I uploaded a csv file containing member in postnnatal
+course and there was a name which was included in prenatal course as well when i uploaded it in
+postanatal it update attendance of person in prenatal instead of bringing her as new member in
+postnatal."* A Google Meet export uploaded to **Postnatal** carried a participant whose name is
+also the name of a member enrolled in **Prenatal**. The Prenatal member was written an attendance
+row on the Postnatal session, her `last_present_date` moved, Postnatal gained no member, and
+nothing on the result screen said any of it had happened.
+
+**Root cause** — `preview()` resolved a participant name against **every member in the academy**
+and never once looked at `offering_id` — the course the file is the register of. A member has one
+live enrolment (0006); `set_attendance` states the consequence outright — *"her offering is read
+from the enrolment in force on that date, never passed in ... one active enrolment means there is
+nothing to choose"* (0035) — so a member enrolled in Prenatal is, by construction, **not** a
+member of Postnatal, and a name that resolves only to her is not naming her. The canonical-name
+tier returned her as the single confident candidate all the same, `kind` became `matched`, and
+`matched` is the one classification nobody is asked about: `autoDecisions` (app/upload.tsx) filters
+it out and `commit_csv_import` defaults it to `accept`. The wrong woman was marked, invisibly.
+
+The selectivity is the proof. A file whose names are all members of the course it is uploaded into
+imports correctly, which is why this had never been seen: the defect fires **exactly** when the
+single confident candidate is enrolled somewhere else.
+
+It was not always silent. While the operator answered row by row she could see the candidate's
+course on the review card and refuse it. The harm arrived on 06-Sep-2026, when the review was
+removed on request ("directly import data no confirmation") — the check that had been a person's
+was never moved into the matcher.
+
+**Fix** — `splitByCourse` (`_shared/match.ts`) splits the candidates into the ones this offering
+could claim and the ones enrolled elsewhere; only the first group decides the row's `kind`. A
+member with **no** live enrolment stays in the first group — null is "in no course", not a
+contradiction, and creating a duplicate for her would invent a collision that does not exist. A
+row left with nothing in the first group is `unmatched`, which the upload files as somebody new on
+this course: with no email, listed under **No email**, where "Add display name to existing member"
+folds her in and carries her attendance across (0032). That is the standing trade in this flow,
+recorded above `autoDecisions` and confirmed by the requester on 06-Sep-2026 — *a wrong LINK marks
+the wrong woman present and looks exactly like a right one; a wrong CREATE is visible and two taps
+to undo.*
+
+The `elsewhere` candidates are kept, not discarded, and ordered **after** the others —
+`commit_csv_import` reads `candidates[0]`, so a member this course cannot claim must never sit
+first. They carry their own hint ("Same name, but she is enrolled in *X* — not this one"), they
+are what makes the row's `confirm_different_person` a real acknowledgement, and their names come
+back as `other_course_names` so the result screen can name them. Filing a row as new because of a
+name collision is a judgement, and a judgement nobody is told about is a judgement nobody can
+correct — the same reason `dropped_names` and `staff_names` are named rather than counted.
+
+**Files** — `supabase/functions/_shared/match.ts` (`splitByCourse`, new),
+`supabase/functions/csv-import/index.ts` (the split, the candidate order, the hint,
+`other_course_names` on the response and in the staged summary), `src/data/api.ts`
+(`PreviewResult.other_course_names`), `app/upload.tsx` (`Outcome.other_course` and the
+`upload-other-course` note), `src/data/importCourseScope.test.ts` (new).
+
+**How to verify** — `npx tsx --test src/data/importCourseScope.test.ts`. Twelve claims in three
+groups: the rule itself, run (a member of another course is not a candidate; a member of this one
+is; a member of no course is; the requester's two-course name yields only this course's member;
+order is preserved so `candidates[0]` is still safe); that the matcher applies it and orders
+`[...here, ...elsewhere]`; and that the operator is told, by name. Seven of the twelve were
+observed failing against the pre-fix tree. In the app: with the same name on a member of each
+course, upload a Postnatal Meet export naming her — Postnatal gains a new member under No email,
+the Prenatal member's register is untouched, and the result names the collision.
+
+**Recurrence risk** — Swept: every place a name is turned into a member.
+`grep -rn "name_normalized|normalizeName(|normalize_name(" --include=*.ts --include=*.sql .`
+finds three other resolution sites and none shares the defect. (1) csv-import's staff filter
+(index.ts:247) matches Meet names against `app_users` — staff are academy-wide, so academy-wide is
+the right scope. (2) `bulk_import_members` (0028, re-issued by 0029 and 0038) refuses a name
+already on the register anywhere — deliberate, and the opposite failure mode: it writes nothing and
+reports the row by name with its reason, so nothing is silent. It does mean two genuinely different
+women of one name cannot both be bulk-imported; that is a known limitation, not this defect.
+(3) `update_member` (0027) enforces alias uniqueness academy-wide, which is the invariant that
+stops one display name pointing at two members. This was the only site that turned a name into a
+**write** against a member the course cannot claim.
+
+**Prevention** — The rule lives in one exported function with the reasoning above it, and
+`src/data/importCourseScope.test.ts` holds it as an executable claim together with the two things
+around it that can be loosened separately: that the matcher still calls it, and that the operator
+is still told. The standing rule is the one `set_attendance` already followed and the import did
+not: **a member's course is read from her enrolment, never inferred from a file, and a name alone
+is never an identity.**
+
+**Process check** — **Yes, and it is the same lesson as removing a person from a loop.** The
+06-Sep change deleted the review screen without asking what that screen had been *checking*. The
+candidate's course was on the review card; a person reading "Prenatal · Anna Nagar" beside a
+Postnatal upload would have refused it. Nothing in the track that removed the confirmation
+required an inventory of the judgements the removed step was making, so one of them was simply
+lost. Worth `/framework-update`: **when a confirmation step is removed, enumerate what the person
+was deciding and say, for each, where that decision now lives.**
+
+---
+
 ## RC-031 — Edit Member opened "Joined on" blank, because the form was seeded from a month
 **Date:** 07-Sep-2026  ·  **Severity:** S3  ·  **Modules:** `src/data/period.ts`, `src/data/repository.ts`, `app/member/edit.tsx`, `src/components/DateTimePicker.tsx`
 

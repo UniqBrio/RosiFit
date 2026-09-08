@@ -30,6 +30,53 @@ function bigrams(s: string): string[] {
   return grams;
 }
 
+/**
+ * WHICH OF THE CANDIDATES CAN BE HER *IN THIS COURSE*.
+ *
+ * A name is not an identity here. `member_enrollments` carries one live
+ * enrolment per member (0006) -- set_attendance says so out loud, "her
+ * offering is read from the enrolment in force on that date, never passed in
+ * ... one active enrolment means there is nothing to choose" (0035) -- so a
+ * member enrolled in Prenatal is, by construction, NOT a member of Postnatal.
+ * A Postnatal file naming her is naming somebody else with the same name, or
+ * naming her on the day she moved; either way it is not a fact the import may
+ * assume.
+ *
+ * The matcher used to ask only "is there a member with this name", academy
+ * wide, and an exact hit became `matched` -- which the upload accepts without
+ * asking anybody (autoDecisions, app/upload.tsx). So a name shared across two
+ * courses marked the OTHER course's member present, invisibly.
+ *
+ * Split rather than filtered: the candidate enrolled elsewhere is still worth
+ * showing. She is why the row needs `confirm_different_person`, and she is the
+ * name the result screen puts in front of the operator so a genuine move
+ * between courses can be folded in by hand (0032) rather than guessed at here.
+ *
+ * A member with NO live enrolment is `here`. Nothing contradicts this course
+ * for her, and creating a second record for a woman already on the register
+ * would be inventing a duplicate to avoid a collision that does not exist.
+ *
+ * `offeringOf` answers with the offering a member is actively enrolled in, or
+ * null for none -- exactly the map csv-import already builds from
+ * member_enrollments.
+ */
+export function splitByCourse(
+  candidateIds: string[],
+  offeringOf: (memberId: string) => string | null | undefined,
+  offeringId: string,
+): { here: string[]; elsewhere: string[] } {
+  const here: string[] = [];
+  const elsewhere: string[] = [];
+  for (const id of candidateIds) {
+    const enrolled = offeringOf(id);
+    // Only an enrolment in ANOTHER offering disqualifies her. Null is "in no
+    // course", which is not a contradiction.
+    if (enrolled && enrolled !== offeringId) elsewhere.push(id);
+    else here.push(id);
+  }
+  return { here, elsewhere };
+}
+
 /** Sorensen-Dice coefficient over character bigrams, in [0, 1]. */
 export function similarity(a: string, b: string): number {
   if (a === b) return 1;

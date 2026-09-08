@@ -412,6 +412,46 @@ _Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
+## Gate run - 2026-09-08 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
 ## Gate run - 2026-09-07 - VERDICT: FAIL
 
 Steps: 6 pass, 4 fail, 1 blocked.
@@ -5688,4 +5728,34 @@ FAIL-FIRST: src/components/dialogDismiss.test.ts - run against the unchanged tre
 
 FAIL-FIRST: src/data/importedMemberJoinedOn.test.ts - run against the unchanged tree on 08-Sep-2026: 2 of 8 failed, and each named the migration actually in force rather than a file the spec had pinned - "0026_retire_member_code.sql: create_member must store v_from -- the raw p_joined_on is null for every bulk-imported member, so her record says 'not recorded' while her enrolment says today", and "an audit entry saying joined_on: null beside a record dated today is a third answer to the same question". The other 6 pass in both trees as they must: the coalesce is where it always was, the future-date refusal already measured v_from, the client already sends no joining date, offline already dates her today, and commit_csv_import already dates a member by the session that names her (RC-033). 8 of 8 after 0049_imported_member_joins_on_the_upload_date.sql. npm run check green end to end: typecheck . 1,014 unit cases (1,006 before, +8) . 2,840/2,840 contrast pairs . 75/75 icons.
 
-**DB harness - NOT RUN, and this change is a migration.** `bash db/harness/test.sh` fails at `reset.sh: line 9: psql: command not found` - TD-050, ADR 005, the same wall 0047 and 0048 are behind. So `supabase/tests/38_imported_member_joined_on.sql` (8 assertions: her record, her enrolment and the audit entry all read back and compared to EACH OTHER, a named date still stored as named, a future date still refused) has never executed anywhere, exactly as 22_bulk_import_members.sql had never executed when it was asserting the truth nobody had read (RC-014). That is why the same claim is duplicated into the node spec above, which runs on every commit. 0049 is NOT APPLIED to production and awaits the owner's go-ahead.
+**DB harness - NOT RUN, and this change is a migration.** `bash db/harness/test.sh` fails at `reset.sh: line 9: psql: command not found` - TD-050, ADR 005, the same wall 0047 and 0048 are behind. So `supabase/tests/38_imported_member_joined_on.sql` (8 assertions: her record, her enrolment and the audit entry all read back and compared to EACH OTHER, a named date still stored as named, a future date still refused) has never executed anywhere, exactly as 22_bulk_import_members.sql had never executed when it was asserting the truth nobody had read (RC-014). That is why the same claim is duplicated into the node spec above, which runs on every commit. **0049 was applied to production on 08-Sep-2026** on the owner's go-ahead, with ADR 007's rolled-back rehearsal standing in for the harness: the live function proven identical to 0026 first, then the migration plus a real null-dated `create_member` call inside a transaction that was rolled back (joined_on, effective_from and the audit entry all 2026-09-08), then applied, then re-proven on the live function and rolled back again. No bulk import was run against the academy. `.evidence/imported-member-joins-on-the-upload-date-prod.txt`.
+FAIL-FIRST: src/data/signOutConfirm.test.ts - 6 cases, new file. Run on 08-Sep-2026 against a
+tree rebuilt from HEAD (`git show HEAD:'app/(tabs)/more.tsx'`, `HEAD:app/profile.tsx`, with the
+unchanged session.ts and the new signOutPrompt.ts alongside, via SIGN_OUT_CONFIRM_SPEC_ROOT):
+4 of 6 failed - "BOTH sign-out controls ask first", "the question is ONE question, held in one
+file", "a revocation in flight cannot be tapped a second time", and "a revocation that failed
+does not pretend the session ended". The other 2 pass in both trees as they must: the
+looking-at-a-real-tree guard, and "the automatic sign-outs are not asked about" - session.ts is
+untouched by this change and that case exists to keep it that way (a disabled account must
+never be offered "Stay signed in"). 6 of 6 after. npm run check green end to end: typecheck .
+1,035 unit cases (1,029 before, +6) . 2,840/2,840 contrast pairs . 75/75 icons. audit:all green,
+no new violations in any of the six.
+
+Browser: `.evidence/confirm-before-sign-out-browser.txt` - the real `expo export` build, served
+static, both screens x both themes. Each: the question is absent before the tap, present after
+it with the shared body wording, "Stay signed in" closes it and leaves the URL where it was,
+and the confirm still reaches the sign-in screen (`/`) - a confirmation that quietly stopped
+sign-out working would pass every other check. Theme flip is seeded through the STORED
+preference, not prefers-color-scheme: ThemeProvider defaults to 'dark' and only 'system'
+consults the media query (CP-016), so emulateMedia alone measured dark twice - caught and
+corrected mid-verification. Measured light: ground rgb(244,238,242), card #FFF, title ink
+rgb(28,10,23). Dark: ground rgb(8,4,10), card rgb(23,10,20), title white. Keyboard (CP-22,
+A-10), More/light: the Sign out row is tab stop 13 with the accessible name "Sign out", and the
+open question cycles between its two buttons only.
+
+**NOT exercised in the browser: the failed-revocation path.** The export runs on fixtures, where
+`signOut()` returns early because no project is configured, so the catch is unreachable there.
+It is held by the source assertion above and by reading `supabase.auth.signOut`, not by a walk -
+stated rather than implied.
+
+**DB harness - N/A.** No migration, no schema surface. Two screens, one copy module, one spec.

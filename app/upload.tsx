@@ -113,6 +113,9 @@ type Outcome = {
   dropped: string[];
   /** names that belong to staff, set aside before matching */
   staff: string[];
+  /** names whose only member of that name is enrolled in ANOTHER course, so
+   *  they were added here as somebody new rather than marking that woman */
+  other_course: string[];
   /** names Meet wrote more than once, counted once */
   duplicates: string[];
   /** the file this one corrected, when the day already had one */
@@ -485,6 +488,9 @@ function UploadBody() {
         imported: result.present_or_extra,
         dropped: preview.dropped_names ?? [],
         staff: preview.staff_names ?? [],
+        // Absent from a project still on the older function, and read as
+        // "nothing to say" rather than "none": the note simply does not draw.
+        other_course: preview.other_course_names ?? [],
         duplicates: staged.duplicates,
         supersedes: staged.supersedes?.file_name ?? null,
         // Absent until the migration that returns it is applied, which is why
@@ -920,6 +926,19 @@ function UploadBody() {
             </Muted>
           ) : null}
 
+          {/* A NAME THIS COURSE SHARES WITH ANOTHER ONE.
+              A member has one live enrolment, so a name whose only member is
+              in another course is not that member — she is added here as
+              somebody new rather than marked present over there. That is a
+              judgement, and it is the one the import can be wrong about when
+              a woman really has moved course, so it is never made silently:
+              the names are here, with the two taps that undo it. */}
+          {outcome.other_course.length > 0 ? (
+            <Note testID="upload-other-course" ink={warnInk} icon="swap_horiz"
+              title={`${outcome.other_course.length} ${outcome.other_course.length === 1 ? 'name belongs' : 'names belong'} to another course`}
+              body={`${outcome.other_course.join(', ')} ${outcome.other_course.length === 1 ? 'matches a member' : 'match members'} enrolled elsewhere, and a member is in one course at a time — so ${outcome.other_course.length === 1 ? 'she was added to this course as somebody new' : 'they were added to this course as new members'}, not marked present on the other register. If it is the same woman, “Add display name to existing member” on the course folds her in and carries her attendance across.`} />
+          ) : null}
+
           {/* WHO RAN THE CLASS. Named, because leaving the instructor off the
               register silently is how somebody concludes the import missed
               her. */}
@@ -1084,6 +1103,7 @@ function fixtureOutcome(day: string, source: { text: string }, supersedes: Super
     imported: withEmail + noEmail,
     dropped: [],
     staff: [],
+    other_course: [],
     duplicates: [...new Set(dedupeRows(parseMeetCsv(source.text).rows).duplicates)],
     supersedes: supersedes?.file_name ?? null,
     // The fixtures describe a register being replaced; they do not invent

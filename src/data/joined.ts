@@ -43,8 +43,9 @@ const ISO = /^\d{4}-\d{2}-\d{2}$/;
  * `expected_members_for_session` uses -- `session_date >= effective_from`.
  *
  * NO DATE ON RECORD IS NOT A REASON TO HIDE HER. `members.joined_on` is
- * nullable (0006) and the bulk import may leave it null (0029), so a member
- * with no date is an ordinary member whose paperwork is thin -- not a member
+ * nullable (0006) and every member the bulk import created before 0049 has no
+ * date at all (RC-033), so a member with no date is an ordinary member whose
+ * paperwork is thin -- not a member
  * who joined in the future. Reading a missing date as "hide her from every
  * past date" would quietly empty the register of everybody imported before
  * the column was being filled in, which is a far worse answer than showing

@@ -12,7 +12,12 @@ import { SPACE, RADIUS, STATUS, statusSurface, type StatusKey } from '../../src/
 import { DAY_NAMES, ruleSentence, AVATAR_TINTS, initials, primaryEmail, type Member, type MemberStatus } from '../../src/data/mock';
 import { useCourses, useFollowUp, useAttendance } from '../../src/data/hooks';
 import { weekStart, iso, label as periodLabel } from '../../src/data/period';
-import { setMemberStatus, mergeMemberInto, dataSource } from '../../src/data/repository';
+import {
+  setMemberStatus, mergeMemberInto, deleteMember, memberDeletionPreview, dataSource,
+} from '../../src/data/repository';
+import {
+  removalOutcome, removalFailure, deletionWarning, type PreviewState,
+} from '../../src/data/memberRemoval';
 import { dayAttendance, dayInWords, type DayState } from '../../src/data/dayAttendance';
 import { enrolledIn } from '../../src/data/course';
 import { offersUpload } from '../../src/data/uploadWindow';
@@ -695,7 +700,7 @@ function CourseDetailBody() {
                               <Text numberOfLines={2} style={{
                                 flexShrink: 1, fontSize: 9.5, fontWeight: '800', lineHeight: 12,
                                 color: theme.fg, textAlign: 'center',
-                              }}>Add file</Text>
+                              }}>Upload again</Text>
                             )}
                           </Pressable>
                         ) : null}
@@ -1092,6 +1097,14 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
   // going and what follows.
   const [confirmStatus, setConfirmStatus] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Removing her is a DIFFERENT act from marking her inactive, and the two sit
+  // side by side on this row, so each asks its own question before it writes.
+  // This one cannot be undone from the app at all.
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  /** The same preview the Members tab's card takes: since 0051 the deletion
+   *  can promise nothing, so the dialog states a quantity instead. */
+  const [previewState, setPreviewState] = useState<PreviewState>({ kind: 'counting' });
+  const [removing, setRemoving] = useState(false);
   // "Add display name to existing member" -- open, and mid-save.
   const [linking, setLinking] = useState(false);
   const [linkingSave, setLinkingSave] = useState(false);
@@ -1123,6 +1136,47 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
         : 'Her status could not be changed. Nothing has been saved.', 'warn');
     } finally {
       setSaving(false);
+    }
+  };
+
+  /**
+   * The roster's bin. The same write the Members tab's card makes -- one
+   * `delete_member` (0038/0044), and the four outcomes worded in
+   * src/data/memberRemoval.ts rather than a ternary in here, so this card and
+   * that one say the same thing after the same result. `deleteMember` calls
+   * `membersChanged()`, so this roster, the dashboard count and the follow-up
+   * list all re-read from the one member source (guardrail 1) -- the card does
+   * not remove itself from a second list.
+   */
+  /**
+   * The count behind the question, asked when the dialog opens and never
+   * before: a preview fetched on render would query once per member on a
+   * roster for a button most people never press. The Members tab's card does
+   * exactly this, and the two must not drift.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    if (!confirmRemove) return;
+    setPreviewState({ kind: 'counting' });
+    memberDeletionPreview(member.id)
+      .then(p => { if (!cancelled) setPreviewState({ kind: 'counted', preview: p }); })
+      .catch(() => { if (!cancelled) setPreviewState({ kind: 'uncounted' }); });
+    return () => { cancelled = true; };
+  }, [confirmRemove, member.id]);
+
+  const remove = async () => {
+    if (removing) return;
+    setConfirmRemove(false);
+    setRemoving(true);
+    try {
+      const { message, tone } = removalOutcome(
+        member.name, await deleteMember(member.id), dataSource);
+      flash(message, tone);
+    } catch (err) {
+      const { message, tone } = removalFailure(err);
+      flash(message, tone);
+    } finally {
+      setRemoving(false);
     }
   };
 
@@ -1241,6 +1295,31 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
           })}>
           <Icon name={noEmail ? 'mail_off' : 'edit'} size={15}
             color={noEmail ? dangerInk : theme.accentInk} />
+        </Pressable>
+
+        {/* Remove her from the academy -- last on the row, after the two
+            controls that only change how she reads, because it is the only
+            one on the card that cannot be undone from the app.
+
+            It keeps its own bin glyph and its own label in both states: on a
+            no-email card the Edit button beside it is already drawn in the
+            danger colour, so the two are told apart by icon and label and
+            never by the colour alone (guardrail 3). */}
+        <Pressable testID={`course-member-remove-${member.id}`}
+          onPress={() => setConfirmRemove(true)}
+          disabled={removing}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: removing }}
+          accessibilityLabel={`Remove ${member.name} from the academy`}
+          hitSlop={6}
+          style={({ pressed }) => ({
+            width: 32, height: 30, borderRadius: RADIUS.sm,
+            alignItems: 'center', justifyContent: 'center',
+            backgroundColor: statusSurface(dangerInk).bg,
+            borderWidth: 1, borderColor: statusSurface(dangerInk).border,
+            opacity: pressed || removing ? 0.6 : 1,
+          })}>
+          <Icon name="delete" size={15} color={dangerInk} />
         </Pressable>
       </View>
 
@@ -1493,6 +1572,21 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
         cancelLabel="Cancel"
         confirmLabel={saving ? 'Saving…' : inactiveToday ? 'Mark active' : 'Mark inactive'}
         onConfirm={() => { void applyStatus(); }} />
+
+      {/* The same question the Members tab asks, word for word, because it is
+          the same write -- which is why the sentence lives in
+          src/data/memberRemoval.ts and not in either screen. Since 0051 it
+          states a QUANTITY rather than the promise it used to make: the
+          deletion removes her attendance with her, so "her attendance history
+          stays" is withdrawn from both cards at once. */}
+      <ConfirmDialog
+        open={confirmRemove}
+        onClose={() => setConfirmRemove(false)}
+        title={`Remove ${member.name}?`}
+        body={deletionWarning(previewState)}
+        cancelLabel="Cancel"
+        confirmLabel={removing ? 'Removing…' : 'Remove'}
+        onConfirm={() => { void remove(); }} />
     </View>
   );
 }

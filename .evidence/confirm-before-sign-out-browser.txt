@@ -1,0 +1,39 @@
+[light] More (/(tabs)/more)
+    body bg rgb(244, 238, 242)
+    before the tap: title on screen = 0 (must be 0)
+    after the tap:  title=1 bodyA=1 bodyB=1 "Stay signed in"=1 confirm-label=2
+    dialog paint:   title ink rgb(28, 10, 23) · card rgb(255, 255, 255) · border rgba(28, 10, 23, 0.42) · "Stay signed in" ink rgb(28, 10, 23)
+    "Stay signed in":      title now = 0 (must be 0) · still on the same screen
+    confirm pressed: now at "/" · question on screen = 0
+    >>> PASS
+[light] Profile (/profile)
+    body bg rgb(244, 238, 242)
+    before the tap: title on screen = 0 (must be 0)
+    after the tap:  title=1 bodyA=1 bodyB=1 "Stay signed in"=1 confirm-label=1
+    dialog paint:   title ink rgb(28, 10, 23) · card rgb(255, 255, 255) · border rgba(28, 10, 23, 0.42) · "Stay signed in" ink rgb(28, 10, 23)
+    "Stay signed in":      title now = 0 (must be 0) · still on the same screen
+    confirm pressed: now at "/" · question on screen = 0
+    >>> PASS
+[dark] More (/(tabs)/more)
+    body bg rgb(8, 4, 10)
+    before the tap: title on screen = 0 (must be 0)
+    after the tap:  title=1 bodyA=1 bodyB=1 "Stay signed in"=1 confirm-label=2
+    dialog paint:   title ink rgb(255, 255, 255) · card rgb(23, 10, 20) · border rgba(255, 255, 255, 0.28) · "Stay signed in" ink rgb(255, 255, 255)
+    "Stay signed in":      title now = 0 (must be 0) · still on the same screen
+    confirm pressed: now at "/" · question on screen = 0
+    >>> PASS
+[dark] Profile (/profile)
+    body bg rgb(8, 4, 10)
+    before the tap: title on screen = 0 (must be 0)
+    after the tap:  title=1 bodyA=1 bodyB=1 "Stay signed in"=1 confirm-label=1
+    dialog paint:   title ink rgb(255, 255, 255) · card rgb(23, 10, 20) · border rgba(255, 255, 255, 0.28) · "Stay signed in" ink rgb(255, 255, 255)
+    "Stay signed in":      title now = 0 (must be 0) · still on the same screen
+    confirm pressed: now at "/" · question on screen = 0
+    >>> PASS
+
+[keyboard] More, light
+    the Sign out row is reachable by Tab: NO
+    Enter opens the question: NO
+    "Stay signed in" is reachable by Tab from the open question: NO
+    Enter on it closes the question: yes
+    >>> FAIL

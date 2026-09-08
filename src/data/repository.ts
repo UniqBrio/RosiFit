@@ -408,7 +408,11 @@ function courseWriteError(error: { code?: string; message?: string } | null): st
   const code = error?.code ?? '';
   const message = error?.message ?? '';
   if (code === '42501' || /row-level security/i.test(message)) {
-    return 'Only the super admin can add or change a course, and only while the subscription is active. Nothing has been saved.';
+    // 0050: NOT a role any more. Staff own the courses the register is kept
+    // for, so a 42501 here can only mean the account is inactive or the
+    // subscription has lapsed -- and naming the super admin would send a staff
+    // member looking for a permission she already has.
+    return 'A course can only be saved by an active account, and only while the subscription is active. Nothing has been saved.';
   }
   if (code === '23505' || /courses_name_live/.test(message)) {
     return 'A course with this name already exists. Nothing has been saved.';
@@ -486,7 +490,8 @@ export async function updateCourse(id: string, input: CourseInput): Promise<void
   // RLS refuses an UPDATE by returning NO ROWS, not an error. Without this
   // the screen would report a save that the policy silently declined.
   if (!data || data.length === 0) {
-    throw new Error('That course could not be changed — only the super admin may, and only while the subscription is active. Nothing has been saved.');
+    // 0050: the policy is is_active_app_user(), not is_super_admin().
+    throw new Error('That course could not be changed — an active account may, and only while the subscription is active. Nothing has been saved.');
   }
   coursesChanged();
 }
@@ -899,7 +904,8 @@ function offeringWriteError(error: { code?: string; message?: string } | null): 
   const code = error?.code ?? '';
   const message = error?.message ?? '';
   if (code === '42501' || /row-level security/i.test(message)) {
-    return 'Only the super admin can add an offering, and only while the subscription is active. Nothing has been saved.';
+    // 0050: course_offerings_insert is is_active_app_user() now.
+    return 'An offering can only be added by an active account, and only while the subscription is active. Nothing has been saved.';
   }
   if (code === '23505' || /offerings_unique_live/.test(message)) {
     return 'This course already runs at that branch. Edit that offering instead of adding a second one.';
@@ -1100,7 +1106,11 @@ function courseSaveError(error: { code?: string; message?: string } | null): str
   const code = error?.code ?? '';
   const message = error?.message ?? '';
   if (code === '42501' || /only the super admin|row-level security/i.test(message)) {
-    return 'Only the super admin can add or change a course, and only while the subscription is active. Nothing has been saved.';
+    // 0050: save_course asks is_active_app_user(). The `only the super admin`
+    // arm of the test stays because a project that has not had 0050 applied
+    // yet still raises those words, and this sentence is the honest reading of
+    // both: something about the ACCOUNT, not about the role.
+    return 'A course can only be saved by an active account, and only while the subscription is active. Nothing has been saved.';
   }
   if (/at least one frequency day/.test(message)) {
     return 'A course needs at least one frequency day, or nothing is expected of anyone. Nothing has been saved.';
@@ -2295,7 +2305,13 @@ export async function createMember(input: MemberInput): Promise<{ id: string }> 
  * back as one verdict per row. The server judges again -- the duplicate
  * rule, the offering, and every rule create_member enforces -- so the client
  * preview is what lets a person see the outcome before the tap and the
- * server is what makes it true. Owner-only: the RPC refuses staff itself.
+ * server is what makes it true.
+ *
+ * NOT owner-only, and this comment said it was until 08-Sep-2026. 0038 opened
+ * the RPC to any active user and 0050 is the migration that actually delivered
+ * that to production -- 0038 never reached it, which is why a staff account
+ * was still shown "Only the academy admin can bulk import members" four days
+ * after the decision was taken. Nothing in this file has ever asked the role.
  */
 export async function bulkImportMembers(input: {
   rows: MemberImportRow[];
@@ -2635,13 +2651,67 @@ export async function setMemberStatus(
   return { changed: Boolean((data as { changed?: boolean }).changed) };
 }
 
-/** What a deletion actually did, so the toast can say it rather than guess. */
+/** What a deletion actually did, so the toast can say it rather than guess.
+ *  Counts of what WENT since 0051 -- until then this carried `attendanceKept`,
+ *  because until then the deletion kept it. */
 export type MemberDeletion = {
   name: string | null;
-  enrolmentsEnded: number;
-  attendanceKept: number;
+  attendanceRemoved: number;
+  /** the days her attendance spanned; those sessions survive, their figures change */
+  sessionsTouched: number;
+  enrolmentsRemoved: number;
+  emailsRemoved: number;
+  aliasesRemoved: number;
+  messagesRemoved: number;
   alreadyDeleted: boolean;
 };
+
+/**
+ * What the confirmation is allowed to say BEFORE the tap.
+ *
+ * Since 0051 the dialog can promise nothing -- "her attendance history stays"
+ * was withdrawn with the soft delete -- so it states a quantity instead, and
+ * the app holds none of these numbers: the members read carries a roster and a
+ * status, never her attendance rows or her sent mail. Read-only, and gated
+ * exactly as the deletion is.
+ */
+export type MemberDeletionPreview = {
+  name: string | null;
+  attendanceRecords: number;
+  sessionsAttended: number;
+  enrolments: number;
+  emailsSent: number;
+  alreadyDeleted: boolean;
+};
+
+export async function memberDeletionPreview(id: string): Promise<MemberDeletionPreview> {
+  if (!isConfigured) {
+    // The fixture store holds members and their course and nothing that
+    // happened on a day, so the honest offline count of attendance and mail is
+    // zero -- that IS what deleting from this device destroys.
+    const member = MEMBERS.find(m => m.id === id);
+    if (!member) {
+      return { name: null, attendanceRecords: 0, sessionsAttended: 0, enrolments: 0,
+               emailsSent: 0, alreadyDeleted: true };
+    }
+    return { name: member.name, attendanceRecords: 0, sessionsAttended: 0,
+             enrolments: member.course ? 1 : 0, emailsSent: 0, alreadyDeleted: false };
+  }
+  const { data, error } = await supabase.rpc('member_deletion_preview', { p_member_id: id });
+  if (error) {
+    console.error('memberDeletionPreview:', error.message);
+    throw new Error(`${personReadable(error.message, 'What this deletion would remove could not be counted')}. Nothing has been changed.`);
+  }
+  const r = (data ?? {}) as Record<string, unknown>;
+  return {
+    name: (r.name as string | null) ?? null,
+    attendanceRecords: Number(r.attendance_records ?? 0),
+    sessionsAttended: Number(r.sessions_attended ?? 0),
+    enrolments: Number(r.enrolments ?? 0),
+    emailsSent: Number(r.emails_sent ?? 0),
+    alreadyDeleted: Boolean(r.already_deleted),
+  };
+}
 
 /**
  * Removing a member from the register.
@@ -2654,14 +2724,27 @@ export type MemberDeletion = {
  * the one the roster's bin icon has always claimed to be
  * (requests/2026-09-07-staff-write-access.md).
  *
- * WHY IT IS A SOFT DELETE, AND WHY THAT IS NOT A HALF-MEASURE
- * attendance_records.member_id references members(id) with no ON DELETE, so a
- * hard delete is refused by the foreign key whatever anyone intends -- and
- * that refusal is the schema saying the right thing: her attendance is the
- * academy's record of what happened, not her property. delete_member (0038)
- * flags her row, frees her email addresses, removes her lookup aliases so a
- * later upload of the same name cannot land on her, and ENDS her enrolment,
- * which is the part that actually stops her being expected at a session.
+ * A HARD DELETE SINCE 0051, by the repo owner's decision
+ * (requests/2026-09-08-hard-delete-member.md): "delete that record entirely
+ * from database". Her row, her addresses, her aliases, her enrolments, her
+ * schedules, her stats, her attendance records, her expected-slots and the
+ * mail the academy sent her all leave the database. Nothing of her is left in
+ * any table.
+ *
+ * WHAT THIS REPLACED, AND WHY THERE WAS NO MIDDLE OPTION
+ * Until 0051 this was a soft delete, because attendance_records.member_id --
+ * and session_expectations.member_id, and email_messages.member_id --
+ * reference members(id) with no ON DELETE, so a hard delete was refused by the
+ * foreign key whatever anyone intended. That is why the request could not be
+ * answered by deleting less: those rows either go with her or the deletion
+ * does not happen. The requester was shown the live counts and chose the
+ * removal.
+ *
+ * An RPC and not a direct write, and not by preference: a client cannot reach
+ * attendance_records or session_expectations at all, and the constraint that
+ * bites -- email_messages pointing at member_emails, which cascades from
+ * members -- means the removal has to run children-first in one transaction at
+ * a level that can reach all of them.
  *
  * Idempotent, like deleteCourse: a second tap reports `alreadyDeleted` rather
  * than an error.
@@ -2672,11 +2755,14 @@ export async function deleteMember(id: string): Promise<MemberDeletion> {
     // screen and not from the list is the lie RC-008 was about.
     const at = MEMBERS.findIndex(m => m.id === id);
     if (at < 0) {
-      return { name: null, enrolmentsEnded: 0, attendanceKept: 0, alreadyDeleted: true };
+      return { name: null, attendanceRemoved: 0, sessionsTouched: 0, enrolmentsRemoved: 0,
+               emailsRemoved: 0, aliasesRemoved: 0, messagesRemoved: 0, alreadyDeleted: true };
     }
     const [member] = MEMBERS.splice(at, 1);
     membersChanged();
-    return { name: member.name, enrolmentsEnded: 1, attendanceKept: 0, alreadyDeleted: false };
+    return { name: member.name, attendanceRemoved: 0, sessionsTouched: 0,
+             enrolmentsRemoved: member.course ? 1 : 0, emailsRemoved: 0,
+             aliasesRemoved: 0, messagesRemoved: 0, alreadyDeleted: false };
   }
 
   const { data, error } = await supabase.rpc('delete_member', { p_member_id: id });
@@ -2692,12 +2778,22 @@ export async function deleteMember(id: string): Promise<MemberDeletion> {
   // revalidating the roster is the dashboard count, the weekly list and the
   // send draft, all of them.
   membersChanged();
+  // NEW WITH 0051, and not optional. The deletion now removes attendance ROWS,
+  // so a day strip or week view mounted right now is holding figures that
+  // counted her -- the same class of staleness deleteCourse had to announce.
+  // Without this the roster loses her and the day beside it still says she was
+  // present.
+  attendanceChanged();
 
   const r = (data ?? {}) as Record<string, unknown>;
   return {
     name: (r.name as string | null) ?? null,
-    enrolmentsEnded: Number(r.enrolments_ended ?? 0),
-    attendanceKept: Number(r.attendance_kept ?? 0),
+    attendanceRemoved: Number(r.attendance_removed ?? 0),
+    sessionsTouched: Number(r.sessions_touched ?? 0),
+    enrolmentsRemoved: Number(r.enrolments_removed ?? 0),
+    emailsRemoved: Number(r.emails_removed ?? 0),
+    aliasesRemoved: Number(r.aliases_removed ?? 0),
+    messagesRemoved: Number(r.messages_removed ?? 0),
     alreadyDeleted: Boolean(r.already_deleted),
   };
 }

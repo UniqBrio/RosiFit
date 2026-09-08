@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, TextInput, ScrollView } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Screen, Muted, Button, Skeleton, EmptyState, ErrorState } from '../../src/components/ui';
@@ -15,8 +15,10 @@ import {
 import { useFollowUp, useFilterOptions } from '../../src/data/hooks';
 import { rosterScope } from '../../src/data/course';
 import { ConfirmDialog } from '../../src/components/Sheet';
-import { deleteMember, dataSource } from '../../src/data/repository';
-import { removalOutcome, removalFailure } from '../../src/data/memberRemoval';
+import { deleteMember, memberDeletionPreview, dataSource } from '../../src/data/repository';
+import {
+  removalOutcome, removalFailure, deletionWarning, type PreviewState,
+} from '../../src/data/memberRemoval';
 
 type Filter = 'all' | 'nomail' | 'follow' | 'coimbatore';
 
@@ -71,16 +73,39 @@ export default function Members() {
   const [filter, setFilter] = useState<Filter>('all');
   const [confirmRemove, setConfirmRemove] = useState<Member | null>(null);
   const [removing, setRemoving] = useState(false);
+  /** What the confirmation is allowed to say. Since 0051 the deletion can
+   *  promise nothing, so the dialog states a quantity -- and the app holds
+   *  none of these numbers until it asks for them. */
+  const [previewState, setPreviewState] = useState<PreviewState>({ kind: 'counting' });
 
   const members = useMemo(() => data?.members ?? [], [data]);
   const rules = data?.rules;
 
   /**
+   * The count behind the question, asked the moment the dialog opens and
+   * never before -- a preview fetched on render would query the database once
+   * per member on the screen for a button most people never press. `cancelled`
+   * because a dialog dismissed mid-count must not write into a closed sheet.
+   * A count that FAILS does not block the deletion: `uncounted` still warns,
+   * it just cannot say how much.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    if (!confirmRemove) return;
+    setPreviewState({ kind: 'counting' });
+    memberDeletionPreview(confirmRemove.id)
+      .then(p => { if (!cancelled) setPreviewState({ kind: 'counted', preview: p }); })
+      .catch(() => { if (!cancelled) setPreviewState({ kind: 'uncounted' }); });
+    return () => { cancelled = true; };
+  }, [confirmRemove]);
+
+  /**
    * The roster's bin, behind a real deletion. It used to answer
    * `flash('Removing X needs a confirmation')` -- which was accurate and was
    * the whole implementation, the same shape delete_course was in before
-   * 0020. delete_member (0038) is the write; this is the question that has to
-   * be asked first, because a deletion is not undoable from the app.
+   * 0020. delete_member (0038, hard since 0051) is the write; this is the
+   * question that has to be asked first, because a deletion is not undoable
+   * from the app -- and since 0051 it takes her attendance with her.
    */
   const remove = async (member: Member) => {
     setConfirmRemove(null);
@@ -264,19 +289,18 @@ export default function Members() {
         </View>
       )}
 
-      {/* The confirmation states what SURVIVES as well as what goes, exactly
-          as the course one does: delete_member (0038) leaves every attendance
-          record she has, because that is the academy's record of what
-          happened on a day rather than hers. */}
+      {/* The confirmation states a QUANTITY, exactly as the course one does
+          since 0047. It used to state a promise -- "her attendance history
+          stays" -- which it could make without asking anything because it was
+          true by construction. delete_member is a hard delete since 0051 and
+          the promise is withdrawn, so the numbers come from
+          member_deletion_preview and the sentence from
+          src/data/memberRemoval.ts, where every branch of it is asserted. */}
       <ConfirmDialog
         open={confirmRemove !== null}
         onClose={() => setConfirmRemove(null)}
         title={confirmRemove ? `Remove ${confirmRemove.name}?` : ''}
-        body={confirmRemove
-          ? `She comes off the register and off every follow-up list, and her enrolment in ${confirmRemove.course} ends today. `
-            + 'Her attendance history stays: every session she was marked at is untouched. '
-            + 'Her email address is freed for whoever holds it next. Recorded in the audit log.'
-          : ''}
+        body={confirmRemove ? deletionWarning(previewState) : ''}
         cancelLabel="Cancel"
         confirmLabel={removing ? 'Removing…' : 'Remove'}
         onConfirm={() => { if (confirmRemove) void remove(confirmRemove); }} />

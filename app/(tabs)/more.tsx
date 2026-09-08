@@ -1,13 +1,16 @@
+import { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useRouter, type Href } from 'expo-router';
 import { Screen, Muted, Label, Skeleton, EmptyState } from '../../src/components/ui';
 import { ScreenHeader } from '../../src/components/AppShell';
+import { ConfirmDialog } from '../../src/components/Sheet';
 import { Icon } from '../../src/components/Icon';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { SPACE, RADIUS, TAP_MIN, STATUS } from '../../src/theme/tokens';
 import { SUPPORT_PHONE_DISPLAY } from '../../src/data/mock';
 import { useBranchUsage, useStaff } from '../../src/data/hooks';
 import { useIdentity, signOut } from '../../src/data/session';
+import { SIGN_OUT_PROMPT } from '../../src/data/signOutPrompt';
 import { useGoToSignIn } from '../../src/components/useGoToSignIn';
 import { homeHref } from '../../src/data/access';
 
@@ -58,12 +61,32 @@ export default function More() {
   const staffCount = count(staff.data?.length);
 
   const toSignIn = useGoToSignIn();
+  /**
+   * The row ASKS before it acts. It sits third in a list of harmless settings,
+   * under Appearance and Help & support, and the act it performs cannot be
+   * undone from this screen: the way back in is the mobile number and the PIN.
+   * `leaving` exists because the revocation is a server call -- the confirm
+   * says "Signing out…" for its duration and refuses a second tap on the
+   * request already in flight.
+   */
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const leave = async () => {
-    // Signing out has to end the SESSION, not just the route. Replacing the
-    // route alone left a live session behind and the next launch walked
-    // straight back in as the previous account. And the route is RESET, not
-    // replaced with '/': from in here that pathname is Overview (RC-022).
-    await signOut();
+    if (leaving) return;
+    setLeaving(true);
+    try {
+      // Signing out has to end the SESSION, not just the route. Replacing the
+      // route alone left a live session behind and the next launch walked
+      // straight back in as the previous account. And the route is RESET, not
+      // replaced with '/': from in here that pathname is Overview (RC-022).
+      await signOut();
+    } catch {
+      // The server did not answer, so the session did not end -- and a screen
+      // that navigated anyway would claim it had. The question stays open with
+      // its button live, which is the retry. Nothing was changed.
+      setLeaving(false);
+      return;
+    }
     toSignIn();
   };
 
@@ -112,7 +135,7 @@ export default function More() {
         { icon: 'palette',       label: 'Appearance',     meta: `${themeName} · ${accentName}`, to: '/appearance' },
         { icon: 'support_agent', label: 'Help & support', meta: SUPPORT_PHONE_DISPLAY, to: '/help' },
         { icon: 'logout',        label: 'Sign out',       meta: '', danger: true,
-          onPress: () => { void leave(); } },
+          onPress: () => setConfirmSignOut(true) },
       ],
     },
   ];
@@ -228,6 +251,17 @@ export default function More() {
       <Muted style={{ textAlign: 'center', marginTop: SPACE.xxl, lineHeight: 20 }}>
         RosiFit staff · v1.4 (build 212){'\n'}Preparing, Thriving and Beyond
       </Muted>
+
+      {/* The same question the profile screen asks, from the same file, so the
+          two sign-out controls cannot start wording it differently. */}
+      <ConfirmDialog
+        open={confirmSignOut}
+        onClose={() => setConfirmSignOut(false)}
+        title={SIGN_OUT_PROMPT.title}
+        body={SIGN_OUT_PROMPT.body}
+        cancelLabel={SIGN_OUT_PROMPT.cancel}
+        confirmLabel={leaving ? SIGN_OUT_PROMPT.busy : SIGN_OUT_PROMPT.confirm}
+        onConfirm={() => { void leave(); }} />
     </Screen>
   );
 }

@@ -1,11 +1,14 @@
+import { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Screen, Button, Skeleton, EmptyState } from '../src/components/ui';
+import { ConfirmDialog } from '../src/components/Sheet';
 import { Icon } from '../src/components/Icon';
 import { useTheme } from '../src/theme/ThemeProvider';
 import { useToast } from '../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS } from '../src/theme/tokens';
 import { useIdentity, signOut, type Identity } from '../src/data/session';
+import { SIGN_OUT_PROMPT } from '../src/data/signOutPrompt';
 import { useGoToSignIn } from '../src/components/useGoToSignIn';
 import { useAcademyDetails } from '../src/data/hooks';
 import { ShellScreen } from '../src/components/AppShell';
@@ -49,12 +52,29 @@ function ProfileBody() {
   const academy = useAcademyDetails(forced);
 
   const toSignIn = useGoToSignIn();
+  /**
+   * The button ASKS before it acts, in the same words More asks in -- see
+   * `src/data/signOutPrompt.ts` for why the wording is shared rather than
+   * written twice. `leaving` covers the server call the confirm starts.
+   */
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const leave = async () => {
-    // The session has to actually END. Replacing the route on its own left a
-    // live session behind, so re-opening the app walked straight back in.
-    // The root Stack is then RESET to sign-in rather than sent to '/', the
-    // pathname Overview shares (RC-022).
-    await signOut();
+    if (leaving) return;
+    setLeaving(true);
+    try {
+      // The session has to actually END. Replacing the route on its own left a
+      // live session behind, so re-opening the app walked straight back in.
+      // The root Stack is then RESET to sign-in rather than sent to '/', the
+      // pathname Overview shares (RC-022).
+      await signOut();
+    } catch {
+      // The server did not answer, so the session did not end. Leaving the
+      // screen would claim otherwise; the question stays open and its button
+      // goes live again, which is the retry.
+      setLeaving(false);
+      return;
+    }
     toSignIn();
   };
 
@@ -144,7 +164,7 @@ function ProfileBody() {
 
       <Button label="Change My PIN" onPress={() => router.push('/set-pin?for=self')} style={{ marginTop: SPACE.lg }} />
 
-      <Pressable onPress={leave}
+      <Pressable onPress={() => setConfirmSignOut(true)}
         accessibilityRole="button"
         style={({ pressed }) => ({
           marginTop: SPACE.md, minHeight: TAP_MIN + 8, borderRadius: RADIUS.lg,
@@ -156,6 +176,17 @@ function ProfileBody() {
           color: theme.isDark ? STATUS.absent.fgDark : STATUS.absent.fgLight,
         }}>Sign Out</Text>
       </Pressable>
+
+      {/* Character for character the question More asks, because it is the
+          same act -- one file holds it (src/data/signOutPrompt.ts). */}
+      <ConfirmDialog
+        open={confirmSignOut}
+        onClose={() => setConfirmSignOut(false)}
+        title={SIGN_OUT_PROMPT.title}
+        body={SIGN_OUT_PROMPT.body}
+        cancelLabel={SIGN_OUT_PROMPT.cancel}
+        confirmLabel={leaving ? SIGN_OUT_PROMPT.busy : SIGN_OUT_PROMPT.confirm}
+        onConfirm={() => { void leave(); }} />
     </Screen>
   );
 }

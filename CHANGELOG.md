@@ -1,5 +1,43 @@
 # Changelog
 
+## Unreleased — Staff really can bulk import now, and add, edit and delete a course
+
+**A staff account importing a member file was told *"Only the academy admin can bulk import
+members."*** — four days after that restriction was withdrawn. The withdrawal was real: it
+was decided, written and specced. It simply never reached the live academy, because the
+update carrying it was never applied there. The same gap blocked staff from adding, editing
+and deleting a course, and from changing an offering's days.
+
+All five now work for staff, on the live academy, and were checked there afterwards rather
+than assumed. Nothing about the app's screens changed, because nothing about them was ever
+the problem — no screen has ever asked whether you are the owner before offering Add Member,
+Bulk Import, Add Course, Edit, Delete or Upload.
+
+**What staff still cannot see is unchanged:** Overview, Staff & access and the Audit log,
+which is exactly the line you drew. Branches, holidays and academy settings stay the owner's
+too. And a lapsed subscription still refuses every one of these writes — that was never a
+question of who you are.
+
+Four refusal messages were reworded as a consequence. If one of these saves is ever declined
+now, it can only mean the account is inactive or the subscription has lapsed, so the message
+says that instead of naming an admin whose permission you would go looking for and already
+have.
+
+## Unreleased — Sign out asks first
+
+**Sign out no longer takes effect on the tap.** It asks, and the session ends only when you
+say so. On More the row sat third in a list of harmless settings, under Appearance and Help &
+support, and one mis-tap ended the session — with no way back except your mobile number and
+your PIN.
+
+The question says what it will cost you and what it will not do: *You will need your mobile
+number and PIN to sign back in. Only this device is signed out: anywhere else you are signed
+in stays that way.* The way out is **Stay signed in**, and it leaves you exactly where you
+were.
+
+Both sign-out controls ask — the row under **More** and the button on **Your profile** — in
+the same words, because it is the same act.
+
 ## Unreleased — A bulk import is one line in the audit log, not twenty
 
 **Importing four members used to fill the audit log.** Each member wrote a separate entry
