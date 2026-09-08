@@ -40,6 +40,40 @@ export function safeBackTarget(from: unknown, fallback: Href): Href {
   return IN_APP.test(v) ? (v as Href) : fallback;
 }
 
+/* --------------------------------------------- leaving a screen that PUSHED
+ * A screen reached by `push` can pop, and `router.back()` is right for it --
+ * on the path it was written for. The SAME screen reached as the app's first
+ * route has nothing beneath it, and `back()` on an empty stack is a silent
+ * no-op: the arrow is drawn, it is pressable, and it does nothing.
+ *
+ * Course detail is that screen. The Courses tab pushes it, so back worked;
+ * a REFRESH on `/course/<id>` -- or a bookmark, or a PWA relaunch on that URL
+ * -- boots the root Stack holding that one route, and the arrow died. It is
+ * the set-pin defect above wearing a different icon, which is why the answer
+ * is the same shape: a decision made once, here, rather than a condition each
+ * screen writes for itself and one of them gets wrong.
+ *
+ * NOT a substitute for `?from=`. Inside the tab group `canGoBack()` answers
+ * about the stack the TABS sit in, so Weekly review, Members and Attendance
+ * must still name their origin. This is for the screens that are genuinely
+ * their own stack entry -- where the only question is whether one exists.
+ */
+
+/** Nothing to pop, so `back()` would do nothing -- go somewhere real. */
+export type Departure = 'back' | Href;
+
+/**
+ * Where a pushed screen's back arrow goes.
+ *
+ * `canPop` is the caller's `router.canGoBack()`: only the router knows. Where
+ * it says no, `from` is honoured if it is an in-app path (validated, because
+ * it arrives in a URL) and the fallback answers otherwise -- never `'back'`,
+ * because that is the arrow that does nothing.
+ */
+export function backFrom(canPop: boolean, from: unknown, fallback: Href): Departure {
+  return canPop ? 'back' : safeBackTarget(from, fallback);
+}
+
 /* ------------------------------------------------------- after a PIN change
  * The same principle as safeBackTarget above, applied to set-pin: the caller
  * names how it arrived, because the screen cannot tell.

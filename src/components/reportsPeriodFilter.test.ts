@@ -88,12 +88,27 @@ test('the default period is unchanged, and the query and the label share one ran
     'the subtitle must keep reading the same range object the query used');
 });
 
-test('the scope pills and both exports are untouched', () => {
+test('the scope pills and the export are untouched', () => {
   const s = src();
   // MUST NOT CHANGE, asserted rather than trusted: this change is a mount,
   // and a mount that quietly renamed a testID would break the harness runs
   // without failing a typecheck.
   assert.match(s, /testID=\{`reports-scope-\$\{s\.toLowerCase\(\)\}`\}/);
   assert.match(s, /testID="reports-export"/);
-  assert.match(s, /testID="reports-export-excel"/);
+  // `reports-export-excel` WAS asserted here, and is now asserted GONE.
+  //
+  // This round's request removed it -- "remove export button from bottom as
+  // export is already present on top right"
+  // (requests/2026-09-08-reports-details-two-sheets-and-dash-course.md) -- and
+  // it was the date-filter round's own MUST NOT CHANGE, which is why the
+  // assertion is INVERTED rather than deleted. A deleted line would let the
+  // button come back unnoticed; this one still guards the surface, and says
+  // which instruction superseded which.
+  //
+  // The two controls were never a choice: both called exportReport() on the
+  // same rows and saved the same file. Removing one removes a testID, and
+  // .baselines/testid-app-baseline.txt is a ratchet on testids MISSING, not
+  // present, so nothing else is owed here.
+  assert.doesNotMatch(s, /testID="reports-export-excel"/,
+    'the duplicate full-width export was removed; the header control is the only one');
 });

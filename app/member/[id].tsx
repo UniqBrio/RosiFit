@@ -1,7 +1,16 @@
 import { useState, type ReactNode } from 'react';
 import { View, Text } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { useMembers, useRules, useSentForPeriod } from '../../src/data/hooks';
+import {
+  useMembers, useRules, useSentForPeriod, useCourses, useCourseMessage,
+} from '../../src/data/hooks';
+import {
+  FollowUpTriggerPanel, FollowUpTriggerPrompt, type TriggerRecipient,
+} from '../../src/components/FollowUpTriggerPanel';
+import { readTrigger } from '../../src/data/followupTrigger';
+import { enrolledIn } from '../../src/data/course';
+import { sendFollowUps } from '../../src/data/api';
+import { setSendResult } from '../../src/data/pending';
 import { FormDialog } from '../../src/components/FormDialog';
 import { ConfirmDialog } from '../../src/components/Sheet';
 import { Muted, Label, Button, Skeleton, ErrorState } from '../../src/components/ui';
@@ -14,9 +23,9 @@ import {
 } from '../../src/components/memberDialog';
 import { TabStrip } from '../../src/components/TabStrip';
 import { sessionsFor, attendancePct, primaryEmail, hasEmail, type Member } from '../../src/data/mock';
-import { flagged, isReachable } from '../../src/data/followup';
+import { flagged, isReachable, recipientSplit } from '../../src/data/followup';
 import { currentWeek, iso } from '../../src/data/period';
-import { mergeSent, sentThisSession, sentOn } from '../../src/data/sent';
+import { mergeSent, sentThisSession, sentOn, recordSent } from '../../src/data/sent';
 import { reachOutState, REACH_OUT, warnsBeforeReachOut } from '../../src/data/reachOut';
 
 /**
@@ -83,7 +92,34 @@ export default function MemberDetail() {
   const week = currentWeek();
   const rules = useRules(forced);
   const already = useSentForPeriod(week, forced);
+  /* HER COURSE'S RECORD, for the trigger panel alone
+     (requests/2026-09-08-follow-up-trigger-on-send-and-reach-out.md). The
+     member row carries her course by NAME, and the trigger is written against
+     a course ID -- so the list is read to resolve one to the other, the same
+     way the send draft resolves her wording. A third read this dialog does not
+     depend on: without it the panel is stated read-only rather than the record
+     failing to open. */
+  const courses = useCourses(forced);
+  /* HER COURSE'S RECORD and its stored wording, both resolved BEFORE the early
+     returns below, because a hook cannot live under a condition. `m` may still
+     be null here -- the list is arriving -- and `useCourseMessage(null)` is a
+     resolved null, so nothing is fetched until there is a course to fetch for.
+     The wording is read for one reason only: the send made from the prompt
+     needs the course's `template_id`, which is the only thing that decides what
+     a member reads (guardrail 5). */
+  const herCourse = (courses.data ?? []).find(c => c.name === m?.course) ?? null;
+  const message = useCourseMessage(herCourse?.id ?? null, forced);
   const [warning, setWarning] = useState(false);
+  /* The send made from the prompt, once a trigger has been applied. Its own
+     state and not the draft's: this dialog now owns a send, and it reports its
+     own progress and its own failure rather than navigating somewhere to find
+     out. */
+  const [sending, setSending] = useState(false);
+  const [sendFailure, setSendFailure] = useState<string | null>(null);
+  /* The question, asked in front of the send rather than only sitting on the
+     card: "on clicking ... reach out show message of follow up triggere of
+     that course and ask ... and send communication." */
+  const [triggerPrompt, setTriggerPrompt] = useState(false);
   /* Opens on her week, every time. Not remembered between openings: the card
      is opened to decide whether to reach out, and a card that opens on
      whichever panel was last read shows a different thing to the same tap. */
@@ -148,6 +184,92 @@ export default function MemberDetail() {
      sends changes: same dialog, same stored wording, same confirmation. */
   const reachOut = () => router.push({ pathname: '/send', params: { member: m.id } });
 
+  /* THE TRIGGER HER LABEL ABOVE IS ANSWERING TO. Read from the same `rules`
+     the label reads, so the two cannot disagree: "Rule is not met" and the
+     number that decides it are one fact stated twice, and until now only half
+     of it was on screen. */
+  const trigger = rules.data ? readTrigger(m.course, rules.data) : null;
+  const herCourseDays = herCourse
+    ? (herCourse.offerings[0]?.weekdays.length || herCourse.frequency || null)
+    : null;
+  /* WHY it cannot be changed from here, when it cannot -- and the two reasons
+     are different facts. A list still arriving is a wait; a member whose
+     course has no row (renamed, removed, or an ended enrolment, which leaves
+     `course` as '—') is judged by the academy-wide rule, and saying "more than
+     one course" over either of them would be untrue. */
+  const herCourseNote = courses.state === 'loading'
+    ? 'Her course is still being read, so the trigger cannot be changed from here yet.'
+    : `${m.course === '—' ? 'She is not on a course' : `${m.course} is not on the course list`}, so her follow-up is judged by the academy-wide trigger above. It is changed on the course form.`;
+
+  /* The order of the two questions: the RULE first, then the duplicate.
+     Whether to change the trigger is a decision about who should be written
+     to at all; whether she has already had this week's message is a decision
+     about her, and it is the last thing said before the draft opens. The
+     already-sent warning is untouched -- same words, same guard, same tick. */
+  const askReachOut = () => setTriggerPrompt(true);
+  const afterTrigger = () => {
+    setTriggerPrompt(false);
+    if (warnsBeforeReachOut(sentAt)) setWarning(true); else reachOut();
+  };
+
+  /* WHO THE APPLIED TRIGGER NOW REACHES
+     (requests/2026-09-08-follow-up-trigger-on-send-and-reach-out.md, correction
+     of 8 Sep 2026: "As soon as Apply button is clicked ... show the list of
+     members with select/deselect option and then enable Send communication").
+
+     Derived HERE, from the same `flagged()` every other screen answers to, over
+     the member list this dialog already holds and the rule it already read --
+     so the list the prompt shows and the list the weekly screen shows are the
+     same function over the same inputs, not a second opinion computed in a
+     modal (guardrail 1, CP-011). `useRules` refetches on the Apply, so this
+     re-derives against the NEW number without anything being passed down.
+
+     Narrowed to HER COURSE, by the course record and not by name: a course
+     created after one of the same name was deleted would otherwise draft to the
+     deleted course's members. Where her course cannot be resolved the list is
+     her alone, which is what Reach out has always meant. */
+  const flaggedNow = rules.data
+    ? flagged(members.data ?? [], rules.data.global, rules.data.byCourseName)
+    : [];
+  const flaggedHere = herCourse
+    ? enrolledIn(flaggedNow, herCourse)
+    : flaggedNow.filter(x => x.id === m.id);
+  // Both halves from ONE call, so the prompt cannot claim to reach somebody it
+  // will skip. Named while being excluded, never dropped (C-76).
+  const split = recipientSplit(flaggedHere);
+  const sentAll = mergeSent(already.data ?? {}, sentThisSession(week));
+  const promptRecipients: TriggerRecipient[] = split.recipients.map(r => ({
+    id: r.id, name: r.name, email: primaryEmail(r), sentAt: sentAll[r.id],
+  }));
+
+  /* THE SEND ITSELF, from this dialog rather than from the prompt: the prompt
+     renders a decision, and the one API call that puts email in front of a
+     person belongs where the router and the session state are. It is the SAME
+     call the draft makes -- `sendFollowUps` with the course's stored template
+     -- so there is still exactly one send path (guardrail 5), and the result
+     screen is reached the same way. */
+  const send = async (ids: string[]) => {
+    if (!message.data || sending || ids.length === 0) return;
+    setSending(true);
+    setSendFailure(null);
+    try {
+      const result = await sendFollowUps({
+        member_ids: ids,
+        template_id: message.data.template_id,
+        period_from: week.from, period_to: week.to,
+      });
+      // What the send REPORTED as sent, never what it was asked to send.
+      recordSent(week, result.results.filter(r => r.status === 'sent').map(r => r.member_id));
+      setSendResult(result);
+      setTriggerPrompt(false);
+      router.replace('/send/result');
+    } catch (err) {
+      setSendFailure(err instanceof Error ? err.message : 'Nothing has been sent.');
+    } finally {
+      setSending(false);
+    }
+  };
+
   return (
     <FormDialog
       title={m.name}
@@ -166,13 +288,38 @@ export default function MemberDetail() {
           <Button testID="member-edit" label="Edit" variant="secondary" style={{ flex: 1 }}
             onPress={() => router.push({ pathname: '/member/edit', params: { id: m.id } })} />
           <Button testID="member-reach-out" label="Reach out" style={{ flex: 2 }}
-            onPress={() => (warnsBeforeReachOut(sentAt) ? setWarning(true) : reachOut())} />
+            onPress={askReachOut} />
         </View>
       }
       /* The warning renders OUTSIDE the card, the way the send draft's own
          confirmation does: it is a decision about this dialog, not a section
          of the record that scrolls with it (CP-014). */
-      overlays={(
+      overlays={(<>
+        {/* Asked FIRST, and only on the press -- the panel below is already on
+            the card for anybody reading it, so this is the same question put
+            where the decision is taken rather than a second copy of it. */}
+        <FollowUpTriggerPrompt
+          open={triggerPrompt}
+          onClose={() => setTriggerPrompt(false)}
+          onContinue={afterTrigger}
+          continueLabel="Send communication"
+          reading={trigger}
+          courseId={herCourse?.id ?? null}
+          daysPerWeek={herCourseDays}
+          readOnlyNote={herCourseNote}
+          /* The list Apply opens, and the send it enables. `listPending` is
+             the rules read that Apply set off: until it lands, the list on
+             screen is still the old rule's answer and must not be sendable. */
+          recipients={promptRecipients}
+          excludedNames={split.excluded.map(x => x.name)}
+          listPending={rules.state === 'loading'}
+          periodLabel={week.label}
+          sending={sending}
+          failure={sendFailure
+            ?? (message.state === 'error'
+              ? 'This course’s wording could not be read, so nothing can be sent from here.'
+              : null)}
+          onSend={ids => { void send(ids); }} />
         <ConfirmDialog
           open={warning}
           onClose={() => setWarning(false)}
@@ -182,7 +329,7 @@ export default function MemberDetail() {
           cancelLabel="Not yet"
           confirmLabel="Reach out anyway"
           onConfirm={() => { setWarning(false); reachOut(); }} />
-      )}>
+      </>)}>
 
       {tab === 'week' ? (<>
 
@@ -305,6 +452,17 @@ export default function MemberDetail() {
           </Text>
         </View>
       ) : null}
+
+      {/* WHICH RULE, under the label that says whether it is met. "Rule is not
+          met" answers a question the card never stated -- met by WHAT -- and
+          the number behind it was two screens away on the course form. It sits
+          directly under the label so the two read as one fact, and it is drawn
+          only once the rules have arrived, exactly as the label is. */}
+      <View style={{ marginTop: SPACE.md }}>
+        <FollowUpTriggerPanel testID="member-trigger"
+          reading={trigger} courseId={herCourse?.id ?? null} daysPerWeek={herCourseDays}
+          readOnlyNote={herCourseNote} />
+      </View>
 
       </>) : <HerDetails m={m} />}
     </FormDialog>

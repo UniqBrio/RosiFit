@@ -59,6 +59,139 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-036 — the audit log had no coupling to the audit writers, so nine migrations of new actions reached the owner as codes and the deletions named nobody
+**Date:** 08-Sep-2026  ·  **Severity:** S2  ·  **Modules:** `src/data/auditPlain.ts`, `src/data/repository.ts`, `app/audit.tsx`, `src/data/mock.ts`
+
+**Symptom** — the requester, on the one screen only she may open: *"In audit log show member
+name if member deleted and also dropdowns are not working under that please fix and showing
+wrong info"*. Measured against production the same day: the log's 46 most recent entries were
+`member.hard_deleted`, and every one of them rendered as **"Member — member hard deleted"**
+with no name, "No field values recorded", and a dash in both value columns. Thirteen other
+actions rendered as prettified codes — `csv_import.previewed` (38 rows) as "Csv import
+previewed", `attendance.day_reset` as "Attendance — attendance day reset", filed under
+Courses. The Dates and Branch filters opened and applied correctly and could not be seen.
+
+**Root cause** — two, and the first is one cause with N symptoms.
+
+1. **Nothing couples the audit READER to the audit WRITERS.** Every migration that adds an
+   `audit_log(...)` call adds an action code and a metadata shape, and no rung made
+   `src/data/auditPlain.ts` learn either. Its totality guarantee was a hand-kept list inside
+   `auditPlain.test.ts` — a snapshot of a grep, correct on 07-Sep-2026 and structurally unable
+   to fail for anything added after it. `actionTitle` is total by construction, so the gap
+   never surfaced as an error: it surfaced as a plausible-looking sentence. The deletions are
+   the same cause at its worst — `purge_member` (0051), `purge_course` (0047) and the purges in
+   0053–0055 delete the row they are about *in the transaction that writes the entry*, so the
+   screen's one way of naming a subject (look `entity_id` up in its table) misses by design,
+   and the name each of those functions carefully recorded in `metadata` was read by nothing.
+2. **A stacking lift only ranks a node against its own siblings.** react-native-web gives every
+   `<View>` `position: relative; z-index: 0`, so every View opens a stacking context.
+   `DropdownRow` lifts itself to `zIndex: 40` while a panel is out; Audit was the only screen
+   that wrapped it — in `<View key="controls">` and again in a margin View — which re-trapped
+   the panel at 0, behind the frozen column header (which `ScrollView` lifts to `zIndex: 10`
+   for `stickyHeaderIndices`) and behind the table, a later sibling at the same level.
+
+**Fix** — `hasPlainTitle` names `actionTitle`'s fall-through, and `auditActionCoverage.test.ts`
+runs the grep instead of quoting it: it reads `supabase/` at test time, so a new `audit_log`
+call fails the suite until the words exist. The fourteen missing actions were written.
+`subjectFromMeta` / `isRemoval` read the name a removal recorded, used in two places for two
+different jobs — `toPlain` names the entry's own subject, and `fetchAudit` seeds the resolved-id
+map so every *other* row in the batch pointing at the same dead id names her too. A removal now
+fills its value columns from that name ("no longer on record", which is not "cleared" — a
+cleared field leaves a row behind), and states what went with it from the counts the deletion
+itself recorded, including the note saying who ordered a purge. The filter row is pushed as its
+own `Fragment` child, unwrapped and with **no** z-index of its own — a number tuned to out-rank
+10 is RC-018's mistake again — and gains the `dismiss` layer CP-014 requires and this screen
+alone lacked.
+
+**Files** — `src/data/auditPlain.ts`, `src/data/repository.ts`, `app/audit.tsx`,
+`src/data/mock.ts`, `src/data/auditActionCoverage.test.ts`, `src/data/auditRemovedSubject.test.ts`,
+`src/components/auditFilterStacking.test.ts`.
+
+**How to verify** — `npx tsx --test src/data/auditActionCoverage.test.ts` against a tree whose
+`auditPlain.ts` is missing any one `*.hard_deleted` entry: it names the action and the migration
+that emits it. Then open Audit with the fixtures: entry `a17` names Sumathi with no members row
+behind her, `a18` carries 0055's purge note, `a20` sits under the Attendance chip; open Dates
+and confirm the panel is over the table, not under it.
+
+**Recurrence risk** — the coupling half is a pattern and its sweep is now the test itself:
+`emitted()` reads all four writer shapes (`audit_log`, `audit_log_as`, the Edge Functions'
+`p_action`, and `audit_row_change`'s composed triple) across every `.sql` and `.ts` under
+`supabase/`, so the sweep re-runs on every suite rather than being a count in this paragraph.
+The stacking half was swept by reading all seven `DropdownRow` call sites
+(`grep -n DropdownRow app/**/*.tsx`): Overview, Attendance and Reports mount it unwrapped and
+are unaffected; `course/[id].tsx` and `course/edit.tsx` and `offering/edit.tsx` mount it inside
+form scrollers with no later sibling to lose to. Audit was the only one wrapped, and the only
+one whose panel overlays a table.
+
+**Prevention** — `src/data/auditActionCoverage.test.ts` (the coupling, enforced from source) and
+`src/components/auditFilterStacking.test.ts` (the wrapper, and the absence of a magic z-index).
+Both run under `npm run test:unit`.
+
+**Process check** — **yes**, in one specific way, and it is worth a rung: a totality test whose
+input is a pasted grep is a snapshot wearing the clothes of a property, and the comment above it
+even names the grep it was pasted from. That shape should be a review question wherever it
+appears — "does this list re-derive itself, or did somebody paste it once?" — rather than a
+lesson this app pays for alone. Flagged for `/promote` as a framework candidate.
+
+---
+
+## RC-035 — the course back arrow was a bare `router.back()`, so a refresh on the screen left it drawn, pressable and dead
+**Date:** 08-Sep-2026  ·  **Severity:** S3  ·  **Modules:** `app/course/[id].tsx`, `src/data/nav.ts`, `src/data/courseBack.test.ts`
+
+**Symptom** — In the requester's words: *"back button from attendnace screen is not working after
+sometime and after refresh"*, with a screenshot of the **Gentle Yoga** course detail screen — the
+arrow to the left of the course name. It worked when the screen was opened from the Courses tab
+and stopped working with nothing on screen having changed.
+
+**Root cause** — `course-back` called `router.back()` unconditionally. That is right on the ONE
+path it was written for: the Courses tab **pushes** this screen, so there is an entry to pop. It
+is a **silent no-op on an empty stack**, and the stack is empty whenever the course screen is the
+app's FIRST route rather than its second — a browser refresh on `/course/<id>`, a bookmark, a
+pasted link, a PWA relaunch, or any reload the person did not ask for, which is the "after
+sometime". `app/_layout.tsx` declares no `initialRouteName`, so a cold load builds a root Stack
+holding that route and nothing beneath it. This is **RC-026's defect wearing a different icon**:
+set-pin accepted a new PIN and then sat there for every first login for the same reason.
+
+**Fix** — The decision is a pure function, `backFrom(canPop, from, fallback)` in `src/data/nav.ts`,
+beside `afterPinChange` and reusing `safeBackTarget`. `canPop` is the caller's
+`router.canGoBack()` — only the router knows — and where it says no the answer is a real route
+(`/courses`), never `'back'`. The screen `replace`s in that case, so the dead entry is spent
+rather than stacked. The pushed path is untouched and still pops, which is what keeps the Courses
+tab's scroll and filters. The arrow's size, position, `testID` and label are unchanged: this was a
+behaviour fix, not a redraw.
+
+**Files** — `src/data/nav.ts`, `app/course/[id].tsx`, `src/data/courseBack.test.ts` (new),
+`requests/2026-09-08-course-back-arrow-dead-after-refresh.md`,
+`.evidence/course-back-arrow-dead-after-refresh-browser.txt`.
+
+**How to verify** — `npm run test:unit` (`courseBack.test.ts`, 7 cases: a pushed arrival still
+pops; an empty stack never answers `'back'` for any of eight `from` values; an off-app `from` falls
+back; the screen goes through `nav.ts` and asks `canGoBack()`). In a built app (`npm run export`,
+served with a `/course/<id>` → `course/[id].html` rewrite) open `/course/c1` **directly, with no
+history behind it** and press the arrow: it must land on `/courses`. Recorded in
+`.evidence/course-back-arrow-dead-after-refresh-browser.txt`.
+
+**Recurrence risk** — **High, and largely unclosed.** `grep -n "router\.back()" app/` finds the
+same bare call on every other pushed screen: `branches`, `audit`, `profile`, `help`, `appearance`,
+`staff/index`, and the dialogs `member/[id]`, `upload`, `send/index`, `send/result`,
+`member/import`, plus `FormDialog`'s default close. Each is dead on a refresh for exactly this
+reason — `/branches` is the one used to reproduce the defect in the browser evidence above,
+*in the fixed build*. They are deliberately **not** changed here: the request named the attendance
+screen, and it is recorded as the open item in that request's `STILL unknown`.
+
+**Prevention** — No rung. A lint that banned bare `router.back()` would be wrong: it is the
+correct call on a pushed screen, and `ScreenHeader`'s own comment explains why `canGoBack()` is
+not a blanket answer inside the tab group. What exists is the pure function and its spec, so the
+next screen that needs this has one to reach for. The honest gate would be a route-level check
+that cold-loads every screen with a back control and asserts the URL changes — worth raising when
+the open item above is taken.
+
+**Process check** — Yes, partly. RC-026 recorded this exact failure mode the day before and the
+fix stayed local to set-pin, so the class was known and un-swept. The framework-update workflow is
+not run for this: the missing rung is an app-level route check, named above, not a process defect.
+
+---
+
 ## RC-034 — the CSV import wrote the register through a path that announces nothing, so every mounted list kept its pre-upload figures
 **Date:** 08-Sep-2026  ·  **Severity:** S3  ·  **Modules:** `src/data/repository.ts`, `app/upload.tsx`, `src/data/importRevalidates.test.ts`
 

@@ -1,9 +1,19 @@
 /**
  * WHAT THE UPLOAD ASKS BEFORE IT WRITES, and in exactly which words.
  *
- * The upload imports on the pick and asks nothing -- that is round 3's whole
- * shape and it stays. There are two facts that earn an interruption anyway,
- * and this module is the one place that decides which of them apply:
+ * THE COURSE IS ASKED FIRST, BEFORE THE FILE PICKER, and it is asked EVERY
+ * TIME -- `courseConfirmWords` at the bottom of this file. That reverses round
+ * 3's "directly import data no confirmation", on the requester's own
+ * instruction, restated to them and confirmed
+ * (requests/2026-09-08-upload-course-confirm-and-result-trim.md, A1 and A2).
+ * It is a separate ask from the two below and it cannot be folded into them:
+ * it happens before there is a file to describe, and they happen after the
+ * preview. A clashing file is therefore asked twice, which is the cost of A1
+ * and is recorded as such rather than quietly avoided.
+ *
+ * Past that point the upload imports on the pick and asks nothing more. There
+ * are two facts that earn a second interruption, and this module is the one
+ * place that decides which of them apply:
  *
  *   THE FILE IS FOR ANOTHER DAY. She opened 3 Sep and the file says 31 Aug.
  *   Already asked since round 3; the wording below is that dialog's, verbatim.
@@ -126,6 +136,55 @@ export function askWords(ask: ImportAsk, ctx: {
     // be wrong about. Both, rather than either.
     confirm: `Override the ${day} register`,
     cancel: 'Choose another file',
+  };
+}
+
+/**
+ * THE COURSE, CONFIRMED BEFORE THE FILE PICKER OPENS.
+ *
+ * *"On clicking of upload session and browse file give a pop up asking user
+ * that you are uploading for course postnatal confirms yes or no ... once they
+ * confirm import the files"* -- and *"or rephrase as senior design engineer"*,
+ * which is the wording delegated in as many words.
+ *
+ * WHY IT SAYS SO LITTLE. Every other ask in this dialog runs after the preview
+ * and can name the file, the day it covers and the register it replaces. This
+ * one runs before `pickCsvFile()`, so the only facts that exist yet are the
+ * course and the branch. It says those, says what pressing yes will do, and
+ * stops -- an ask that padded itself out with what it does not know would be
+ * training people to click past the two asks that do know.
+ *
+ * It returns `AskWords` -- the same shape as `askWords` above -- so the screen
+ * draws one panel for both and there is one ask vocabulary rather than two.
+ */
+export function courseConfirmWords(ctx: {
+  /** "Postnatal Flow", the course this lands in */
+  course: string;
+  /** "Coimbatore", the branch of it */
+  branch: string;
+}): AskWords {
+  // The offering, whole, in ONE place. It was in the title and again at the
+  // head of the line under it -- "Uploading for Postnatal Core / Postnatal
+  // Core · Madurai is where this file lands" -- which is the course said twice
+  // to somebody who is being asked to check it once.
+  const where = ctx.branch ? `${ctx.course} · ${ctx.branch}` : ctx.course;
+  return {
+    title: `Uploading for ${where}`,
+    lines: [
+      `Choose a Meet CSV next and it is imported into that course straight away — the day it `
+      + `covers comes from the file, never from this screen.`,
+    ],
+    // "Nothing has been written yet" is the sentence both other asks end on,
+    // and it is more literally true here than anywhere: no file has even been
+    // read. The second half says what No does, because a No that dumps her
+    // somewhere she did not expect is worse than no question at all.
+    note: 'Nothing has been written yet. No takes you back, where Change picks a different course.',
+    // The requester asked for "yes or no", and the repo's rule is that the
+    // thing she could be WRONG about goes on the button she presses. Here that
+    // is the course, so the yes carries it -- the course name alone, not the
+    // branch too, because a button is not a sentence.
+    confirm: `Yes, choose a file for ${ctx.course}`,
+    cancel: 'No, not this course',
   };
 }
 

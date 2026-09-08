@@ -203,6 +203,13 @@ export function toCandidate(m: Member, r: FollowUpRule): FollowUpCandidate {
     config_source: r.source,
     reason: reasonFor(m, r),
     has_email: m.emails.length > 0,
+    /* The count of the condition that is ON, matching what the panel and the
+       course form show -- never both numbers, and never the disabled one:
+       `save_course` keeps the unchosen column at the same value only so that
+       switching back does not reset it, so reading it here would render a
+       trigger nobody is judged by. */
+    follow_up_trigger: r.consecutive_enabled && !r.weekly_enabled
+      ? r.consecutive_threshold : r.weekly_threshold,
   };
 }
 

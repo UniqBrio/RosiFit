@@ -8,9 +8,8 @@ import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../../src/theme/tokens';
 import { takeIssuedPin } from '../../src/data/pending';
+import { signInLink, linkDisplay } from '../../src/data/appLink';
 import { ShellScreen } from '../../src/components/AppShell';
-
-const APP_LINK = 'https://rosifit.app/staff';
 
 function StaffPinBody() {
   const { theme } = useTheme();
@@ -63,15 +62,19 @@ function StaffPinBody() {
     await Clipboard.setStringAsync(pin);
     flash('PIN copied — clear your clipboard once she has it');
   };
+  // Read at the moment it is handed over, not declared here. It is the
+  // sign-in screen -- the app's root -- because the person following it has
+  // no session yet; that is what the PIN is for. See src/data/appLink.ts.
   const copyLink = async () => {
-    await Clipboard.setStringAsync(APP_LINK);
-    flash(`App link copied · ${APP_LINK.replace('https://', '')}`);
+    const link = signInLink();
+    await Clipboard.setStringAsync(link);
+    flash(`App link copied · ${linkDisplay(link)}`);
   };
   const share = async () => {
     // The PIN is deliberately NOT in the shared payload. Sharing the link and
     // reading out the PIN keeps the credential off whatever channel is picked.
     try {
-      await Share.share({ message: `Sign in to RosiFit here: ${APP_LINK}` });
+      await Share.share({ message: `Sign in to RosiFit here: ${signInLink()}` });
     } catch {
       flash('Sharing is not available on this device', 'warn');
     }

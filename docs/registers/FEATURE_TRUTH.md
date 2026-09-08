@@ -295,9 +295,25 @@ chosen for. They now open `AnchoredPicker` (`src/components/Sheet.tsx`) in the s
 directly under the field, **as wide as the field** (`anchoredWidth`, `datePanel.ts`, 4 more
 specs), with the rest of the form in view around it, pulled back inside the window at the edges
 and flipped above the field when there is no room below — pinned by its bottom edge there, so a
-short list sits on the field rather than floating the reserved height above it. The rows are the
-sheet's rows unchanged: a radio, the label, the meta on the right, and the chosen row saying
-**Selected** in words (guardrail 3). The **search box is drawn only where it earns its height**
+short list sits on the field rather than floating the reserved height above it. The rows were the
+sheet's rows unchanged -- a radio, the label, the meta on the right, and the chosen row saying
+**Selected** in words (guardrail 3) -- **until 08-Sep-2026**, when the requester supplied a
+reference image and asked every dropdown inside a form or dialog to look like it
+(`requests/2026-09-08-form-dropdown-list-ui.md`). They are now `MenuRow`
+(`src/components/Dropdown.tsx`): **flat rows reaching the panel's edges**, a hairline between
+one and the next, no card and no radio, and the chosen row **tinted (`control`) with its label
+in the accent ink and a check at the end**. The panel gives up its padding and clips to its own
+radius so a tinted row cannot square off a rounded corner; the search box, the “Add …” row and
+the nothing-matches note take that inset back for themselves and are otherwise untouched. The
+chosen row still says **Selected** in words beside the check -- the image carries the state in
+the tint and the tick alone, and CP-010 asks for a word as well. The same rows are what the
+**course** and **offering** forms' own dropdowns draw (`DropdownMenuList`, `<DropdownPanel menu>`
+-- Branch, From email ID, Message template), so a form field's list looks the same whichever
+component opens it. **The list screens' filters are deliberately NOT this** -- they keep their
+bordered cards and their radio/checkbox, because a filter takes several values at once and the
+glyph is the promise about which; and neither is the merge sheet, whose tap stages a choice for
+a confirming tap rather than settling one. `src/components/formDropdownMenu.test.ts` holds all
+three halves. The **search box is drawn only where it earns its height**
 — when a label can be typed in and added (the role picker), or when the list is longer than seven
 — so a two-course academy gets the two courses and nothing else. The picker's title is no longer
 drawn (the field above it says what is being chosen) and is the panel's accessibility label. What
@@ -592,16 +608,18 @@ an advanced one.
 ---
 
 ### Reports — `app/(tabs)/reports.tsx`
-**Last confirmed:** 07-Sep-2026
+**Last confirmed:** 08-Sep-2026
 
-Attendance over time, by branch and by course.
+Attendance over time, by member and by course.
 
 | Capability | Status | Notes |
 |---|---|---|
 | Attendance trends | ◻ | Same engine functions as the dashboard — figures cannot disagree between the two |
-| Group by member, course or branch | ◻ | The three scope pills (`reports-scope-*`). This is what the row "Branch and course filters" meant before 07-Sep-2026: they choose what the rows are grouped BY, not which rows are shown |
+| Group by member or course | ◻ | **Two** scope pills (`reports-scope-*`) since 08-Sep-2026 — the Branch tab was removed (`requests/2026-09-08-reports-details-two-sheets-and-dash-course.md`). `'Branches'` survives in `ReportScope` and in `reportRows` because `report.test.ts` pins that arithmetic; only the tab is gone. The pills choose what the rows are grouped BY, not which rows are shown |
+| **Every row says what it is about** | ◻ | **Added 08-Sep-2026.** A second line under each bar carries the fields of the form behind its name: a member's *course · branch · status · joining month* (`memberDetailLine`, status read ON the day so `inactive_from` is honoured), a course's *member count · branches · days · times* (`courseDetailLine`). The course list is a second fetch (`useCourses`) and is ADDITIVE — every figure still comes from the member rows alone, so the report renders in full while it loads or if it fails |
+| **A member enrolled at nothing is named, not dashed** | ◻ | **Fixed 08-Sep-2026.** `fetchMembers` writes `course: '—'` for a member whose enrolment is missing, ended, or points at a deleted course; `reportRows` grouped on that verbatim, so the Courses report drew a bar named `—` and exported a first column reading `—`, sorted to the TOP by `localeCompare`. The group is now **"Not enrolled in a course"** and sorts LAST. Fixed at the report, not in `fetchMembers` — the member row's dash is honest and three other screens read it. The row is KEPT, never dropped: her attendance is real, and the Courses total has to go on agreeing with the Members total |
 | **Choose the period** | ◻ | **Added 07-Sep-2026** (`requests/2026-09-07-reports-date-filter.md`). The shared `PeriodPanel` — *This week · Last week · Last 4 weeks · This month*, plus a custom range dated on a calendar — mounted as one full-width field above the scope pills. Before this the screen HELD a period, resolved it, queried on it and printed its label, but `setPeriod` had no call site: the report was pinned to the calendar month it opened on while the subtitle named that range as though it had been chosen. The field renders in the loading, error and empty states too, so an empty period is never a dead end. Reports opens on **This month** deliberately — the dashboard answers "this week", Reports answers "is it a trend". 6 assertions in `src/components/reportsPeriodFilter.test.ts` |
-| Export the report as CSV | ◻ | Both controls (`reports-export` in the header, `reports-export-excel` below the card) export exactly the rows on screen, stamped with the chosen period in the filename and in a Period column on every row. A row with nothing scheduled exports as *"no sessions scheduled"* rather than `0%` — a course with no sessions and a course everybody skipped are different facts |
+| Export the report as a workbook | ◻ | **`.xlsx`, two sheets, since 08-Sep-2026** (was one CSV). **ONE control** — `reports-export` in the header; the duplicate full-width `reports-export-excel` below the card was removed, having made the same call on the same rows. Sheet 1 `Attendance` is the file that was exported before, unmoved: the same header and the same five values per row, stamped with the chosen period in the filename and in a Period column. Sheet 2 depends on the scope — **Members → `Member details`** (code, status, inactive-from, course, branch, joined-on, her own days, primary + all addresses, aliases, then her period figures); **Courses → `Course details`** (members / with email / without email, branches, days, days-per-week, start, end, follow-up trigger, then the figures). A course report does NOT carry the member roll: the count is already a column on it. Built by `reportSheets.ts` (pure) and `reportXlsx.ts` (lazy exceljs, already a pinned dependency); every cell is written as text, so a member code keeps its leading zeroes and a date does not become a serial. A row with nothing scheduled exports as *"no sessions scheduled"* rather than `0%` — a course with no sessions and a course everybody skipped are different facts |
 
 **Limits** — the figures cover uploaded sessions only; holidays and cancellations are excluded.
 
@@ -646,6 +664,17 @@ a back button that navigates to whatever a link said is an open redirect wearing
 Overview, Reports and More get **no** back button. They are tab roots, and inside the tab group
 `canGoBack()` answers about the stack the tabs sit in — so each would grow an arrow that left the
 app for the sign-in screen.
+
+**A screen that genuinely PUSHED still has to ask whether anything was pushed** (08-Sep-2026,
+RC-035). Course detail is its own root Stack entry, so `canGoBack()` there is about its own stack
+and is the right question — but it is a question, not a given. Opened from the Courses tab the
+screen is the stack's second entry and pops; **refreshed on `/course/<id>`** — or bookmarked, or
+relaunched there as a PWA — it is the stack's *first* entry, `back()` is a silent no-op, and the
+arrow was drawn, pressable and dead. `backFrom(canPop, from, fallback)` in `src/data/nav.ts`
+answers both cases in one place: pop where there is something to pop, otherwise `replace` to a
+real route, never `'back'`. **Every other pushed screen still calls a bare `router.back()`** and is
+still dead on a refresh — `branches`, `audit`, `profile`, `help`, `appearance`, `staff/index` and
+the dialogs. That is known, listed in RC-035, and deliberately not yet changed.
 
 ---
 

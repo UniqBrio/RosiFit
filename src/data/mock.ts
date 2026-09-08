@@ -15,6 +15,11 @@ export type FollowUpCandidate = {
   config_source: 'course' | 'global';
   reason: string;             // names the condition that fired, not the rule
   has_email: boolean;         // C-76: false means listed but not sendable
+  /** the COUNT the rule fired at -- what `{{follow_up_trigger}}` renders as.
+   *  `config_source` says WHOSE rule listed her; this says what it was set to,
+   *  and until now the number was nowhere in the shape the wording renders
+   *  against. */
+  follow_up_trigger: number;
 };
 
 // CANDIDATES is derived further down, once MEMBERS and the rule exist.
@@ -395,7 +400,8 @@ export const TEMPLATES: Template[] = [
 
 export const TOKENS = ['{{first_name}}','{{member_name}}','{{course_name}}',
   '{{branch_name}}','{{period_from}}','{{period_to}}','{{expected_sessions}}','{{attended_sessions}}',
-  '{{missed_sessions}}','{{attendance_pct}}','{{consecutive_missed}}','{{last_attendance_date}}','{{academy_name}}'];
+  '{{missed_sessions}}','{{attendance_pct}}','{{consecutive_missed}}','{{last_attendance_date}}','{{academy_name}}',
+  '{{follow_up_trigger}}'];
 
 /** Server-side rendering is what the real thing does; this mirrors it so the
  *  preview shows real values rather than placeholders. */
@@ -408,6 +414,7 @@ export function renderTemplate(tpl: string, c: FollowUpCandidate): string {
     missed_sessions: String(c.missed), attendance_pct: c.attendance_pct === null ? '—' : `${c.attendance_pct}%`,
     consecutive_missed: String(c.current_streak), last_attendance_date: '21 Aug',
     academy_name: 'RosiFit Academy',
+    follow_up_trigger: String(c.follow_up_trigger),
   };
   return tpl.replace(/\{\{(\w+)\}\}/g, (_, k) => map[k] ?? `{{${k}}}`);
 }
@@ -619,6 +626,42 @@ export const AUDIT: AuditEntry[] = [
   { id: 'a16', who: 'Shazia', whoKind: 'super_admin', when: auditAt(0, 8, 17),
     action: 'member.insert', entity: 'member', subject: 'Kavya Iyer', branch: 'Coimbatore',
     changes: [{ field: 'full_name', old: null, new: 'Kavya Iyer' }] },
+  /* A PERMANENT DELETION, in the shape purge_member (0051) actually writes:
+   * no changed fields, no subject -- her members row went in the same
+   * transaction, so the id resolves to nothing -- and everything the entry
+   * knows in `meta`. That is the whole defect in one fixture, and it is here
+   * so the prototype shows the row the live project shows. Without it the
+   * screen was only ever seen on data where every subject resolved. */
+  { id: 'a17', who: 'Rosi Owner', whoKind: 'super_admin', when: auditAt(0, 13, 32),
+    action: 'member.hard_deleted', entity: 'member', subject: null, branch: null,
+    changes: [],
+    meta: { name: 'Sumathi', member_code: null, was_soft_deleted_at: null, note: null,
+            enrolments: 1, emails_sent: 0, attendance_records: 2, sessions_touched: 2 } },
+  /* The same act ordered by a MIGRATION rather than by a person: attributed
+   * to nobody, which is exactly why the note exists and why it has to reach
+   * the screen. */
+  { id: 'a18', who: 'System', whoKind: 'anon', when: auditAt(0, 12, 59),
+    action: 'member.hard_deleted', entity: 'member', subject: null, branch: null,
+    changes: [],
+    meta: { name: 'Rohini', member_code: 'RF-000109', enrolments: 0, emails_sent: 4,
+            attendance_records: 0, sessions_touched: 0,
+            note: '0055_purge_every_member: the entire register removed at the repo owner’s '
+                + 'explicit request of 08-Sep-2026' } },
+  /* A course, so the family is represented by more than the member case the
+   * request named -- purge_course (0047) writes the identical shape. */
+  { id: 'a19', who: 'Rosi Owner', whoKind: 'super_admin', when: auditAt(1, 16, 12),
+    action: 'course.hard_deleted', entity: 'course', subject: null, branch: null,
+    changes: [],
+    meta: { name: 'Aqua Fitness', was_soft_deleted_at: null, note: null,
+            sessions: 12, attendance_records: 38, imports: 3 } },
+  /* And an action added after the plain-language pass was written, kept so
+   * the prototype shows one: it read "Attendance — attendance day reset" and
+   * appeared under Courses, because the entry is filed against the course. */
+  { id: 'a20', who: 'Rosi Owner', whoKind: 'super_admin', when: auditAt(0, 13, 31),
+    action: 'attendance.day_reset', entity: 'course', subject: 'Prenatal Yoga', branch: 'Coimbatore',
+    changes: [],
+    meta: { session_date: '2026-09-08', marks_cleared: 2, imports_reverted: 1,
+            sessions_reverted: 1, members_deleted: 0 } },
 ];
 
 // ---------------------------------------------------------------- remarks
@@ -728,6 +771,7 @@ export const CANDIDATES: FollowUpCandidate[] = flaggedMembers().map(m => ({
   config_source: COURSE_RULES[m.id] ? 'course' : 'global',
   reason: reasonFor(m, GLOBAL_RULE),
   has_email: m.emails.length > 0,
+  follow_up_trigger: GLOBAL_RULE.weekly_threshold,
 }));
 
 /** Her primary address, or '' when there is none on file. */
@@ -880,6 +924,27 @@ export function markFixtureAttendance(
   MANUAL_MARKS.set(`${memberId}|${date}`, status);
 }
 
+/**
+ * Days a reset has cleared, offline: `${course_id}|${date}`.
+ *
+ * A SUPPRESSION SET AND NOT A DELETION, because the generator below is
+ * deterministic: it rebuilds every past Mon/Wed/Fri from the seed on each
+ * call, so rows removed from its output would simply be regenerated by the
+ * next read and the reset would appear to undo itself. MANUAL_MARKS has the
+ * same shape of answer for the same reason.
+ */
+export const RESET_DAYS = new Set<string>();
+
+/** Clear one course's day offline, the way reset_day_attendance (0054) does. */
+export function resetFixtureDay(courseId: string, date: string): void {
+  RESET_DAYS.add(`${courseId}|${date}`);
+  // A hand-made mark is a row like any other and goes with the rest, or the
+  // overlay below would put it straight back on a day that was just cleared.
+  for (const key of [...MANUAL_MARKS.keys()]) {
+    if (key.endsWith(`|${date}`)) MANUAL_MARKS.delete(key);
+  }
+}
+
 export function attendanceFixture(from: string, to: string): AttendanceRow[] {
   const rows: AttendanceRow[] = [];
   const start = new Date(`${from}T00:00:00`);
@@ -934,7 +999,13 @@ export function attendanceFixture(from: string, to: string): AttendanceRow[] {
     });
   }
 
-  return rows.sort((a, b) => (a.date === b.date ? a.member.localeCompare(b.member) : b.date.localeCompare(a.date)));
+  // A DAY THAT WAS RESET HOLDS NOTHING, and that is applied last so it covers
+  // the overlay above as well as the generated rows -- a reset clears the
+  // register, not merely the part of it a seed invented.
+  const live = RESET_DAYS.size === 0 ? rows
+    : rows.filter(r => !RESET_DAYS.has(`${r.course_id}|${r.date}`));
+
+  return live.sort((a, b) => (a.date === b.date ? a.member.localeCompare(b.member) : b.date.localeCompare(a.date)));
 }
 
 // ---------------------------------------------------------------- holidays

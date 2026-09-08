@@ -99,6 +99,22 @@ export function staffReenable(appUserId: string): Promise<{ app_user_id: string;
   return callFn('pin-issue', { app_user_id: appUserId, reactivate_only: true });
 }
 
+/**
+ * Remove a staff member: she leaves the list and her PIN stops working.
+ *
+ * A soft delete server-side, and the screen says so rather than promising a
+ * purge it cannot perform — every register she took, every session she
+ * created and every audit row she caused points at her id with no ON DELETE,
+ * so removing the row would mean removing the academy's history with it. See
+ * the branch in supabase/functions/pin-issue for the whole reasoning.
+ *
+ * Refused for the academy admin's own account and for the caller's own.
+ */
+export function staffDelete(appUserId: string):
+  Promise<{ app_user_id: string; deleted: true; name: string }> {
+  return callFn('pin-issue', { app_user_id: appUserId, delete_only: true });
+}
+
 /** Add the person, grant nothing. She appears as "Not enabled" until a PIN
  *  is issued from the staff list — a separate, deliberate step. */
 export function staffCreate(input: { name: string; phone: string; role_label: string }):

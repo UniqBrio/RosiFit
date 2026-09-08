@@ -25,7 +25,7 @@ import {
   fetchNotifications, type Notification,
   fetchSentForPeriod,
   type Branch, type BranchUsage, type OfferingDetail,
-  fetchAttendance, onCoursesChanged, onMembersChanged, onAttendanceChanged,
+  fetchAttendance, onCoursesChanged, onMembersChanged, onAttendanceChanged, onRulesChanged,
   fetchHolidays, onHolidaysChanged,
   type Rules, type PendingSession, type Holiday,
 } from './repository';
@@ -112,8 +112,19 @@ export function useMembers(forced?: string, period: Period = currentWeek()): Asy
   return useAsync(() => fetchMembers(period), [period.from, period.to, version], forced);
 }
 
+/**
+ * The saved follow-up rule, refetched whenever a trigger is written.
+ *
+ * The trigger is CHANGEABLE from the send draft and the member pop-up now
+ * (requests/2026-09-08-follow-up-trigger-on-send-and-reach-out.md), and both of
+ * those stay mounted across the save. Without the version, the panel that just
+ * wrote 2 goes on reading 4 back and offering to "change" a number the database
+ * no longer holds.
+ */
 export function useRules(forced?: string): Async<Rules> {
-  return useAsync(() => fetchRules(), [], forced);
+  const [version, setVersion] = useState(0);
+  useEffect(() => onRulesChanged(() => setVersion(v => v + 1)), []);
+  return useAsync(() => fetchRules(), [version], forced);
 }
 
 /**
@@ -125,6 +136,12 @@ export function useFollowUp(forced?: string, period: Period = currentWeek()):
   Async<{ members: Member[]; rules: Rules; flagged: Member[] }> {
   const [version, setVersion] = useState(0);
   useEffect(() => onMembersChanged(() => setVersion(v => v + 1)), []);
+  /* AND on the rule, since the trigger can be changed from the send draft
+     itself. `flagged` below is DERIVED from the rule this fetch reads, so a
+     rule that moved with nothing refetched leaves the draft listing whoever
+     the old number flagged -- one screen showing a trigger of 2 over the list
+     of 4, which is precisely the disagreement guardrail 1 forbids. */
+  useEffect(() => onRulesChanged(() => setVersion(v => v + 1)), []);
   return useAsync(async () => {
     const [members, rules] = await Promise.all([fetchMembers(period), fetchRules()]);
     return { members, rules, flagged: flagged(members, rules.global, rules.byCourseName) };

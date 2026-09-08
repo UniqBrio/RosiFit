@@ -1,0 +1,63 @@
+FAIL-FIRST — requests/2026-09-08-upload-course-confirm-and-result-trim.md
+08-Sep-2026. The 20 new specs run against HEAD's src/data/uploadOverride.ts and
+src/data/uploadWindow.ts (git show HEAD:...), everything else this working tree's.
+
+ok 1 - an ordinary import asks nothing at all
+ok 2 - and neither does one opened without choosing a day
+ok 3 - a file for another day is asked about, in round 3 s words exactly
+ok 4 - the requester s own case: 3 Sep opened, a 31 Aug file, and 31 Aug already has a register
+ok 5 - a re-upload for the day she opened is still an override, and still asked
+ok 6 - an override says out loud what it will not take back
+ok 7 - what the override did is reported, or not mentioned at all
+not ok 8 - the course ask names the course in its title
+not ok 9 - the course ask names the branch too, because a course runs at several
+not ok 10 - the yes carries the course, which is the thing she could be wrong about
+not ok 11 - the no is a no, in the requester’s own two words
+not ok 12 - the course ask says what No does, so it is not a trapdoor
+not ok 13 - nothing has been written yet is true here more than anywhere
+not ok 14 - the course ask still says the day comes from the file
+not ok 15 - the course ask claims nothing about a file nobody has chosen
+not ok 16 - a course with no branch does not render a dangling separator
+not ok 17 - the course ask is one question, one yes and one no
+ok 18 - today itself is offered
+ok 19 - Monday, the first day of the week today falls in, is offered
+ok 20 - yesterday is offered
+ok 21 - a day earlier in the week is in the current week
+ok 22 - the previous week is not offered
+ok 23 - Sunday of the previous week -- one day before Monday -- is not offered
+ok 24 - a previous week is refused for being another week, not for being unarrived
+ok 25 - a week far behind is not offered either
+ok 26 - the next week is not offered
+ok 27 - Monday of the next week -- one day after Sunday -- is not offered
+ok 28 - a future week is refused on both counts
+ok 29 - a week far ahead is not offered
+ok 30 - no day of the next week is offered, not one of the seven
+ok 31 - tomorrow is not offered, though it is in the current week
+ok 32 - a future day of the current week is in the week but has not arrived
+ok 33 - every day of the current week up to today is offered, and no other
+ok 34 - the week runs Monday to Sunday, matching week_start_day = 1
+ok 35 - Monday is its own week start
+ok 36 - Sunday and the Monday six days before it are the same week
+ok 37 - Sunday and the Monday after it are not
+ok 38 - the window uses the same week the rest of the app queries
+ok 39 - a week that crosses new year is still one week
+ok 40 - the Sunday before that week is still the previous week
+ok 41 - a week containing a DST change does not slip a day
+ok 42 - the week start is read as a local date, never as UTC
+ok 43 - an unreadable day has no week
+ok 44 - an unreadable day is never offered
+ok 45 - an unreadable clock never offers anything
+ok 46 - two unreadable dates are not "the same week"
+not ok 47 - today is allowed — the requester drew the line here, not before it
+not ok 48 - a day already gone is allowed
+not ok 49 - a file dated tomorrow is refused
+not ok 50 - a file from a whole future week is refused too
+not ok 51 - a file from a past week is NOT refused, though its day would offer no button
+not ok 52 - the refusal names the file, so she knows which one she picked
+not ok 53 - the refusal writes both days the screen’s way, never as raw ISO
+not ok 54 - the refusal ends with the sentence this dialog ends every refusal on
+not ok 55 - an unreadable file day is not refused HERE — the screen already says why
+not ok 56 - an unreadable clock refuses nothing, rather than refusing everything
+# tests 56
+# pass 36
+# fail 20

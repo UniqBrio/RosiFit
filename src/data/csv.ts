@@ -14,14 +14,26 @@ export async function sha256Hex(text: string): Promise<string> {
 }
 
 /**
- * Opens the platform file chooser and reads the file as text.
+ * Opens the platform file chooser and reads EVERY file chosen, as text.
  *
  * RosiFit ships as a PWA, so this is the web file input rather than a
  * native document picker — no extra dependency, and it is the surface the
  * academy actually uploads from. On a native build there is no picker
  * wired up yet and this says so plainly instead of failing silently.
+ *
+ * MULTIPLE, since 08-Sep-2026: an academy that runs four classes a day
+ * exports four Meet files and had to walk the whole dialog four times. The
+ * picker takes them all and hands them back in the order the browser gives
+ * them; which day each one lands on is still read from its own `Created on`
+ * line, never from its position in the list.
+ *
+ * An empty array means she opened the picker and chose nothing — the same
+ * "she changed her mind" that `null` used to mean, and the caller treats it
+ * the same way. A file that cannot be read rejects the WHOLE pick rather
+ * than silently returning the others: a batch that quietly lost one file is
+ * how a register goes missing without anybody being told.
  */
-export function pickCsvFile(): Promise<{ name: string; text: string } | null> {
+export function pickCsvFiles(): Promise<{ name: string; text: string }[]> {
   const doc = (globalThis as { document?: Document }).document;
   if (!doc) {
     return Promise.reject(new Error('Choosing a file is available in the RosiFit web app.'));
@@ -30,13 +42,16 @@ export function pickCsvFile(): Promise<{ name: string; text: string } | null> {
     const input = doc.createElement('input');
     input.type = 'file';
     input.accept = '.csv,text/csv';
+    input.multiple = true;
     input.onchange = () => {
-      const file = input.files?.[0];
-      if (!file) return resolve(null);
-      const reader = new FileReader();
-      reader.onload = () => resolve({ name: file.name, text: String(reader.result ?? '') });
-      reader.onerror = () => reject(new Error('That file could not be read.'));
-      reader.readAsText(file);
+      const files = [...(input.files ?? [])];
+      if (files.length === 0) return resolve([]);
+      Promise.all(files.map(file => new Promise<{ name: string; text: string }>((ok, no) => {
+        const reader = new FileReader();
+        reader.onload = () => ok({ name: file.name, text: String(reader.result ?? '') });
+        reader.onerror = () => no(new Error(`${file.name} could not be read.`));
+        reader.readAsText(file);
+      }))).then(resolve, reject);
     };
     input.click();
   });

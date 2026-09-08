@@ -17,13 +17,16 @@ import {
   parseMeetCsv, meetCreatedDate, meetCreatedTime, dedupeRows,
   CSV_COLUMNS, type MeetMeta,
 } from '../src/data/meetCsv';
-import { sha256Hex, pickCsvFile } from '../src/data/csv';
+import { sha256Hex, pickCsvFiles } from '../src/data/csv';
 import { csvPreview, csvCommit, type ImportDecision, type PreviewResult } from '../src/data/api';
 import { scopeSessions } from '../src/data/uploadScope';
 import {
-  importAsk, askWords, overrideSummary,
-  type ImportAsk, type OverrideCounts, type Supersedes,
+  importAsk, askWords, courseConfirmWords, overrideSummary,
+  type AskWords, type ImportAsk, type OverrideCounts, type Supersedes,
 } from '../src/data/uploadOverride';
+import { futureFileRefusal } from '../src/data/uploadWindow';
+import { planBatch, batchAskWords, batchHeading } from '../src/data/uploadBatch';
+import { iso } from '../src/data/period';
 import {
   alreadyImportedWords, nothingChanged, noChangeWords, changeSummary,
   type ImportChanges, type OutcomeWords,
@@ -51,8 +54,14 @@ import { FormDialog } from '../src/components/FormDialog';
  * file being for another day, and the day already holding a register that
  * this file REPLACES. One phase, because they are one question with one
  * answer -- see src/data/uploadOverride.ts.
+ *
+ * `course` is the ask that came later and sits EARLIER: which course this is
+ * for, put before the file picker opens and asked on every single upload. It
+ * is its own phase and not part of `confirm` because it happens before there
+ * is a file to talk about -- `confirm` runs after the preview, and the two
+ * cannot be the same moment.
  */
-type Phase = 'choose' | 'pick' | 'confirm' | 'working' | 'done';
+type Phase = 'choose' | 'pick' | 'course' | 'confirm' | 'working' | 'done';
 
 /**
  * WHAT THE IMPORT DOES WITH A ROW NOBODY WAS ASKED ABOUT.
@@ -106,7 +115,6 @@ type Outcome = {
   session_date: string;
   with_email: number;
   no_email: number;
-  new_members: number;
   /** what actually landed on the register */
   imported: number;
   /** blank or repeated names, never matched */
@@ -165,6 +173,71 @@ type Staged = {
   duplicates: string[];
 };
 
+/**
+ * ONE FILE OF A BATCH, staged and waiting with the rest of them.
+ *
+ * A batch is previewed IN FULL before anything is committed. That is what lets
+ * the whole upload ask its one question — "these three replace a register" —
+ * with every answer already known, and it is why the ask can be one dialog
+ * rather than one per file. A declined batch leaves `previewed` rows behind,
+ * inert by construction: both server-side checks count only `completed`.
+ */
+type StagedFile = { source: PickedSource; staged: Staged };
+
+/** a file after parsing, before anything has been asked of the server */
+type PickedSource = { name: string; text: string; rows: number; meta: MeetMeta };
+
+/**
+ * ONE ROW OF THE BATCH RESULT — one file, and what became of it.
+ *
+ * Every file she picked gets a row, including the ones that never ran. A batch
+ * that quietly listed only its successes would be the same defect as an import
+ * that quietly dropped a name.
+ */
+type BatchRow = {
+  fileName: string;
+  /** null for a file set aside before its day could be read */
+  day: string | null;
+  kind: 'imported' | 'unchanged' | 'already' | 'setAside' | 'failed';
+  /** the sentence under the file name, saying what happened to it */
+  note: string;
+  withEmail: number;
+  noEmail: number;
+};
+
+type BatchResult = {
+  rows: BatchRow[];
+  /** how many files actually wrote a register */
+  imported: number;
+  /** how many distinct days those files landed on */
+  days: number;
+  withEmail: number;
+  noEmail: number;
+};
+
+/**
+ * The batch result, rows back in the order she picked the files in.
+ *
+ * They arrive in three groups — set aside, already imported, committed — which
+ * is the order the MECHANISM produced them in and an order nobody chose. She
+ * picked a list; she reads a list.
+ */
+function assembleBatch(rows: BatchRow[], order: string[]): BatchResult {
+  const at = new Map(order.map((name, i) => [name, i]));
+  const sorted = [...rows].sort(
+    (a, b) => (at.get(a.fileName) ?? 0) - (at.get(b.fileName) ?? 0));
+  // A file that RAN, whether or not it moved anything. "Nothing to update" is
+  // an import that happened and found the register already correct.
+  const landed = sorted.filter(r => r.kind === 'imported' || r.kind === 'unchanged');
+  return {
+    rows: sorted,
+    imported: landed.length,
+    days: new Set(landed.map(r => r.day)).size,
+    withEmail: sorted.reduce((n, r) => n + r.withEmail, 0),
+    noEmail: sorted.reduce((n, r) => n + r.noEmail, 0),
+  };
+}
+
 /** ISO day -> "Sun 31 Aug", the way every other date on this screen reads */
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -204,9 +277,35 @@ function UploadBody() {
   const [target, setTarget] = useState<
     { offering_id: string; course: string; branch: string } | null>(null);
   const [session, setSession] = useState<PendingSession | null>(null);
+  /**
+   * WHAT "Change" LEFT BEHIND, so that leaving it is not one-way.
+   *
+   * Change is a detour: she is on the file card, wonders whether the course
+   * above it is the right one, and goes back to look. Until now the only way
+   * out of that list was to pick something or to close the dialog -- the ×
+   * being the sole control on the screen -- so a look cost her the upload she
+   * had already set up. This holds the course (and the day, when she came in
+   * on one) she was uploading for at the moment she pressed Change, which is
+   * the whole of what Back has to put back.
+   *
+   * Null whenever there is nowhere to go back TO: opening the dialog fresh
+   * lands on this same list, and a Back button there would point at nothing.
+   */
+  const [returnTo, setReturnTo] = useState<
+    { target: NonNullable<typeof target>; session: PendingSession | null } | null>(null);
   const [file, setFile] = useState<
     { name: string; text: string; rows: number; meta: MeetMeta } | null>(null);
-  const [failure, setFailure] = useState<string | null>(null);
+  /**
+   * WHAT WENT WRONG, or what simply is not on yet.
+   *
+   * One state, two tempers. Everything that reaches here is a reason the file
+   * did not import and the panel is in the same place either way -- but a file
+   * dated tomorrow is not a FAILURE, and the red panel said it was. `caution`
+   * draws it amber with a caution icon instead: nothing broke, the class has
+   * not happened. Requester, on seeing the red one: *"for future date add a
+   * caution simple"*.
+   */
+  const [failure, setFailure] = useState<{ text: string; caution?: boolean } | null>(null);
   /** what the import did, once it has done it */
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   /**
@@ -233,6 +332,31 @@ function UploadBody() {
    */
   const [ask, setAsk] = useState<
     { file: NonNullable<typeof file>; ask: ImportAsk; staged: Staged } | null>(null);
+  /**
+   * SEVERAL FILES AT ONCE, and what each of them did.
+   *
+   * Null for an ordinary one-file upload, which keeps every screen below
+   * exactly as it was — one file has one day, one result and one Mapped panel,
+   * and a batch summary over a single register would be a worse answer to the
+   * same question. Set only when she picked more than one, and then it is the
+   * result screen: a row per file, in the order she picked them, whether that
+   * file landed or not.
+   */
+  const [batch, setBatch] = useState<BatchResult | null>(null);
+  /**
+   * The whole batch, previewed and waiting on ONE confirm. `other` is every
+   * file that will not be committed — set aside, or already in — carried
+   * through the ask so the result can still list them; `order` is the order
+   * she picked in, which is the only order the rows mean anything in.
+   */
+  const [batchAsk, setBatchAsk] = useState<
+    { words: AskWords; staged: StagedFile[]; other: BatchRow[]; order: string[] } | null>(null);
+  /**
+   * How many files this upload is working through, for the one sentence that
+   * has to be true WHILE it works. `batchAsk` is not that number: it is set
+   * after every preview has answered, and the previews are most of the wait.
+   */
+  const [batchCount, setBatchCount] = useState(0);
 
   const scope = scopeSessions(pending.data ?? [], courseId, date);
   const sessions = scope.sessions;
@@ -307,34 +431,81 @@ function UploadBody() {
     setPhase('pick');
   }, [target, courseId, targets]);
 
+  /**
+   * ONE FILE OR SEVERAL, chosen in one press.
+   *
+   * The picker takes as many as she selects. ONE file keeps the whole of the
+   * single-file flow untouched — same refusals in the same panels, same ask,
+   * same result with its Mapped panel — because one file has one day and one
+   * register, and a batch summary over it would answer a question nobody
+   * asked. Two or more go to `stageBatch`, which previews all of them before
+   * committing any.
+   */
   const choose = async () => {
     setFailure(null);
     try {
-      const chosenFile = await pickCsvFile();
-      if (!chosenFile) return;
+      const chosen = await pickCsvFiles();
+      // She opened the picker and chose nothing.
+      if (chosen.length === 0) return;
+
       // Parsed here so a file with the wrong columns is refused before
       // anything is sent, and the message can name the three columns the
-      // Meet export actually has (C-74).
-      const parsed = parseMeetCsv(chosenFile.text);
-      if (parsed.rows.length === 0) throw new Error('That file has no attendance rows.');
-      const picked = {
-        name: chosenFile.name, text: chosenFile.text, rows: parsed.rows.length,
-        // The lines Meet writes above the table. They are the only evidence
-        // in the file of WHICH meeting it came from, and the only thing that
-        // says which day it covers.
-        meta: parsed.meta,
-      };
+      // Meet export actually has (C-74). In a batch a file that will not
+      // parse still refuses the whole pick: it is a file she chose, and
+      // importing the other eight while saying nothing about it is how a
+      // register goes missing quietly.
+      const parsedAll = chosen.map(f => {
+        const parsed = parseMeetCsv(f.text);
+        if (parsed.rows.length === 0) {
+          throw new Error(chosen.length === 1
+            ? 'That file has no attendance rows.'
+            : `${f.name} has no attendance rows, so nothing was imported.`);
+        }
+        return {
+          source: {
+            name: f.name, text: f.text, rows: parsed.rows.length,
+            // The lines Meet writes above the table. They are the only
+            // evidence in the file of WHICH meeting it came from, and the
+            // only thing that says which day it covers.
+            meta: parsed.meta,
+          } as PickedSource,
+          day: meetCreatedDate(parsed.meta.created),
+        };
+      });
+
+      if (parsedAll.length > 1) {
+        void stageBatch(parsedAll);
+        return;
+      }
+
+      /* ------------------------------------------ one file, exactly as before */
+      const { source: picked, day: fileDay } = parsedAll[0];
       setFile(picked);
 
-      const fileDay = meetCreatedDate(parsed.meta.created);
       // A file with no "Created on" line cannot be imported at all. It stays
       // here, where the panel below names what is missing and Browse is still
       // there to try another export.
       if (!fileDay) return;
 
+      /**
+       * A CLASS THAT HAS NOT RUN YET HAS NO REGISTER.
+       *
+       * Refused HERE rather than after the preview, deliberately: the preview
+       * stages a `csv_imports` row, and staging one for a file that is going
+       * to be refused anyway leaves litter behind to answer a question that
+       * only needed the file's own date. It is the same place, and the same
+       * shape, as the "no Created on line" refusal directly above.
+       */
+      const future = futureFileRefusal(fileDay, iso(new Date()),
+        { fileName: picked.name, label: dayLabel });
+      if (future) {
+        setFailure({ text: future, caution: true });
+        return;
+      }
+
       void stage(picked, fileDay);
     } catch (err) {
-      setFailure(err instanceof Error ? err.message : 'That file could not be read.');
+      setFailure({ text: err instanceof Error ? err.message : 'That file could not be read.' });
     }
   };
 
@@ -374,7 +545,7 @@ function UploadBody() {
         // chosen -- and answering a bug with fixture numbers would report an
         // import that never happened, against a course nobody picked.
         if (!target?.offering_id) {
-          setFailure('No course is selected, so there is nothing to import into. Nothing was written.');
+          setFailure({ text: 'No course is selected, so there is nothing to import into. Nothing was written.' });
           setPhase('pick');
           return;
         }
@@ -447,9 +618,9 @@ function UploadBody() {
       // The sentence the commit's own catch already ships. It is true of this
       // path too -- the preview writes no attendance -- and a second wording
       // for the same fact is a new string this change was not asked for.
-      setFailure(err instanceof Error
+      setFailure({ text: err instanceof Error
         ? `${err.message} Nothing was written.`
-        : 'The import did not run. Nothing was written.');
+        : 'The import did not run. Nothing was written.' });
       setPhase('pick');
     }
   };
@@ -491,7 +662,6 @@ function UploadBody() {
         session_date: staged.day,
         with_email: c.matched ?? 0,
         no_email: (c.noEmail ?? 0) + (c.possible ?? 0) + (c.ambiguous ?? 0) + (c.unmatched ?? 0),
-        new_members: result.new_members,
         imported: result.present_or_extra,
         dropped: preview.dropped_names ?? [],
         staff: preview.staff_names ?? [],
@@ -512,11 +682,224 @@ function UploadBody() {
     } catch (err) {
       // The whole file failed together -- nothing landed -- so say that rather
       // than leaving anyone to wonder which half went in.
-      setFailure(err instanceof Error
+      setFailure({ text: err instanceof Error
         ? `${err.message} Nothing was written.`
-        : 'The import did not run. Nothing was written.');
+        : 'The import did not run. Nothing was written.' });
       setPhase('pick');
     }
+  };
+
+  /* ==================================================== several files at once
+   *
+   * Everything below exists because a batch has to know ALL of its answers
+   * before it writes ANY of them: which files can run, which of them replace a
+   * register, and therefore whether one question is owed. `stage`/`commit`
+   * above are the single-file pair and are untouched -- one file still walks
+   * the flow it always did.
+   */
+
+  /**
+   * ONE FILE, PREVIEWED. The staging half of `stage()`, with no screen state
+   * of its own, so a batch can call it once per file and decide afterwards.
+   */
+  const previewFile = async (source: PickedSource, day: string): Promise<
+    { kind: 'staged'; staged: Staged } | { kind: 'already'; words: OutcomeWords }> => {
+    const duplicates = () =>
+      [...new Set(dedupeRows(parseMeetCsv(source.text).rows).duplicates)];
+
+    if (!isConfigured) {
+      // No project configured: the fixtures answer, and they answer at once.
+      const name = IMPORTED_DAYS[day];
+      return { kind: 'staged', staged: {
+        day, preview: null,
+        supersedes: name ? { file_name: name, completed_at: `${day}T12:00:00Z` } : null,
+        duplicates: duplicates(),
+      } };
+    }
+
+    const parsed = parseMeetCsv(source.text);
+    const deduped = dedupeRows(parsed.rows);
+    const preview = await csvPreview({
+      offering_id: target!.offering_id,
+      session_date: day,
+      file_name: source.name,
+      file_sha256: await sha256Hex(source.text),
+      meeting_code: parsed.meta.code,
+      meeting_started_at: parsed.meta.created,
+      rows: deduped.rows,
+    });
+
+    if (preview.already_imported) {
+      return { kind: 'already', words: alreadyImportedWords(preview.already_imported, {
+        fileName: source.name, course: chosen, label: dayLabel,
+      }) };
+    }
+    return { kind: 'staged', staged: {
+      day, preview, supersedes: preview.supersedes ?? null,
+      duplicates: [...new Set(deduped.duplicates)],
+    } };
+  };
+
+  /**
+   * EVERY FILE PREVIEWED, THEN ONE QUESTION, THEN THE WRITES.
+   *
+   * The day-clash half of the single-file ask is deliberately NOT asked here
+   * -- see uploadBatch.ts. Nine files cannot all be for the day she tapped,
+   * and nine dialogs saying so is how somebody learns to click past the one
+   * that matters. What survives is the override, which matters whatever she
+   * picked.
+   */
+  const stageBatch = async (files: { source: PickedSource; day: string | null }[]) => {
+    setFailure(null);
+    setAlready(null);
+    setOutcome(null);
+    setBatch(null);
+    setBatchCount(files.length);
+    setPhase('working');
+
+    if (!target?.offering_id) {
+      setFailure({ text: 'No course is selected, so there is nothing to import into. Nothing was written.' });
+      setPhase('pick');
+      return;
+    }
+
+    const order = files.map(f => f.source.name);
+    const plan = planBatch(
+      files.map(f => ({ fileName: f.source.name, day: f.day })), iso(new Date()), dayLabel);
+    const byName = new Map(files.map(f => [f.source.name, f.source]));
+
+    const other: BatchRow[] = plan.setAside.map(s => ({
+      fileName: s.fileName, day: null, kind: 'setAside' as const,
+      note: s.reason, withEmail: 0, noEmail: 0,
+    }));
+
+    // Every file was set aside. Nothing to preview and nothing to ask: the
+    // result IS the list of reasons.
+    if (plan.ready.length === 0) {
+      setBatch(assembleBatch(other, order));
+      setPhase('done');
+      return;
+    }
+
+    try {
+      const staged: StagedFile[] = [];
+      for (const r of plan.ready) {
+        const source = byName.get(r.fileName);
+        if (!source) continue;
+        const previewed = await previewFile(source, r.day);
+        if (previewed.kind === 'already') {
+          other.push({
+            fileName: r.fileName, day: r.day, kind: 'already',
+            note: previewed.words.lines[0], withEmail: 0, noEmail: 0,
+          });
+        } else {
+          staged.push({ source, staged: previewed.staged });
+        }
+      }
+
+      // Every file was already in. A result, not a failure — same reading as
+      // the single-file `upload-already` panel.
+      if (staged.length === 0) {
+        setBatch(assembleBatch(other, order));
+        setPhase('done');
+        return;
+      }
+
+      const overrides = staged
+        .filter(s => s.staged.supersedes)
+        .map(s => ({
+          fileName: s.source.name, day: s.staged.day,
+          replaces: s.staged.supersedes!.file_name,
+        }));
+
+      if (overrides.length > 0) {
+        setBatchAsk({
+          words: batchAskWords(overrides,
+            { course: chosen, total: staged.length, label: dayLabel }),
+          staged, other, order,
+        });
+        setPhase('confirm');
+        return;
+      }
+
+      await commitBatch(staged, other, order);
+    } catch (err) {
+      // A preview failed, so NOTHING in this batch was committed — the writes
+      // all happen after every preview has answered.
+      setFailure({ text: err instanceof Error
+        ? `${err.message} Nothing was written.`
+        : 'The import did not run. Nothing was written.' });
+      setPhase('pick');
+    }
+  };
+
+  /**
+   * THE WRITES, one transaction per file.
+   *
+   * Per-file try/catch, because that is what the mechanism actually
+   * guarantees: `commit_csv_import` is atomic for ONE file, and there is no
+   * transaction spanning the batch. So a file that fails takes only itself
+   * down, says so on its own row, and the rest still land — which is the
+   * honest report of what happened, and better than losing eight good
+   * registers to one bad export.
+   */
+  const commitBatch = async (staged: StagedFile[], other: BatchRow[], order: string[]) => {
+    setFailure(null);
+    setPhase('working');
+
+    const rows: BatchRow[] = [...other];
+    let wrote = false;
+
+    for (const s of staged) {
+      const { source, staged: st } = s;
+      try {
+        if (!st.preview) {
+          // No project configured: the fixtures answer.
+          const o = fixtureOutcome(st.day, source, st.supersedes);
+          rows.push({
+            fileName: source.name, day: st.day, kind: 'imported',
+            note: `${o.imported} marked present.`,
+            withEmail: o.with_email, noEmail: o.no_email,
+          });
+          wrote = true;
+          continue;
+        }
+
+        const preview = st.preview;
+        const result = await csvCommit(preview.import_id, autoDecisions(preview.rows));
+        wrote = true;
+        const c = preview.counts;
+        const noChange = nothingChanged(result.changes ?? null, result.overridden ?? null);
+        rows.push({
+          fileName: source.name, day: st.day,
+          kind: noChange ? 'unchanged' : 'imported',
+          note: noChange
+            ? 'Every name was already marked on this register — nothing added, changed or duplicated.'
+            : [
+                `${result.present_or_extra} marked present.`,
+                changeSummary(result.changes ?? null),
+                st.supersedes ? `Replaced ${st.supersedes.file_name}.` : null,
+                overrideSummary(result.overridden ?? null),
+              ].filter(Boolean).join(' '),
+          withEmail: c.matched ?? 0,
+          noEmail: (c.noEmail ?? 0) + (c.possible ?? 0) + (c.ambiguous ?? 0) + (c.unmatched ?? 0),
+        });
+      } catch (err) {
+        rows.push({
+          fileName: source.name, day: st.day, kind: 'failed',
+          note: err instanceof Error
+            ? `${err.message} Nothing was written for this file.`
+            : 'This file did not import. Nothing was written for it.',
+          withEmail: 0, noEmail: 0,
+        });
+      }
+    }
+
+    // Once for the batch, not once per file: every mounted list re-reads, and
+    // it only has to be told the register moved.
+    if (wrote) attendanceImported();
+    setBatch(assembleBatch(rows, order));
+    setPhase('done');
   };
 
   const warnInk = theme.isDark ? STATUS.awaiting.fgDark : STATUS.awaiting.fgLight;
@@ -631,6 +1014,36 @@ function UploadBody() {
 
       {phase === 'choose' && courses.state === 'ready' && targets.length > 0 && (
         <>
+          {/* THE WAY BACK OUT OF "Change".
+              Only drawn when Change is how she got here: the dialog opens on
+              this list, and a Back button on the first screen of a flow points
+              at nothing. It restores the course and the day she pressed Change
+              on, which puts her back on the file card exactly as she left it —
+              the × stays what it always was, the way out of the whole dialog,
+              and is no longer also the only way out of this list. */}
+          {returnTo ? (
+            <Pressable testID="upload-choose-back"
+              onPress={() => {
+                setTarget(returnTo.target);
+                setSession(returnTo.session);
+                setReturnTo(null);
+                setFailure(null);
+                setPhase('pick');
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={`Back to uploading for ${returnTo.target.course} at ${returnTo.target.branch}`}
+              style={({ pressed }) => ({
+                alignSelf: 'flex-start', marginBottom: SPACE.md,
+                minHeight: 34, paddingHorizontal: 12, borderRadius: RADIUS.sm,
+                flexDirection: 'row', alignItems: 'center', gap: 6,
+                backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
+                opacity: pressed ? 0.7 : 1,
+              })}>
+              <Icon name="arrow_back" size={15} color={theme.accentInk} />
+              <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.fg }}>Back</Text>
+            </Pressable>
+          ) : null}
+
           {/* Days already awaiting a file come first, because when there IS
               one it is almost always the answer -- and taking the shortcut
               also lets the screen check the file's date against that day. */}
@@ -644,7 +1057,10 @@ function UploadBody() {
                       setSession(sn);
                       setTarget({ offering_id: sn.offering_id, course: sn.course,
                         branch: sn.meta.split(' · ')[0] ?? '' });
-                      setFile(null); setOutcome(null); setAlready(null); setFailure(null); setPhase('pick');
+                      // She chose, so the detour is over and there is nothing
+                      // left to go back to.
+                      setReturnTo(null);
+                      setFile(null); setOutcome(null); setAlready(null); setBatch(null); setBatchAsk(null); setBatchCount(0); setFailure(null); setPhase('pick');
                     }}
                     accessibilityRole="button" accessibilityLabel={`${sn.title}. ${sn.meta}`}
                     style={({ pressed }) => ({
@@ -680,8 +1096,8 @@ function UploadBody() {
             {targets.map(t => (
               <Pressable key={t.offering_id} testID={`upload-offering-${t.offering_id}`}
                 onPress={() => {
-                  setTarget(t); setSession(null);
-                  setFile(null); setOutcome(null); setAlready(null); setFailure(null); setPhase('pick');
+                  setTarget(t); setSession(null); setReturnTo(null);
+                  setFile(null); setOutcome(null); setAlready(null); setBatch(null); setBatchAsk(null); setBatchCount(0); setFailure(null); setPhase('pick');
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={`Upload a file for ${t.course} at ${t.branch}`}
@@ -736,8 +1152,10 @@ function UploadBody() {
                 params too -- otherwise the picker would reopen on the one
                 session she is trying to get away from. */}
             <Pressable testID="upload-change-session" onPress={() => {
+                // Held BEFORE it is cleared: this is what Back puts back.
+                setReturnTo(target ? { target, session } : null);
                 setSession(null); setTarget(null); setAsk(null);
-                setFile(null); setOutcome(null); setAlready(null); setFailure(null); setPhase('choose');
+                setFile(null); setOutcome(null); setAlready(null); setBatch(null); setBatchAsk(null); setBatchCount(0); setFailure(null); setPhase('choose');
                 router.replace('/upload');
               }}
               accessibilityRole="button" accessibilityLabel="Choose a different session"
@@ -757,7 +1175,14 @@ function UploadBody() {
             borderColor: theme.lineStrong, alignItems: 'center',
           }}>
             <Icon name="description" size={30} color={theme.accentInk} />
-            <H2 style={{ marginTop: SPACE.md }}>Choose the Google Meet CSV</H2>
+            <H2 style={{ marginTop: SPACE.md }}>Choose the Google Meet CSVs</H2>
+            {/* SEVERAL AT ONCE, said before the picker opens rather than
+                discovered. The picker has always taken one file; nothing on
+                the card would tell an operator with four exports that she can
+                now hand over all four. */}
+            <Muted style={{ marginTop: 6, textAlign: 'center' }}>
+              Choose one file or several — each one lands on the day its own “Created on” line says.
+            </Muted>
             {/* C-74: name the three columns, so an operator handed a
                 different export can tell at a glance that it will not parse */}
             <Muted style={{ marginTop: 6, textAlign: 'center' }}>
@@ -778,13 +1203,16 @@ function UploadBody() {
                 stages a file for review, and a button that imports a register
                 the moment it is pressed has to say so. */}
             <Body style={{ marginTop: SPACE.md, textAlign: 'center', fontWeight: '700' }}>
-              The file imports as soon as you choose it.
+              They import as soon as you choose them.
             </Body>
+            {/* The course ask stands between this press and the file picker
+                now, on every upload. The button keeps its name -- Browse files
+                is still what it leads to -- because the ask names itself. */}
             <Button testID="upload-browse"
               label={phase === 'working' ? 'Importing…' : 'Browse files'}
               variant="secondary" disabled={phase === 'working'}
               style={{ marginTop: SPACE.md }}
-              onPress={() => void choose()} />
+              onPress={() => { setFailure(null); setPhase('course'); }} />
           </View>
 
           {phase === 'working' ? (
@@ -796,25 +1224,40 @@ function UploadBody() {
             }}>
               <Icon name="cloud_upload" size={20} color={theme.accentInk} />
               <Body style={{ flex: 1, fontSize: 12.5 }}>
-                {`Importing ${file?.name ?? 'the file'} — matching every name against the register.`}
+                {/* A batch does not set `file`, because there is no one file
+                    it is working on. It says how many instead. */}
+                {batchCount > 1
+                  ? `Importing ${batchCount} files — matching every name against the register.`
+                  : `Importing ${file?.name ?? 'the file'} — matching every name against the register.`}
               </Body>
             </View>
           ) : null}
 
-          {failure && phase !== 'working' && (
-            <View
-              testID="upload-failure"
-              accessibilityLiveRegion="polite"
-              style={{
-                marginTop: SPACE.md, padding: SPACE.lg, borderRadius: RADIUS.lg,
-                flexDirection: 'row', gap: SPACE.md,
-                backgroundColor: statusSurface(dangerInk).bg,
-                borderWidth: 1, borderColor: statusSurface(dangerInk).border,
-              }}>
-              <Icon name="error" size={20} color={dangerInk} />
-              <Body style={{ flex: 1, fontSize: 12.5, lineHeight: 19 }}>{failure}</Body>
-            </View>
-          )}
+          {/* ONE PANEL, TWO TEMPERS. Red and `error` when the upload went
+              wrong; amber and `warning` when it simply cannot run yet, which
+              today is a file dated ahead of the class. Reading "a future date"
+              in the colour reserved for things that broke is what the caution
+              was asked for. The testID is unchanged either way -- it is the
+              same panel in the same place, saying why the file did not go. */}
+          {failure && phase !== 'working' && (() => {
+            const ink = failure.caution ? warnInk : dangerInk;
+            const box = statusSurface(ink);
+            return (
+              <View
+                testID="upload-failure"
+                accessibilityLiveRegion="polite"
+                style={{
+                  marginTop: SPACE.md, padding: SPACE.lg, borderRadius: RADIUS.lg,
+                  flexDirection: 'row', gap: SPACE.md,
+                  backgroundColor: box.bg, borderWidth: 1, borderColor: box.border,
+                }}>
+                {/* the icon is the second encoding, never the only one: the
+                    sentence itself says "a future date" (CP-010) */}
+                <Icon name={failure.caution ? 'warning' : 'error'} size={20} color={ink} />
+                <Body style={{ flex: 1, fontSize: 12.5, lineHeight: 19 }}>{failure.text}</Body>
+              </View>
+            );
+          })()}
 
           {/* A file with no "Created on" line never imports at all, and this
               panel is what says why. Any other file is already on its way. */}
@@ -822,53 +1265,115 @@ function UploadBody() {
         </>
       )}
 
+      {/* ------------------------------------------------- which course is this
+          Asked before the picker opens, on EVERY upload. Nothing has been read
+          yet, so this ask knows only the course and the branch -- which is the
+          whole of what it is for. Accent-inked, not warn: nothing is wrong
+          here, and spending the warning colour on an ordinary confirmation is
+          how the two asks that DO carry a risk stop being read. */}
+      {phase === 'course' && target ? (
+        <AskPanel testID="upload-course-confirm" ink={theme.accentInk} icon="school"
+          words={courseConfirmWords({ course: target.course, branch: target.branch })}
+          onConfirm={() => { setPhase('pick'); void choose(); }}
+          onCancel={() => setPhase('pick')} />
+      ) : null}
+
       {/* ------------------------------------------------------- the one ask
           The file is from another day, or the day already holds a register
           this file replaces, or both -- and both are answered by one confirm.
           The words are in src/data/uploadOverride.ts, where a spec can read
           them; what is here is only how they are drawn. */}
-      {phase === 'confirm' && ask ? (() => {
-        const words = askWords(ask.ask, {
-          fileName: ask.file.name, course: chosen, label: dayLabel,
-        });
-        return (
-          <View testID="upload-confirm">
-            <View style={{
-              padding: SPACE.xl, borderRadius: RADIUS.lg,
-              backgroundColor: statusSurface(warnInk).bg,
-              borderWidth: 1, borderColor: statusSurface(warnInk).border,
-            }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                {/* history for "this is about a day gone by", warning for
-                    "something you have is about to be replaced" */}
-                <Icon name={ask.ask.overrides ? 'warning' : 'history'} size={20} color={warnInk} />
-                {/* the word as well as the colour (CP-010) */}
-                <Text style={{ flex: 1, fontSize: 13.5, fontWeight: '800', color: warnInk }}>
-                  {words.title}
-                </Text>
-              </View>
-              {words.lines.map((line, i) => (
-                <Body key={line} style={{ marginTop: i === 0 ? SPACE.md : SPACE.sm, lineHeight: 20 }}>
-                  {line}
-                </Body>
-              ))}
-              <Muted style={{ marginTop: SPACE.md }}>{words.note}</Muted>
-            </View>
+      {phase === 'confirm' && ask ? (
+        <AskPanel testID="upload-confirm" ink={warnInk}
+          /* history for "this is about a day gone by", warning for
+             "something you have is about to be replaced" */
+          icon={ask.ask.overrides ? 'warning' : 'history'}
+          words={askWords(ask.ask, {
+            fileName: ask.file.name, course: chosen, label: dayLabel,
+          })}
+          onConfirm={() => {
+            const held = ask;
+            setAsk(null);
+            void commit(held.file, held.staged);
+          }}
+          onCancel={() => { setAsk(null); setFile(null); setPhase('pick'); }} />
+      ) : null}
 
-            <Button testID="upload-confirm-go"
-              label={words.confirm}
-              style={{ marginTop: SPACE.lg }}
-              onPress={() => {
-                const held = ask;
-                setAsk(null);
-                void commit(held.file, held.staged);
-              }} />
-            <Button testID="upload-confirm-cancel" label={words.cancel} variant="secondary"
-              style={{ marginTop: SPACE.sm }}
-              onPress={() => { setAsk(null); setFile(null); setPhase('pick'); }} />
+      {/* --------------------------------------------- the one ask, for a batch
+          Every file previewed, none written. The list of registers about to be
+          replaced is in the words (uploadBatch.ts); one confirm covers the
+          whole upload, which is the only way a nine-file pick does not become
+          nine dialogs. */}
+      {phase === 'confirm' && batchAsk ? (
+        <AskPanel testID="upload-batch-confirm" ink={warnInk} icon="warning"
+          words={batchAsk.words}
+          onConfirm={() => {
+            const held = batchAsk;
+            setBatchAsk(null);
+            void commitBatch(held.staged, held.other, held.order);
+          }}
+          onCancel={() => { setBatchAsk(null); setPhase('pick'); }} />
+      ) : null}
+
+      {/* ------------------------------------------------- the result, for a batch
+          A row per file she picked, in the order she picked them, whether it
+          landed or not. The two counts above are the whole upload's; each row
+          carries its own day and its own sentence. */}
+      {phase === 'done' && batch ? (
+        <View testID="upload-batch-done">
+          <View style={{
+            padding: SPACE.xl, borderRadius: RADIUS.lg,
+            backgroundColor: statusSurface(batch.imported > 0 ? okInk : warnInk).bg,
+            borderWidth: 1,
+            borderColor: statusSurface(batch.imported > 0 ? okInk : warnInk).border,
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+              <Icon name={batch.imported > 0 ? 'check_circle' : 'warning'} size={20}
+                color={batch.imported > 0 ? okInk : warnInk} />
+              {/* the word, never the colour alone (CP-010) */}
+              <Text testID="upload-batch-title" style={{
+                flex: 1, fontSize: 13.5, fontWeight: '800',
+                color: batch.imported > 0 ? okInk : warnInk,
+              }}>
+                {batchHeading(batch.imported, batch.days, chosen)}
+              </Text>
+            </View>
+            {batch.rows.length > batch.imported ? (
+              <Muted style={{ marginTop: 4, color: theme.fg }}>
+                {`${batch.rows.length - batch.imported} of the ${batch.rows.length} files you chose `
+                 + `did not import. Each one says why below.`}
+              </Muted>
+            ) : null}
           </View>
-        );
-      })() : null}
+
+          {/* THE SAME TWO COUNTS, over the whole upload. The requester's
+              "with email and no email" does not stop being the question
+              because four files answered it instead of one. */}
+          <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.md }}>
+            <Landed testID="upload-with-email" n={batch.withEmail} icon="mail"
+              word="With email" ink={okInk}
+              note="On the register, and counted for follow-up." />
+            <Landed testID="upload-no-email" n={batch.noEmail} icon="mail_off"
+              word="No email" ink={dangerInk}
+              note="Marked present, listed under No email on the course." />
+          </View>
+
+          <Label style={{ marginTop: SPACE.lg }}>{`Every file · ${batch.rows.length}`}</Label>
+          <View style={{ gap: SPACE.sm, marginTop: SPACE.sm }}>
+            {batch.rows.map(row => (
+              <BatchFileRow key={row.fileName} row={row} day={dayLabel(row.day)}
+                okInk={okInk} warnInk={warnInk} dangerInk={dangerInk} />
+            ))}
+          </View>
+
+          <Button testID="upload-batch-another" label="Upload more files" variant="secondary"
+            style={{ marginTop: SPACE.lg }}
+            onPress={() => {
+              setAsk(null);
+              setFile(null); setOutcome(null); setAlready(null); setBatch(null); setBatchAsk(null); setBatchCount(0); setFailure(null); setPhase('pick');
+            }} />
+        </View>
+      ) : null}
 
       {/* ---------------------------------------------------------- the result
           "just show how many student with email and no email" -- the two
@@ -886,19 +1391,27 @@ function UploadBody() {
                   register this file did not move is true and useless: it is
                   what the first upload said, so it cannot tell her this one
                   was the second. The word carries it, never the colour --
-                  nothing here went wrong (CP-010). */}
+                  nothing here went wrong (CP-010).
+
+                  THE COURSE IS IN IT NOW, between the word and the day, and
+                  the day stays. It used to be readable only in the sentence
+                  underneath, and that sentence has gone: with the course here
+                  and the two counts directly below, "N marked present on the
+                  X register" was the heading and the tiles said again. */}
               <Text testID="upload-done-title"
                 style={{ flex: 1, fontSize: 13.5, fontWeight: '800', color: okInk }}>
-                {`${noChange ? 'Nothing to update' : 'Imported'} · ${dayLabel(outcome.session_date)}`}
+                {`${noChange ? 'Nothing to update' : 'Imported'} · ${chosen} · ${dayLabel(outcome.session_date)}`}
               </Text>
             </View>
-            <Muted style={{ marginTop: 4, color: theme.fg }}>
-              {noChangeText
-                ? noChangeText.lines[0]
-                : `${outcome.imported} marked present on the ${chosen} register.`}
-            </Muted>
+            {/* KEPT for "nothing to update", and only for it. That case has no
+                counts worth reading -- every tile is a number the register
+                already had -- so this sentence is the whole of what happened,
+                and it exists nowhere else on the screen. */}
             {noChangeText ? (
-              <Muted style={{ marginTop: SPACE.sm }}>{noChangeText.note}</Muted>
+              <>
+                <Muted style={{ marginTop: 4, color: theme.fg }}>{noChangeText.lines[0]}</Muted>
+                <Muted style={{ marginTop: SPACE.sm }}>{noChangeText.note}</Muted>
+              </>
             ) : null}
           </View>
 
@@ -924,14 +1437,15 @@ function UploadBody() {
               title="What this file changed" body={changed} />
           ) : null}
 
-          {outcome.new_members > 0 ? (
-            <Muted style={{ marginTop: SPACE.md }}>
-              {`${outcome.new_members} of them ${outcome.new_members === 1 ? 'is' : 'are'} new — `
-               + 'a name the register did not know, added to this course with no email. '
-               + 'If she is somebody you already have, “Add display name to existing member” '
-               + 'on the course folds her in and carries her attendance across.'}
-            </Muted>
-          ) : null}
+          {/* THE "N OF THEM ARE NEW" PARAGRAPH IS GONE. Removed on request,
+              08-Sep-2026: it sat directly under the two count tiles and
+              re-explained them. The No email tile already says where those
+              women are ("listed under No email on the course"), and the merge
+              it described — "Add display name to existing member" — is a
+              button on that group, where she is standing when she needs it.
+              With nothing left reading it, `new_members` came off the local
+              Outcome type too rather than being written and ignored — the
+              count it carried is `csvCommit`'s and is still returned. */}
 
           {/* A NAME THIS COURSE SHARES WITH ANOTHER ONE.
               A member has one live enrolment, so a name whose only member is
@@ -986,13 +1500,17 @@ function UploadBody() {
 
           {sessionMapPanel}
 
-          <Button testID="upload-done-close" label="Done" style={{ marginTop: SPACE.lg }}
-            onPress={() => router.back()} />
+          {/* NO DONE BUTTON. Removed on request. The way out of this dialog is
+              the × in FormDialog's own bar, which is where every other dialog
+              in the app puts it -- a Done that only ever called router.back()
+              was a second name for the same control, sitting under a result
+              nobody has to acknowledge. `Upload another file` stays: it is the
+              one thing here that is not a close. */}
           <Button testID="upload-another" label="Upload another file" variant="secondary"
-            style={{ marginTop: SPACE.sm }}
+            style={{ marginTop: SPACE.lg }}
             onPress={() => {
               setAsk(null);
-              setFile(null); setOutcome(null); setAlready(null); setFailure(null); setPhase('pick');
+              setFile(null); setOutcome(null); setAlready(null); setBatch(null); setBatchAsk(null); setBatchCount(0); setFailure(null); setPhase('pick');
             }} />
         </View>
       ) : null}
@@ -1031,11 +1549,59 @@ function UploadBody() {
             style={{ marginTop: SPACE.sm }}
             onPress={() => {
               setAsk(null);
-              setFile(null); setOutcome(null); setAlready(null); setFailure(null); setPhase('pick');
+              setFile(null); setOutcome(null); setAlready(null); setBatch(null); setBatchAsk(null); setBatchCount(0); setFailure(null); setPhase('pick');
             }} />
         </View>
       ) : null}
     </>
+  );
+}
+
+/**
+ * A QUESTION THIS DIALOG STOPS TO ASK, drawn the one way.
+ *
+ * There are two of them now -- the course, before the picker, and the day /
+ * override, after the preview -- and they are the same object to whoever is
+ * reading: a tinted panel, a worded title with its own icon, the sentences,
+ * the quieter note, then yes and no in that order. Written once so the second
+ * ask cannot drift away from the first, and so `${testID}-go` / `-cancel` are
+ * spelled in one place: those two are the names round 4's browser evidence
+ * and the testid baseline already know `upload-confirm` by.
+ *
+ * The words are never in here. They live in src/data/uploadOverride.ts, where
+ * the specs run under plain node and can read them.
+ */
+function AskPanel({ testID, ink, icon, words, onConfirm, onCancel }: {
+  testID: string; ink: string; icon: string; words: AskWords;
+  onConfirm: () => void; onCancel: () => void;
+}) {
+  const box = statusSurface(ink);
+  return (
+    <View testID={testID}>
+      <View style={{
+        padding: SPACE.xl, borderRadius: RADIUS.lg,
+        backgroundColor: box.bg, borderWidth: 1, borderColor: box.border,
+      }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+          <Icon name={icon} size={20} color={ink} />
+          {/* the word as well as the colour (CP-010) */}
+          <Text style={{ flex: 1, fontSize: 13.5, fontWeight: '800', color: ink }}>
+            {words.title}
+          </Text>
+        </View>
+        {words.lines.map((line, i) => (
+          <Body key={line} style={{ marginTop: i === 0 ? SPACE.md : SPACE.sm, lineHeight: 20 }}>
+            {line}
+          </Body>
+        ))}
+        <Muted style={{ marginTop: SPACE.md }}>{words.note}</Muted>
+      </View>
+
+      <Button testID={`${testID}-go`} label={words.confirm}
+        style={{ marginTop: SPACE.lg }} onPress={onConfirm} />
+      <Button testID={`${testID}-cancel`} label={words.cancel} variant="secondary"
+        style={{ marginTop: SPACE.sm }} onPress={onCancel} />
+    </View>
   );
 }
 
@@ -1066,6 +1632,61 @@ function Landed({ testID, n, icon, word, ink, note }: {
         color: theme.fgStrong, fontVariant: ['tabular-nums'],
       }}>{n}</Text>
       <Text style={{ fontSize: 11, lineHeight: 16, color: theme.muted, marginTop: 2 }}>{note}</Text>
+    </View>
+  );
+}
+
+/**
+ * ONE FILE OF A BATCH, and what became of it.
+ *
+ * Five outcomes, each with its own word AND its own icon, because a row whose
+ * only difference from the row above it is a colour is a row nobody can read
+ * (guardrail 3, CP-010). The day is on the row, not in a heading: with four
+ * files there is no single day to head anything with.
+ */
+const BATCH_KIND: Record<BatchRow['kind'], { word: string; icon: string }> = {
+  imported: { word: 'Imported', icon: 'check_circle' },
+  unchanged: { word: 'Nothing to update', icon: 'history' },
+  already: { word: 'Already imported', icon: 'history' },
+  setAside: { word: 'Not imported', icon: 'warning' },
+  failed: { word: 'Failed', icon: 'error' },
+};
+
+function BatchFileRow({ row, day, okInk, warnInk, dangerInk }: {
+  row: BatchRow; day: string; okInk: string; warnInk: string; dangerInk: string;
+}) {
+  const { theme } = useTheme();
+  const ink = row.kind === 'imported' ? okInk
+    : row.kind === 'failed' ? dangerInk
+    : warnInk;
+  const box = statusSurface(ink);
+  const { word, icon } = BATCH_KIND[row.kind];
+  return (
+    <View testID={`upload-batch-row-${row.fileName}`}
+      accessible accessibilityLabel={`${row.fileName}. ${word}. ${row.note}`}
+      style={{
+        padding: SPACE.lg, borderRadius: RADIUS.md,
+        backgroundColor: box.bg, borderWidth: 1, borderColor: box.border,
+      }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <Icon name={icon} size={16} color={ink} />
+        {/* the WORD, never the colour alone (CP-010) */}
+        <Text style={{ fontSize: 11, fontWeight: '800', color: ink }}>{word}</Text>
+        {/* A file set aside before its date could be read has no day to show,
+            and "—" beside it would be a value rather than an absence. */}
+        {row.day ? (
+          <Text style={{
+            flex: 1, textAlign: 'right', fontSize: 11, fontWeight: '700',
+            color: theme.muted, fontVariant: ['tabular-nums'],
+          }}>{day}</Text>
+        ) : null}
+      </View>
+      <Text numberOfLines={2} style={{
+        fontSize: 12.5, fontWeight: '700', color: theme.fgStrong, marginTop: 5,
+      }}>{row.fileName}</Text>
+      <Text style={{ fontSize: 11.5, lineHeight: 17, color: theme.muted, marginTop: 3 }}>
+        {row.note}
+      </Text>
     </View>
   );
 }
@@ -1106,7 +1727,6 @@ function fixtureOutcome(day: string, source: { text: string }, supersedes: Super
     session_date: day,
     with_email: withEmail,
     no_email: noEmail,
-    new_members: newMembers,
     imported: withEmail + noEmail,
     dropped: [],
     staff: [],

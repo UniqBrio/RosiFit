@@ -13,6 +13,25 @@ function renderTemplate(tpl: string, vars: Record<string, string>): string {
   return tpl.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] ?? `{{${k}}}`);
 }
 
+/**
+ * The COUNT out of an effective_follow_up_config row: whichever condition is
+ * switched on. Em dash when there is no row at all — a member with no course
+ * has no trigger, and printing 0 or 4 there would state a rule that does not
+ * exist. Every other absent value in this function is written the same way.
+ */
+function triggerOf(cfg: unknown): string {
+  const c = cfg as {
+    weekly_enabled?: boolean; weekly_threshold?: number;
+    consecutive_enabled?: boolean; consecutive_threshold?: number;
+  } | null | undefined;
+  if (!c) return '—';
+  if (c.consecutive_enabled && !c.weekly_enabled) {
+    return c.consecutive_threshold == null ? '—' : String(c.consecutive_threshold);
+  }
+  if (!c.weekly_enabled && !c.consecutive_enabled) return '—';
+  return c.weekly_threshold == null ? '—' : String(c.weekly_threshold);
+}
+
 Deno.serve(async (req) => {
   const preflight = handlePreflight(req);
   if (preflight) return preflight;
@@ -184,6 +203,23 @@ Deno.serve(async (req) => {
         consecutive_missed: String(stat?.current_streak ?? 0),
         last_attendance_date: stat?.last_present_date ?? '—',
         academy_name: academyName,
+        /* {{follow_up_trigger}} -- the rule that listed her, from the SNAPSHOT
+           taken above, so the email and `email_batches.config_snapshot` carry
+           the same number and a report six months later cannot disagree with
+           what the member was told.
+           (requests/2026-09-08-follow-up-trigger-on-send-and-reach-out.md)
+
+           It is the count of whichever condition is ON, the same reading the
+           panel and the course form use -- the disabled column keeps its value
+           only so that switching back does not reset it, and rendering that
+           would put a trigger nobody is judged by into an email.
+
+           Read at SEND time and not from anything the client passed: a trigger
+           changed a moment earlier -- which the send screens can now do -- is
+           in force here, and a number posted from a screen could not be
+           trusted to be the one the rule actually fired at. */
+        follow_up_trigger: triggerOf(
+          offering ? configSnapshot[offering.course_id as string] : null),
       };
       const subject = renderTemplate(template.subject, vars);
       const text = renderTemplate(template.body_text, vars);

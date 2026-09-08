@@ -5,7 +5,7 @@ import { Muted, Label, Skeleton, ErrorState } from '../../src/components/ui';
 import { Field } from '../../src/components/Field';
 import { FormDialog } from '../../src/components/FormDialog';
 import { Icon } from '../../src/components/Icon';
-import { DropdownRow, DropdownField, DropdownPanel, DropdownList } from '../../src/components/Dropdown';
+import { DropdownRow, DropdownField, DropdownPanel, DropdownMenuList } from '../../src/components/Dropdown';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../../src/theme/tokens';
@@ -224,6 +224,9 @@ export default function CourseEdit() {
     courseName: name,
     branchName: branch?.name,
     academyName: academy.data?.name,
+    // The stepper above, live: a preview that rendered the SAVED trigger under
+    // a form showing a different one would contradict the number beside it.
+    followUpTrigger: threshold,
   });
   const stray = [...new Set([...unknownTokens(shownSubject), ...unknownTokens(shownBody)])];
 
@@ -313,8 +316,8 @@ export default function CourseEdit() {
                 open={open === 'branch'} testID="course-branch-field"
                 onPress={() => setOpen(o => (o === 'branch' ? null : 'branch'))} />
               {open === 'branch' ? (
-                <DropdownPanel>
-                  <DropdownList testID="course-branch"
+                <DropdownPanel menu>
+                  <DropdownMenuList testID="course-branch"
                     options={branchList.map(b => ({ label: b.name, meta: `${b.courses} courses` }))}
                     value={branch?.name ?? ''}
                     onSelect={l => {
@@ -450,8 +453,8 @@ export default function CourseEdit() {
                 open={open === 'sender'} testID="course-sender-field"
                 onPress={() => setOpen(o => (o === 'sender' ? null : 'sender'))} />
               {open === 'sender' ? (
-                <DropdownPanel>
-                  <DropdownList testID="course-sender"
+                <DropdownPanel menu>
+                  <DropdownMenuList testID="course-sender"
                     options={senderList.map(label => ({ label, meta: 'verified' }))}
                     value={sender ?? ''}
                     onSelect={l => { setSender(l); setOpen(null); }} />
@@ -464,8 +467,8 @@ export default function CourseEdit() {
                 open={open === 'template'} testID="course-template-field"
                 onPress={() => setOpen(o => (o === 'template' ? null : 'template'))} />
               {open === 'template' ? (
-                <DropdownPanel>
-                  <DropdownList testID="course-template"
+                <DropdownPanel menu>
+                  <DropdownMenuList testID="course-template"
                     /* The template's own line, RESOLVED like everything else
                        in this form -- it is a preview, and a picker that
                        offers "Hello {{first_name}}," is asking somebody to

@@ -12,6 +12,8 @@ import { recipientSplit } from '../../src/data/followup';
 import { enrolledIn } from '../../src/data/course';
 import { mergeSent, sentThisSession, recordSent, defaultSelection, sentLabel } from '../../src/data/sent';
 import { useCourses, useFollowUp, useCourseMessage, useSentForPeriod } from '../../src/data/hooks';
+import { FollowUpTriggerPanel } from '../../src/components/FollowUpTriggerPanel';
+import { readTrigger } from '../../src/data/followupTrigger';
 import { currentWeek } from '../../src/data/period';
 import { sendFollowUps } from '../../src/data/api';
 import { setSendResult } from '../../src/data/pending';
@@ -245,6 +247,32 @@ function SendDraftBody() {
     );
   }
 
+  /* THE RULE THIS LIST CAME FROM
+     (requests/2026-09-08-follow-up-trigger-on-send-and-reach-out.md).
+
+     The draft named a threshold it never showed -- "no member of X is over the
+     follow-up threshold" over a screen with no threshold on it -- and the one
+     number that decides who is listed was editable only on the course form,
+     two screens away. It is read here from the rules this dialog ALREADY
+     fetched (`followUp.data.rules`), so the trigger on screen and the list
+     under it come from one load and cannot be a query apart.
+
+     By the resolved COURSE, whichever way this dialog was opened: its own id,
+     or the course of the one member Reach out narrowed it to. Null for the
+     all-courses draft, and the panel states the academy-wide rule instead of
+     offering to write a rule that belongs to no course. */
+  const triggerCourse = course
+    ?? (onlyMember ? (courses.data ?? []).find(c => c.name === onlyMember.course) ?? null : null);
+  const trigger = followUp.data
+    ? readTrigger(triggerCourse?.name ?? onlyMember?.course ?? null, followUp.data.rules)
+    : null;
+  /* The days in force, for the can-never-be-reached warning. The offering's
+     schedule where there is one, and the course's stated frequency where there
+     is not -- never a guess: with neither, the warning is not drawn at all. */
+  const triggerDays = triggerCourse
+    ? (triggerCourse.offerings[0]?.weekdays.length || triggerCourse.frequency || null)
+    : null;
+
   const nothingToSend = recipients.length === 0;
   const firstNames = recipients.filter(m => isPicked(m.id)).map(m => m.name.split(' ')[0]);
   /* WHO, short enough to read at a glance: a send to fifteen people does not
@@ -310,6 +338,15 @@ function SendDraftBody() {
           onConfirm={() => { void send(); }} />
       )}
     >
+      {/* FIRST, and on BOTH branches. The empty draft is the case the panel
+          exists for most: "nobody is over the threshold" is only actionable
+          beside the threshold itself, and until now a person reading it had
+          nothing on the screen to act on. */}
+      <View style={{ marginBottom: SPACE.lg }}>
+        <FollowUpTriggerPanel testID="send-trigger"
+          reading={trigger} courseId={wantedCourseId} daysPerWeek={triggerDays} />
+      </View>
+
       {nothingToSend ? (
         <EmptyState
           title={excluded.length ? 'Nobody here can be emailed' : 'Nobody needs following up'}

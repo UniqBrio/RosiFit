@@ -37,15 +37,46 @@ const preview = (over: Partial<DeletionPreview> = {}): DeletionPreview => ({
 
 /* ================================================ BEFORE: the confirmation */
 
-test('the warning names the quantity, and says the days change', () => {
-  // The clause the old dialog promised the opposite of. A person confirming
-  // is owed the fact that a report next month reads differently.
+/**
+ * AMENDED 08-Sep-2026 for requests/2026-09-08-member-delete-confirm-yes-no.md.
+ *
+ * The repo owner saw the counted paragraph on screen and cut it: "this is very
+ * much info keep it simple you are deleting member and its records do you want
+ * to delete it permanently thats it". So the six tests that asserted the
+ * COUNTS -- the plurals, the mail clause, the "not enrolled in anything"
+ * branch, the counting and uncounted wordings -- are gone with the words they
+ * quoted. What replaces them is below, and it is the part that was never about
+ * the numbers: the two facts that decide the answer must both be in the
+ * sentence, in every state, and the withdrawn promise must still be in none.
+ */
+
+test('the warning says the records go, and that it is permanent', () => {
   const body = deletionWarning({ kind: 'counted', preview: preview() });
-  assert.match(body, /permanently removes her from the database/);
-  assert.match(body, /3 attendance records across 2 sessions/);
-  assert.match(body, /one fewer person present/);
-  assert.match(body, /cannot be recovered/);
-  assert.match(body, /Recorded in the audit log\./);
+  assert.match(body, /all her records/,
+    'the records going with her is half of what the tap decides');
+  assert.match(body, /permanently/,
+    'and the other half is that it cannot be taken back');
+});
+
+test('the sentence does not vary with the count', () => {
+  // The words are the same before, during and after the preview -- a dialog
+  // whose body reflows a second after it opens is one people re-read rather
+  // than answer, and there is nothing left in it that a count would change.
+  const shown = new Set([
+    deletionWarning({ kind: 'counting' }),
+    deletionWarning({ kind: 'uncounted' }),
+    deletionWarning({ kind: 'counted', preview: preview() }),
+    deletionWarning({ kind: 'counted', preview: preview({ attendanceRecords: 0, sessionsAttended: 0, enrolments: 0 }) }),
+  ]);
+  assert.equal(shown.size, 1, `the body must read the same in every state, got: ${[...shown].join(' | ')}`);
+});
+
+test('it stays a short question, not a paragraph', () => {
+  // The defect this replaced was LENGTH. A bound, so the clauses cannot creep
+  // back one true fact at a time.
+  const body = deletionWarning({ kind: 'counted', preview: preview() });
+  assert.ok(body.length <= 140, `the body is back to a paragraph (${body.length} chars): ${body}`);
+  assert.match(body, /\?$/, 'a Yes/No dialog must end in the question those answers answer');
 });
 
 test('the withdrawn promise appears nowhere in any branch', () => {
@@ -64,49 +95,11 @@ test('the withdrawn promise appears nowhere in any branch', () => {
   }
 });
 
-test('a member nothing was ever recorded against is not warned about history', () => {
-  // Warning about attendance she does not have teaches people to skim the
-  // sentence on the day it matters.
-  const body = deletionWarning({ kind: 'counted',
-    preview: preview({ attendanceRecords: 0, sessionsAttended: 0, emailsSent: 0 }) });
-  assert.match(body, /Nothing has been recorded against her yet\./);
-  assert.doesNotMatch(body, /attendance record/);
-  assert.match(body, /permanently removes her/);
-});
-
-test('one record, one session, one enrolment all read singular', () => {
-  const body = deletionWarning({ kind: 'counted',
-    preview: preview({ attendanceRecords: 1, sessionsAttended: 1, enrolments: 1, emailsSent: 1 }) });
-  assert.match(body, /1 attendance record across 1 session\b/);
-  assert.match(body, /1 enrolment of hers goes with her\./);
-  assert.match(body, /The 1 email the academy sent her goes too\./);
-  assert.doesNotMatch(body, /\b1 (attendance records|sessions|enrolments|emails)\b/);
-});
-
-test('mail she was never sent is not mentioned at all', () => {
-  const body = deletionWarning({ kind: 'counted', preview: preview({ emailsSent: 0 }) });
-  assert.doesNotMatch(body, /email/i);
-});
-
-test('a member enrolled in nothing says so rather than saying "0 enrolments"', () => {
-  const body = deletionWarning({ kind: 'counted', preview: preview({ enrolments: 0 }) });
-  assert.match(body, /She is not enrolled in anything\./);
-});
-
-test('while it is counting, the dialog says so and promises nothing', () => {
-  assert.equal(deletionWarning({ kind: 'counting' }), 'Counting what this will delete…');
-});
-
-test('a count that FAILED still warns, and is not gentler for lacking numbers', () => {
-  // The deletion is still offered when the preview errors -- it just cannot
-  // say how much. A softer sentence here would be the safest-looking bug in
-  // the app.
-  const body = deletionWarning({ kind: 'uncounted' });
-  assert.match(body, /could not be counted/);
-  assert.match(body, /permanently removes her from the database/);
-  assert.match(body, /cannot be recovered/);
-  assert.match(body, /Recorded in the audit log\./);
-});
+/* The six tests that stood here asserted the counted paragraph -- the plurals,
+ * the mail clause, the "not enrolled in anything" branch, and the separate
+ * counting and uncounted wordings. They are removed with the sentences they
+ * quoted; see the AMENDED note above. The counts themselves still exist behind
+ * member_deletion_preview and are still asserted in supabase/tests. */
 
 /* ================================================== AFTER: the four outcomes */
 

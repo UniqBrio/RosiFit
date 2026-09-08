@@ -350,7 +350,7 @@ function ShellNavPill() {
  * Dialogs are unaffected. They are transparentModal routes on the root stack,
  * so they render OVER whatever is beneath -- including this.
  */
-export function ShellScreen({ children, title, subtitle, onBack }: {
+export function ShellScreen({ children, title, subtitle, right, onBack }: {
   children: React.ReactNode;
   /** Draws the per-screen title block for a screen that has none of its own.
    *  Screens that already render a ScreenHeader (audit, branches, send) pass
@@ -358,6 +358,10 @@ export function ShellScreen({ children, title, subtitle, onBack }: {
    *  not a feature of it. */
   title?: string;
   subtitle?: string;
+  /** The one action this screen owns, in the title row's right-hand slot --
+   *  the same place Members puts Add. Passed through rather than reinvented,
+   *  so a pushed screen's action sits where a tabbed screen's action sits. */
+  right?: React.ReactNode;
   /** Omitted deliberately on a screen with no way back -- staff/pin shows a
    *  PIN once and there is nothing to return to. */
   onBack?: () => void;
@@ -369,7 +373,7 @@ export function ShellScreen({ children, title, subtitle, onBack }: {
       <View style={{ flex: 1 }}>
         {title ? (
           <View style={{ paddingHorizontal: SPACE.lg, paddingTop: SPACE.lg }}>
-            <ScreenHeader title={title} subtitle={subtitle} onBack={onBack} />
+            <ScreenHeader title={title} subtitle={subtitle} right={right} onBack={onBack} />
           </View>
         ) : null}
         {children}

@@ -94,6 +94,14 @@ export const MESSAGE_TOKENS: {
   { token: '{{missed_sessions}}', means: 'sessions she missed', chip: 'Sessions missed', everyday: false, subjectLine: false },
   { token: '{{attendance_pct}}', means: 'her attendance', chip: 'Attendance %', everyday: false, subjectLine: false },
   { token: '{{consecutive_missed}}', means: 'missed in a row', chip: 'Missed in a row', everyday: false, subjectLine: false },
+  /* THE RULE THAT LISTED HER, not a figure about her
+     (requests/2026-09-08-follow-up-trigger-on-send-and-reach-out.md). Every
+     other token answers "what did she do"; this one answers "why did this
+     arrive", which is the question a member asks first and the wording could
+     not say. It resolves to the count IN FORCE FOR HER COURSE at the moment
+     the send runs -- so a trigger changed just before a send is the number the
+     email carries, not the one it was written under. */
+  { token: '{{follow_up_trigger}}', means: 'the trigger that listed her', chip: 'Follow-up trigger', everyday: false, subjectLine: false },
   { token: '{{last_attendance_date}}', means: 'when she was last present', chip: 'Last present', everyday: false, subjectLine: false },
   { token: '{{academy_name}}', means: 'the academy name', chip: 'Academy name', everyday: true, subjectLine: false },
 ];
@@ -112,7 +120,15 @@ export type MessageContext = {
   academyName: string;
   periodFrom: string;
   periodTo: string;
+  /** the follow-up count in force for her course — what `{{follow_up_trigger}}`
+   *  resolves to. A NUMBER, so a preview cannot show a blank where the rule is */
+  followUpTrigger: number;
 };
+
+/** What a preview stands the trigger up as when the screen has not said one.
+ *  4 because that is what `save_course` defaults `p_threshold` to (0030), so
+ *  an unstated trigger previews as the value an unstated trigger IS. */
+const SAMPLE_TRIGGER = 4;
 
 /**
  * The member a preview stands in for when the screen has no real one.
@@ -193,6 +209,9 @@ export function previewContext(
     academyName: filled(over.academyName) ?? SAMPLE_ACADEMY,
     periodFrom: filled(over.periodFrom) ?? week.from,
     periodTo: filled(over.periodTo) ?? week.to,
+    // `filled` is for strings and would turn a perfectly good 0 into a
+    // fallback; a trigger is a number, so it is nullish-checked on its own.
+    followUpTrigger: over.followUpTrigger ?? SAMPLE_TRIGGER,
   };
 }
 
@@ -216,6 +235,7 @@ function variables(ctx: MessageContext): Record<string, string> {
     consecutive_missed: String(m.streak),
     last_attendance_date: m.last,
     academy_name: ctx.academyName,
+    follow_up_trigger: String(ctx.followUpTrigger),
   };
 }
 
@@ -239,6 +259,10 @@ export function unknownTokens(text: string): string[] {
   const known = variables({
     member: { name: '', expected: 0, attended: 0, missed: 0, streak: 0, last: '' } as Member,
     courseName: '', branchName: '', academyName: '', periodFrom: '', periodTo: '',
+    // The VALUE is irrelevant here -- only the key set is read -- but it has to
+    // be present, or `{{follow_up_trigger}}` would be reported as a token the
+    // sender cannot fill while the sender fills it perfectly well.
+    followUpTrigger: 0,
   });
   const found = String(text ?? '').match(/\{\{\w+\}\}/g) ?? [];
   return [...new Set(found.filter(t => !Object.prototype.hasOwnProperty.call(known, t.slice(2, -2))))];

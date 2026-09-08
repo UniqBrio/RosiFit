@@ -12,7 +12,7 @@
  * calculation.
  */
 import { supabase, isConfigured } from '../lib/supabase';
-import { authLookup } from './api';
+import { authLookup, staffDelete } from './api';
 import { phoneDigits } from './signin';
 import { cleanAlias, aliasProblem, aliasSaveError, MERGE_FAILED } from './alias';
 import { sentenceOpening } from './refusalCase';
@@ -25,6 +25,9 @@ import { currentSchedules, today } from './schedule';
 import { inactiveFromProblem } from './inactiveFrom';
 import { enrolledIn, endEnrolment } from './course';
 import { isoWeekday, storedStatus, dayInWords } from './dayAttendance';
+// One blessed reading of a removal's metadata, shared with the plain-language
+// pass so the fallback name is found the same way in both places.
+import { isRemoval, subjectFromMeta } from './auditPlain';
 import {
   NOTIFICATION_LIMIT, orderNotifications,
   awaitingNotification, sentNotification, excludedNotification, pinResetNotification,
@@ -33,7 +36,7 @@ import {
 import {
   MEMBERS, COURSE_LIST, GLOBAL_RULE, COURSE_RULES, TEMPLATES, STAFF, AUDIT, REMARKS,
   BRANCHES, COURSES, MONTH_DAYS, PENDING_SESSIONS, WEEK_ROWS, attendanceFixture,
-  MANUAL_MARKS, markFixtureAttendance,
+  MANUAL_MARKS, markFixtureAttendance, resetFixtureDay, primaryEmail,
   HOLIDAYS, HOLIDAY_PREVIEW, SENDERS, COURSE_MESSAGES,
   type Member, type MemberStatus, type Course, type FollowUpRule, type Template, type Staff,
   type StaffAccess, type AuditEntry, type Remark, type SessionDay, type WeekRow,
@@ -258,6 +261,28 @@ export async function fetchMembers(period: Period): Promise<Member[]> {
 
 // -------------------------------------------------------------- follow-up rules
 export type Rules = { global: FollowUpRule; byCourseName: Record<string, FollowUpRule> };
+
+/**
+ * A counter every reader of the rules watches, bumped by every write that can
+ * move a trigger.
+ *
+ * The same pattern `onCoursesChanged` carries, and the same reason: the send
+ * dialog and the member pop-up now CHANGE the trigger, and the list underneath
+ * them is derived from it. Without this, a trigger lowered from the draft left
+ * the draft listing whoever the OLD number flagged — a screen showing one rule
+ * and the list of another, which is the exact disagreement guardrail 1 exists
+ * to prevent. Nothing is cached here; it only says "ask again".
+ */
+const ruleListeners = new Set<() => void>();
+
+export function onRulesChanged(listener: () => void): () => void {
+  ruleListeners.add(listener);
+  return () => { ruleListeners.delete(listener); };
+}
+
+function rulesChanged(): void {
+  for (const listener of ruleListeners) listener();
+}
 
 export async function fetchRules(): Promise<Rules> {
   if (!isConfigured) {
@@ -1185,8 +1210,102 @@ export async function saveCourse(input: SaveCourseInput): Promise<{ id: string; 
     throw new Error(courseSaveError(error));
   }
   coursesChanged();
+  rulesChanged();
   const result = data as { course_id: string; created: boolean };
   return { id: result.course_id, created: result.created };
+}
+
+/**
+ * THE FOLLOW-UP TRIGGER ALONE, changed from the screen that acts on it
+ * (requests/2026-09-08-follow-up-trigger-on-send-and-reach-out.md).
+ *
+ * WHY THIS GOES THROUGH save_course AND NOT A NEW RPC
+ * `course_follow_up_config` has no direct write policy — 0009 grants the table
+ * nothing an anon or authenticated client can use, deliberately, because the
+ * rule decides who receives email. `save_course` (0022, threshold since 0030)
+ * is the ONE audited, permission-checked path into that column, and it already
+ * writes exactly the row this needs. A second path would mean a migration, a
+ * second set of permission checks to keep in step with 0050, and a second place
+ * for the 1..7 bound to be enforced — three ways for the two to drift, to save
+ * one round trip.
+ *
+ * SO EVERY OTHER FIELD IS READ AND PASSED BACK UNCHANGED. That is the whole
+ * risk of reusing it, and it is handled field by field:
+ *   - name: the course's own, re-sent verbatim.
+ *   - branch and days: the offering's, from `fetchOfferings` — and 0040 means
+ *     an unchanged day list opens NO new schedule version, so this cannot trip
+ *     the completed-session guard the way an unconditional save once did.
+ *   - wording: '' whenever the course does not hold its OWN subject and body.
+ *     `save_course` stores `nullif(btrim(...), '')`, so empty keeps the course
+ *     on its template — sending the template's rendered words back would copy
+ *     them onto the course as an override nobody asked for, and Reset in the
+ *     course form would then have nothing to reset to.
+ *   - rule: 'week', the only trigger the app offers. A course still stored as
+ *     consecutive is CONVERTED, which is why the panel says so before it saves
+ *     (`triggerConverts`, followupTrigger.ts).
+ *
+ * A course with no offering, or one with no schedule in force, cannot be saved
+ * at all — `save_course` refuses without weekdays — so that is answered here,
+ * in words that name the thing to go and do, rather than as the RPC's own
+ * refusal arriving from a dialog that has no day picker on it.
+ */
+export async function saveCourseTrigger(courseId: string, threshold: number): Promise<void> {
+  if (!isConfigured) {
+    // The fixtures' own rules, keyed by course id. Written to look EXACTLY like
+    // what save_course stores for p_rule = 'week' (0030): the count lands on
+    // both columns, the weekly condition is on and the consecutive one off --
+    // so the offline app and the live one answer the same rule to the same
+    // press, and the conversion warning is true on fixtures too.
+    const rule: FollowUpRule = {
+      source: 'course',
+      weekly_enabled: true, weekly_threshold: threshold,
+      consecutive_enabled: false, consecutive_threshold: threshold,
+      combination: 'OR',
+    };
+    COURSE_RULES[courseId] = rule;
+    rulesChanged();
+    return;
+  }
+
+  const [courses, offerings, message] = await Promise.all([
+    fetchCourses(), fetchOfferings(courseId), fetchCourseMessage(courseId),
+  ]);
+  const course = courses.find(c => c.id === courseId);
+  if (!course) {
+    throw new Error('That course is no longer on the list. Nothing has been changed.');
+  }
+  // The offering that HAS days in force. A course can hold more than one, and
+  // the schedule is what save_course needs; picking the first regardless would
+  // send an empty day list for a branch that has not been scheduled yet and be
+  // refused for a course that is perfectly well scheduled elsewhere.
+  const offering = offerings.find(o => o.weekdays.length > 0);
+  if (!offering) {
+    throw new Error(`${course.name} has no days scheduled, so its follow-up trigger cannot be changed from here. Set its days on the course first. Nothing has been changed.`);
+  }
+
+  const { data, error } = await supabase.rpc('save_course', {
+    p_name: course.name,
+    p_threshold: threshold,
+    p_branch_id: offering.branch_id,
+    p_weekdays: [...new Set(offering.weekdays)].sort((a, b) => a - b),
+    p_rule: 'week',
+    p_from_email: message.from_email ?? SENDERS[0],
+    p_template_id: message.template_id,
+    // its OWN wording or nothing -- never the template's, copied
+    p_subject: message.source === 'course' ? message.subject : null,
+    p_body_text: message.source === 'course' ? message.body : null,
+    p_course_id: courseId,
+  });
+  if (error) {
+    console.error('saveCourseTrigger:', error.message);
+    throw new Error(courseSaveError(error));
+  }
+  void data;
+  // Both, and in this order: the rule moved, and the course row was touched by
+  // the same call. A screen listening for one and not the other would show a
+  // trigger from after the save over a list derived from before it.
+  rulesChanged();
+  coursesChanged();
 }
 
 /**
@@ -1213,7 +1332,11 @@ function accessOf(u: { is_active: boolean; pin_set_at: string | null; last_login
 }
 
 export async function fetchStaff(): Promise<Staff[]> {
-  if (!isConfigured) return STAFF;
+  // A COPY, exactly as fetchMembers returns one. Handing the fixture array
+  // back by reference means a screen that removes a row calls setState with
+  // the identical object React is already holding, and React bails out of the
+  // re-render -- the row leaves the store and stays on the screen (RC-008).
+  if (!isConfigured) return [...STAFF];
 
   const { data, error } = await supabase.from('app_users')
     .select('id, name, phone_e164, role_label, is_active, pin_set_at, last_login_at, created_at')
@@ -1244,6 +1367,30 @@ export async function fetchStaff(): Promise<Staff[]> {
       pinResetRequested: asked.has(u.id as string),
     };
   });
+}
+
+/**
+ * Removing a staff member.
+ *
+ * The write itself is the Edge Function (`staffDelete` in ./api) -- deleted_at
+ * is one of the columns `guard_app_users()` refuses from PostgREST, so there
+ * is no client path to it and there is not meant to be one. This wrapper
+ * exists for the same reason `deleteMember` does: the fixtures are a store
+ * too, and a row that leaves the screen but not the list is the lie RC-008
+ * was about.
+ *
+ * Idempotent on both sides -- a second tap on a row already gone reports the
+ * removal rather than an error.
+ */
+export async function deleteStaff(id: string): Promise<{ name: string | null }> {
+  if (!isConfigured) {
+    const at = STAFF.findIndex(s => s.id === id);
+    if (at < 0) return { name: null };
+    const [gone] = STAFF.splice(at, 1);
+    return { name: gone.name };
+  }
+  const { name } = await staffDelete(id);
+  return { name };
 }
 
 // -------------------------------------------------------------------- audit
@@ -1401,6 +1548,26 @@ export async function fetchAudit(period?: Period | null): Promise<AuditEntry[]> 
     for (const c of r.changes ?? []) { collect(c.old); collect(c.new); }
   }
   const { names, branchOf } = await resolveContext([...ids]);
+
+  /* THE NAMES NO TABLE CAN STILL ANSWER FOR.
+   *
+   * `resolveContext` asks the tables what each id is called, which works for
+   * every id except the ones this screen most needs: a member, course or
+   * branch that was deleted for good has no row left to ask. The log knows the
+   * answer anyway -- purge_member (0051), purge_course (0047) and the purges
+   * in 0053-0055 each record the name in metadata BEFORE deleting -- so the
+   * log's own record is the fallback, and it is filled in here rather than in
+   * the screen because it names her on every OTHER row in the batch too: the
+   * alias, the address and the enrolment entries that point at the same id.
+   *
+   * `set` only where nothing was found. A live row always wins: an id that
+   * still resolves is the present truth, and a stale metadata name must never
+   * override it. */
+  for (const r of rows) {
+    if (!isRemoval(r.action) || !r.entity_id || names.has(r.entity_id)) continue;
+    const recorded = subjectFromMeta(r.metadata ?? undefined);
+    if (recorded) names.set(r.entity_id, recorded);
+  }
 
   /** A recorded value, with any identifier in it swapped for the name it
    *  points at. An identifier that names nothing becomes null — the screen
@@ -2796,6 +2963,156 @@ export async function deleteMember(id: string): Promise<MemberDeletion> {
     messagesRemoved: Number(r.messages_removed ?? 0),
     alreadyDeleted: Boolean(r.already_deleted),
   };
+}
+
+/* -------------------------------------------------- undoing a day's register
+ *
+ * The counterpart commit_csv_import never had. See 0056 for why the day goes
+ * back to awaiting by DERIVATION -- rows cleared, session returned to
+ * `scheduled`, the day's imports moved to `reverted` so the same export can be
+ * uploaded again -- and why the delete offer is driven by the REGISTER rather
+ * than by the roster.
+ */
+export type ResetDeletable = {
+  member_id: string;
+  name: string;
+  has_email: boolean;
+  other_days: number;
+};
+
+export type ResetPreviewResult = {
+  marks: number;
+  members: number;
+  /** of those, the ones WITH an address -- the members a reset only un-marks */
+  keeping: number;
+  deletable: ResetDeletable[];
+};
+
+/**
+ * 0056 may not be applied yet. PostgREST answers a missing function with
+ * PGRST202 and Postgres with 42883, and both arrive as a sentence about a
+ * schema cache -- which tells the person nothing about what to do and reads
+ * as a fault of theirs. Naming it is the honest answer, and it is a different
+ * fact from "the write was refused". The same treatment setAttendance gives
+ * 0035, for the same reason.
+ */
+function missingReset(error: { code?: string } | null): boolean {
+  const code = error?.code ?? '';
+  return code === 'PGRST202' || code === '42883';
+}
+
+export async function attendanceResetPreview(
+  courseId: string, dayIso: string,
+): Promise<ResetPreviewResult> {
+  if (!isConfigured) {
+    // Offline the fixture IS the store, and the same derivation the screen
+    // uses answers here -- a second rule in this file is how the offline mode
+    // starts telling a different story from the live one.
+    const rows = attendanceFixture(dayIso, dayIso)
+      .filter(r => r.course_id === courseId && r.date === dayIso);
+    const seen = new Map<string, ResetDeletable>();
+    for (const r of rows) {
+      if (seen.has(r.member_id)) continue;
+      const member = MEMBERS.find(m => m.id === r.member_id);
+      seen.set(r.member_id, {
+        member_id: r.member_id,
+        name: r.member,
+        has_email: Boolean(member && primaryEmail(member)),
+        // The fixture holds no history beyond what the generator makes, so
+        // the honest offline answer is zero rather than an invented count.
+        other_days: 0,
+      });
+    }
+    const members = [...seen.values()];
+    return {
+      marks: rows.length,
+      members: members.length,
+      keeping: members.filter(m => m.has_email).length,
+      deletable: members.filter(m => !m.has_email)
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    };
+  }
+
+  const { data, error } = await supabase.rpc('attendance_reset_preview', {
+    p_course_id: courseId, p_session_date: dayIso,
+  });
+  if (error) {
+    console.error('attendanceResetPreview:', error.message);
+    if (missingReset(error)) {
+      throw new Error('The academy database cannot reset a register yet — '
+        + 'migration 0056 has not been applied. Nothing has been changed.');
+    }
+    throw new Error(`${personReadable(error.message, 'What this reset would clear could not be counted')}. Nothing has been changed.`);
+  }
+  const r = (data ?? {}) as Record<string, unknown>;
+  return {
+    marks: Number(r.marks ?? 0),
+    members: Number(r.members ?? 0),
+    keeping: Number(r.keeping ?? 0),
+    deletable: ((r.deletable ?? []) as Record<string, unknown>[]).map(d => ({
+      member_id: String(d.member_id ?? ''),
+      name: String(d.name ?? '—'),
+      has_email: Boolean(d.has_email),
+      other_days: Number(d.other_days ?? 0),
+    })),
+  };
+}
+
+/**
+ * Clear one day of one course, and hard-delete whichever addressless members
+ * the operator ticked.
+ *
+ * `deleteMemberIds` is a REQUEST, not an instruction: 0056 intersects it with
+ * the members that day's register actually marks who have no address, so an
+ * id that is neither is ignored rather than obeyed. The screen never sends
+ * one; the intersection is what stops this being a delete-any-member endpoint
+ * if anything else ever calls it.
+ */
+export async function resetDayAttendance(
+  courseId: string, dayIso: string, deleteMemberIds: string[] = [],
+): Promise<{ cleared: number; deleted: number }> {
+  if (!isConfigured) {
+    const before = attendanceFixture(dayIso, dayIso)
+      .filter(r => r.course_id === courseId && r.date === dayIso).length;
+    resetFixtureDay(courseId, dayIso);
+    let deleted = 0;
+    for (const id of deleteMemberIds) {
+      const at = MEMBERS.findIndex(m => m.id === id);
+      if (at < 0) continue;
+      MEMBERS.splice(at, 1);
+      deleted += 1;
+    }
+    attendanceChanged();
+    membersChanged();
+    return { cleared: before, deleted };
+  }
+
+  const { data, error } = await supabase.rpc('reset_day_attendance', {
+    p_course_id: courseId,
+    p_session_date: dayIso,
+    p_delete_member_ids: deleteMemberIds,
+  });
+  if (error) {
+    console.error('resetDayAttendance:', error.message);
+    if (missingReset(error)) {
+      throw new Error('The academy database cannot reset a register yet — '
+        + 'migration 0056 has not been applied. Nothing has been cleared.');
+    }
+    if (/not writable/i.test(error.message)) {
+      throw new Error('The register could not be reset — the subscription has to be active. Nothing has been cleared.');
+    }
+    throw new Error(personReadable(error.message, 'The register could not be reset'));
+  }
+
+  // Both, and for the reason attendanceImported announces both: the register
+  // moved AND the per-member figures derived from it did. A day strip that
+  // went back to awaiting beside a Missed count that still counts the marks
+  // it cleared is two answers to one question on one screen.
+  attendanceChanged();
+  membersChanged();
+
+  const r = (data ?? {}) as Record<string, unknown>;
+  return { cleared: Number(r.cleared ?? 0), deleted: Number(r.deleted ?? 0) };
 }
 
 /* ------------------------------------------------ marking attendance by hand

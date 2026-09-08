@@ -1,4 +1,7 @@
-import { useMemo, useRef, useState } from 'react';
+// `Fragment` is imported as a VALUE, not for tidiness: the filter row is
+// pushed into the page scroller's children list keyed but UNWRAPPED, and a
+// plain View around it would put its open panel back behind the table.
+import { Fragment, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, ScrollView, TextInput } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Muted, Label, Skeleton, EmptyState, ErrorState } from '../src/components/ui';
@@ -665,12 +668,32 @@ function AuditBody() {
               +{r.hiddenCount} more {r.hiddenCount === 1 ? 'field' : 'fields'} recorded, not shown
             </Text>
           ) : null}
+
+          {/* WHAT WENT WITH IT. A permanent deletion records no changed
+              fields — it writes an empty list and then removes the row — so
+              this cell read "No field values recorded" about the most
+              destructive act the app offers. The counts were in the entry all
+              along: what was attached to her, how many days' figures moved,
+              and, for a purge run by a migration, who ordered it. Capped at
+              four lines because a purge note runs to a paragraph and the whole
+              of it is still reachable through the search box. */}
+          {l.last && r.detail ? (
+            <Text numberOfLines={4} style={{
+              marginLeft: 21, marginTop: 5, fontSize: 10.5, lineHeight: 15, color: theme.dim,
+            }}>{r.detail}</Text>
+          ) : null}
         </View>
 
-        {/* "Nothing before" is a creation; "cleared" is a value taken away.
-            Both are words, so the distinction survives a greyscale screen. */}
+        {/* "Nothing before" is a creation; "cleared" is a value taken away;
+            "no longer on record" is the record itself being gone. All three
+            are words, so the distinction survives a greyscale screen — and
+            the third is a different fact from the second, which is why a
+            deletion may not borrow "cleared": a cleared field leaves a row
+            behind, and this does not. */}
         <View style={cell(1)}>{value(l.from, l.label ? 'nothing before' : '—', false)}</View>
-        <View style={cell(2)}>{value(l.to, l.label ? 'cleared' : '—', true)}</View>
+        <View style={cell(2)}>
+          {value(l.to, l.label ? (r.removal ? 'no longer on record' : 'cleared') : '—', true)}
+        </View>
 
         <View style={cell(3)}>
           {l.first ? (
@@ -698,53 +721,79 @@ function AuditBody() {
     );
   };
 
+  /**
+   * The two filters that narrow before the search does. They open in place,
+   * under their own fields, so the list they are about stays in view while the
+   * choice is made (CP-014).
+   *
+   * IT IS ITS OWN CHILD OF THE PAGE SCROLLER, AND THAT IS THE FIX.
+   * react-native-web gives every `<View>` `position: relative; z-index: 0`, so
+   * every View opens a stacking context. `DropdownRow` lifts itself to
+   * `zIndex: 40` while a panel is out — but a lift only ranks a node against
+   * its own SIBLINGS, so any plain View wrapped around it puts the panel back
+   * at 0 and nothing about the code looks wrong. This row used to sit inside
+   * two of them, one grouping it with the search box and one holding a margin,
+   * and the open panel was therefore painted underneath the frozen column
+   * header (which the scroller itself lifts to `zIndex: 10`) and underneath the
+   * table below it. The filters opened, applied and closed correctly the whole
+   * time; they were simply behind the log (RC-035).
+   *
+   * So it is pushed on its own, exactly as Overview, Attendance and Reports
+   * mount theirs. Nothing here carries a z-index of its own — a number tuned to
+   * out-rank the header would be the next thing to go wrong the day the header
+   * changes.
+   */
+  const filters = (
+    <DropdownRow open={open !== null} style={{ marginBottom: SPACE.sm }}
+      dismiss={{ onPress: () => setOpen(null), testID: 'audit-filter-dismiss' }}>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.sm }}>
+        <DropdownField testID="audit-filter-period"
+          label="Dates" value={choice ? periodFieldValue(choice) : 'Any date'}
+          open={open === 'period'} highlight={choice !== null}
+          onPress={() => setOpen(o => (o === 'period' ? null : 'period'))}
+          style={{ flexBasis: '48%', flexGrow: 1 }} />
+        <DropdownField testID="audit-filter-branch"
+          label="Branch" value={branch}
+          open={open === 'branch'} highlight={branch !== ALL_BRANCHES}
+          onPress={() => setOpen(o => (o === 'branch' ? null : 'branch'))}
+          style={{ flexBasis: '48%', flexGrow: 1 }} />
+      </View>
+
+      {open === 'period' ? (
+        <DropdownPanel maxHeight={470}>
+          {/* "Any date" sits ABOVE the shared panel rather than inside it.
+              Adding an item to PeriodPanel itself would give every other
+              screen a range option none of them wants, and this screen is
+              the only one whose honest default is no range at all. */}
+          <DropdownItem testID="audit-period-any"
+            label="Any date" meta="Every change the log holds"
+            selected={choice === null}
+            onPress={() => { setChoice(null); setOpen(null); }} />
+          {/* `null` means none of the presets is the choice — "Any date"
+              above is. Passing a stand-in preset here made the panel mark
+              that preset Selected beside an already-Selected "Any date":
+              two radios claiming to be the answer, announced as two. */}
+          <PeriodPanel testID="audit-period"
+            choice={choice}
+            onChange={setChoice} onDone={() => setOpen(null)} />
+        </DropdownPanel>
+      ) : null}
+      {open === 'branch' ? (
+        <DropdownPanel>
+          <DropdownList testID="audit-branch"
+            options={branchOptions.map(label => ({ label }))} value={branch}
+            onSelect={l => { setBranch(l); setOpen(null); }} />
+        </DropdownPanel>
+      ) : null}
+    </DropdownRow>
+  );
+
+  /* Everything that does NOT float. Kept apart from the filter row above so
+   * that row can be its own child of the page scroller — see the note on
+   * `filters`; a View grouping the two of them is precisely what trapped the
+   * open panel underneath the table. */
   const controls = (
     <View style={{ marginBottom: SPACE.md }}>
-      {/* The two filters that narrow before the search does. They open in
-          place, under their own fields, so the list they are about stays in
-          view while the choice is made (CP-014). */}
-      <DropdownRow open={open !== null} style={{ marginBottom: SPACE.sm }}>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.sm }}>
-          <DropdownField testID="audit-filter-period"
-            label="Dates" value={choice ? periodFieldValue(choice) : 'Any date'}
-            open={open === 'period'} highlight={choice !== null}
-            onPress={() => setOpen(o => (o === 'period' ? null : 'period'))}
-            style={{ flexBasis: '48%', flexGrow: 1 }} />
-          <DropdownField testID="audit-filter-branch"
-            label="Branch" value={branch}
-            open={open === 'branch'} highlight={branch !== ALL_BRANCHES}
-            onPress={() => setOpen(o => (o === 'branch' ? null : 'branch'))}
-            style={{ flexBasis: '48%', flexGrow: 1 }} />
-        </View>
-
-        {open === 'period' ? (
-          <DropdownPanel maxHeight={470}>
-            {/* "Any date" sits ABOVE the shared panel rather than inside it.
-                Adding an item to PeriodPanel itself would give every other
-                screen a range option none of them wants, and this screen is
-                the only one whose honest default is no range at all. */}
-            <DropdownItem testID="audit-period-any"
-              label="Any date" meta="Every change the log holds"
-              selected={choice === null}
-              onPress={() => { setChoice(null); setOpen(null); }} />
-            {/* `null` means none of the presets is the choice — "Any date"
-                above is. Passing a stand-in preset here made the panel mark
-                that preset Selected beside an already-Selected "Any date":
-                two radios claiming to be the answer, announced as two. */}
-            <PeriodPanel testID="audit-period"
-              choice={choice}
-              onChange={setChoice} onDone={() => setOpen(null)} />
-          </DropdownPanel>
-        ) : null}
-        {open === 'branch' ? (
-          <DropdownPanel>
-            <DropdownList testID="audit-branch"
-              options={branchOptions.map(label => ({ label }))} value={branch}
-              onSelect={l => { setBranch(l); setOpen(null); }} />
-          </DropdownPanel>
-        ) : null}
-      </DropdownRow>
-
       <View style={{
         flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
         height: 46, borderRadius: RADIUS.md, backgroundColor: theme.surface,
@@ -856,7 +905,13 @@ function AuditBody() {
       // The filters render even when they have narrowed the list to nothing.
       // A filter that disappears with its own rows leaves somebody looking at
       // an empty month with no way to ask for another one.
-      children.push(<View key="controls">{controls}</View>);
+      //
+      // TWO children, not one wrapped in a View. The filter row's open panel
+      // is absolutely positioned and ranks itself with a z-index, which only
+      // counts against its own siblings — wrapping it put it behind the table
+      // (see the note on `filters`).
+      children.push(<Fragment key="filters">{filters}</Fragment>);
+      children.push(<Fragment key="controls">{controls}</Fragment>);
 
       if (rows.length === 0) {
         children.push(
@@ -918,8 +973,10 @@ function AuditBody() {
           on the row. Remarks are your own words about a change: they sit in the last
           column, beside the change they are about, and cannot be edited or deleted.
           “Nothing before” is a record being created, “cleared” is a value taken away, and a
-          dash means the record a value pointed at is no longer there. On a narrow screen the
-          table scrolls sideways and the header follows it.
+          dash means the record a value pointed at is no longer there. A permanent deletion
+          reads “no longer on record”: it names who or what was removed, from the name the
+          deletion itself wrote down before the row went, and says what went with her. On a
+          narrow screen the table scrolls sideways and the header follows it.
           Only the fifty most recent changes are shown{range ? ' for the dates chosen' : ''}.
           {branch === ALL_BRANCHES ? '' : ` A change is matched to ${branch} by what it points at`
             + ' today, and changes that belong to no single branch — a setting, a message'

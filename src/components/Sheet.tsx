@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, Pressable, Modal, ScrollView, TextInput, Platform } from 'react-native';
+import { View, Text, Pressable, Modal, ScrollView, TextInput, Platform, type ViewStyle } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
 import { RADIUS, SPACE, TAP_MIN } from '../theme/tokens';
 import { Icon } from './Icon';
@@ -7,6 +7,8 @@ import { AnchoredPanel } from './AnchoredPanel';
 import type { Anchor } from './datePanel';
 import { pickerMatches, pickerKey } from './pickerSearch';
 import { blurOpener, useAutoFocus } from './openingFocus';
+import { MenuRow } from './Dropdown';
+import { confirmButtonStyles, isFilled, type ConfirmEmphasis, type ConfirmButtonStyle } from './confirmEmphasis';
 
 /**
  * The canvas' bottom sheet: scrim, rounded top, grab handle. Dismissing by
@@ -131,10 +133,19 @@ export type PickerOption = {
 };
 
 /**
- * The search box, the rows, the "Add …" row and the nothing-matches note are
- * ONE set of pieces shared by the sheet picker and the anchored picker
- * below, so a row looks the same whichever host draws it. The host owns
- * where the pieces sit; the pieces own how a choice looks.
+ * The search box, the "Add …" row and the nothing-matches note are ONE set of
+ * pieces shared by the sheet picker and the anchored picker below. The host
+ * owns where the pieces sit; the pieces own how each one looks.
+ *
+ * The ROW is the one piece the two hosts no longer share, since 08-Sep-2026
+ * (requests/2026-09-08-form-dropdown-list-ui.md). A picker that fills a FORM
+ * FIELD draws `MenuRow` — a flat row, a hairline, the chosen one tinted and
+ * ticked — because that is what the requester asked every form's dropdown to
+ * look like. `PickerChoice` below is what the merge sheet keeps: it is opened
+ * from a list row rather than a form field, and its tap STAGES a choice for a
+ * second confirming tap rather than settling one, so its rows stay the cards
+ * they shipped as. Same reason the register gives for that sheet not moving
+ * under a field at all.
  */
 
 /** What the query does to the options. */
@@ -180,8 +191,9 @@ function PickerSearch({ query, onChange, placeholder, testID }:
   );
 }
 
-/** One choice. The chosen row says "Selected" as well as showing a filled
- *  radio, so the state is not carried by the glyph alone (guardrail 3). */
+/** One choice in the MERGE sheet — the last host that draws these cards. The
+ *  chosen row says "Selected" as well as showing a filled radio, so the state
+ *  is not carried by the glyph alone (guardrail 3). */
 function PickerChoice({ option, on, onPress, testID }:
   { option: PickerOption; on: boolean; onPress: () => void; testID?: string }) {
   const { theme } = useTheme();
@@ -418,23 +430,46 @@ export function AnchoredPicker({ open, onClose, label, placeholder, options, val
 
   return (
     <AnchoredPanel open={open} onClose={close} label={label} anchor={anchor} testID={testID}
+      /* The rows reach the panel's edges, so the panel keeps no padding of
+         its own and the two pieces that are NOT rows take it back below. */
+      bleed
       header={searchable ? (
-        <View style={{ marginBottom: SPACE.sm }}>
+        <View style={{ padding: SPACE.md, paddingBottom: SPACE.sm }}>
           <PickerSearch query={query} onChange={setQuery} placeholder={placeholder}
             testID={`${testID}-search`} />
         </View>
       ) : null}>
-      <View style={{ gap: 7 }} accessibilityRole="radiogroup" accessibilityLabel={label}>
+      <View accessibilityRole="radiogroup" accessibilityLabel={label}>
+        {/* Flat rows with a hairline between them, the chosen one tinted and
+            ticked -- `MenuRow`, shared with the dropdowns the course and
+            offering forms open, so a form field's list looks the same
+            whichever of the two components draws it
+            (requests/2026-09-08-form-dropdown-list-ui.md).
+
+            Not the merge picker's rows: `SearchPicker` is opened from a list
+            row rather than a form field, stages a choice instead of taking
+            one, and keeps the card rows it shipped with. */}
         {results.map((o, i) => (
-          <PickerChoice key={pickerKey(o, i)} option={o} on={o.label === value}
+          <MenuRow key={pickerKey(o, i)} label={o.label} sub={o.sub} meta={o.meta}
+            selected={o.label === value}
+            /* no hairline above the first row, and none above a row that
+               follows the search box -- the box already ends in an edge */
+            divided={i > 0}
             testID={`${testID}-option-${slug(o.label)}`}
             onPress={() => { setQuery(''); onSelect(o.value ?? o.label); }} />
         ))}
+        {/* Unchanged, both of them, and given back the inset the panel gave
+            up: the "Add …" row is a bordered card and an edge-to-edge card
+            is not one. */}
         {canAdd ? (
-          <PickerAddRow label={query.trim()} meta={addMeta} testID={`${testID}-add`}
-            onPress={() => { const v = query.trim(); setQuery(''); onAdd!(v); }} />
+          <View style={{ padding: SPACE.md }}>
+            <PickerAddRow label={query.trim()} meta={addMeta} testID={`${testID}-add`}
+              onPress={() => { const v = query.trim(); setQuery(''); onAdd!(v); }} />
+          </View>
         ) : null}
-        {empty ? <PickerEmpty note={emptyNote} /> : null}
+        {empty ? (
+          <View style={{ paddingHorizontal: SPACE.md }}><PickerEmpty note={emptyNote} /></View>
+        ) : null}
       </View>
     </AnchoredPanel>
   );
@@ -446,12 +481,31 @@ export function AnchoredPicker({ open, onClose, label, placeholder, options, val
  * that restates the count AND the exclusions before anything leaves. "Not
  * yet" is the canvas' own wording for the way out.
  */
-export function ConfirmDialog({ open, onClose, title, body, cancelLabel = 'Not yet', confirmLabel, onConfirm }:
+export function ConfirmDialog({ open, onClose, title, body, cancelLabel = 'Not yet', confirmLabel, onConfirm, emphasis = 'confirm' }:
   {
     open: boolean; onClose: () => void; title: string; body: string;
     cancelLabel?: string; confirmLabel: string; onConfirm: () => void;
+    /** Which answer is the filled one. Defaults to the confirm button, which
+     *  is what every dialog here did before the member deletion asked for the
+     *  other; see src/components/confirmEmphasis.ts. */
+    emphasis?: ConfirmEmphasis;
   }) {
   const { theme } = useTheme();
+  const painted = confirmButtonStyles(emphasis);
+
+  /** The fill and the edge for one of the two buttons. A `safe` fill sits on
+   *  a card it barely out-contrasts in the dark theme, so it is bordered:
+   *  the button's edge is drawn rather than left to the fill to imply. */
+  const buttonFace = (style: ConfirmButtonStyle): ViewStyle =>
+    style === 'accent' ? { backgroundColor: theme.accent }
+    : style === 'safe' ? { backgroundColor: theme.safeFill, borderWidth: 1, borderColor: theme.lineStrong }
+    : { borderWidth: 1, borderColor: theme.lineStrong };
+
+  const buttonInk = (style: ConfirmButtonStyle): string =>
+    style === 'accent' ? theme.onAccent
+    : style === 'safe' ? theme.onSafeFill
+    : style === 'outline-danger' ? theme.danger
+    : theme.fgStrong;
 
   // No field of its own, so there is never a caret inside to keep -- but a
   // dialog that is SHUT must not blur the form field behind it either.
@@ -487,17 +541,25 @@ export function ConfirmDialog({ open, onClose, title, body, cancelLabel = 'Not y
               style={({ pressed }) => ({
                 flex: 1, minHeight: TAP_MIN + 6, borderRadius: RADIUS.md,
                 alignItems: 'center', justifyContent: 'center',
-                borderWidth: 1, borderColor: theme.lineStrong, opacity: pressed ? 0.7 : 1,
+                ...buttonFace(painted.cancel),
+                opacity: pressed ? (isFilled(painted.cancel) ? 0.85 : 0.7) : 1,
               })}>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: theme.fgStrong }}>{cancelLabel}</Text>
+              <Text style={{
+                fontSize: 14, fontWeight: isFilled(painted.cancel) ? '800' : '700',
+                color: buttonInk(painted.cancel),
+              }}>{cancelLabel}</Text>
             </Pressable>
             <Pressable onPress={onConfirm} accessibilityRole="button"
               style={({ pressed }) => ({
                 flex: 1, minHeight: TAP_MIN + 6, borderRadius: RADIUS.md,
                 alignItems: 'center', justifyContent: 'center',
-                backgroundColor: theme.accent, opacity: pressed ? 0.85 : 1,
+                ...buttonFace(painted.confirm),
+                opacity: pressed ? (isFilled(painted.confirm) ? 0.85 : 0.7) : 1,
               })}>
-              <Text style={{ fontSize: 14, fontWeight: '800', color: theme.onAccent }}>{confirmLabel}</Text>
+              <Text style={{
+                fontSize: 14, fontWeight: isFilled(painted.confirm) ? '800' : '700',
+                color: buttonInk(painted.confirm),
+              }}>{confirmLabel}</Text>
             </Pressable>
           </View>
         </View>

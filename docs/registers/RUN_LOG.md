@@ -66,3 +66,4 @@ should start by reading this table rather than by guessing which part felt slow.
 
 | ID | Action | Type | Scale | Started | Ended | Total | Stages | Gate | Verdict | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
+| R-001 | In dropdown with in the forms such as add edit forms of course member and other form within which drop down is present apply dropdown ui as shown in atatched image only inside forms and dialogs | CHANGE | scoped | 2026-09-08 14:13 | 2026-09-08 14:24 | 11m | - | - | - | - |

@@ -76,3 +76,43 @@ export function uploadOffer(dayIso: string, todayIso: string): UploadOffer {
 export function offersUpload(dayIso: string, todayIso: string): boolean {
   return uploadOffer(dayIso, todayIso).offered;
 }
+
+/**
+ * A FILE FOR A DAY THAT HAS NOT HAPPENED, refused before anything runs.
+ *
+ * The strip's button is already withheld from a future day (`arrived`, above),
+ * but that only guards the way IN. The day a file lands on has never come from
+ * the screen -- it comes from the Meet `Created on` line -- so a file dated
+ * tomorrow, opened from anywhere, imported without comment and
+ * `commit_csv_import` created the future session to hold it.
+ *
+ * The requester's own boundary: *"If today is 8 sept user can upload for today
+ * if the upload files date is 9 sept then block show message"*. TODAY IS
+ * ALLOWED; tomorrow is not. That is exactly `arrived`, which is why this reads
+ * the same predicate rather than a second copy of the comparison -- one rule,
+ * one place, whether it is a button or a file being judged.
+ *
+ * `null` means import it and say nothing, and an UNREADABLE day answers null
+ * on purpose: a file with no usable date is already refused by the screen, for
+ * a reason it can state, and inventing a second refusal here would tell her
+ * the wrong thing about it.
+ *
+ * A CAUTION, AND IT SAYS THE WORDS. Requester, on seeing the first version in
+ * the red failure panel: *"for future date add a caution simple and message
+ * should include as its a future date"*. So it is amber and not red on the
+ * screen -- nothing has gone wrong, she picked a file too early -- and the
+ * sentence names the reason in her own words rather than describing it. It
+ * also lost a clause: naming TODAY as well as the file's day was a second date
+ * to read in a message whose whole content is "not yet".
+ */
+export function futureFileRefusal(fileDay: string, todayIso: string, ctx: {
+  /** the file she just picked, named as she will recognise it */
+  fileName: string;
+  /** '2026-09-09' -> 'Wed 9 Sep', the screen's own way of writing a day */
+  label: (dayIso: string) => string;
+}): string | null {
+  if (!ISO_DATE.test(fileDay ?? '') || !ISO_DATE.test(todayIso ?? '')) return null;
+  if (uploadOffer(fileDay, todayIso).arrived) return null;
+  return `${ctx.fileName} is for ${ctx.label(fileDay)} — a future date. `
+    + `Attendance can only be uploaded once the class has run.`;
+}

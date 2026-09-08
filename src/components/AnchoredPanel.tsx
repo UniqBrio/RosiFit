@@ -40,13 +40,24 @@ import { RADIUS, SPACE } from '../theme/tokens';
  * the panel is never opened off the bottom; the panel's real height is its
  * content's, capped at that.
  */
-export function AnchoredPanel({ open, onClose, label, anchor, testID, width, height = 340, header, children }:
+export function AnchoredPanel({ open, onClose, label, anchor, testID, width, height = 340, header, bleed = false, children }:
   { open: boolean; onClose: () => void; label: string; anchor: Anchor | null;
     testID: string; width?: number; height?: number;
     /** Pinned ABOVE the scroller, never inside it: a search box that
      *  scrolled away with the rows it narrows would be gone exactly when
      *  the list is long enough to need it. */
     header?: React.ReactNode;
+    /**
+     * The panel gives up its padding, and clips to its own radius.
+     *
+     * For the one content that reaches the panel's EDGES: the flat menu rows
+     * a form field's dropdown draws (`MenuRow`), whose tint and whose
+     * hairlines are the full width of the panel. Everything else in such a
+     * panel — the search box, the "Add …" row, the nothing-matches note —
+     * takes the inset back for itself, so those pieces are unchanged.
+     * Without the clip a tinted first row squares off the rounded corner.
+     */
+    bleed?: boolean;
     children: React.ReactNode }) {
   const { theme } = useTheme();
   const { width: winW, height: winH } = useWindowDimensions();
@@ -107,7 +118,8 @@ export function AnchoredPanel({ open, onClose, label, anchor, testID, width, hei
             width: w, maxHeight: h, ...(placed ?? {}),
             backgroundColor: theme.surface, borderRadius: RADIUS.lg,
             borderWidth: 1, borderColor: theme.lineStrong,
-            padding: SPACE.md, elevation: 8,
+            ...(bleed ? { padding: 0, overflow: 'hidden' as const } : { padding: SPACE.md }),
+            elevation: 8,
           }}>
           {header}
           <ScrollView style={{ flexShrink: 1 }} keyboardShouldPersistTaps="handled">

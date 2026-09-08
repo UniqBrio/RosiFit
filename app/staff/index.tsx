@@ -3,14 +3,16 @@ import { View, Text, Pressable } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Screen, Muted, Button, Skeleton, ErrorState, EmptyState } from '../../src/components/ui';
 import { Icon } from '../../src/components/Icon';
-import { Sheet } from '../../src/components/Sheet';
+import { Sheet, ConfirmDialog } from '../../src/components/Sheet';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface, type StatusKey } from '../../src/theme/tokens';
 import { STAFF_ACCESS, maskPhone, initials, AVATAR_TINTS, type Staff } from '../../src/data/mock';
 import { useStaff } from '../../src/data/hooks';
+import { useIdentity } from '../../src/data/session';
 import { isConfigured } from '../../src/lib/supabase';
 import { pinIssue, pinReset, staffReenable } from '../../src/data/api';
+import { deleteStaff } from '../../src/data/repository';
 import { setIssuedPin } from '../../src/data/pending';
 import { ShellScreen } from '../../src/components/AppShell';
 
@@ -33,6 +35,13 @@ function StaffListBody() {
   const [target, setTarget] = useState<Staff | null>(null);
   const [signOutEverywhere, setSignOutEverywhere] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState<Staff | null>(null);
+  const [removing, setRemoving] = useState(false);
+  // Her own row carries no bin. The server refuses it as well (an academy
+  // whose only administrator can delete herself is an academy nobody can
+  // administer), but a control that is only ever refused is a control that
+  // should not have been drawn.
+  const { identity } = useIdentity();
 
   const staff = useMemo(() => data ?? [], [data]);
   const people = useMemo(
@@ -99,6 +108,28 @@ function StaffListBody() {
     }
   };
 
+  /**
+   * The bin, behind a question that cannot be un-asked.
+   *
+   * The removal is a soft delete server-side and the confirmation says what
+   * that means rather than promising a purge: her PIN dies, her row leaves
+   * this list, and the registers she took stay attributed to her because
+   * every one of them points at her id. See supabase/functions/pin-issue.
+   */
+  const remove = async (s: Staff) => {
+    setConfirmRemove(null);
+    setRemoving(true);
+    try {
+      await deleteStaff(s.id);
+      flash(`${s.name.split(' ')[0]} removed · her PIN no longer works`);
+      retry();
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'She could not be removed. Nothing has been changed.', 'warn');
+    } finally {
+      setRemoving(false);
+    }
+  };
+
   if (state === 'loading') return <Screen><Skeleton lines={4} /></Screen>;
   if (state === 'error') {
     return (
@@ -147,6 +178,24 @@ function StaffListBody() {
                   {`${s.role} · ${maskPhone(s.phone)}`}
                 </Text>
               </View>
+              {/* The D the roster has had since 0038, on the list where a
+                  person who has left the academy is actually noticed. Beside
+                  the name rather than beside the access action, so "remove
+                  her" is never one row away from "give her a PIN". */}
+              {identity?.id !== s.id ? (
+                <Pressable testID={`staff-remove-${s.id}`}
+                  onPress={() => setConfirmRemove(s)}
+                  accessibilityRole="button" accessibilityLabel={`Remove ${s.name}`}
+                  style={({ pressed }) => ({
+                    width: 40, height: 40, borderRadius: 12,
+                    alignItems: 'center', justifyContent: 'center',
+                    backgroundColor: theme.control, borderWidth: 1, borderColor: theme.line,
+                    opacity: pressed ? 0.7 : 1,
+                  })}>
+                  <Icon name="delete" size={18}
+                    color={theme.isDark ? STATUS.absent.fgDark : STATUS.absent.fgLight} />
+                </Pressable>
+              ) : null}
             </View>
 
             {/* the state carries its own word AND its own icon, so neither the
@@ -188,7 +237,10 @@ function StaffListBody() {
         );
       })}
 
-      <Button label="Add staff" onPress={() => router.push('/staff/add')} />
+      {/* Add staff used to sit HERE, below every card, so on an academy with
+          a dozen people it was a scroll away from the screen that owns it.
+          It is the action this screen owns, so it is now in the title row's
+          right-hand slot -- the same place Members keeps Add. */}
 
       {/* the canvas closes this list by saying why there is no "show PIN" */}
       <View style={{
@@ -239,6 +291,21 @@ function StaffListBody() {
             disabled={busy} style={{ flex: 1 }} />
         </View>
       </Sheet>
+
+      {/* It states what the removal DOES, including the half of it that is
+          not a removal: her history stays. A dialog that said "delete her"
+          and left her name on every register she took would be describing a
+          different act from the one it performs. */}
+      <ConfirmDialog
+        open={confirmRemove !== null}
+        onClose={() => setConfirmRemove(null)}
+        title={confirmRemove ? `Remove ${confirmRemove.name}?` : ''}
+        body={confirmRemove
+          ? `She leaves this list and her PIN stops working straight away — it cannot be given back, only replaced by adding her again. The registers she took and the changes she made stay in the records, still in her name. Her mobile number is freed for whoever replaces her.`
+          : ''}
+        cancelLabel="Cancel"
+        confirmLabel={removing ? 'Removing…' : 'Remove'}
+        onConfirm={() => { if (confirmRemove) void remove(confirmRemove); }} />
     </Screen>
   );
 }
@@ -251,7 +318,10 @@ function StaffListBody() {
 export default function StaffList() {
   const router = useRouter();
   return (
-    <ShellScreen title="Staff & access" subtitle="Who can sign in, and what each of them may do" onBack={() => router.back()}>
+    <ShellScreen title="Staff & access" subtitle="Who can sign in, and what each of them may do"
+      onBack={() => router.back()}
+      right={<Button label="Add staff" testID="staff-add"
+        onPress={() => router.push('/staff/add')} />}>
       <StaffListBody />
     </ShellScreen>
   );

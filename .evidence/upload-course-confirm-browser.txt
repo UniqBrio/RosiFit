@@ -1,0 +1,91 @@
+BROWSER — requests/2026-09-08-upload-course-confirm-and-result-trim.md
+08-Sep-2026. expo export (EXPO_NO_DOTENV=1, so isConfigured=false and the fixtures
+answer -- nothing reached the live project), served locally, driven with Playwright
+on the cached Chromium. Both themes, 430x900. DOM and composited contrast, no pixels.
+
+
+================ LIGHT THEME ================
+  OK   the pick card is reached
+
+[1] Browse files -> the course ask
+  OK   the course ask is drawn
+  OK   the OS file picker did NOT open first
+  [upload-course-confirm]  Uploading for Postnatal Core · Madurai Choose a Meet CSV next and it is imported into that course straight away — the day it covers comes from the file, never from this screen. Nothing has been written yet. No takes you back, where Change picks a different course. Yes, choose a file for Postnatal Core No, not this course
+  OK   it names the course in the title
+  OK   the title names course AND branch
+  OK   the yes carries the course
+  OK   the no is a no
+  OK   nothing has been written yet
+  contrast: 9/9 pass
+
+[2] No -> back to the pick card
+  OK   the ask is gone
+  OK   Browse files is there again
+
+[3] Yes -> a file dated tomorrow
+  [upload-failure]  meet_future.csv covers Wed 9 Sep, and that day has not happened yet. Attendance can only be uploaded for a class that has already run — Tue 8 Sep or earlier. Nothing was written.
+  OK   a future-dated file is refused
+  OK   the refusal names the file
+  OK   the refusal says the day has not happened
+  OK   the refusal says nothing was written
+  OK   no result screen was drawn
+  contrast: 15/15 pass
+
+[4] Yes -> a file dated two days ago
+  [upload-done-title] Imported · Postnatal Core · Madurai · Sun 6 Sep
+  OK   the result is drawn
+  OK   the heading carries Imported
+  OK   the heading carries the COURSE
+  OK   the heading still carries the DAY
+  OK   the "N marked present on the ... register." line is GONE
+  OK   the Done button is GONE
+  OK   Upload another file stays
+  OK   the two counts stay
+  OK   the × is still the way out
+  [upload-done]  Imported · Postnatal Core · Madurai · Sun 6 Sep  With email 1 On the register, and counted for follow-up.  No email 4 Marked present, listed under No email on the course.  What this file changed 5 names added to the register. 3 of them are new — a name the register did not know, added to this course with no email. If she is somebody you already have, “Add display name to existing member” on the course folds her in and carries her attendance across.  MAPPED TO THIS SESSION Meeting code gzj-yhru-ehp  Session date Sun 6 Sep  Started at 20:12:56  Course Postnatal Core · Madurai  Rows read 3  The meeting code and date come from the lines above the table in the Meet file — that is what says which session this is. The course and branch come from RosiFit, never from the file. Upload another file
+  contrast: 36/36 pass
+  OK   no page errors in this theme
+
+================ DARK THEME ================
+  OK   the pick card is reached
+
+[1] Browse files -> the course ask
+  OK   the course ask is drawn
+  OK   the OS file picker did NOT open first
+  [upload-course-confirm]  Uploading for Postnatal Core · Madurai Choose a Meet CSV next and it is imported into that course straight away — the day it covers comes from the file, never from this screen. Nothing has been written yet. No takes you back, where Change picks a different course. Yes, choose a file for Postnatal Core No, not this course
+  OK   it names the course in the title
+  OK   the title names course AND branch
+  OK   the yes carries the course
+  OK   the no is a no
+  OK   nothing has been written yet
+  contrast: 9/9 pass
+
+[2] No -> back to the pick card
+  OK   the ask is gone
+  OK   Browse files is there again
+
+[3] Yes -> a file dated tomorrow
+  [upload-failure]  meet_future.csv covers Wed 9 Sep, and that day has not happened yet. Attendance can only be uploaded for a class that has already run — Tue 8 Sep or earlier. Nothing was written.
+  OK   a future-dated file is refused
+  OK   the refusal names the file
+  OK   the refusal says the day has not happened
+  OK   the refusal says nothing was written
+  OK   no result screen was drawn
+  contrast: 15/15 pass
+
+[4] Yes -> a file dated two days ago
+  [upload-done-title] Imported · Postnatal Core · Madurai · Sun 6 Sep
+  OK   the result is drawn
+  OK   the heading carries Imported
+  OK   the heading carries the COURSE
+  OK   the heading still carries the DAY
+  OK   the "N marked present on the ... register." line is GONE
+  OK   the Done button is GONE
+  OK   Upload another file stays
+  OK   the two counts stay
+  OK   the × is still the way out
+  [upload-done]  Imported · Postnatal Core · Madurai · Sun 6 Sep  With email 1 On the register, and counted for follow-up.  No email 4 Marked present, listed under No email on the course.  What this file changed 5 names added to the register. 3 of them are new — a name the register did not know, added to this course with no email. If she is somebody you already have, “Add display name to existing member” on the course folds her in and carries her attendance across.  MAPPED TO THIS SESSION Meeting code gzj-yhru-ehp  Session date Sun 6 Sep  Started at 20:12:56  Course Postnatal Core · Madurai  Rows read 3  The meeting code and date come from the lines above the table in the Meet file — that is what says which session this is. The course and branch come from RosiFit, never from the file. Upload another file
+  contrast: 36/36 pass
+  OK   no page errors in this theme
+
+================ ALL CHECKS PASS ================

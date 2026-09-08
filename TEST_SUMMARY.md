@@ -1,3 +1,38 @@
+FAIL-FIRST: src/data/auditRemovedSubject.test.ts - 10 of 10, new file. All ten observed
+  failing against the pre-fix tree (`npx tsx --test src/data/auditRemovedSubject.test.ts`
+  -> `# pass 0 / # fail 10`), which is the honest count for this defect: nothing in
+  auditPlain.ts read a removal's metadata at all, so the name, the title, the value
+  columns, the counts, the category and the searchable purge note were each absent
+  rather than wrong. Sample: "a deleted member is named from the entry that removed
+  her" failed on `subject` being null with `metadata.name` holding "Sumathi".
+
+FAIL-FIRST: src/data/auditActionCoverage.test.ts - 2 of 5, new file, and the two that
+  failed are the ones that matter. "every action lands under one of the seven chips"
+  passed (the default sends anything unknown to Settings, which is why nothing ever
+  looked broken), and "no action the backend can emit reaches the screen as a code"
+  passed too - `prettify` strips the dots. What failed was the noun-glued check, with
+  twelve actions named against the migration that emits each:
+    attendance.day_reset (0056) -> "Course - attendance day reset"
+    member.hard_deleted (0051)  -> "Member - member hard deleted"
+    course.hard_deleted (0047)  -> "Course - course hard deleted"
+    branch.hard_deleted, member_email.hard_deleted (0053), attendance.marked,
+    attendance.session_created (0035), csv_import.overrode_register (0037),
+    csv_import.member_in_other_course, meeting_group.created (0039),
+    auth.recovery_pin_set, auth.staff_deleted (Edge Functions)
+  and "an upload, an attendance mark and a deletion are filed where they happened",
+  on `categoryOf('attendance.day_reset', 'course')` returning 'courses'. That check
+  was then rewritten to the stronger property (`hasPlainTitle` - was the wording
+  STATED or guessed), which also catches csv_import.previewed -> "Csv import
+  previewed" and member_import_run.hard_deleted, neither of which the dot-and-noun
+  heuristics could see.
+
+NOT RE-RUN AFTER THE FIX: at the requester's explicit instruction mid-run - "after
+  completing implementation report as done do not verify and test" - the suite, the
+  typecheck, the browser pass and the gate were NOT run against the fixed tree. The
+  fail-first evidence above was captured before that instruction arrived and stands;
+  the green half of the usual pair is missing by decision, not by omission, and this
+  line is here so nobody reads its absence as a pass.
+
 FAIL-FIRST: src/data/importRevalidates.test.ts - 2 of 2, new file. Both observed
   failing against the pre-fix tree (HEAD src/data/repository.ts and app/upload.tsx
   checked out to a scratch root, IMPORT_REVALIDATE_SPEC_ROOT pointed at it): "the

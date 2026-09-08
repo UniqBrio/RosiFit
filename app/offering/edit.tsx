@@ -4,7 +4,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Screen, Muted, Label, Button, Skeleton, ErrorState } from '../../src/components/ui';
 import { FormDialog } from '../../src/components/FormDialog';
 import { TimeField, DateField } from '../../src/components/DateTimePicker';
-import { DropdownRow, DropdownField, DropdownPanel, DropdownList } from '../../src/components/Dropdown';
+import { DropdownRow, DropdownField, DropdownPanel, DropdownMenuList } from '../../src/components/Dropdown';
 import { Icon } from '../../src/components/Icon';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
@@ -170,8 +170,8 @@ export default function OfferingEdit() {
             open={open} highlight={!!branchName}
             onPress={() => setOpen(o => !o)} testID="offering-branch" />
           {open ? (
-            <DropdownPanel>
-              <DropdownList
+            <DropdownPanel menu>
+              <DropdownMenuList
                 options={branches.map(b => ({ label: b.name }))}
                 value={branchName}
                 onSelect={label => {

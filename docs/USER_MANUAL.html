@@ -1,0 +1,1413 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="RosiFit user manual, prepared by UniqBrio for the academy owner and her team.">
+<title>RosiFit Academy Manual</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+/* ------------------------------------------------------------------ tokens
+   Palette taken from the app's own measured tokens (src/theme/tokens.ts):
+   RosiFit pink #D6157F with its light-theme tint #C81477 and dark tint
+   #F5A8CE, the deep plum header stops, and the eight status inks. The
+   neutrals carry a faint plum bias so they sit with the accent rather than
+   under it. */
+:root {
+  --ground:      #FBF7F9;
+  --surface:     #FFFFFF;
+  --surface-2:   #F5EEF2;
+  --ink:         #22161F;
+  --ink-soft:    #453542;
+  --muted:       #6B5563;
+  --line:        #E9DCE4;
+  --line-strong: #D6C3CF;
+  --accent:      #C81477;
+  --accent-soft: #FBEAF3;
+  --deep:        #5C0F63;
+  --deep-2:      #33073A;
+  --deep-ink:    #F3DDEE;
+
+  --ok:      #0F7551;
+  --ok-bg:   #E7F4EE;
+  --warn:    #7A5300;
+  --warn-bg: #FBF1DC;
+  --bad:     #B3261E;
+  --bad-bg:  #FBEAE8;
+  --info:    #2C5AA8;
+
+  --shadow: 0 1px 2px rgba(52, 12, 42, .05), 0 8px 24px -14px rgba(52, 12, 42, .22);
+
+  --sans: "Public Sans", ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+  --serif: "Newsreader", Georgia, "Times New Roman", serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+
+  --measure: 68ch;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:      #120610;
+    --surface:     #1D0B1B;
+    --surface-2:   #270F24;
+    --ink:         #F7EBF2;
+    --ink-soft:    #E0CBD8;
+    --muted:       #B49CAB;
+    --line:        #351A31;
+    --line-strong: #4A2743;
+    --accent:      #F5A8CE;
+    --accent-soft: #2C0F27;
+    --deep:        #3D0A45;
+    --deep-2:      #1C0522;
+    --deep-ink:    #F3DDEE;
+
+    --ok:      #2FBE8C;
+    --ok-bg:   #102C24;
+    --warn:    #E8B93B;
+    --warn-bg: #2E230D;
+    --bad:     #F2683C;
+    --bad-bg:  #331410;
+    --info:    #7FA9E8;
+
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.8);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --ground:      #120610;
+  --surface:     #1D0B1B;
+  --surface-2:   #270F24;
+  --ink:         #F7EBF2;
+  --ink-soft:    #E0CBD8;
+  --muted:       #B49CAB;
+  --line:        #351A31;
+  --line-strong: #4A2743;
+  --accent:      #F5A8CE;
+  --accent-soft: #2C0F27;
+  --deep:        #3D0A45;
+  --deep-2:      #1C0522;
+  --deep-ink:    #F3DDEE;
+
+  --ok:      #2FBE8C;
+  --ok-bg:   #102C24;
+  --warn:    #E8B93B;
+  --warn-bg: #2E230D;
+  --bad:     #F2683C;
+  --bad-bg:  #331410;
+  --info:    #7FA9E8;
+
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.8);
+  color-scheme: dark;
+}
+
+/* ------------------------------------------------------------------ base */
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink-soft);
+  font-family: var(--sans);
+  font-size: 15.5px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible, .skip:focus {
+  outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px;
+}
+.skip {
+  position: absolute; left: -9999px; top: 0; z-index: 20;
+  background: var(--surface); color: var(--ink); padding: 10px 16px;
+  border: 1px solid var(--line-strong); border-radius: 0 0 8px 0;
+}
+.skip:focus { left: 0; }
+
+/* -------------------------------------------------------------- masthead */
+.masthead {
+  background:
+    radial-gradient(120% 140% at 88% -10%, rgba(214,21,127,.42) 0%, rgba(214,21,127,0) 58%),
+    linear-gradient(160deg, var(--deep) 0%, var(--deep-2) 100%);
+  color: var(--deep-ink);
+  padding: 52px 24px 44px;
+  border-bottom: 1px solid var(--line);
+}
+.masthead-inner { max-width: 1180px; margin: 0 auto; }
+.wordmark {
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  letter-spacing: .22em; text-transform: uppercase; color: #F5A8CE;
+  margin: 0 0 14px;
+}
+.masthead h1 {
+  font-family: var(--serif); font-weight: 500; font-size: clamp(2.4rem, 6vw, 3.9rem);
+  line-height: 1.02; letter-spacing: -.02em; color: #FFFFFF;
+  margin: 0; text-wrap: balance;
+}
+.masthead p.lede {
+  max-width: 56ch; margin: 18px 0 0; font-size: 16px; line-height: 1.62;
+  color: var(--deep-ink);
+}
+.stamp {
+  display: flex; flex-wrap: wrap; gap: 8px 10px; margin-top: 26px;
+  font-family: var(--mono); font-size: 11.5px; letter-spacing: .04em;
+}
+.stamp span {
+  padding: 5px 11px; border-radius: 999px;
+  border: 1px solid rgba(245,168,206,.4); color: #F9D8E9;
+  background: rgba(255,255,255,.05);
+}
+
+/* ---------------------------------------------------------------- layout */
+.shell {
+  max-width: 1180px; margin: 0 auto; padding: 0 24px 96px;
+  display: grid; grid-template-columns: 1fr; gap: 0;
+}
+@media (min-width: 1000px) {
+  .shell { grid-template-columns: 232px minmax(0, 1fr); gap: 56px; padding-top: 8px; }
+}
+
+/* ------------------------------------------------------------------- nav */
+.toc { padding: 28px 0 0; }
+@media (min-width: 1000px) {
+  .toc { position: sticky; top: 0; align-self: start; max-height: 100vh; overflow-y: auto; padding: 44px 0 40px; }
+}
+.toc h2 {
+  font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: .2em;
+  text-transform: uppercase; color: var(--muted); margin: 0 0 14px;
+}
+.toc ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; counter-reset: sec; }
+.toc a {
+  display: grid; grid-template-columns: 24px 1fr; gap: 8px; align-items: baseline;
+  padding: 6px 10px 6px 6px; border-radius: 6px;
+  font-size: 13.5px; line-height: 1.35; color: var(--muted); text-decoration: none;
+  border-left: 2px solid transparent;
+}
+.toc a .n { font-family: var(--mono); font-size: 11px; color: var(--line-strong); font-variant-numeric: tabular-nums; }
+.toc a:hover { color: var(--ink); background: var(--surface-2); }
+.toc a[aria-current="true"] { color: var(--accent); border-left-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+.toc a[aria-current="true"] .n { color: var(--accent); }
+
+.toc-mobile { margin: 24px 0 0; }
+.toc-mobile summary {
+  cursor: pointer; font-family: var(--mono); font-size: 12px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--accent); padding: 12px 0;
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+}
+@media (min-width: 1000px) { .toc-mobile { display: none; } .toc-desktop { display: block; } }
+@media (max-width: 999px) { .toc-desktop { display: none; } }
+
+/* ------------------------------------------------------------------ main */
+main { padding-top: 12px; min-width: 0; }
+section { padding: 44px 0 8px; scroll-margin-top: 20px; }
+section + section { border-top: 1px solid var(--line); }
+
+h2.sec {
+  font-family: var(--serif); font-weight: 500; font-size: clamp(1.6rem, 3.4vw, 2.15rem);
+  line-height: 1.15; letter-spacing: -.015em; color: var(--ink);
+  margin: 0 0 20px; text-wrap: balance;
+  display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: baseline;
+}
+h2.sec .n {
+  font-family: var(--mono); font-size: .5em; font-weight: 600; color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+h3 {
+  font-family: var(--sans); font-weight: 700; font-size: 1.02rem; letter-spacing: -.005em;
+  color: var(--ink); margin: 34px 0 10px;
+}
+h4 {
+  font-family: var(--mono); font-weight: 600; font-size: 11.5px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--muted); margin: 26px 0 8px;
+}
+p, ul, ol, .note, .rules { max-width: var(--measure); }
+p { margin: 0 0 14px; }
+ul, ol { margin: 0 0 16px; padding-left: 1.15em; }
+li { margin: 0 0 7px; }
+li::marker { color: var(--line-strong); }
+strong { color: var(--ink); font-weight: 650; }
+code, kbd {
+  font-family: var(--mono); font-size: .88em; background: var(--surface-2);
+  border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; color: var(--ink);
+}
+
+/* ---------------------------------------------------------------- tables */
+.scroll { overflow-x: auto; margin: 0 0 22px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 460px; }
+thead th {
+  text-align: left; font-family: var(--mono); font-size: 10.5px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
+  padding: 12px 14px; border-bottom: 1px solid var(--line-strong); white-space: nowrap;
+  background: var(--surface-2);
+}
+tbody td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; line-height: 1.55; }
+tbody tr:last-child td { border-bottom: 0; }
+tbody td:first-child { color: var(--ink); font-weight: 550; }
+td .yes { color: var(--ok); font-weight: 700; }
+td .no  { color: var(--muted); }
+
+/* -------------------------------------------------------------- callouts */
+.note {
+  border-left: 3px solid var(--accent); background: var(--accent-soft);
+  padding: 14px 18px; border-radius: 0 8px 8px 0; margin: 0 0 22px;
+}
+.note.warn { border-left-color: var(--warn); background: var(--warn-bg); }
+.note.bad  { border-left-color: var(--bad);  background: var(--bad-bg); }
+.note p:last-child { margin-bottom: 0; }
+.note .tag {
+  display: block; font-family: var(--mono); font-size: 10.5px; font-weight: 600;
+  letter-spacing: .14em; text-transform: uppercase; margin-bottom: 6px; color: var(--accent);
+}
+.note.warn .tag { color: var(--warn); }
+.note.bad .tag { color: var(--bad); }
+
+/* The app's own promises. Not a card — a plain ruled list, because these are
+   statements and not objects. */
+.rules { list-style: none; padding: 0; margin: 0 0 22px; }
+.rules li {
+  padding: 13px 0; border-top: 1px solid var(--line); margin: 0;
+  display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: baseline;
+}
+.rules li:last-child { border-bottom: 1px solid var(--line); }
+.rules .k {
+  font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--accent); white-space: nowrap;
+}
+
+/* ---------------------------------------------------- status swatch strip */
+.statuses { display: grid; grid-template-columns: repeat(auto-fill, minmax(158px, 1fr)); gap: 10px; margin: 0 0 20px; max-width: none; }
+.status {
+  border: 1px solid var(--line); border-radius: 9px; padding: 11px 13px; background: var(--surface);
+  display: grid; gap: 3px;
+}
+.status .w { display: flex; align-items: center; gap: 7px; font-weight: 700; font-size: 13.5px; }
+.status .g {
+  width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center;
+  font-size: 12px; font-weight: 700; line-height: 1; flex: none;
+}
+.status .m { font-size: 11.5px; color: var(--muted); line-height: 1.45; }
+.status .hex { font-family: var(--mono); font-size: 10px; color: var(--line-strong); letter-spacing: .04em; }
+
+/* --------------------------------------------------------------- diagram */
+.chrome {
+  font-family: var(--mono); font-size: 12px; line-height: 1.5;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  padding: 0; margin: 0 0 22px; max-width: 460px; overflow: hidden;
+}
+.chrome .bar { padding: 11px 14px; border-bottom: 1px solid var(--line); background: var(--surface-2); color: var(--ink); }
+.chrome .tabs { padding: 9px 14px; border-bottom: 1px solid var(--line); color: var(--muted); }
+.chrome .tabs b { color: var(--accent); border-bottom: 2px solid var(--accent); padding-bottom: 4px; }
+.chrome .body { padding: 34px 14px; color: var(--muted); text-align: center; }
+.chrome .pill { padding: 11px 14px; border-top: 1px solid var(--line); text-align: center; color: var(--ink); background: var(--surface-2); }
+
+/* --------------------------------------------------------------- summary */
+.week { border-radius: 10px; overflow: hidden; border: 1px solid var(--line); margin: 0 0 22px; }
+
+footer {
+  max-width: 1180px; margin: 0 auto; padding: 34px 24px 64px;
+  border-top: 1px solid var(--line); color: var(--muted); font-size: 13px;
+}
+footer .tag { font-family: var(--serif); font-size: 17px; color: var(--ink); display: block; margin-bottom: 6px; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+html { scroll-behavior: smooth; }
+
+/* ------------------------------------------------------------------ print
+   Ctrl/Cmd-P → Save as PDF has to produce a document somebody can hand to an
+   academy owner, so: the light palette whatever the screen theme is, no
+   navigation (a sidebar of links is dead weight on paper), tables unclipped,
+   and nothing that can break across a page break mid-thought.
+
+   The token block repeats all three theme selectors deliberately. The dark
+   rules are :root[data-theme="dark"] and :root:not([data-theme="light"]),
+   both specificity (0,2,0); a plain :root here would be (0,1,0) and would
+   LOSE to them, printing white text on white paper. Matching their selectors
+   and sitting later in the file is what wins the tie. */
+@media print {
+  :root,
+  :root[data-theme="dark"],
+  :root:not([data-theme="light"]) {
+    --ground:      #FFFFFF;
+    --surface:     #FFFFFF;
+    --surface-2:   #F6F1F4;
+    --ink:         #1A1017;
+    --ink-soft:    #2E222B;
+    --muted:       #5A4854;
+    --line:        #D8CAD3;
+    --line-strong: #B9A4B2;
+    --accent:      #A9105F;
+    --accent-soft: #FBF2F7;
+    --deep:        #FFFFFF;
+    --deep-2:      #FFFFFF;
+    --deep-ink:    #2E222B;
+    --ok:   #0B5C40;
+    --bad:  #94201A;
+    --warn: #5F4100;
+    --info: #23477F;
+    --shadow: none;
+    color-scheme: light;
+  }
+
+  @page { margin: 16mm 14mm 18mm; }
+
+  body { font-size: 10.2pt; line-height: 1.5; background: #fff; }
+  .skip, .toc-desktop, .toc-mobile { display: none !important; }
+  .shell { display: block; max-width: none; padding: 0; }
+  main { padding-top: 0; }
+
+  /* The masthead is a title page block, not a coloured banner. */
+  .masthead {
+    background: none; padding: 0 0 18px; border-bottom: 1.5pt solid var(--accent);
+    color: var(--ink-soft);
+  }
+  .masthead h1 { color: var(--ink); font-size: 30pt; }
+  .wordmark { color: var(--accent); }
+  .masthead p.lede { font-size: 10.5pt; max-width: none; }
+  .stamp span { border-color: var(--line-strong); background: none; color: var(--muted); }
+
+  /* A heading stranded at the foot of a page is the classic print bug. */
+  section { padding: 18px 0 0; break-inside: auto; }
+  section + section { border-top: 1pt solid var(--line); }
+  h2.sec { break-after: avoid; break-before: auto; font-size: 17pt; margin-bottom: 12px; }
+  h3, h4 { break-after: avoid; }
+  p, li { orphans: 3; widows: 3; }
+
+  /* Nothing scrolls on paper — let every table print in full. */
+  .scroll { overflow: visible !important; break-inside: avoid; }
+  table { min-width: 0; font-size: 9.4pt; }
+  thead { display: table-header-group; }
+  thead th { background: var(--surface-2); }
+  tr, .note, .status, .chrome, .rules li { break-inside: avoid; }
+  .statuses { grid-template-columns: repeat(3, 1fr); }
+
+  /* Underlined blue links mean nothing once printed. */
+  a { color: inherit; text-decoration: none; }
+  footer { border-top: 1pt solid var(--line-strong); }
+}
+</style>
+
+<a class="skip" href="#s1">Skip to the manual</a>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <p class="wordmark">RosiFit · Preparing, Thriving and Beyond</p>
+    <h1>Your academy manual</h1>
+    <p class="lede">
+      Prepared by UniqBrio for the owner of the academy. Everything you need to run
+      RosiFit — setting it up, uploading a register, following up the members who are
+      drifting away — and, said plainly, the handful of things this release does not do
+      yet. It is also the manual you hand to your team.
+    </p>
+    <div class="stamp">
+      <span>v1.4 · build 212</span>
+      <span>For the academy owner &amp; her team</span>
+      <span>Support +91 9994871158</span>
+    </div>
+  </div>
+</header>
+
+<div class="shell">
+
+  <aside class="toc toc-desktop" aria-label="Contents">
+    <h2>Contents</h2>
+    <ol id="nav-desktop"></ol>
+  </aside>
+
+  <main id="main">
+
+    <details class="toc-mobile">
+      <summary>Contents</summary>
+      <div class="toc"><ol id="nav-mobile"></ol></div>
+    </details>
+
+    <!-- ============================================================== 1 -->
+    <section id="s1">
+      <h2 class="sec"><span class="n">01</span><span>What RosiFit does</span></h2>
+      <p>
+        RosiFit is the academy's own staff app. It answers one question well — <strong>who is
+        drifting away this week</strong> — and does the record-keeping that makes that answer
+        trustworthy.
+      </p>
+      <h4>The working loop</h4>
+      <ol>
+        <li><strong>A class runs on Google Meet.</strong> Meet writes a CSV of who was in the call.</li>
+        <li><strong>You upload that file.</strong> RosiFit matches every name against the member register and marks the session.</li>
+        <li><strong>A rule you set per course</strong> decides who has missed too much.</li>
+        <li><strong>You review that list</strong> and send those members a check-in email, using wording stored on the course.</li>
+        <li><strong>Reports</strong> tell you whether a dip is a bad week or a trend.</li>
+      </ol>
+
+      <h4>Three things it deliberately does not do</h4>
+      <ul class="rules">
+        <li><span class="k">No member login</span><span><strong>Members do not sign in.</strong> There is no member-facing screen anywhere. Every screen is for the academy.</span></li>
+        <li><span class="k">No check-in</span><span><strong>There is no live check-in.</strong> Attendance is a register that gets uploaded, not a door sensor or a QR code.</span></li>
+        <li><span class="k">No free text</span><span><strong>There is no free-form message box.</strong> Every email goes out through wording stored on the course. Nobody can type a one-off message to a member from inside the app.</span></li>
+      </ul>
+
+      <p>
+        RosiFit is a <strong>PWA</strong> — a web app that installs to a phone home screen or a
+        desktop like a normal app. It works on a phone, a tablet and a browser, and the layout
+        adapts to each.
+      </p>
+
+      <h3>The two people who use it</h3>
+      <p>There are <strong>two roles</strong>, not four, and the difference between them is narrow on purpose.</p>
+      <ul>
+        <li><strong>You, the academy owner.</strong> One per academy, enforced — there cannot be a second. You see everything, and four things are yours alone: <strong>Staff &amp; access</strong>, the <strong>audit log</strong>, <strong>branches and holidays</strong>, and the <strong>follow-up rules and message wording</strong>.</li>
+        <li><strong>Your staff</strong> — coaches and front desk. They run the register: adding courses and members, importing lists, uploading attendance, sending the follow-ups. What they cannot do is change the shape of the business or read the log of who did what.</li>
+      </ul>
+      <div class="note">
+        <span class="tag">Worth knowing</span>
+        <p><em>Coach</em> and <em>Front desk</em> are <strong>labels you type on a staff record, not permission levels.</strong> They carry identical rights. If that matters to you, tell us — it is a change we can make.</p>
+      </div>
+
+      <h3>The order to set it up in</h3>
+      <p>Each step needs the one before it. Roughly an hour, once.</p>
+      <ol>
+        <li><strong>Register your account</strong> and set your PIN.</li>
+        <li><strong>Add your branches</strong> — More → Branches. A branch is a place you teach.</li>
+        <li><strong>Add your courses</strong> — Attendance → Add Course. A course is <em>what</em> is taught; adding it at a branch creates the thing that actually runs, and its weekdays are what attendance is counted from. Set each course's <strong>follow-up rule</strong>, <strong>from address</strong> and <strong>wording</strong> on the same form.</li>
+        <li><strong>Add your team</strong> — More → Staff &amp; access. Add the person, then issue her PIN. Two deliberate steps.</li>
+        <li><strong>Load your members</strong> — Bulk Import for a list, Add Member one at a time. Every member needs an email address; that is what the follow-up reaches her on.</li>
+        <li><strong>Upload your first register</strong> after the next class, and the loop above starts turning.</li>
+      </ol>
+    </section>
+
+    <!-- ============================================================== 2 -->
+    <section id="s2">
+      <h2 class="sec"><span class="n">02</span><span>Installing and signing in</span></h2>
+
+      <h3>Installing it</h3>
+      <p>Open the academy's RosiFit URL in a browser.</p>
+      <div class="scroll"><table>
+        <thead><tr><th>Device</th><th>How to install</th></tr></thead>
+        <tbody>
+          <tr><td>Android / desktop Chrome or Edge</td><td>The browser offers <strong>Install</strong>; or use the browser menu → <em>Install app</em> / <em>Add to Home screen</em>.</td></tr>
+          <tr><td>iPhone / iPad (Safari)</td><td>Share button → <strong>Add to Home Screen</strong>.</td></tr>
+        </tbody>
+      </table></div>
+      <p>Once installed it opens in its own window with no address bar. You can also just use it in a browser tab — nothing is lost.</p>
+
+      <h3>Your own account — registered once</h3>
+      <p><strong>Your</strong> account is the academy admin, and it is registered once and only once. The form asks for:</p>
+      <ul>
+        <li><strong>Full name</strong> (required)</li>
+        <li><strong>Mobile number</strong> (required) — this becomes the sign-in ID</li>
+        <li><strong>Email</strong> — optional</li>
+        <li><strong>Two security questions and answers</strong> (both required) — the only way to recover a forgotten admin PIN later without a phone call</li>
+      </ul>
+      <p>
+        Everything is on one page; required fields carry a red asterisk. After registering you set
+        your own 4-digit PIN. There is exactly one academy admin, enforced by the database — once
+        the academy is registered the form refuses a second one and says so.
+      </p>
+
+      <h3>Signing in every day</h3>
+      <p>The sign-in screen has one field and one button.</p>
+      <ol>
+        <li>Type your <strong>mobile number</strong> and press <strong>Continue</strong>.</li>
+        <li>RosiFit checks whether that number has an account.
+          <ul>
+            <li><strong>It does</strong> → the PIN screen opens. <em>Continue never signs you in</em> — the PIN is still required.</li>
+            <li><strong>It does not</strong> → the registration form opens with your number carried across.</li>
+            <li><strong>The check could not be reached</strong> → you stay put, with the reason. RosiFit will not guess.</li>
+          </ul>
+        </li>
+        <li>Type or tap your <strong>4-digit PIN</strong>. It submits the moment the fourth digit lands.</li>
+      </ol>
+      <p>
+        On the PIN screen: <kbd>CE</kbd> clears the whole entry and <kbd>⌫</kbd> removes one digit;
+        <strong>Change mobile number</strong> goes back a step; <strong>Forgot PIN?</strong> is at the
+        bottom. You can type the PIN on a hardware keyboard as well as tap it.
+      </p>
+      <p>If an admin has just issued or reset your PIN, RosiFit takes you straight to <strong>Set a new PIN</strong> before anything else. That is normal.</p>
+
+      <h3>Staying signed in</h3>
+      <div class="note">
+        <span class="tag">The rule</span>
+        <p><strong>You stay signed in until you sign out.</strong> There is no timeout. Reopening the app, closing the browser or restarting the phone does not sign you out.</p>
+      </div>
+      <p>Two things do end a session:</p>
+      <ul>
+        <li><strong>You press Sign out.</strong> That ends it <strong>on this device only</strong> — your other phone stays signed in.</li>
+        <li><strong>Your account is switched off</strong> by the admin. The session ends the next time the app reaches the server.</li>
+      </ul>
+      <p>
+        If the app cannot reach the server it shows the sign-in screen but <strong>does not</strong>
+        throw your session away. The next visit that gets through resumes without a PIN. While it is
+        checking, the sheet reads <em>“Checking if you are already signed in…”</em>.
+      </p>
+
+      <h3>Signing out</h3>
+      <p>
+        Two places do it: the <strong>Sign out</strong> row at the foot of <strong>More</strong>, and
+        the <strong>Sign Out</strong> button on your profile. Both ask first, stating what it costs
+        (your number and PIN to come back) and that it is this device only. <strong>Stay signed
+        in</strong> leaves everything untouched. If the sign-out fails, the app does not pretend it
+        worked — the question stays open and the button goes live again as the retry.
+      </p>
+
+      <h3>Forgotten PIN</h3>
+      <p>
+        <strong>Academy admin:</strong> Forgot PIN asks your two security questions. You get
+        <strong>three attempts, then a 30-minute lockout</strong>. Every outcome says plainly what
+        has and has not happened.
+      </p>
+      <p>
+        <strong>Staff:</strong> the security questions are the admin's own recovery, so they are not
+        offered to you. You get <em>“Ask my academy admin to reset it”</em>. That places one request;
+        asking twice refreshes it rather than making a second. The admin sees it as a notification
+        ranked above everything else, resets your PIN from <strong>Staff &amp; access</strong>, and
+        gives you the new one.
+      </p>
+
+      <h3>Changing your own PIN or number</h3>
+      <ul>
+        <li><strong>PIN</strong> — More → your profile card → <strong>Change My PIN</strong>.</li>
+        <li><strong>Mobile number</strong> — the profile screen's mobile row. You need your current PIN and the new number. Your PIN is not tied to the number, so moving the number leaves the PIN working. The change is recorded.</li>
+      </ul>
+    </section>
+
+    <!-- ============================================================== 3 -->
+    <section id="s3">
+      <h2 class="sec"><span class="n">03</span><span>Finding your way around</span></h2>
+      <p>Every signed-in screen wears the same chrome.</p>
+
+      <div class="chrome" aria-label="The app shell: academy header, two tabs, screen, and a three-item nav pill">
+        <div class="bar">RosiFit &nbsp;·&nbsp; 🔔 notifications</div>
+        <div class="tabs"><b>Overview</b> &nbsp;&nbsp; Attendance</div>
+        <div class="body">the screen</div>
+        <div class="pill">( Home · Reports · More )</div>
+      </div>
+
+      <p>
+        <strong>The two tabs</strong> under the academy name are <strong>Overview</strong> and
+        <strong>Attendance</strong>. Attendance is a <em>section</em>, not a single screen — the
+        course list, a course's detail, the member list and the register all live under it.
+        <strong>The pill</strong> at the bottom is always <strong>Home · Reports · More</strong>.
+      </p>
+
+      <h3>Home means different things by role</h3>
+      <p>This is the only structural difference between the two roles.</p>
+      <div class="scroll"><table>
+        <thead><tr><th></th><th>You (academy owner)</th><th>Your staff</th></tr></thead>
+        <tbody>
+          <tr><td>Tabs</td><td>Overview · Attendance</td><td>Attendance alone, full width</td></tr>
+          <tr><td><strong>Home</strong> goes to</td><td>Overview</td><td>The Attendance workspace</td></tr>
+          <tr><td>Sign-in lands on</td><td>Overview</td><td>The Attendance workspace</td></tr>
+          <tr><td>Staff &amp; access</td><td><span class="yes">✓</span></td><td><span class="no">— not offered</span></td></tr>
+          <tr><td>Audit log</td><td><span class="yes">✓</span></td><td><span class="no">— not offered</span></td></tr>
+        </tbody>
+      </table></div>
+      <p>
+        Staff are not merely <em>hidden</em> from those screens — typing the URL sends you back to
+        Attendance. Nothing about what staff may <strong>write</strong> is reduced: staff add
+        courses, add and edit members, bulk import, and upload registers exactly as the admin does.
+      </p>
+
+      <h3>Where Back goes</h3>
+      <p>
+        Overview, Reports and More are tab roots and have no back arrow — they are already home.
+        Screens opened <em>from</em> somewhere carry a back control that returns to where you came
+        from.
+      </p>
+
+      <h3>The notification bell</h3>
+      <p>Top right of the academy header. Two kinds are <em>actionable</em> and are counted on the badge:</p>
+      <ul>
+        <li><strong>A session awaits its upload</strong> — <em>“Until the Meet file is in, this session counts for nobody.”</em> Tapping it opens the upload already scoped to that session.</li>
+        <li><strong>A staff member needs a new PIN</strong> — ranked above everything else. Tapping it opens Staff &amp; access.</li>
+      </ul>
+      <p>Two kinds are informational: emails sent, and an email that could not be sent. When there is nothing, the tray says <em>“Nothing needs you”</em>.</p>
+
+      <h3>Forms are dialogs</h3>
+      <p>
+        Adding a member, editing a course, uploading a register — these open as a card <em>over</em>
+        the screen they are about, so you can still see the register you are changing. The
+        <strong>✕</strong> leaves without saving; the save button is pinned at the foot of the card,
+        so it never scrolls out of reach. Tapping outside a filter panel closes it.
+      </p>
+    </section>
+
+    <!-- ============================================================== 4 -->
+    <section id="s4">
+      <h2 class="sec"><span class="n">04</span><span>Overview — the academy this week</span></h2>
+      <p><em>Yours only — your staff are not offered this tab. It is your Home screen.</em> Three filters at the top, then four sections — two to a row on a wide screen, stacked on a phone.</p>
+
+      <h3>The filters — Course, Period, Branch</h3>
+      <p>The filter row is <strong>pinned</strong>: it stays put while the sections scroll under it, so you can always see what the numbers in front of you cover.</p>
+      <ul>
+        <li><strong>Course</strong> and <strong>Branch</strong> are checkbox lists. Tick several to compare them. Nothing ticked means <em>not narrowed</em> — that is what “All courses” means as a state, not as an option you pick.</li>
+        <li><strong>Period</strong> is <em>This week · Last week · Last 4 weeks · This month</em>, plus a custom range picked on a calendar.</li>
+        <li><strong>A pick applies immediately.</strong> There is no Done button. The figures move underneath the open panel.</li>
+        <li>A checkbox panel stays open so you can tick a second value. Close it by tapping the field again, or anywhere beside the panel.</li>
+        <li>A custom range applies and closes on the day that <strong>completes</strong> it. A half-picked range applies nothing.</li>
+        <li>If you tick a branch and it is later removed, the tick is dropped and the filter widens visibly rather than quietly narrowing to nothing.</li>
+      </ul>
+
+      <h3>The four sections</h3>
+      <div class="scroll"><table>
+        <thead><tr><th>Section</th><th>What you see</th><th>What it tells you</th></tr></thead>
+        <tbody>
+          <tr><td>Attendance</td><td>One ring, Present against Absent, with the percentage. Under it: Members · Courses · <strong>Need follow-up</strong></td><td>The whole picture for the filtered set. <strong>Need follow-up</strong> is tappable and opens the weekly review.</td></tr>
+          <tr><td>Based on member</td><td>Ranked horizontal bars, lowest attendance first, six shown</td><td>Who to chase. Bar <em>length</em> is session volume, so a member due at ten draws a longer bar than one due at three. Each bar names her course and branch.</td></tr>
+          <tr><td>Based on course</td><td>A small ring per course</td><td>Which class is slipping.</td></tr>
+          <tr><td>Based on period</td><td>A small ring per sub-range</td><td>Whether the period is even across itself. A week splits into days, a month into weeks, longer into months.</td></tr>
+        </tbody>
+      </table></div>
+      <p>
+        Every figure on the screen is counted from <strong>one</strong> member list, narrowed once,
+        so no two charts here can disagree. Every ring writes its whole figure in words underneath —
+        <em>9 scheduled · 1 attended · 8 missed</em> — so the colour is never the only signal. A
+        sub-range that expected nothing shows a dash, never <code>0%</code>: a week with no classes
+        and a week everybody skipped are different facts.
+      </p>
+      <div class="note">
+        <span class="tag">Limits</span>
+        <p>The Overview reports; it changes nothing. It shows six members — the full list is on Reports. Holidays, cancellations and sessions still awaiting a file are excluded from every figure.</p>
+      </div>
+    </section>
+
+    <!-- ============================================================== 5 -->
+    <section id="s5">
+      <h2 class="sec"><span class="n">05</span><span>Attendance — the workspace you live in</span></h2>
+      <p><em>The second tab, and Home for staff. Its landing screen is the course list.</em></p>
+      <p>The header says <strong>Attendance</strong> and counts what the academy has — courses, branches, and how many members need following up. Beside it sit the three things you come here to do:</p>
+      <div class="scroll"><table>
+        <thead><tr><th>Button</th><th>Opens</th></tr></thead>
+        <tbody>
+          <tr><td>Add Member</td><td>The member form, asking which course she joins</td></tr>
+          <tr><td>Bulk Import</td><td>The member-list importer (an <code>.xlsx</code> file)</td></tr>
+          <tr><td>Add Course</td><td>The course form</td></tr>
+        </tbody>
+      </table></div>
+      <p>On a phone the three drop to a full-width row under the title. Below that: a search box and a <strong>branch</strong> filter, then one card per course.</p>
+
+      <h3>Reading a course card</h3>
+      <p>
+        Each card shows the course name, its branch (or <em>“3 branches”</em>, or <em>“No branch
+        yet”</em>), how often it runs, and two email counts — how many of its members you
+        <strong>can</strong> write to and how many you <strong>cannot</strong>. Under that is one
+        sentence saying whether anybody in this course needs following up.
+      </p>
+      <div class="note warn">
+        <span class="tag">Watch for this</span>
+        <p>If a course has <strong>no weekdays at all</strong>, the card says so first and in the danger colour. That is more serious than “nobody needs follow-up”: nothing is expected of anyone, so no absence can be counted and the course sits outside the follow-up engine entirely.</p>
+      </div>
+
+      <h3>A card has three destinations</h3>
+      <ul>
+        <li><strong>The name / body</strong> → the course in detail.</li>
+        <li><strong>The chevron (›)</strong> → that course's member roster.</li>
+        <li><strong>✎ and 🗑 on the row</strong> → edit the course, or delete it.</li>
+      </ul>
+
+      <h3>Deleting a course</h3>
+      <p>Delete opens a confirmation that <strong>counts what it destroys</strong> before you commit:</p>
+      <div class="note bad">
+        <span class="tag">The confirmation</span>
+        <p><em>“3 members are enrolled. This permanently deletes the course, its 1 offering, all 8 sessions (7 completed) and the 39 attendance records on them. That attendance history cannot be recovered. The 11 files imported into it can be uploaded again afterwards. Recorded in the audit log.”</em></p>
+      </div>
+      <p>
+        Read it. <strong>The deletion is permanent and the attendance history goes with the
+        course.</strong> Members themselves, their addresses, their aliases and any other course they
+        are on are untouched. The act is written to the audit log. If the count is still loading the
+        dialog says so; if the count fails it still warns, in wording that is no gentler.
+      </p>
+    </section>
+
+    <!-- ============================================================== 6 -->
+    <section id="s6">
+      <h2 class="sec"><span class="n">06</span><span>Inside one course</span></h2>
+      <p>The course screen is where a week of teaching is actually read.</p>
+
+      <h3>The header</h3>
+      <div class="scroll"><table>
+        <thead><tr><th>Action</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td>Upload Session</td><td>Opens the register upload, scoped to this course. It asks which file; the file says which day.</td></tr>
+          <tr><td>Send Communication</td><td>Opens the follow-up draft for <strong>this course</strong>.</td></tr>
+          <tr><td>Add Member</td><td>Opens the member form with this course pre-filled.</td></tr>
+        </tbody>
+      </table></div>
+      <p>If the course runs at more than one branch, a <strong>Branch</strong> filter appears under the header and everything below follows it.</p>
+
+      <h3>The week strip</h3>
+      <p>Seven day cards, at every screen width, with <strong>‹</strong> and <strong>›</strong> to step weeks. The week being shown is named above the strip, and a legend names every icon.</p>
+      <div class="scroll"><table>
+        <thead><tr><th>A day shows</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td>✓ Present / ✕ Absent</td><td>A file has been uploaded; this is what it recorded</td></tr>
+          <tr><td>☁ Awaiting upload</td><td>The course runs that day and no file is in yet — <strong>this is a button.</strong> Tap it to upload for exactly that day</td></tr>
+          <tr><td>— Not expected</td><td>The course does not run that day</td></tr>
+        </tbody>
+      </table></div>
+      <p>Tapping a date card <strong>selects</strong> that day; the roster below is then about that day.</p>
+
+      <h3>The roster</h3>
+      <p>
+        <code>Members (n)</code>, a search box (name <em>or</em> email), and one card per member,
+        split into two groups. Under the search box, one line says which day the cards are about —
+        <em>“Attendance for Mon 7 Sept”</em>. If members are missing from the count because they
+        joined later or were inactive on that day, the screen says that too, on its own line, rather
+        than letting the count drop silently.
+      </p>
+      <p>Each member card carries:</p>
+      <ul>
+        <li>Her name, her avatar and her email address (or <em>No email on file</em>)</li>
+        <li><strong>Present · Absent · Yet to mark</strong> for the selected day. <strong>This is a reading, not a control</strong> — nothing on the row is tappable. <em>Yet to mark</em> means a session ran and no file is in; <em>Not expected</em> means the course does not run that day.</li>
+        <li>An <strong>Active / Inactive</strong> pill — tapping it confirms, then writes immediately</li>
+        <li>✎ <strong>Edit</strong> and 🗑 <strong>Remove</strong></li>
+      </ul>
+      <div class="note">
+        <span class="tag">How to correct a day</span>
+        <p><strong>Re-upload that day's file.</strong> There is no per-member tick, by design. A re-upload replaces that day's register and tells you what it moved before you confirm.</p>
+      </div>
+
+      <h3>The “No email” group</h3>
+      <p>Members with no address on file are listed <strong>separately, at the bottom, and still counted</strong>. The note says exactly why they are apart:</p>
+      <p><em>“Their attendance is recorded as usual, but they are never counted for follow-up: there is no address to send to. Add an email and they join the rule.”</em></p>
+      <p>
+        This is where members created by an attendance import land — the Meet file has no email
+        column, so a name the register did not recognise becomes a new member with no address. Each
+        card in this group carries two extra buttons:
+      </p>
+      <div class="scroll"><table>
+        <thead><tr><th>Button</th><th>Use it when</th></tr></thead>
+        <tbody>
+          <tr><td>Add as new member</td><td>She really is somebody new. It opens <strong>her</strong> record so you can add the email — that is what takes her out of this group.</td></tr>
+          <tr><td>Add display name to existing member</td><td>She is somebody you already have, under a different Meet name.</td></tr>
+        </tbody>
+      </table></div>
+      <p>
+        The second opens a searchable picker of every member — by name <em>or</em> any email address
+        she holds, with her primary address printed on the row so two people with the same name are
+        told apart. Before you confirm it states both halves of what it does:
+      </p>
+      <div class="note">
+        <span class="tag">Before you confirm</span>
+        <p><em>“Anitha R” becomes a display name for Anitha Rajesh, and every class Anitha R was marked present at moves across to her. Anitha R is then retired — the same person is not on the register twice.</em></p>
+      </div>
+    </section>
+
+    <!-- ============================================================== 7 -->
+    <section id="s7">
+      <h2 class="sec"><span class="n">07</span><span>Members</span></h2>
+
+      <h3>The member list</h3>
+      <p>Reached from a course card's chevron (scoped to that course) or from the members route directly (the whole academy).</p>
+      <ul>
+        <li><strong>Search</strong> covers her name, her email address and her <strong>Google Meet display names</strong> — that last one is how a name off a CSV gets found at all. An old member code from a pre-2026 export still finds her too, though no code is displayed anywhere.</li>
+        <li><strong>Chips:</strong> All · No email · Needs follow-up · (branch).</li>
+        <li>When the list is scoped to one course, a <strong>Show every member</strong> button says so and gets you out. A filtered list that does not admit it is a list that has silently lost rows.</li>
+        <li>Each card shows a <strong>NO EMAIL</strong> / <strong>EMAIL OK</strong> pill in words, her course and branch, ✎ Edit, 🗑 Remove, and an <strong>Attendance</strong> link that opens her record.</li>
+      </ul>
+
+      <h3>Her record (a pop-up)</h3>
+      <p>Tapping a member opens a card over the list, not a new page. It holds:</p>
+      <ul>
+        <li>Her name; <strong>course · branch · joined</strong> underneath</li>
+        <li><strong>Expected · Attended · Missed · Missed streak</strong> for the week</li>
+        <li><strong>Her sessions this week</strong>, one hairline list — holidays and cancellations still listed, with why they do not count</li>
+        <li>Her email address, or <em>No usable email</em></li>
+        <li>One line saying <strong>whether an email is actually going to her</strong>, in one of four states</li>
+        <li><strong>Edit</strong> and <strong>Reach out</strong> pinned at the foot</li>
+      </ul>
+      <div class="scroll"><table>
+        <thead><tr><th>Her status line reads</th><th>Which means</th></tr></thead>
+        <tbody>
+          <tr><td>Rule is met, Email sent</td><td>She was flagged and has been written to this period.</td></tr>
+          <tr><td>Rule is met, Email not sent yet</td><td>She is flagged and waiting for you.</td></tr>
+          <tr><td>Rule is met, No email to send</td><td>She is flagged but has no address — counted, unreachable.</td></tr>
+          <tr><td>Rule is not met, No email to send</td><td>She is under the threshold. Nothing to do.</td></tr>
+        </tbody>
+      </table></div>
+      <p>
+        <strong>Reach out</strong> opens the send draft filtered to her alone, using her own course's
+        wording. If she has already had this period's message, it asks first — <em>“She has already
+        had this week's message”</em>, naming the day it went, over <strong>Not yet</strong> /
+        <strong>Reach out anyway</strong>. It is a warning, never a bar.
+      </p>
+
+      <h3>Adding a member</h3>
+      <div class="note">
+        <span class="tag">Required</span>
+        <p><strong>Her name, her course, her branch, and an email address.</strong> Add Member stays disabled until an address is on the form. The reason is plain: a member with no address cannot be written to, and this is one of only two places a member is deliberately created.</p>
+      </div>
+      <p>The form also holds:</p>
+      <ul>
+        <li><strong>Joined on</strong> — optional; blank means “not on record”.</li>
+        <li><strong>Status</strong> — on the Add form this is <em>stated</em>, not offered: it reads <strong>Active</strong>, because that is what a new member is. Use Edit to make somebody inactive.</li>
+        <li><strong>Google Meet display names</strong> — the names Meet shows for her. Add as many as you need; this is what an upload matches on.</li>
+        <li><strong>Email addresses</strong> — several allowed, exactly one primary.</li>
+        <li><strong>Her own days — optional</strong> — the day chips open with <em>every day her course runs already selected</em>. Take off the days she will not attend. Leave the row untouched and she simply follows the course, including if the course's schedule changes later. Only a <em>narrower</em> selection gives her a schedule of her own.</li>
+      </ul>
+
+      <h3>Editing a member</h3>
+      <p>
+        Same form, same rules. <strong>An email address is required here too</strong> — a member the
+        attendance import created opens with Save disabled and the footer asking for her address.
+        Nothing of hers, status included, is saved until one is on the form. While her record is
+        still loading, the dialog says <em>Edit member · Fetching her record</em> over a skeleton with
+        no Save. It never shows you a blank Add form by mistake.
+      </p>
+      <p>
+        <strong>Status</strong> on the Edit form is a two-choice field like any other: the pick is
+        pending, Cancel discards it, <strong>Save</strong> writes it. <strong>Inactive from</strong>
+        appears under the Inactive choice, defaults to today and accepts any later date — so <em>“she
+        is active today but leaves at the end of the month”</em> is recordable. It is refused before
+        her joining day.
+      </p>
+      <div class="note">
+        <span class="tag">What inactive means</span>
+        <p><strong>She is out of the follow-up rule</strong> — not listed, not written to. That is all. She stays on the roster, her attendance goes on being recorded, and her enrolment and history are untouched. Marking her active again puts her straight back.</p>
+      </div>
+
+      <h3>Removing a member</h3>
+      <p>
+        The 🗑 on either card — the member list or the course roster — opens the same confirmation,
+        worded identically, and states what will be destroyed. Read it: <strong>it takes her
+        attendance with her</strong>. Cancel leaves the register untouched. The toast afterwards
+        addresses her by first name, so you can see it was the person you meant.
+      </p>
+
+      <h3>Bulk import (a member list)</h3>
+      <div class="note warn">
+        <span class="tag">Not the same thing</span>
+        <p><strong>This is not the attendance importer.</strong> A member list is forty independent facts and imports row by row. An attendance register is one session's truth and imports as a single transaction. They are different screens.</p>
+      </div>
+      <p><strong>Attendance → Bulk Import</strong>, or the same button on a course.</p>
+      <ol>
+        <li><strong>Download template</strong> — an <code>.xlsx</code> named for your academy, with three sheets: instructions, Member Data, and a hidden lookup.</li>
+        <li>Fill in <strong>Member Data</strong>, one member per row.</li>
+        <li><strong>Choose the file. That is the import</strong> — read, judged, written and reported in one tap. There is no separate confirm step; every row is still judged before anything is sent, and a refused row writes nothing.</li>
+        <li>Read the result: <strong>Imported / Skipped (already exist) / Failed</strong>. Every row that did not land is named with its reason and its spreadsheet row number, so you can find it again.</li>
+      </ol>
+      <div class="scroll"><table>
+        <thead><tr><th>Column</th><th>Means</th></tr></thead>
+        <tbody>
+          <tr><td>Full Name</td><td>required — her name as the academy writes it</td></tr>
+          <tr><td>Email</td><td>required — the address the academy writes to</td></tr>
+          <tr><td>Course</td><td>pick from the dropdown; blank means the course this import was opened from</td></tr>
+          <tr><td>Branch</td><td>pick from the dropdown; blank means that course's branch</td></tr>
+          <tr><td>Display Names</td><td>the names Google Meet shows for her, comma-separated</td></tr>
+        </tbody>
+      </table></div>
+      <p>
+        <strong>The course is per row</strong>, so one file can cover every course you run. The
+        Course and Branch dropdowns are fed from your academy's real offerings, and Excel itself
+        <strong>refuses a course typed by hand</strong> — add the course in RosiFit first, then
+        download the template again.
+      </p>
+      <p>
+        Up to <strong>500 rows</strong> and <strong>5 MB</strong>; blank rows ignored. A member
+        already on the register is <strong>skipped, never overwritten</strong> — edit her in the app
+        instead. No joining date is asked for: everyone this file imports joins <strong>today</strong>.
+        With no course on the register the template is not offered at all, and the screen tells you to
+        add a course first.
+      </p>
+    </section>
+
+    <!-- ============================================================== 8 -->
+    <section id="s8">
+      <h2 class="sec"><span class="n">08</span><span>Uploading an attendance register</span></h2>
+      <p>This is the Google Meet CSV importer, and it is the only way attendance is ever recorded.</p>
+
+      <h3>Where to start it from</h3>
+      <div class="scroll"><table>
+        <thead><tr><th>Start from</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td>A day card marked <strong>Awaiting upload</strong>, on a course week strip</td><td>Best. Opens for exactly that course and that day.</td></tr>
+          <tr><td><strong>Upload Session</strong> on a course header</td><td>Narrows to that course; the file names the day.</td></tr>
+          <tr><td><strong>Upload</strong> on the Attendance register screen</td><td>Narrows nothing; you choose the course.</td></tr>
+          <tr><td>The <strong>awaiting</strong> notification on the bell</td><td>Opens scoped to that session.</td></tr>
+        </tbody>
+      </table></div>
+      <p>
+        A narrowed screen always says it is narrowed and offers <strong>Show every course</strong> as
+        a deliberate second tap. If a scope no longer matches anything, RosiFit says the session is no
+        longer waiting rather than silently widening back to everything.
+      </p>
+
+      <h3>Choosing what to upload for</h3>
+      <p>
+        Days <strong>Waiting for a file</strong> are listed first, because when there is one it is
+        almost always the answer. Under them, <strong>Or any course, any day</strong> lists every
+        course at every branch. <strong>Change</strong> takes you back to this picker if the
+        pre-selection was wrong.
+      </p>
+      <div class="note">
+        <span class="tag">Worth knowing</span>
+        <p><strong>A class does not have to have been scheduled.</strong> The file carries its own date, so a class arranged on the day — or run on a day the course does not normally run — imports fine.</p>
+      </div>
+
+      <h3>Choosing the file</h3>
+      <p>The card names what RosiFit reads and says out loud: <strong>“The file imports as soon as you choose it.”</strong></p>
+      <p>
+        Press <strong>Browse files</strong> and pick the Meet CSV <strong>exactly as Meet gave it to
+        you</strong> — do not strip the first lines. Meet writes the meeting code and the
+        created/ended times above the table; those are what identify the session, and RosiFit reads
+        past them.
+      </p>
+      <div class="note bad">
+        <span class="tag">The one file it refuses</span>
+        <p><strong>A file with no “Created on” line cannot be imported.</strong> RosiFit cannot tell which day it covers, and landing attendance on a date nobody chose is worse than refusing. Export it again from Meet, or pick a day already awaiting a file.</p>
+      </div>
+      <p>There is no email column in a Meet export. That is why an unrecognised name becomes a member with no address.</p>
+
+      <h3>The one question it may ask</h3>
+      <p>An ordinary import asks nothing at all. One dialog appears if either of these is true:</p>
+      <ul>
+        <li><strong>The file is for a different day from the one you opened.</strong> It imports for the <em>file's</em> day.</li>
+        <li><strong>That day already holds a register this file replaces.</strong> Confirming is labelled <strong>Confirm override</strong>.</li>
+      </ul>
+      <p>
+        A re-upload genuinely <strong>replaces</strong> the day rather than adding to it: anyone the
+        new file does not name goes back to absent, and somebody who was never expected is removed.
+        The dialog says this before you confirm.
+      </p>
+
+      <h3>Reading the result</h3>
+      <p>The heading is the answer: <strong>Imported · Mon 31 Aug</strong>, or <strong>Nothing to update</strong> if the file moved nothing. Then two counts side by side, each saying where that group went:</p>
+      <div class="scroll"><table>
+        <thead><tr><th>Count</th><th>Means</th></tr></thead>
+        <tbody>
+          <tr><td>With email</td><td>On the register, and counted for follow-up.</td></tr>
+          <tr><td>No email</td><td>Marked present, listed under <strong>No email</strong> on the course.</td></tr>
+        </tbody>
+      </table></div>
+      <p>Then, only when they apply:</p>
+      <ul>
+        <li><strong>What this file changed</strong> — added, updated, skipped.</li>
+        <li><strong>N names belong to another course</strong> — a member is in one course at a time, so a name whose only member is enrolled elsewhere was added here as somebody new rather than marked present over there. If it is the same woman, use <em>Add display name to existing member</em>.</li>
+        <li><strong>N staff names left off the register</strong> — whoever ran the class was in the call. She is not a member, so she is set aside and <em>named</em>, rather than silently marked present in her own class.</li>
+        <li><strong>N repeated names — counted once</strong> — Meet writes a line per <em>join</em>, so a dropped connection appears twice. She is marked present once, and the repeats are named.</li>
+        <li><strong>N rows dropped before matching</strong> — blank names, or repeats.</li>
+        <li><strong>This day already had a file</strong> — what the override moved.</li>
+      </ul>
+      <p>
+        <strong>Done</strong> closes; <strong>Upload another file</strong> goes round again. If the
+        exact same file has already been imported, that is a <em>result</em>, not a failure: the file
+        is in, the register says so, and RosiFit says exactly that.
+      </p>
+
+      <h3>What the importer does with each name</h3>
+      <div class="scroll"><table>
+        <thead><tr><th>The name is</th><th>RosiFit does</th></tr></thead>
+        <tbody>
+          <tr><td>Her canonical name, or a display name already confirmed for her</td><td>Marks her present</td></tr>
+          <tr><td>A member with no email address on file</td><td>Marks her present; she lands in <strong>No email</strong></td></tr>
+          <tr><td>Anything else — a near-match, a name two members share, a stranger</td><td>Files her as a <strong>new member with no email</strong> in this course</td></tr>
+          <tr><td>A staff name</td><td>Sets it aside before matching, and names it on the result</td></tr>
+          <tr><td>Blank, or a repeat</td><td>Drops it, and names it on the result</td></tr>
+        </tbody>
+      </table></div>
+      <div class="note">
+        <span class="tag">Why it creates rather than guesses</span>
+        <p>A wrong <strong>link</strong> marks the wrong woman present and looks exactly like a right one — nothing on any screen would say it happened. A wrong <strong>create</strong> puts a name you recognise in the <strong>No email</strong> group, where two taps fold her into the real member and carry her attendance across. Visible and reversible beats invisible and permanent.</p>
+      </div>
+      <p><strong>Time in the call decides nothing.</strong> Being named in the file is the evidence. A member who joined from a phone for four minutes is present.</p>
+    </section>
+
+    <!-- ============================================================== 9 -->
+    <section id="s9">
+      <h2 class="sec"><span class="n">09</span><span>Weekly review and follow-up emails</span></h2>
+
+      <h3>The rule</h3>
+      <p>
+        Each course carries its own follow-up rule, edited on the course form: <strong>N missed
+        sessions in a week</strong>, with a stepper from 1 to 7. The sentence the rule produces is
+        stated above every list it generated, so a row always explains itself. The follow-up list is
+        <strong>derived</strong> from the member list and the rule — never a second stored list, so a
+        count on one screen can never drift from the list on another.
+      </p>
+
+      <h3>The weekly review screen</h3>
+      <p><em>Reached from the Overview's <strong>Need follow-up</strong> figure.</em></p>
+      <p>
+        Three chips — <strong>Needs follow-up · N</strong> / <strong>All N</strong> / <strong>No email
+        · N</strong> — then a table with <code>E</code> (expected), <code>A</code> (attended),
+        <code>M</code> (missed) and <code>Att %</code>.
+      </p>
+      <p><em>“Streak” is her current run of missed sessions. “Miss” is the week's total. They are different numbers.</em></p>
+      <p>Nobody flagged is <strong>good news</strong> and the screen says so — <em>“Nobody needs following up. Every member met her course's rule.”</em></p>
+
+      <h3>Sending</h3>
+      <p>
+        Use a course's own <strong>Send Communication</strong> button, or <strong>Reach out</strong> on
+        a member's record. The academy-wide button on this screen does not send yet — see
+        <a href="#s14">Not in this release</a>.
+      </p>
+      <p>The draft dialog is deliberately small: a list of members with a tick box each, and a Send button.</p>
+      <ul>
+        <li>Everyone <strong>not yet written to this period starts ticked</strong>. Somebody who has already had this week's message starts <strong>unticked</strong> and carries a green <strong>Sent 3 Sep</strong> badge — a second email to her is a deliberate tick, never an accident.</li>
+        <li><strong>Select all / Clear all</strong>, and <code>N of M selected</code>.</li>
+        <li>Members with <strong>no email address</strong> are listed in their own <strong>Excluded · counted, not dropped</strong> block, with the reason. They are never silently removed.</li>
+        <li>There is <strong>no wording on this screen and no box to type one.</strong> The message belongs to the course and is edited there. Every send is recorded with the wording it used.</li>
+      </ul>
+      <p>
+        <strong>Send to N</strong> opens a confirmation naming who is going (first names, then <em>and
+        N more</em>), one line of caveats — <em>3 flagged not ticked · 1 already sent this week · 2
+        without an address</em> — and <em>“This cannot be recalled.”</em>
+      </p>
+
+      <h3>The result</h3>
+      <p>Reported <strong>per member, per address — never claimed for the batch.</strong> Sent / failed / excluded, with <strong>Retry this one</strong> on a failure.</p>
+
+      <h3>Editing the wording</h3>
+      <p>Course → ✎ Edit. The course form holds <strong>From email ID</strong> and <strong>Message template</strong> (both required), <strong>Wording for this course</strong> — Subject and Message, with token chips (<code>{{first_name}}</code> and friends) you tap to insert — and a live <strong>Preview</strong> against a real member.</p>
+    </section>
+
+    <!-- ============================================================= 10 -->
+    <section id="s10">
+      <h2 class="sec"><span class="n">10</span><span>Reports</span></h2>
+      <p>
+        <em>Reports on the nav pill.</em> It answers a different question from the Overview: the
+        dashboard says what is happening this week, Reports says whether it is a trend. It opens on
+        <strong>This month</strong> for that reason.
+      </p>
+      <ul>
+        <li><strong>Period</strong> — the same control as everywhere else, and it renders in the loading, error and empty states too, so an empty month is never a dead end.</li>
+        <li><strong>Scope pills — Members · Courses · Branches</strong> — these choose what the rows are grouped <em>by</em>.</li>
+        <li>One stacked bar per row: <strong>attended</strong> against <strong>missed</strong>, with the percentage, and every figure written out underneath. <strong>Bar length is sessions scheduled</strong>, so a long bar and a short bar are not comparable percentages — they are different volumes.</li>
+        <li>A row with nothing scheduled reads <strong>—</strong>, never <code>0%</code>.</li>
+      </ul>
+      <p>
+        <strong>Export</strong> (header) and <strong>Export as Excel</strong> (below the card) both
+        export <strong>exactly the rows on screen</strong>, as CSV that opens in Excel, stamped with
+        the chosen period in the filename and in a Period column on every row. A row with nothing
+        scheduled exports as <em>“no sessions scheduled”</em>, not <code>0%</code>.
+      </p>
+      <div class="note">
+        <span class="tag">Limits</span>
+        <p>Figures cover <strong>uploaded sessions only</strong>. Sessions still awaiting a file count for nobody. Holidays and cancellations are excluded.</p>
+      </div>
+    </section>
+
+    <!-- ============================================================= 11 -->
+    <section id="s11">
+      <h2 class="sec"><span class="n">11</span><span>More — settings, staff and the audit log</span></h2>
+      <p>Your name and role sit at the top; tapping it opens your <strong>profile</strong>.</p>
+
+      <h3>Configuration → Branches</h3>
+      <p>Add a branch by name, or remove one. A branch is the shape of the business, so this stays with the academy admin.</p>
+
+      <h3>Access → Staff &amp; access <em>(admin only)</em></h3>
+      <p>
+        <em>“Who can sign in, and what each of them may do.”</em> The list is sorted so the two states
+        needing action are never below the ones that do not.
+      </p>
+      <div class="note">
+        <span class="tag">Two steps, deliberately</span>
+        <p>Adding a person and giving them a login are separate acts. <strong>1.</strong> Add staff — full name and mobile number (both required), and a role label. <strong>2.</strong> Generate PIN on her row.</p>
+      </div>
+      <p>
+        Role labels — <em>Coach</em>, <em>Front desk</em> — are <strong>display labels, not permission
+        tiers</strong>. They carry identical rights. You can type a new label.
+      </p>
+      <div class="scroll"><table>
+        <thead><tr><th>State</th><th>What it means</th><th>Action offered</th></tr></thead>
+        <tbody>
+          <tr><td>Not enabled</td><td>The staff row exists; no credential issued</td><td>Generate PIN</td></tr>
+          <tr><td>Awaiting PIN</td><td>A PIN was issued and never used</td><td>Regenerate</td></tr>
+          <tr><td>Disabled</td><td>Switched off — every permission fails closed, at once</td><td>Re-enable</td></tr>
+          <tr><td>Active</td><td>Signs in normally</td><td>Reset PIN</td></tr>
+        </tbody>
+      </table></div>
+      <div class="note warn">
+        <span class="tag">The PIN is shown once</span>
+        <p>The <em>PIN issued</em> screen says so — <em>“Shown once. There is no way back to this screen.”</em> It offers <strong>Copy the PIN</strong>, <strong>Copy the app link</strong> and <strong>Share</strong>. Give it to her before you leave the screen.</p>
+      </div>
+      <p>
+        A staff member who has asked for a reset carries a <strong>Requested a PIN reset</strong>
+        badge and sorts to the top; resetting her PIN closes the request automatically.
+        <strong>Disabling</strong> is one switch and it closes everything at once — every read and
+        every write. It is how a coach who leaves is switched off everywhere in one action.
+      </p>
+
+      <h3>Access → Audit log <em>(admin only)</em></h3>
+      <p>
+        Every change, in plain words. Identifiers resolve to the member, course, branch, account or
+        offering they name — nothing renders as a raw code.
+      </p>
+      <ul>
+        <li><strong>Search</strong> across every word on a row; seven <strong>category</strong> chips; <strong>Dates</strong> (defaults to <em>Any date</em>, and narrows the query rather than the loaded page); <strong>Branch</strong>.</li>
+        <li>The column header stays frozen while you scroll. On a phone the entries render as cards instead.</li>
+        <li><strong>Sign-ins are not listed.</strong> Six pre-session actions are filtered from the view; nothing stops being recorded and no row is deleted, and the screen says so under its heading.</li>
+        <li><strong>Export</strong> gives you a CSV of exactly what is on screen, one line per changed field.</li>
+        <li>Only the fifty most recent changes are loaded, within the chosen dates.</li>
+      </ul>
+      <div class="note bad">
+        <span class="tag">By design</span>
+        <p><strong>The log is read-only. Nothing on it can be edited or deleted, by anybody. That is the point.</strong></p>
+      </div>
+
+      <h3>App → Appearance</h3>
+      <ul>
+        <li><strong>Theme:</strong> Light · Dark · System. Persisted, and it is your own choice — it does not change what anyone else sees.</li>
+        <li><strong>Accent:</strong> six presets — RosiFit pink, Plum, Coral, Teal, Indigo, Gold — plus a <strong>custom hue</strong> picker: <em>“Choose a colour that represents your academy.”</em></li>
+      </ul>
+      <p>
+        Every colour pair the app draws is measured at build time to clear the 4.5:1 readability
+        standard, in <strong>both</strong> themes and for <strong>all 360</strong> custom hues. A
+        colour you pick cannot make text unreadable. A live <strong>Preview</strong> shows the shell
+        in your choice before you commit.
+      </p>
+
+      <h3>App → Help &amp; support</h3>
+      <p>One number, two ways to reach it: <strong>Call</strong> and <strong>WhatsApp</strong>, both to UniqBrio on <strong>+91 9994871158</strong>. <em>“A person picks up — there is no ticket queue to wait in.”</em></p>
+      <div class="note bad">
+        <span class="tag">Anti-phishing</span>
+        <p>This one number, by call or WhatsApp, is the <strong>only</strong> support channel. If someone offers you another number, an email address or a link for UniqBrio, it did not come from us.</p>
+      </div>
+
+      <h3>Your profile</h3>
+      <p>Your name, your role and academy, your mobile number and your PIN. <strong>Change My PIN</strong> is here. Rows that cannot be changed say so, out loud, before you tap them.</p>
+    </section>
+
+    <!-- ============================================================= 12 -->
+    <section id="s12">
+      <h2 class="sec"><span class="n">12</span><span>Rules the app enforces</span></h2>
+      <p>These are the behaviours that surprise people. All of them are deliberate.</p>
+      <ul class="rules">
+        <li><span class="k">One source</span><span><strong>One member source.</strong> The follow-up list is derived from the member list and the rule, never stored separately. That is why the dashboard count and the weekly list cannot drift apart.</span></li>
+        <li><span class="k">One record</span><span><strong>One person, one session, one day.</strong> Enforced by the database. A duplicate in a Meet file is collapsed and <em>named</em>, never quietly discarded.</span></li>
+        <li><span class="k">One course</span><span><strong>One live enrolment per member.</strong> A member is on one course at a time. That is why an import treats a name enrolled elsewhere as somebody new here, and says so.</span></li>
+        <li><span class="k">File first</span><span><strong>A session comes from the file, not a timetable.</strong> A class that was never scheduled still imports.</span></li>
+        <li><span class="k">Never colour</span><span><strong>Colour is never the only signal.</strong> Every status carries its own word <em>and</em> its own icon; every link is underlined as well as tinted. This is checked at build time.</span></li>
+        <li><span class="k">Per member</span><span><strong>Nothing is ever claimed for a batch.</strong> A send reports per member, per address. An import names every row that did not land.</span></li>
+        <li><span class="k">Say so</span><span><strong>A filtered list says it is filtered</strong>, and offers the way out.</span></li>
+        <li><span class="k">Honest failure</span><span><strong>A failure says what did <em>not</em> happen.</strong> <em>“Nothing has been changed.” / “Nothing has been sent.”</em> If the server did not answer, the app does not pretend it did.</span></li>
+        <li><span class="k">No IDs</span><span><strong>No phone number and no member code is held for a member.</strong> Neither identifies anybody a person could check against. Her joining month is what her record carries instead. Old codes stay <em>searchable</em> for anyone holding one from an export, but nothing displays one.</span></li>
+        <li><span class="k">Secrets</span><span><strong>PINs are never stored readable, never logged, never shown twice.</strong></span></li>
+      </ul>
+    </section>
+
+    <!-- ============================================================= 13 -->
+    <section id="s13">
+      <h2 class="sec"><span class="n">13</span><span>When something goes wrong</span></h2>
+      <div class="scroll"><table>
+        <thead><tr><th>What you see</th><th>What it means</th><th>What to do</th></tr></thead>
+        <tbody>
+          <tr><td><em>“That number could not be checked.”</em></td><td>The lookup did not answer. RosiFit refuses to guess whether you have an account.</td><td>Check your connection and press Continue again.</td></tr>
+          <tr><td>The sign-in screen after you were signed in</td><td>The app could not reach the server. <strong>Your session was not thrown away.</strong></td><td>Reconnect and reopen — it resumes with no PIN.</td></tr>
+          <tr><td><em>“This file carries no ‘Created on’ line…”</em></td><td>Not a Meet export, or the header lines were stripped.</td><td>Export again from Meet and upload it untouched.</td></tr>
+          <tr><td><em>“No course to upload for”</em></td><td>The course runs at no branch yet.</td><td>Add the branch/offering first — the days it runs do not have to be decided.</td></tr>
+          <tr><td>A member is on the register twice after an import</td><td>Meet used a different display name for her.</td><td>Course → <strong>No email</strong> group → <strong>Add display name to existing member</strong>. Her attendance moves across.</td></tr>
+          <tr><td>Attendance for a day is wrong</td><td>There is no per-member tick, by design.</td><td>Re-upload that day's file. It <strong>replaces</strong> the register and tells you what it moved.</td></tr>
+          <tr><td>A member is not being emailed</td><td>She has no address, or she is Inactive, or she is under the rule's threshold.</td><td>Her record's status line says which of the four it is.</td></tr>
+          <tr><td><em>“She has already had this week's message”</em></td><td>She has.</td><td><strong>Not yet</strong>, or <strong>Reach out anyway</strong> — the second send is allowed, just deliberate.</td></tr>
+          <tr><td><em>“Remarks are not switched on for this academy yet”</em></td><td>The audit-remarks update has not been applied.</td><td>The log above it is unaffected. Nothing to do.</td></tr>
+          <tr><td>A form opens as a blank coloured screen</td><td>A known display fault when a form is opened from a bookmark or a page refresh rather than by tapping into it.</td><td>Resize the window, or reach the form by tapping. Report it and we will fix it.</td></tr>
+          <tr><td>Anything else</td><td></td><td>Help &amp; support → <strong>Call</strong> or <strong>WhatsApp</strong>.</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- ============================================================= 14 -->
+    <section id="s14">
+      <h2 class="sec"><span class="n">14</span><span>Not in this release</span></h2>
+      <p>
+        Stated plainly, because a manual that promises what the app does not yet do is worse than
+        no manual. Everything here is either a deliberate decision or work in progress, and none of
+        it blocks the weekly loop in section 1.
+      </p>
+      <div class="scroll"><table>
+        <thead><tr><th>What</th><th>What it means for you</th><th>Do this instead</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>The academy-wide <strong>“Reach out to N members”</strong> button on the weekly review does not send. It answers <em>“The draft could not be loaded.”</em></td>
+            <td>A message spans several courses, and each course stores its own wording — which one a mixed send should use is a decision we want from you before we build it.</td>
+            <td>A course's own <strong>Send Communication</strong>, and <strong>Reach out</strong> on a member's record. Both work, and between them nothing is unreachable.</td>
+          </tr>
+          <tr>
+            <td>The <strong>weekly review</strong> is reached from the Overview only.</td>
+            <td>Your staff have no Overview, so they cannot open it.</td>
+            <td>You open it from Overview → <em>Need follow-up</em>. Tell us if your team needs it and we will give it a home.</td>
+          </tr>
+          <tr>
+            <td><strong>Holidays are not on the menu.</strong> The feature works — a closure you record still correctly removes those sessions from every figure — but its menu row was removed at your request.</td>
+            <td>You cannot declare a closure from the menu today.</td>
+            <td>Open the address ending <code>/holiday</code> directly, or ask us to put the row back.</td>
+          </tr>
+          <tr>
+            <td><strong>Per-branch class times</strong> cannot be edited on a screen.</td>
+            <td>You cannot set a different start time for the same course at two branches.</td>
+            <td>Days and branch are edited on the <strong>course</strong> form, which covers the ordinary case.</td>
+          </tr>
+          <tr>
+            <td><strong>Email sending needs your sending domain connected.</strong></td>
+            <td>Until that is done, drafts prepare correctly but nothing leaves.</td>
+            <td>Ask us to complete it.</td>
+          </tr>
+          <tr>
+            <td>Ticking one member present or absent was <strong>removed on purpose</strong>.</td>
+            <td>The roster's Present / Absent / Yet to mark is a reading, not a control.</td>
+            <td>Re-upload that day's file — it replaces the register and says what it moved.</td>
+          </tr>
+          <tr>
+            <td><strong>Notes against an audit entry</strong> may say the feature is not switched on yet.</td>
+            <td>You cannot annotate a log entry.</td>
+            <td>The log itself is complete and unaffected.</td>
+          </tr>
+          <tr>
+            <td><strong>A small number of actions are still being switched on</strong> for your live academy.</td>
+            <td>An occasional action may report an error even though the screen offers it.</td>
+            <td>Tell support what you were doing — these are quick to enable.</td>
+          </tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <!-- ============================================================= 15 -->
+    <section id="s15">
+      <h2 class="sec"><span class="n">15</span><span>Glossary and quick reference</span></h2>
+
+      <h3>Words this app uses precisely</h3>
+      <div class="scroll"><table>
+        <thead><tr><th>Word</th><th>Means</th></tr></thead>
+        <tbody>
+          <tr><td>Course</td><td><em>What</em> is taught — Prenatal Flow, Postnatal. Not when.</td></tr>
+          <tr><td>Offering</td><td>A course <strong>at one branch</strong>, with the weekdays it runs. Attendance is counted from the offering's weekdays.</td></tr>
+          <tr><td>Session</td><td>One class on one date. Created by the schedule, or by an import for a date nobody scheduled.</td></tr>
+          <tr><td>Register</td><td>One session's attendance, as uploaded.</td></tr>
+          <tr><td>Expected</td><td>She was due at that session.</td></tr>
+          <tr><td>Extra attended</td><td>She came when she was not expected. Never a miss.</td></tr>
+          <tr><td>Holiday</td><td>A <strong>closure</strong> — not a cancellation. Excluded from every figure.</td></tr>
+          <tr><td>Alias / display name</td><td>The name Google Meet shows for her. What an upload matches on.</td></tr>
+          <tr><td>Flagged / needs follow-up</td><td>Over her course's rule for the period. Derived, never stored.</td></tr>
+          <tr><td>Inactive</td><td>Out of the follow-up rule. Still on the roster, attendance still recorded.</td></tr>
+          <tr><td>Academy admin</td><td>You — the single owner. One per academy, enforced.</td></tr>
+          <tr><td>Staff</td><td>Your coaches and front desk. Identical rights to each other.</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>The eight statuses</h3>
+      <p>Every one of them carries the word as well as the icon, everywhere. Colour is never the only signal — these are the app's own measured inks.</p>
+      <div class="statuses">
+        <div class="status"><div class="w"><span class="g" style="background:var(--ok-bg);color:var(--ok)">✓</span><span style="color:var(--ok)">Present</span></div><div class="m">She was in the call.</div><div class="hex">#0F7551 / #2FBE8C</div></div>
+        <div class="status"><div class="w"><span class="g" style="background:var(--bad-bg);color:var(--bad)">✕</span><span style="color:var(--bad)">Absent</span></div><div class="m">Expected, and not in the file.</div><div class="hex">#B3261E / #F2683C</div></div>
+        <div class="status"><div class="w"><span class="g" style="background:var(--warn-bg);color:var(--warn)">☁</span><span style="color:var(--warn)">Awaiting upload</span></div><div class="m">The class ran; no file yet. Tap it.</div><div class="hex">#7A5300 / #E8B93B</div></div>
+        <div class="status"><div class="w"><span class="g" style="background:var(--surface-2);color:var(--info)">◷</span><span style="color:var(--info)">Scheduled</span></div><div class="m">A session still to come.</div><div class="hex">#2C5AA8 / #7FA9E8</div></div>
+        <div class="status"><div class="w"><span class="g" style="background:var(--surface-2);color:var(--muted)">⃠</span><span style="color:var(--muted)">Cancelled</span></div><div class="m">The session did not run.</div><div class="hex">#6E5A68 / #8A7C86</div></div>
+        <div class="status"><div class="w"><span class="g" style="background:var(--surface-2);color:#6B3FA0">✻</span><span style="color:#6B3FA0">Holiday</span></div><div class="m">A declared closure.</div><div class="hex">#6B3FA0 / #B487EA</div></div>
+        <div class="status"><div class="w"><span class="g" style="background:var(--ok-bg);color:#0B6E66">＋</span><span style="color:#0B6E66">Extra attended</span></div><div class="m">She came unexpected. Never a miss.</div><div class="hex">#0B6E66 / #4FD1C5</div></div>
+        <div class="status"><div class="w"><span class="g" style="background:var(--surface-2);color:var(--muted)">—</span><span style="color:var(--muted)">Not expected</span></div><div class="m">The course does not run that day.</div><div class="hex">#6B5563 / #A78E9E</div></div>
+      </div>
+
+      <h3>Who can do what</h3>
+      <div class="scroll"><table>
+        <thead><tr><th>Capability</th><th>You (academy owner)</th><th>Your staff</th></tr></thead>
+        <tbody>
+          <tr><td>See the Overview dashboard</td><td><span class="yes">✓</span></td><td><span class="no">—</span></td></tr>
+          <tr><td>See Attendance, courses, members</td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td></tr>
+          <tr><td>Add / edit / delete a course</td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td></tr>
+          <tr><td>Add / edit / remove a member</td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td></tr>
+          <tr><td>Bulk import members</td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td></tr>
+          <tr><td>Upload a register (and override one)</td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td></tr>
+          <tr><td>Mark a session held or cancelled</td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td></tr>
+          <tr><td>See the follow-up rule</td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td></tr>
+          <tr><td><strong>Change</strong> the follow-up rule or a template</td><td><span class="yes">✓</span></td><td><span class="no">—</span></td></tr>
+          <tr><td>Send follow-up emails</td><td><span class="yes">✓</span></td><td><span class="yes">✓</span></td></tr>
+          <tr><td>Add / remove a branch, declare a holiday</td><td><span class="yes">✓</span></td><td><span class="no">—</span></td></tr>
+          <tr><td>Staff &amp; access, issue or reset a PIN</td><td><span class="yes">✓</span></td><td><span class="no">—</span></td></tr>
+          <tr><td>The audit log</td><td><span class="yes">✓</span></td><td><span class="no">—</span></td></tr>
+          <tr><td>Theme and accent</td><td><span class="yes">✓ own</span></td><td><span class="yes">✓ own</span></td></tr>
+        </tbody>
+      </table></div>
+      <p>Two rules sit above all of the above:</p>
+      <ul>
+        <li><strong>Every write is gated on the subscription.</strong> An expired subscription makes the whole product read-only rather than partially broken.</li>
+        <li><strong>A disabled account fails closed.</strong> One switch, and every read and write denies at once.</li>
+      </ul>
+
+      <h3>The week at a glance</h3>
+      <div class="scroll week"><table>
+        <thead><tr><th>When</th><th>Do this</th><th>Where</th></tr></thead>
+        <tbody>
+          <tr><td>After each class</td><td>Upload the Meet file</td><td>The day card marked <strong>Awaiting upload</strong></td></tr>
+          <tr><td>When a new member joins</td><td>Add her — with her email</td><td>Attendance → <strong>Add Member</strong></td></tr>
+          <tr><td>When a batch joins</td><td>Bulk Import</td><td>Attendance → <strong>Bulk Import</strong></td></tr>
+          <tr><td>When the register shows a stray name</td><td>Fold her in</td><td>Course → <strong>No email</strong> → <em>Add display name to existing member</em></td></tr>
+          <tr><td>Saturday</td><td>Review who is drifting, and write to them</td><td>Overview → <strong>Need follow-up</strong>, then the course's <strong>Send Communication</strong></td></tr>
+          <tr><td>Month end</td><td>Check whether a dip is a trend, and export it</td><td><strong>Reports</strong></td></tr>
+          <tr><td>When a coach joins or leaves</td><td>Add / disable, and issue or revoke the PIN</td><td>More → <strong>Staff &amp; access</strong></td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+  </main>
+</div>
+
+<footer>
+  <span class="tag">Preparing, Thriving and Beyond</span>
+  RosiFit v1.4 (build 212) — built and supported by UniqBrio for your academy.
+  Support: <strong>+91 9994871158</strong>, by call or WhatsApp — the only support channel, and a
+  person picks up. If anything in this manual does not match what you see on screen, tell us: the
+  app is right, and correcting the manual is our job.
+</footer>
+
+<script>
+(function () {
+  var titles = [
+    'What RosiFit does',
+    'Installing and signing in',
+    'Finding your way around',
+    'Overview — this week',
+    'Attendance — the workspace',
+    'Inside one course',
+    'Members',
+    'Uploading a register',
+    'Weekly review and emails',
+    'Reports',
+    'More — settings and staff',
+    'Rules the app enforces',
+    'When something goes wrong',
+    'Not in this release',
+    'Glossary and reference'
+  ];
+
+  function build(el) {
+    if (!el) return;
+    titles.forEach(function (t, i) {
+      var li = document.createElement('li');
+      var a = document.createElement('a');
+      a.href = '#s' + (i + 1);
+      var n = document.createElement('span');
+      n.className = 'n';
+      n.textContent = String(i + 1).padStart(2, '0');
+      var label = document.createElement('span');
+      label.textContent = t;
+      a.appendChild(n);
+      a.appendChild(label);
+      li.appendChild(a);
+      el.appendChild(li);
+    });
+  }
+  build(document.getElementById('nav-desktop'));
+  build(document.getElementById('nav-mobile'));
+
+  // Mark the section currently in view. Progressive enhancement only — the
+  // links work without it.
+  var links = document.querySelectorAll('#nav-desktop a');
+  if (!links.length || !('IntersectionObserver' in window)) return;
+  var byId = {};
+  links.forEach(function (a) { byId[a.getAttribute('href').slice(1)] = a; });
+
+  var seen = {};
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) { seen[e.target.id] = e.isIntersecting; });
+    var current = null;
+    Object.keys(byId).forEach(function (id) { if (!current && seen[id]) current = id; });
+    links.forEach(function (a) {
+      a.setAttribute('aria-current', a.getAttribute('href') === '#' + current ? 'true' : 'false');
+    });
+  }, { rootMargin: '-10% 0px -70% 0px' });
+
+  document.querySelectorAll('main section[id]').forEach(function (s) { io.observe(s); });
+}());
+</script>
+</html>

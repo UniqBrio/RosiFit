@@ -1,0 +1,36 @@
+BROWSER — requests/2026-09-08-course-back-arrow-dead-after-refresh.md
+08-Sep-2026. expo export (EXPO_NO_DOTENV=1, so isConfigured=false and the fixtures
+answer -- nothing reached the live project), served locally with a host-style
+rewrite (/course/c1 -> course/[id].html, without which the cold-arrival case
+cannot be walked at all), driven with Playwright on the cached Chromium at
+1280x900. URLs and DOM text, no pixels.
+
+[2] is the DEFECT REPRODUCED IN THIS SAME BUILD: /branches still calls a bare
+router.back(), and cold-loaded its arrow does nothing at all. That is exactly
+what /course/<id> did before this fix, proved in situ rather than described.
+
+[1] COLD arrival at /course/c1 — a refresh, a bookmark, a PWA relaunch
+  screen: Overview | Attendance | Prenatal Flow | 2 branches · Coimbatore: Mon, Wed, Fri · Chennai: Mon, Wed, Fri | Upload Session
+  OK     the course screen is the app’s FIRST route  — history.length=2
+  OK     the back arrow is drawn
+  OK     pressing it LEAVES the course  — now /courses
+  screen: Overview | Attendance | Attendance | 4 courses · 3 branches · 2 need follow-up | Add Member
+
+[2] the same cold arrival on a screen that still calls a bare router.back()
+  OK     its back arrow is drawn too  — at /branches
+  OK     and pressing it does NOTHING — the defect, reproduced  — still /branches
+
+[3] pushed from the Courses tab — the path that already worked
+  OK     the card opens the course  — at /course/c1
+  screen: Overview | Attendance | Prenatal Flow | 2 branches · Coimbatore: Mon, Wed, Fri · Chennai: Mon, Wed, Fri | Upload Session
+  OK     back returns to the Courses tab  — now /courses
+  OK     it POPPED rather than pushing a third entry  — history 4 → 5
+  screen: Overview | Attendance | Attendance | 4 courses · 3 branches · 2 need follow-up | Add Member
+
+[4] ?from= is honoured only when it is an in-app path
+  OK     a named in-app origin is followed  — now /attendance
+  OK     an off-app target is refused and falls back to /courses  — now http://127.0.0.1:8099/courses
+
+page errors: (none)
+
+ALL CHECKS PASS

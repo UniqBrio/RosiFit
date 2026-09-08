@@ -57,9 +57,15 @@ test('nothing is deleted without the question being asked', () => {
     'the button must open the confirmation, never call the write directly');
   assert.match(src, /open=\{confirmRemove\}/,
     'the confirmation must be driven by that state');
-  assert.match(src, /title=\{`Remove \$\{member\.name\}\?`\}/,
-    'the question must name who is being removed');
-  assert.match(src, /confirmLabel=\{removing \? 'Removing…' : 'Remove'\}/,
+  // AMENDED 08-Sep-2026 for requests/2026-09-08-member-delete-confirm-yes-no.md.
+  // The words changed at the repo owner's asking -- "confirm that you are
+  // deleting a member and its record entire[ly] ... yes or no" -- so the two
+  // assertions that quoted the old ones are restated rather than dropped: what
+  // they were guarding (the question names her; the busy label is distinct from
+  // the idle one) is unchanged and still asserted here.
+  assert.match(src, /title=\{`Delete \$\{member\.name\} and her records\?`\}/,
+    'the question must name who is being deleted, and say that her records go with her');
+  assert.match(src, /confirmLabel=\{removing \? 'Deleting…' : 'Yes'\}/,
     'a second tap while the write is in flight must not read as a fresh one');
   assert.match(src, /disabled=\{removing\}/,
     'the control must be inert while its own write is in flight');

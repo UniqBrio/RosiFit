@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { uploadOffer, offersUpload, sameWeek, weekStartIso } from './uploadWindow';
+import { uploadOffer, offersUpload, sameWeek, weekStartIso, futureFileRefusal } from './uploadWindow';
 import { currentWeek, weekStart, iso } from './period';
 
 /**
@@ -185,4 +185,81 @@ test('an unreadable clock never offers anything', () => {
 
 test('two unreadable dates are not "the same week"', () => {
   assert.equal(sameWeek('', ''), false);
+});
+
+/* ------------------------------------------ a file for a day that has not run
+ *
+ * "If today is 8 sept user can upload for today if the upload files date is
+ *  9 sept then block show message as attendance can be uploaded for future
+ *  dates"
+ *
+ * The strip's button already withholds itself from a future day, but the day
+ * a file lands on has never come from the screen -- it comes from the Meet
+ * `Created on` line. So a file dated tomorrow, opened from anywhere at all,
+ * imported without comment. The boundary the requester drew is TODAY IS
+ * ALLOWED, and that is the boundary asserted here in both directions.
+ */
+
+/* The requester's own dates. */
+const TODAY = '2026-09-08';
+const TOMORROW = '2026-09-09';
+const YESTERDAY = '2026-09-07';
+
+const FILE = { fileName: 'meet_export.csv', label: (d: string) => `[${d}]` };
+
+test('today is allowed — the requester drew the line here, not before it', () => {
+  assert.equal(futureFileRefusal(TODAY, TODAY, FILE), null);
+});
+
+test('a day already gone is allowed', () => {
+  assert.equal(futureFileRefusal(YESTERDAY, TODAY, FILE), null);
+});
+
+test('a file dated tomorrow is refused', () => {
+  assert.notEqual(futureFileRefusal(TOMORROW, TODAY, FILE), null);
+});
+
+test('a file from a whole future week is refused too', () => {
+  // Not the same rule as the strip's: `offersUpload` also demands the CURRENT
+  // week, and a file from three weeks ago must still import. Only "arrived"
+  // is borrowed.
+  assert.notEqual(futureFileRefusal('2026-09-30', TODAY, FILE), null);
+});
+
+test('a file from a past week is NOT refused, though its day would offer no button', () => {
+  assert.equal(offersUpload('2026-08-18', TODAY), false);
+  assert.equal(futureFileRefusal('2026-08-18', TODAY, FILE), null);
+});
+
+test('the refusal names the file, so she knows which one she picked', () => {
+  assert.match(String(futureFileRefusal(TOMORROW, TODAY, FILE)), /^meet_export\.csv is for/);
+});
+
+test('the refusal says the words the requester asked for: a future date', () => {
+  // "message should include as its a future date" -- named, not described.
+  assert.match(String(futureFileRefusal(TOMORROW, TODAY, FILE)), /\u2014 a future date\./);
+});
+
+test('the refusal writes the day the screen\u2019s way, never as raw ISO', () => {
+  assert.match(String(futureFileRefusal(TOMORROW, TODAY, FILE)), /\[2026-09-09\]/);
+});
+
+test('the refusal does NOT also name today \u2014 one date to read, not two', () => {
+  // "simple". A message whose whole content is "not yet" does not make the
+  // reader compare two dates to get there.
+  assert.equal(/\[2026-09-08\]/.test(String(futureFileRefusal(TOMORROW, TODAY, FILE))), false);
+});
+
+test('the refusal says when it CAN be uploaded, not only that it cannot', () => {
+  assert.match(String(futureFileRefusal(TOMORROW, TODAY, FILE)),
+    /Attendance can only be uploaded once the class has run\.$/);
+});
+
+test('an unreadable file day is not refused HERE — the screen already says why', () => {
+  assert.equal(futureFileRefusal('', TODAY, FILE), null);
+  assert.equal(futureFileRefusal('not-a-date', TODAY, FILE), null);
+});
+
+test('an unreadable clock refuses nothing, rather than refusing everything', () => {
+  assert.equal(futureFileRefusal(TOMORROW, '', FILE), null);
 });

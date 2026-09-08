@@ -35,12 +35,21 @@ for (const [themeName, T] of [['dark', DARK], ['light', LIGHT]] as const) {
     for (const st of ['success', 'warning', 'danger', 'possible'] as const) {
       checks.push({ label: `${themeName}: ${st} status on ${sName}`, fg: T[st],      bg: s, need: 4.5 });
     }
+    // The OUTLINE "Yes, delete" of a destructive confirmation is lettered in
+    // the danger ink -- covered by the sweep above, on `surface` among the
+    // rest, which is the card it is actually drawn on.
     // every accent's TEXT ink, on every surface of this theme
     for (const a of ACCENTS) {
       const ink = themeName === 'dark' ? a.tintDark : a.tintLight;
       checks.push({ label: `${themeName}: ${a.label} ink on ${sName}`, fg: ink, bg: s, need: 4.5 });
     }
   }
+  // The label on the filled "No" of a destructive confirmation. The fill is
+  // theme-dependent (a near-black over the light card, the app background over
+  // the dark one), so its ink is measured in both themes rather than assumed
+  // from the light one where the pair is obvious.
+  checks.push({ label: `${themeName}: the safe answer's label on its fill`, fg: T.onSafeFill, bg: T.safeFill, need: 4.5 });
+
   // white label on the accent fill (buttons), and the accent as a border
   for (const a of ACCENTS) {
     checks.push({ label: `${themeName}: ${a.label} button label`, fg: T.onAccent, bg: a.value,  need: 4.5 });

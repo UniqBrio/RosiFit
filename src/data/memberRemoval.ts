@@ -86,54 +86,34 @@ export function firstName(name: string): string {
 }
 
 /**
- * The body of the confirmation, BEFORE the tap. One paragraph, and every
- * clause is a fact the person confirming would want to have been told
- * afterwards.
+ * The body of the confirmation, BEFORE the tap. TWO SHORT SENTENCES -- what is
+ * going, and the question.
  *
- * The dialog's title already names her ("Remove Priya Raman?"), so the body
- * says "her" rather than repeating it -- the sentence is about what goes, and
- * a name repeated three times in four lines reads like a form letter at the
- * moment somebody most needs to actually read it.
+ * SHORTENED 08-Sep-2026 at the repo owner's asking, having seen the counted
+ * version on screen: "this is very much info keep it simple you are deleting
+ * member and its records do you want to delete it permanently thats it"
+ * (requests/2026-09-08-member-delete-confirm-yes-no.md).
+ *
+ * What it replaced was a counted paragraph -- "with her 3 attendance records
+ * across 2 sessions … those sessions count one fewer person present
+ * afterwards … Recorded in the audit log". Every clause of it was true, and
+ * together they were six lines over a Yes/No question, which is a paragraph
+ * people learn to tap past. The two facts that decide the answer are that the
+ * records go too and that it is permanent, so those are what is left.
+ *
+ * WHY THE PARAMETER STAYS. The sentence no longer varies -- the same words for
+ * counting, counted and uncounted -- but `state` is kept in the signature
+ * deliberately: the counts still exist behind `member_deletion_preview`, and a
+ * later ask to put one number back (or to show them under a "details" line)
+ * changes this function only. Dropping the parameter would take both screens,
+ * both their specs and the preview plumbing with it.
+ *
+ * The dialog's title already names her, so the body says "her" rather than
+ * repeating it.
  */
-export function deletionWarning(state: PreviewState): string {
-  if (state.kind === 'counting') return 'Counting what this will delete…';
-
-  if (state.kind === 'uncounted') {
-    // Nothing to count with. The sentence is still true -- it just cannot say
-    // how much -- and it must not be gentler for lacking the numbers.
-    return 'What this will delete could not be counted. '
-      + 'This permanently removes her from the database: her enrolments, every attendance '
-      + 'record she has and the mail the academy has sent her. '
-      + 'That attendance cannot be recovered. Recorded in the audit log.';
-  }
-
-  const p = state.preview;
-  const enrolments = p.enrolments === 0
-    ? 'She is not enrolled in anything.'
-    : `${plural(p.enrolments, 'enrolment', 'enrolments')} of hers ${p.enrolments === 1 ? 'goes' : 'go'} with her.`;
-
-  if (p.attendanceRecords === 0) {
-    // A member nothing has been recorded against yet. Still permanent, but
-    // there is no history to warn about, and warning about it anyway teaches
-    // people to skim the sentence on the day it matters.
-    return `This permanently removes her from the database. ${enrolments} `
-      + 'Nothing has been recorded against her yet. Recorded in the audit log.';
-  }
-
-  // The clause that matters most, and the one the old dialog promised the
-  // opposite of: her attendance was the academy's record of who was in the
-  // room, so the days themselves change. The sessions are not deleted -- they
-  // are the academy's classes -- but they will show one fewer person present,
-  // and somebody reading a report next month is owed that now.
-  const attendance = `${plural(p.attendanceRecords, 'attendance record', 'attendance records')} `
-    + `across ${plural(p.sessionsAttended, 'session', 'sessions')}`;
-  const emails = p.emailsSent === 0 ? ''
-    : ` The ${plural(p.emailsSent, 'email', 'emails')} the academy sent her ${p.emailsSent === 1 ? 'goes' : 'go'} too.`;
-
-  return `This permanently removes her from the database, with her ${attendance}. ${enrolments}`
-    + `${emails} Those ${p.sessionsAttended === 1 ? 'session counts' : 'sessions count'} `
-    + 'one fewer person present afterwards, and that cannot be recovered. '
-    + 'Recorded in the audit log.';
+export function deletionWarning(_state: PreviewState): string {
+  return 'You are deleting this member and all her records. '
+    + 'Do you want to delete it permanently?';
 }
 
 /**

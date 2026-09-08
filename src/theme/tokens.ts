@@ -55,6 +55,12 @@ export const DARK = {
   // ground in one of them. Measured in check-contrast.ts against every
   // accent's deep stops.
   deepControl: 'rgba(12,4,9,0.4)', deepControlLine: 'rgba(255,255,255,0.16)', // allow-literal-color: this file IS the token source, and the pair is measured in check-contrast.ts
+  // The FILLED "No" of a destructive confirmation -- see the note over
+  // LIGHT.safeFill for why the safe answer is the filled one. Here it is the
+  // app background: a fill DARKER than the dialog card it sits on. It measures
+  // 1.06:1 against that card, which is why the button also carries a
+  // `lineStrong` border -- the boundary is drawn, not implied by the fill.
+  safeFill: '#08040A', onSafeFill: '#FFFFFF', // allow-literal-color: this file IS the token source, and the pair is measured in check-contrast.ts
   success: '#2FBE8C', warning: '#E8B93B', danger: '#F2683C', possible: '#B487EA',
   // 0.5, not the 0.7 this was until 05-Sep-2026. The value was chosen while a
   // dialog route still painted an opaque panel over the screen behind it, so
@@ -78,6 +84,25 @@ export const LIGHT = {
   // ground in one of them. Measured in check-contrast.ts against every
   // accent's deep stops.
   deepControl: 'rgba(12,4,9,0.4)', deepControlLine: 'rgba(255,255,255,0.16)', // allow-literal-color: this file IS the token source, and the pair is measured in check-contrast.ts
+  /* The FILLED "No" of a destructive confirmation.
+   *
+   * A confirmation whose only filled button is the one that deletes puts the
+   * emphasis on the irreversible answer -- so where a dialog asks to destroy
+   * something, the SAFE answer is the filled one and the destructive answer is
+   * the outline. Requested in those terms on 08-Sep-2026: "highlight no with
+   * dark background".
+   *
+   * It is NOT the accent: the accent fill is what every ordinary primary
+   * button in the app already wears, and this button has to read as the other
+   * kind of choice. It is not `fgStrong` either, even though the value matches
+   * this theme's -- that token is an INK, and check-contrast.ts measures inks
+   * on surfaces, not surfaces made out of inks.
+   *
+   * The value is theme-dependent because "dark" is: this near-black over a
+   * white card is the requested contrast, and the same near-black over the
+   * dark theme's card would be an invisible button. See DARK.safeFill.
+   */
+  safeFill: '#1C0A17', onSafeFill: '#FFFFFF', // allow-literal-color: this file IS the token source, and the pair is measured in check-contrast.ts
   success: '#0F7551', warning: '#7A5300', danger: '#B3261E', possible: '#6B3FA0',
   // UNCHANGED at 0.42, deliberately. The reported defect is the dark theme's
   // (the screenshot was dark), and 0.42 of a dark plum over this theme's own

@@ -14,7 +14,13 @@ import { useCourses, useFollowUp, useAttendance } from '../../src/data/hooks';
 import { weekStart, iso, label as periodLabel } from '../../src/data/period';
 import {
   setMemberStatus, mergeMemberInto, deleteMember, memberDeletionPreview, dataSource,
+  attendanceResetPreview, resetDayAttendance,
 } from '../../src/data/repository';
+import { ResetRegisterDialog } from '../../src/components/ResetRegisterDialog';
+import {
+  resetPreview, resetOutcome, resetFailure,
+  type ResetPreview, type ResetTarget,
+} from '../../src/data/attendanceReset';
 import {
   removalOutcome, removalFailure, deletionWarning, type PreviewState,
 } from '../../src/data/memberRemoval';
@@ -29,6 +35,7 @@ import type { AttendanceRow } from '../../src/data/mock';
 import type { ScreenState } from '../../src/data/useScreenState';
 import { MERGE_FAILED } from '../../src/data/alias';
 import { ALL_BRANCHES } from '../../src/state/academy';
+import { backFrom } from '../../src/data/nav';
 import { ShellScreen } from '../../src/components/AppShell';
 
 /**
@@ -99,7 +106,21 @@ function CourseDetailBody() {
   const [searching, setSearching] = useState(false);
   const { flash } = useToast();
   const router = useRouter();
-  const { id, state: forced } = useLocalSearchParams<{ id?: string; state?: string }>();
+  const { id, state: forced, from } = useLocalSearchParams<
+    { id?: string; state?: string; from?: string }>();
+
+  /**
+   * LEAVING THE COURSE. The Courses tab pushes this screen, so popping is
+   * right and keeps that tab exactly as it was left. But `back()` on an EMPTY
+   * stack does nothing at all -- and this screen is the app's first route
+   * whenever it is refreshed, bookmarked or relaunched on its own URL, which
+   * is the whole of "the back button stops working after a refresh".
+   * `backFrom` decides which of the two is true; nav.ts holds the reasoning.
+   */
+  const leave = () => {
+    const to = backFrom(router.canGoBack(), from, '/courses');
+    if (to === 'back') router.back(); else router.replace(to);
+  };
 
   /**
    * The three breakpoints, and the only place they are stated.
@@ -335,6 +356,101 @@ function CourseDetailBody() {
   const withEmail = shown.filter(m => m.emails.length > 0);
   const withoutEmail = shown.filter(m => m.emails.length === 0);
 
+  /* ------------------------------------------------ resetting the day
+   *
+   * The one way back out of an uploaded register (0056). It acts on the
+   * SELECTED day and nothing else, and the day returns to its awaiting state
+   * by derivation rather than by a flag: `days` above gives a day `awaiting`
+   * when it holds no attendance rows, so clearing the rows IS the change.
+   * Nothing here sets a status that could then disagree with them -- and the
+   * word that day then wears is STATUS.awaiting.word, never a copy of it.
+   */
+  /**
+   * SELECTION ON THE ROSTER, asked for by name — "enable select and deselect
+   * option in members screen where we upload attendnace".
+   *
+   * Off by default and entered deliberately, because the roster's ordinary job
+   * is reading and opening a member: turning every card into a checkbox all
+   * the time would put a tick between a finger and the profile it was reaching
+   * for. What the selection FEEDS is the reset's delete list, which is the
+   * only destructive thing on this screen — so the selection is carried into
+   * that dialog rather than acted on from here, where nothing states what a
+   * deletion costs.
+   */
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const toggleSelected = (id: string) => setSelected(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  // A selection is about the day it was made on. Leaving it standing across a
+  // day change would carry ticks onto a roster that never showed them.
+  useEffect(() => { setSelected(new Set()); setSelectMode(false); }, [chosen?.iso, course?.id]);
+
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetPreviewData, setResetPreviewData] = useState<ResetPreview | null>(null);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetBusy, setResetBusy] = useState(false);
+
+  /**
+   * The marks this day carries, read from the SAME rows the strip drew its
+   * cell from. This is what decides whether Reset is offered at all: a day
+   * with nothing on it has nothing to undo, and a button that opens a dialog
+   * saying "nothing to reset" is a button that should not have been there.
+   */
+  const dayMarks = useMemo(() => (attendance.data ?? []).filter(
+    r => r.course_id === course?.id && r.date === (chosen?.iso ?? '')
+      && (branch === ALL_BRANCHES || r.branch === branch)).length,
+    [attendance.data, course?.id, chosen?.iso, branch]);
+
+  const openReset = async () => {
+    if (!course || !chosen) return;
+    setResetOpen(true);
+    setResetError(null);
+    setResetLoading(true);
+    // The screen's own rows answer immediately, so the dialog opens with real
+    // numbers rather than an empty frame; the server then replaces them. It
+    // is the authority on WHO has an address -- a member the register marks
+    // while enrolled in no course is not on this screen's roster at all, and
+    // she is exactly who the delete offer exists for.
+    setResetPreviewData(resetPreview(attendance.data ?? [], scoped, course.id, chosen.iso));
+    try {
+      setResetPreviewData(await attendanceResetPreview(course.id, chosen.iso));
+    } catch (err) {
+      setResetError(err instanceof Error ? err.message
+        : 'What this reset would clear could not be counted. Nothing has been changed.');
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const runReset = async (ticked: ResetTarget[]) => {
+    if (!course || !chosen) return;
+    setResetBusy(true);
+    try {
+      const outcome = await resetDayAttendance(course.id, chosen.iso,
+        ticked.map(t => t.member_id));
+      const words = resetOutcome(outcome, dayLabel(chosen.iso));
+      setResetOpen(false);
+      // The members those ticks pointed at may not exist any more, so the
+      // selection cannot survive the write that acted on it.
+      setSelected(new Set());
+      setSelectMode(false);
+      flash(words.message, words.tone);
+    } catch (err) {
+      // The dialog STAYS OPEN on a failure, carrying the reason. Closing it
+      // would leave a toast as the only evidence, over a register the person
+      // has every reason to believe was cleared.
+      setResetError(resetFailure(err));
+    } finally {
+      setResetBusy(false);
+    }
+  };
+
 
 
   if (courses.state === 'loading') {
@@ -420,7 +536,7 @@ function CourseDetailBody() {
                     arrows below are square, smaller and live inside the strip:
                     "leave this course" and "move one day" were the same arrow
                     drawn twice, and nobody could tell which was which. */}
-                <Pressable testID="course-back" onPress={() => router.back()} accessibilityRole="button"
+                <Pressable testID="course-back" onPress={leave} accessibilityRole="button"
                   accessibilityLabel="Go back" hitSlop={6}
                   style={({ pressed }) => ({
                     width: 34, height: 34, borderRadius: RADIUS.md,
@@ -794,9 +910,106 @@ function CourseDetailBody() {
                 register where you cannot tell which day you are marking is
                 worse than one with no chips at all. */}
             {chosen ? (
-              <Text testID="course-attendance-day" style={{
-                fontSize: 11.5, color: theme.muted,
-              }}>{`Attendance for ${dayLabel(chosen.iso)}`}</Text>
+              <View style={{
+                flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, minHeight: 30,
+              }}>
+                <Text testID="course-attendance-day" style={{
+                  flex: 1, minWidth: 0, fontSize: 11.5, color: theme.muted,
+                }}>{`Attendance for ${dayLabel(chosen.iso)}`}</Text>
+
+                {/* ------------------------------------------------- select mode
+                    ON THIS LINE, not on the Members heading, because the
+                    requester asked for it "just above member cards not above
+                    search bar" -- and she is right about which row that is:
+                    the heading sits above a search box and two notes, so a
+                    control there is three elements away from the ticks it
+                    turns on.
+
+                    The way in and the way out are the SAME control, so there
+                    is never a selection with no visible way to leave it.
+                    Leaving clears the ticks: a selection that survived its own
+                    mode would be an invisible one, and the next reset would
+                    open with members ticked that nobody can see they ticked. */}
+                {shown.length > 0 ? (
+                  <Pressable testID="course-select-toggle"
+                    onPress={() => {
+                      setSelectMode(m => !m);
+                      if (selectMode) setSelected(new Set());
+                    }}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: selectMode }}
+                    accessibilityLabel={selectMode
+                      ? 'Leave selection mode' : 'Select members'}
+                    style={({ pressed }) => ({
+                      flexDirection: 'row', alignItems: 'center', gap: 5,
+                      minHeight: 30, paddingHorizontal: 10, borderRadius: RADIUS.sm,
+                      backgroundColor: selectMode
+                        ? statusSurface(theme.accent).bg : theme.surface,
+                      borderWidth: 1,
+                      borderColor: selectMode ? theme.accent : theme.lineStrong,
+                      opacity: pressed ? 0.7 : 1,
+                    })}>
+                    <Icon name={selectMode ? 'close' : 'checklist'} size={14}
+                      color={selectMode ? theme.accentInk : theme.muted} />
+                    {/* the WORD, never the colour alone (guardrail 3) */}
+                    <Text style={{
+                      fontSize: 11, fontWeight: '800',
+                      color: selectMode ? theme.accentInk : theme.fg,
+                    }}>{selectMode ? 'Done' : 'Select'}</Text>
+                  </Pressable>
+                ) : null}
+
+                {/* ------------------------------------------- reset the day
+                    ALWAYS SHOWN, on every day the roster is drawn for --
+                    requester, 08-Sep-2026, on finding it absent from a day
+                    awaiting its file: *"always show reset"*.
+
+                    It was drawn only where `dayMarks > 0`, on the rule that a
+                    day with nothing on it has nothing to undo. That rule is
+                    still TRUE and is now carried by the button's STATE rather
+                    than by its absence: a control that vanishes teaches
+                    nobody where it went, and the day it is missing from is
+                    exactly the day somebody goes looking for it. Empty day,
+                    the button is there and visibly dead, and the reason is on
+                    it for a screen reader.
+
+                    It sits on this line rather than on the day card because
+                    that is where the requester put it, and because the line
+                    already names the day it is about: a control and its
+                    subject, one above the other, with nothing between them to
+                    misread. */}
+                {(() => {
+                  const nothingToReset = dayMarks === 0;
+                  const ink = nothingToReset ? theme.dim : dangerInk;
+                  return (
+                    <Pressable testID="course-day-reset"
+                      onPress={() => void openReset()}
+                      disabled={nothingToReset}
+                      accessibilityRole="button"
+                      accessibilityState={{ disabled: nothingToReset }}
+                      accessibilityLabel={nothingToReset
+                        ? `Nothing to reset for ${dayInWords(chosen.iso)} — no attendance is recorded on that day`
+                        : `Reset the register for ${dayInWords(chosen.iso)}`}
+                      style={({ pressed }) => ({
+                        flexDirection: 'row', alignItems: 'center', gap: 5,
+                        minHeight: 30, paddingHorizontal: 10, borderRadius: RADIUS.sm,
+                        // A dead control must not wear the danger colour: red
+                        // says "this does something you cannot take back", and
+                        // on an empty day it does nothing at all.
+                        backgroundColor: nothingToReset ? theme.surface : statusSurface(dangerInk).bg,
+                        borderWidth: 1,
+                        borderColor: nothingToReset ? theme.line : statusSurface(dangerInk).border,
+                        opacity: pressed && !nothingToReset ? 0.7 : 1,
+                      })}>
+                      <Icon name="restart_alt" size={14} color={ink} />
+                      {/* the WORD, never the colour alone (guardrail 3) */}
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: ink }}>
+                        Reset
+                      </Text>
+                    </Pressable>
+                  );
+                })()}
+              </View>
             ) : null}
 
             {/* A COUNT THAT DROPS ROWS SILENTLY IS THE SAME DEFECT, INVERTED.
@@ -818,6 +1031,48 @@ function CourseDetailBody() {
               <Text testID="course-left-earlier" style={{
                 fontSize: 11.5, color: theme.muted,
               }}>{leftEarlier}</Text>
+            ) : null}
+
+            {/* What is selected, and the bulk action over it. LAST before the
+                cards, so the count and the ticks it counts are adjacent --
+                the two notes above are rare, and putting the bar over them
+                would separate it from the rows it describes. Its own row
+                rather than a badge on the toggle: "3 of 5 selected" has to be
+                readable without hunting, and Select all is what makes a long
+                roster usable at all. */}
+            {selectMode ? (
+              <View testID="course-selection-bar" style={{
+                flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
+                paddingHorizontal: 11, paddingVertical: 8, borderRadius: RADIUS.md,
+                backgroundColor: statusSurface(theme.accent).bg,
+                borderWidth: 1, borderColor: statusSurface(theme.accent).border,
+              }}>
+                <Text style={{
+                  flex: 1, minWidth: 0, fontSize: 11.5, fontWeight: '700',
+                  color: theme.fg, fontVariant: ['tabular-nums'],
+                }}>
+                  {selected.size === 0
+                    ? 'Nobody selected — tick the members to delete on reset'
+                    : `${selected.size} of ${shown.length} selected`}
+                </Text>
+                <Pressable testID="course-select-all"
+                  onPress={() => setSelected(selected.size === shown.length
+                    ? new Set()
+                    : new Set(shown.map(m => m.id)))}
+                  accessibilityRole="button"
+                  accessibilityLabel={selected.size === shown.length
+                    ? 'Deselect every member' : 'Select every member'}
+                  style={({ pressed }) => ({
+                    minHeight: 28, paddingHorizontal: 10, borderRadius: RADIUS.sm,
+                    justifyContent: 'center', backgroundColor: theme.surface,
+                    borderWidth: 1, borderColor: theme.lineStrong,
+                    opacity: pressed ? 0.7 : 1,
+                  })}>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: theme.fg }}>
+                    {selected.size === shown.length ? 'Deselect all' : 'Select all'}
+                  </Text>
+                </Pressable>
+              </View>
             ) : null}
           </View>
         </View>
@@ -862,7 +1117,9 @@ function CourseDetailBody() {
                   <MemberCard key={m.id} member={m} tint={AVATAR_TINTS[(i + 3) % AVATAR_TINTS.length]}
                     weekLabel={week.label} noEmail={false} allMembers={members}
                     dayIso={chosen?.iso ?? null} weekdays={scopeWeekdays}
-                    rows={attendance.data ?? []} attendanceState={attendance.state} />
+                    rows={attendance.data ?? []} attendanceState={attendance.state}
+                    selectable={selectMode} selected={selected.has(m.id)}
+                    onToggleSelect={() => toggleSelected(m.id)} />
                 ))}
               </View>
 
@@ -894,7 +1151,9 @@ function CourseDetailBody() {
                       <MemberCard key={m.id} member={m} tint={AVATAR_TINTS[i % AVATAR_TINTS.length]}
                         weekLabel={week.label} noEmail allMembers={members}
                         dayIso={chosen?.iso ?? null} weekdays={scopeWeekdays}
-                        rows={attendance.data ?? []} attendanceState={attendance.state} />
+                        rows={attendance.data ?? []} attendanceState={attendance.state}
+                        selectable={selectMode} selected={selected.has(m.id)}
+                        onToggleSelect={() => toggleSelected(m.id)} />
                     ))}
                   </View>
                 </View>
@@ -915,6 +1174,22 @@ function CourseDetailBody() {
               see TECH_DEBT TD-014, which this joins. */}
         </View>
       </ScrollView>
+
+      {/* Outside the ScrollView, like every other dialog on this screen: a
+          modal nested in a scroller inherits its clipping on web. */}
+      <ResetRegisterDialog
+        open={resetOpen}
+        onClose={() => setResetOpen(false)}
+        dayWords={chosen ? dayLabel(chosen.iso) : ''}
+        preview={resetPreviewData}
+        loading={resetLoading}
+        error={resetError}
+        busy={resetBusy}
+        // What the roster had ticked arrives as the dialog's starting
+        // selection; the dialog drops anyone who turns out to have an address,
+        // and stays the last word on what is actually deleted.
+        initialTicked={[...selected]}
+        onConfirm={ticked => void runReset(ticked)} />
     </>
   );
 }
@@ -1010,8 +1285,23 @@ function DayLegend() {
  * two copies would be two places for the miss counts to drift.
  */
 function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
-  dayIso, weekdays, rows, attendanceState }:
+  dayIso, weekdays, rows, attendanceState,
+  selectable, selected, onToggleSelect }:
   { member: Member; tint: string; weekLabel: string; noEmail: boolean;
+    /**
+     * The roster is in selection mode, so this card carries a tick.
+     *
+     * IT IS NOT AN ATTENDANCE CONTROL, and that distinction is the whole
+     * reason it may exist here at all. ADR-030 made the three readings on
+     * this card a READING -- "nothing on the row is tappable" -- and that is
+     * untouched: the chips below are still inert, and this tick says only
+     * "include her in the reset's delete list". The guard in
+     * memberCardAttendanceReadOnly asserts on the attendance block, which
+     * this sits well outside of.
+     */
+    selectable?: boolean;
+    selected?: boolean;
+    onToggleSelect?: () => void;
     /** the register this member's display name can be linked INTO -- only a
      *  no-email card offers it, but the prop is passed by both call sites so
      *  the two cards stay one component */
@@ -1194,6 +1484,30 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
           their parent: a pressable nested inside the card button is how "it
           opened her profile instead of editing her" happens. */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }}>
+        {/* ------------------------------------------------ the selection tick
+            A SIBLING of the card's own press, never inside it -- a checkbox
+            nested in a button is one control to a screen reader and a
+            coin-toss to a finger, which is the rule the day strip already
+            follows one screen up. */}
+        {selectable ? (
+          <Pressable testID={`course-member-select-${member.id}`}
+            onPress={onToggleSelect}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: !!selected }}
+            accessibilityLabel={`Select ${member.name}`}
+            hitSlop={6}
+            style={({ pressed }) => ({
+              width: 26, height: 26, borderRadius: 7,
+              alignItems: 'center', justifyContent: 'center',
+              backgroundColor: selected ? theme.accent : theme.surface2,
+              borderWidth: selected ? 0 : 1.5,
+              borderColor: theme.lineStrong,
+              opacity: pressed ? 0.7 : 1,
+            })}>
+            {selected ? <Icon name="check" size={16} color={theme.onAccent} /> : null}
+          </Pressable>
+        ) : null}
+
         <Pressable testID={`course-member-${member.id}`}
           onPress={() => router.push({ pathname: '/member/[id]', params: { id: member.id } })}
           accessibilityRole="button"
@@ -1575,17 +1889,17 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
 
       {/* The same question the Members tab asks, word for word, because it is
           the same write -- which is why the sentence lives in
-          src/data/memberRemoval.ts and not in either screen. Since 0051 it
-          states a QUANTITY rather than the promise it used to make: the
-          deletion removes her attendance with her, so "her attendance history
-          stays" is withdrawn from both cards at once. */}
+          src/data/memberRemoval.ts and not in either screen. Shortened to two
+          sentences on 08-Sep-2026; the note over `deletionWarning` says what
+          went and why the counts are still fetched behind it. */}
       <ConfirmDialog
         open={confirmRemove}
         onClose={() => setConfirmRemove(false)}
-        title={`Remove ${member.name}?`}
+        title={`Delete ${member.name} and her records?`}
         body={deletionWarning(previewState)}
-        cancelLabel="Cancel"
-        confirmLabel={removing ? 'Removing…' : 'Remove'}
+        cancelLabel="No"
+        confirmLabel={removing ? 'Deleting…' : 'Yes'}
+        emphasis="cancel"
         onConfirm={() => { void remove(); }} />
     </View>
   );

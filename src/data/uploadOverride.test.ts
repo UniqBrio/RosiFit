@@ -16,7 +16,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { importAsk, askWords, overrideSummary } from './uploadOverride';
+import { importAsk, askWords, courseConfirmWords, overrideSummary } from './uploadOverride';
 
 /** the screen's own formatter, mirrored: '2026-08-31' -> 'Mon 31 Aug' */
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -124,4 +124,73 @@ test('what the override did is reported, or not mentioned at all', () => {
   // The plural agrees with itself, which "2 records for somebody" did not.
   assert.equal(overrideSummary({ reverted: 0, removed: 2, kept_by_hand: 0 }),
     '2 people who were not expected and are not in this file are off the register.');
+});
+
+/* ------------------------------------------- the course, before the picker
+ *
+ * "On clicking of upload session and browse file give a pop up asking user
+ *  that you are uploading for course postnatal confirms yes or no ... once
+ *  they confirm import the files"
+ *
+ * This ask runs BEFORE pickCsvFile(), which is the whole reason it is a
+ * separate function from askWords: there is no file, no day and no register
+ * to name yet. What is guarded here is that it names the two things that DO
+ * exist, that the yes carries the course, and that it never quietly grows a
+ * claim about a file nobody has chosen.
+ */
+
+const POSTNATAL = { course: 'Postnatal Flow', branch: 'Coimbatore' };
+
+test('the course ask names the course AND the branch in its title', () => {
+  // A course runs at several branches, so the course alone is not the answer
+  // to "which register does this land on".
+  assert.equal(courseConfirmWords(POSTNATAL).title,
+    'Uploading for Postnatal Flow · Coimbatore');
+});
+
+test('the offering is said ONCE, not in the title and again underneath', () => {
+  assert.equal(/Postnatal Flow/.test(courseConfirmWords(POSTNATAL).lines[0]), false);
+});
+
+test('the yes carries the course, which is the thing she could be wrong about', () => {
+  assert.equal(courseConfirmWords(POSTNATAL).confirm, 'Yes, choose a file for Postnatal Flow');
+});
+
+test('the no is a no, in the requester\u2019s own two words', () => {
+  assert.equal(courseConfirmWords(POSTNATAL).cancel, 'No, not this course');
+});
+
+test('the course ask says what No does, so it is not a trapdoor', () => {
+  assert.match(courseConfirmWords(POSTNATAL).note, /No takes you back/);
+});
+
+test('nothing has been written yet is true here more than anywhere', () => {
+  // No file has even been READ at this point. The sentence is the one both
+  // other asks end on, and it must not drift into a third wording.
+  assert.match(courseConfirmWords(POSTNATAL).note, /^Nothing has been written yet\./);
+});
+
+test('the course ask still says the day comes from the file', () => {
+  // The one rule this dialog has never bent, and the ask is now the first
+  // place she reads anything -- so it is the first place that must say it.
+  assert.match(courseConfirmWords(POSTNATAL).lines[0],
+    /the day it covers comes from the file, never from this screen/);
+});
+
+test('the course ask claims nothing about a file nobody has chosen', () => {
+  const words = courseConfirmWords(POSTNATAL);
+  const all = [words.title, ...words.lines, words.note, words.confirm, words.cancel].join(' ');
+  // No day, no file name, no register: the three things every OTHER ask in
+  // this dialog names, and the three this one cannot know.
+  assert.equal(/\.csv|register|override|Aug|Sep/i.test(all), false);
+});
+
+test('a course with no branch does not render a dangling separator', () => {
+  assert.equal(courseConfirmWords({ course: 'Postnatal Flow', branch: '' }).title,
+    'Uploading for Postnatal Flow');
+});
+
+test('the course ask is one question, one yes and one no', () => {
+  const words = courseConfirmWords(POSTNATAL);
+  assert.equal(words.lines.length, 1);
 });

@@ -78,8 +78,12 @@ export default function MemberEdit() {
   // record by id, because she is already on the register and the create path
   // gave her a twin (07-Sep-2026). A name on the query string has no other
   // caller, and leaving the door open is how the twin comes back.
-  const { id, state: forced } = useLocalSearchParams<
-    { id?: string; state?: string }>();
+  // `courseId` is the course the Add was pressed FROM -- the course header
+  // (app/course/[id].tsx) and the course-scoped roster (app/(tabs)/members.tsx)
+  // have both sent it for as long as those buttons have existed. It is the
+  // course_offerings PARENT id, matched against the live course list below.
+  const { id, courseId, state: forced } = useLocalSearchParams<
+    { id?: string; courseId?: string; state?: string }>();
 
   /**
    * WHICH form this is, decided by the ROUTE and by nothing else.
@@ -213,6 +217,33 @@ export default function MemberEdit() {
     setJoined(existing.joinedOn ?? '');
     setSeeded(true);
   }, [seeded, existing]);
+
+  /**
+   * The course she is being added TO, when the Add came from one.
+   *
+   * "Add Member" on a course header and on that course's roster both carry
+   * `courseId`, and this form ignored it: the picker opened blank and the
+   * course just left on screen had to be found and picked again -- on a form
+   * that then refuses to save without it. Worse, nothing stopped the wrong
+   * one being picked, which enrols her somewhere she never walked into.
+   *
+   * The id is resolved against the LIVE list, not trusted: a stale link to a
+   * deleted course matches nothing and the row stays blank, which is the
+   * truthful answer rather than a name the database no longer holds.
+   *
+   * ADD ONLY, and only into an EMPTY row -- the same two conditions the sole
+   * branch default below carries, for the same reasons. An edit seeds her
+   * stored course and this must never write over it, and a course already
+   * picked is a decision this form does not get to revisit.
+   */
+  useEffect(() => {
+    if (editing || course || !courseId) return;
+    // `courses.data` and not `courseList`: the `?? []` fallback is a fresh
+    // array on every render, which would re-run this on every render while
+    // the list is still loading for no possible effect.
+    const from = courses.data?.find(c => c.id === courseId);
+    if (from) setCourse(from.name);
+  }, [editing, course, courseId, courses.data]);
 
   const chosenCourse = courseList.find(c => c.name === course) ?? null;
   // Only branches where this course actually RUNS: the pair is the offering,

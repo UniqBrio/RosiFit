@@ -289,20 +289,19 @@ export default function Members() {
         </View>
       )}
 
-      {/* The confirmation states a QUANTITY, exactly as the course one does
-          since 0047. It used to state a promise -- "her attendance history
-          stays" -- which it could make without asking anything because it was
-          true by construction. delete_member is a hard delete since 0051 and
-          the promise is withdrawn, so the numbers come from
-          member_deletion_preview and the sentence from
-          src/data/memberRemoval.ts, where every branch of it is asserted. */}
+      {/* Two short sentences and a Yes/No, since the repo owner cut the counted
+          paragraph on 08-Sep-2026: what goes, and whether to. The words live in
+          src/data/memberRemoval.ts, so this card and the roster card cannot
+          drift apart -- see the note over `deletionWarning` for what the
+          sentence dropped, and why the preview is still counted behind it. */}
       <ConfirmDialog
         open={confirmRemove !== null}
         onClose={() => setConfirmRemove(null)}
-        title={confirmRemove ? `Remove ${confirmRemove.name}?` : ''}
+        title={confirmRemove ? `Delete ${confirmRemove.name} and her records?` : ''}
         body={confirmRemove ? deletionWarning(previewState) : ''}
-        cancelLabel="Cancel"
-        confirmLabel={removing ? 'Removing…' : 'Remove'}
+        cancelLabel="No"
+        confirmLabel={removing ? 'Deleting…' : 'Yes'}
+        emphasis="cancel"
         onConfirm={() => { if (confirmRemove) void remove(confirmRemove); }} />
     </Screen>
   );

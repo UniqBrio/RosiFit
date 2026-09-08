@@ -148,11 +148,16 @@ export function DropdownField({ label, value, open, highlight, onPress, testID, 
  * by the screen, so a floating panel can be clipped at the header's edge,
  * and a dropdown nobody can reach is worse than one that moves the page.
  */
-export function DropdownPanel({ children, maxHeight = 340, inset = 0, flow = false }:
+export function DropdownPanel({ children, maxHeight = 340, inset = 0, flow = false, menu = false }:
   { children: React.ReactNode; maxHeight?: number;
     /** pulls the panel in from the row's edges, to line it up with a
      *  padded header rather than with the screen */
-    inset?: number; flow?: boolean }) {
+    inset?: number; flow?: boolean;
+    /** The MENU panel — see `MenuRow`. Its rows are flat and reach the
+     *  panel's own edges, so the panel gives up its padding and the gap
+     *  between rows, and clips to its radius: a tinted row under a rounded
+     *  corner is a square corner without it. */
+    menu?: boolean }) {
   const { theme } = useTheme();
   return (
     <View style={{
@@ -162,9 +167,10 @@ export function DropdownPanel({ children, maxHeight = 340, inset = 0, flow = fal
       marginTop: 6,
       backgroundColor: theme.surface, borderRadius: RADIUS.lg,
       borderWidth: 1, borderColor: theme.lineStrong,
-      padding: SPACE.sm, elevation: 8,
+      ...(menu ? { padding: 0, overflow: 'hidden' as const } : { padding: SPACE.sm }),
+      elevation: 8,
     }}>
-      <ScrollView style={{ maxHeight }} contentContainerStyle={{ gap: 4 }}
+      <ScrollView style={{ maxHeight }} contentContainerStyle={menu ? undefined : { gap: 4 }}
         keyboardShouldPersistTaps="handled">
         {children}
       </ScrollView>
@@ -217,6 +223,101 @@ export function DropdownList({ options, value, onSelect, testID }:
       {options.map(o => (
         <DropdownItem key={o.label} label={o.label} meta={o.meta}
           selected={o.label === value} onPress={() => onSelect(o.label)}
+          testID={`${testID}-${o.label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`} />
+      ))}
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ menus
+ *
+ * The dropdown a FORM FIELD opens, which is a different thing from the
+ * filters above even though both hang a list under a control.
+ *
+ * A filter narrows figures that stay on screen, and its rows are cards: each
+ * one bordered, gapped from its neighbours, carrying a radio or a checkbox
+ * because a filter may take several values and the glyph is the promise about
+ * which. A form field takes exactly ONE value and the list exists to be read
+ * down and dismissed, so the requester asked for the plainer thing
+ * (requests/2026-09-08-form-dropdown-list-ui.md, with a reference image):
+ * flat rows filling the panel edge to edge, a hairline between them, and the
+ * chosen row TINTED with its label in the accent and a check at the end.
+ *
+ * Fifteen borders and fifteen gaps is a list of cards; a list of choices is
+ * rows. That is the whole of the difference, and it is why this is a second
+ * row component rather than a flag on `DropdownItem`: the two are used in
+ * different places for different reasons, and the filter rows are explicitly
+ * out of scope of that request.
+ *
+ * The chosen row still says **Selected** in words beside the check (CP-010) —
+ * the reference image carries the state in the tint and the tick alone, and a
+ * state this app draws must survive greyscale.
+ */
+
+/** One choice in a form field's dropdown. */
+export function MenuRow({ label, sub, meta, selected, divided, onPress, testID }:
+  { label: string;
+    /** a second line under the label — what tells two rows with the same
+     *  label apart. Only the member picker passes one. */
+    sub?: string;
+    meta?: string; selected: boolean;
+    /** the hairline above this row. Every row but the first has one; a rule
+     *  above the first would double the panel's own top border. */
+    divided: boolean;
+    onPress: () => void; testID: string }) {
+  const { theme } = useTheme();
+  return (
+    <Pressable
+      testID={testID}
+      onPress={onPress}
+      accessibilityRole="radio"
+      accessibilityState={{ selected }}
+      accessibilityLabel={meta ? `${label}, ${meta}` : label}
+      style={{
+        flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
+        minHeight: TAP_MIN + 6,
+        paddingHorizontal: SPACE.lg, paddingVertical: SPACE.md,
+        // Transparent, not `surface`: the row is drawn ON the panel and has
+        // no edge of its own, so the panel's own fill is what shows through.
+        backgroundColor: selected ? theme.control : 'transparent',
+        borderTopWidth: divided ? 1 : 0, borderTopColor: theme.line,
+      }}>
+      {/* minWidth 0 so a long second line shortens itself rather than pushing
+          the check off the row. */}
+      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+        <Text numberOfLines={1} style={{
+          fontSize: 14, fontWeight: selected ? '800' : '600',
+          color: selected ? theme.accentInk : theme.fgStrong,
+        }}>{label}</Text>
+        {sub ? (
+          // ellipsized in the MIDDLE for the reason PickerChoice gives: the
+          // two addresses this line exists to separate differ just before
+          // the @, which is the first thing tail-truncation eats.
+          <Text numberOfLines={1} ellipsizeMode="middle"
+            style={{ fontSize: 11.5, color: theme.muted }}>{sub}</Text>
+        ) : null}
+      </View>
+      <Text numberOfLines={1} style={{
+        fontSize: 11.5, color: selected ? theme.accentInk : theme.muted, maxWidth: '46%',
+      }}>{selected ? 'Selected' : meta ?? ''}</Text>
+      {/* A fixed slot, drawn empty on the rows without a check, so every
+          label in the list ends at the same place. */}
+      <View style={{ width: 18, alignItems: 'center' }}>
+        {selected ? <Icon name="check" size={18} color={theme.accentInk} /> : null}
+      </View>
+    </Pressable>
+  );
+}
+
+/** A form field's list of choices — branches, senders, templates. */
+export function DropdownMenuList({ options, value, onSelect, testID }:
+  { options: DropdownOption[]; value: string; onSelect: (label: string) => void; testID: string }) {
+  return (
+    <>
+      {options.map((o, i) => (
+        <MenuRow key={o.label} label={o.label} meta={o.meta}
+          selected={o.label === value} divided={i > 0}
+          onPress={() => onSelect(o.label)}
           testID={`${testID}-${o.label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`} />
       ))}
     </>
