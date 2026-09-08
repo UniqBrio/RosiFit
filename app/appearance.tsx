@@ -85,7 +85,7 @@ function AppearanceBody() {
 
       {/* ------------------------------------------- 1. preset colours */}
       <Text style={{ fontSize: 13, fontWeight: '800', color: theme.fgStrong }}>
-        1. Choose a preset colour
+        Choose a preset colour
       </Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.sm, marginTop: SPACE.md }}>
         {accents.map(a => {
@@ -121,7 +121,7 @@ function AppearanceBody() {
 
       {/* -------------------------------------------- 2. custom colour */}
       <Text style={{ fontSize: 13, fontWeight: '800', color: theme.fgStrong, marginTop: SPACE.xl }}>
-        2. Choose a custom colour
+        Choose a custom colour
       </Text>
 
       <View style={{
@@ -255,7 +255,7 @@ function AppearanceBody() {
 
       {/* -------------------------------------------- 3. light or dark */}
       <Text style={{ fontSize: 13, fontWeight: '800', color: theme.fgStrong, marginTop: SPACE.xl }}>
-        3. Light or dark
+        Light or dark
       </Text>
       <View style={{ flexDirection: 'row', gap: SPACE.md, marginTop: SPACE.md }}>
         {themeOptions.map(m => {

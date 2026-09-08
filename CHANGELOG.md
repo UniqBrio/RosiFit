@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — Appearance drops its step numbers
+
+**The three Appearance headings no longer count.** *Choose a preset colour*, *Choose a
+custom colour* and *Light or dark* were numbered 1, 2 and 3, which read as a sequence you
+had to work through — but the first two are alternatives separated by an *or*, and the
+third is unrelated to either. The headings now say what they are and nothing more. The
+controls, the swatches, the measured custom hue and the theme toggle are untouched.
+
 ## Unreleased — Staff really can bulk import now, and add, edit and delete a course
 
 **A staff account importing a member file was told *"Only the academy admin can bulk import
