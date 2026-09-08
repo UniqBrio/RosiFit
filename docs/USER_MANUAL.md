@@ -33,7 +33,7 @@
 11. [More — settings, staff and the audit log](#11-more--settings-staff-and-the-audit-log)
 12. [Rules the app enforces](#12-rules-the-app-enforces)
 13. [When something goes wrong](#13-when-something-goes-wrong)
-14. [Known gaps in this build](#14-known-gaps-in-this-build)
+14. [Not in this release](#14-not-in-this-release)
 15. [Glossary and quick reference](#15-glossary-and-quick-reference)
 
 ---
@@ -66,6 +66,36 @@ Three things RosiFit deliberately does **not** do:
 RosiFit is a **PWA** — a web app that installs to a phone home screen or a desktop like a
 normal app. It works on a phone, a tablet and a browser, and the layout adapts.
 
+### 1.1 The two people who use it
+
+There are **two roles**, not four, and the difference between them is narrow on purpose.
+
+- **You, the academy owner.** One per academy, enforced — there cannot be a second. You
+  see everything, and four things are yours alone: **Staff & access**, the **audit log**,
+  **branches and holidays**, and the **follow-up rules and message wording**.
+- **Your staff** — coaches and front desk. They run the register: adding courses and
+  members, importing lists, uploading attendance, sending the follow-ups. What they cannot
+  do is change the shape of the business or read the log of who did what.
+
+*Coach* and *Front desk* are **labels you type on a staff record, not permission levels.**
+They carry identical rights. If that matters to you, tell us — it is a change we can make.
+
+### 1.2 The order to set it up in
+
+Each step needs the one before it. Roughly an hour, once.
+
+1. **Register your account** and set your PIN — §2.2.
+2. **Add your branches** — More → Branches. A branch is a place you teach.
+3. **Add your courses** — Attendance → Add Course. A course is *what* is taught; adding it
+   at a branch creates the thing that actually runs, and its weekdays are what attendance
+   is counted from. Set each course's **follow-up rule**, **from address** and **wording**
+   on the same form.
+4. **Add your team** — More → Staff & access. Add the person, then issue her PIN. Two
+   deliberate steps.
+5. **Load your members** — Attendance → Bulk Import for a list, or Add Member one at a
+   time. Every member needs an email address; that is what the follow-up reaches her on.
+6. **Upload your first register** after the next class, and the loop above starts turning.
+
 ---
 
 ## 2. Installing and signing in
@@ -82,9 +112,10 @@ Open the academy's RosiFit URL in a browser.
 Once installed it opens in its own window with no browser address bar. You can also just
 use it in a browser tab — nothing is lost.
 
-### 2.2 The very first account (academy admin)
+### 2.2 Your own account — registered once
 
-The **academy admin** is registered once, and only once. The registration form asks for:
+**Your** account is the academy admin, and it is registered once and only once. The
+registration form asks for:
 
 - **Full name** (required)
 - **Mobile number** (required) — this becomes the sign-in ID
@@ -196,7 +227,7 @@ the register all live under it.
 **Home means different things by role**, and that is the only structural difference
 between the two roles:
 
-| | Academy admin | Staff |
+| | You (academy owner) | Your staff |
 |---|---|---|
 | Tabs | Overview · Attendance | Attendance alone, full width |
 | **Home** goes to | Overview | The Attendance workspace |
@@ -232,7 +263,7 @@ card, so it never scrolls out of reach. Tapping outside a filter panel closes it
 
 ## 4. Overview — the academy this week
 
-*Academy admin only. Home for the admin.*
+*Yours only — your staff are not offered this tab. It is your Home screen.*
 
 Three filters at the top, then four sections, two to a row on a wide screen and stacked on
 a phone.
@@ -676,7 +707,8 @@ Every member met her course's rule."*
 ### 9.3 Sending
 
 **Use the course's own Send Communication button** (course header), or **Reach out** on a
-member's record. See §14 for the state of the all-courses button.
+member's record. The academy-wide button on this screen does not send yet — see
+[§14](#14-not-in-this-release).
 
 The draft dialog is deliberately small: a list of members with a tick box each, and a Send
 button.
@@ -780,7 +812,7 @@ offering they name — nothing renders as a raw code.
 
 - **Search** across every word on a row; seven **category** chips; **Dates** (defaults to
   *Any date*, and narrows the query rather than the loaded page); **Branch**.
-- The column header stays frozen while you scroll. Below 768px the entries render as cards.
+- The column header stays frozen while you scroll. On a phone the entries render as cards instead.
 - **Sign-ins are not listed.** Six pre-session actions are filtered from the view; nothing
   stops being recorded and no row is deleted, and the screen says so under its heading.
 - **Export** gives you a CSV of exactly what is on screen, one line per changed field.
@@ -865,26 +897,27 @@ stay *searchable* for anyone holding one from an export, but nothing displays on
 | A member is not being emailed | She has no address, or she is Inactive, or she is under the rule's threshold. | Her record's status line says which of the four it is. |
 | *"She has already had this week's message"* | She has. | **Not yet**, or **Reach out anyway** — the second send is allowed, just deliberate. |
 | *"Remarks are not switched on for this academy yet"* | The audit-remarks update has not been applied. | The log above it is unaffected. Nothing to do. |
-| A form opens as a blank coloured screen | A known display fault when a form URL is opened cold (bookmark/refresh). | Resize the window, or reach the form by tapping rather than by URL. |
+| A form opens as a blank coloured screen | A known display fault when a form is opened from a bookmark or a page refresh rather than by tapping into it. | Resize the window, or reach the form by tapping. Report it and we will fix it. |
 | Anything else | | Help & support → **Call** or **WhatsApp**. |
 
 ---
 
-## 14. Known gaps in this build
+## 14. Not in this release
 
-Stated plainly, because a manual that promises what the app does not do is worse than no
-manual.
+Stated plainly, because a manual that promises what the app does not yet do is worse than
+no manual. Everything here is either a deliberate decision or work in progress, and none
+of it blocks the weekly loop in §1.
 
-| Gap | What it means for you | Use instead |
+| What | What it means for you | Do this instead |
 |---|---|---|
-| **The weekly screen's "Reach out to N members" button fails**, opening on *"The draft could not be loaded."* A send spanning several courses has no single course wording to use, and that product question is not settled. | The academy-wide batch send does not work from that screen. | A course's own **Send Communication**, and **Reach out** on a member's record. Both work. |
-| **The weekly review has no button of its own** for staff. | Staff have no Overview, which is where the link lives. | The admin reaches it from Overview → *Need follow-up*. |
-| **Holidays have no route in the app.** The screen and its database effects are live; only the menu row was removed. | You cannot declare a closure from the menu. A holiday applied earlier still correctly suppresses sessions. | Ask the admin, or reach `/holiday` by URL. |
-| **Per-branch offering times** have no route either. | Start and end times per branch cannot be edited from a screen. | Days and branch are edited on the **course** form, which covers the common case. |
-| **Sending needs SES credentials on the live project.** | On a preview or fixtures build, nothing actually leaves. | — |
-| **Marking one member present/absent was deliberately withdrawn.** | The roster's Present/Absent/Yet to mark is a reading, not a control. | Re-upload the day's file. |
-| **The audit log's Remarks section** may report that it is not switched on yet. | You cannot annotate a log entry. | The log itself is unaffected. |
-| Some database updates in this repository are **written but not yet applied** to the live academy. | A few writes can fail with a *"function not found"* style message even though the screen offers them. | Report it to support with what you were doing. |
+| **The academy-wide "Reach out to N members" button** on the weekly review does not send. It answers *"The draft could not be loaded."* | A message spans several courses, and each course stores its own wording — which one a mixed send should use is a decision we want from you before we build it. | A course's own **Send Communication**, and **Reach out** on a member's record. Both work, and between them nothing is unreachable. |
+| **The weekly review is reached from the Overview only.** | Your staff have no Overview, so they cannot open it. | You open it from Overview → *Need follow-up*. Tell us if your team needs it and we will give it a home. |
+| **Holidays are not on the menu.** The feature works — a closure you record still correctly removes those sessions from every figure — but its menu row was removed at your request. | You cannot declare a closure from the menu today. | Open the address ending `/holiday` directly, or ask us to put the row back. |
+| **Per-branch class times** cannot be edited on a screen. | You cannot set a different start time for the same course at two branches. | Days and branch are edited on the **course** form, which covers the ordinary case. |
+| **Email sending needs your sending domain connected.** | Until that is done, drafts prepare correctly but nothing leaves. | Ask us to complete it. |
+| **Ticking one member present or absent was removed on purpose.** | The roster's Present / Absent / Yet to mark is a reading, not a control. | Re-upload that day's file — it replaces the register and says what it moved. |
+| **Notes against an audit entry** may say the feature is not switched on yet. | You cannot annotate a log entry. | The log itself is complete and unaffected. |
+| **A small number of actions are still being switched on** for your live academy. | An occasional action may report an error even though the screen offers it. | Tell support what you were doing — these are quick to enable. |
 
 ---
 
@@ -904,8 +937,8 @@ manual.
 | **Alias / display name** | The name Google Meet shows for her. What an upload matches on. |
 | **Flagged / needs follow-up** | Over her course's rule for the period. Derived, never stored. |
 | **Inactive** | Out of the follow-up rule. Still on the roster, attendance still recorded. |
-| **Academy admin** | The single owner. One per academy, enforced. |
-| **Staff** | Coaches and front desk. Same database rights as each other. |
+| **Academy admin** | You — the single owner. One per academy, enforced. |
+| **Staff** | Your coaches and front desk. Identical rights to each other. |
 
 ### 15.2 The eight statuses
 
@@ -925,7 +958,7 @@ only signal.
 
 ### 15.3 Who can do what
 
-| | Academy admin | Staff |
+| | You (academy owner) | Your staff |
 |---|---|---|
 | See the Overview dashboard | ✅ | ➖ |
 | See the Attendance workspace, courses, members | ✅ | ✅ |
@@ -963,4 +996,7 @@ Two more rules sit above all of the above:
 ---
 
 *RosiFit — Preparing, Thriving and Beyond.*
-*Support: UniqBrio, +91 9994871158 (call or WhatsApp) — the only support channel.*
+*Built and supported by UniqBrio for your academy. v1.4 (build 212).*
+*Support: +91 9994871158, by call or WhatsApp — the only support channel. A person picks
+up. If anything in this manual does not match what you see on screen, tell us: the app is
+right, and correcting the manual is our job.*
