@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — An uploaded attendance file shows on the member cards at once
+
+**Uploading an attendance CSV now updates the member cards as soon as the import finishes.**
+The register was always written correctly — the import landed, and the figures were right the
+next time the Members tab was opened. But until then the cards went on showing what they had
+read before the upload, so an import that had just marked twelve women present looked like an
+import that had done nothing, and the only way to see it was to reload the app.
+
+The rest of the upload screen is untouched: the same file is read, the same rows are matched,
+the same result is reported.
+
 ## Unreleased — Appearance drops its step numbers
 
 **The three Appearance headings no longer count.** *Choose a preset colour*, *Choose a

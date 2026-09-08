@@ -8,7 +8,7 @@ import { useToast } from '../src/components/Toast';
 import { SPACE, RADIUS, STATUS, statusSurface } from '../src/theme/tokens';
 import { MATCH_ROWS, IMPORTED_DAYS } from '../src/data/mock';
 import { usePendingSessions, useCourses } from '../src/data/hooks';
-import type { PendingSession } from '../src/data/repository';
+import { attendanceImported, type PendingSession } from '../src/data/repository';
 import { isConfigured } from '../src/lib/supabase';
 import {
   // meetMatchesSession is gone from here: the day the file covers is derived
@@ -479,6 +479,13 @@ function UploadBody() {
     try {
       const preview = staged.preview;
       const result = await csvCommit(preview.import_id, autoDecisions(preview.rows));
+      // The register has moved. Every mounted list still holds what it read
+      // BEFORE the file went in -- the member cards most visibly, because
+      // their attendance and Missed figures are derived from exactly the rows
+      // this just wrote. The import is an Edge Function call, so nothing
+      // announces it on its own, and without this the numbers only catch up
+      // when the tab is remounted -- which reads as an upload that did nothing.
+      attendanceImported();
       const c = preview.counts;
       setOutcome({
         session_date: staged.day,

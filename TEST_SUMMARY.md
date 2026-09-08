@@ -1,3 +1,12 @@
+FAIL-FIRST: src/data/importRevalidates.test.ts - 2 of 2, new file. Both observed
+  failing against the pre-fix tree (HEAD src/data/repository.ts and app/upload.tsx
+  checked out to a scratch root, IMPORT_REVALIDATE_SPEC_ROOT pointed at it): "the
+  import announcement revalidates the register AND the member figures" failed with
+  `export function attendanceImported() is not in the file`, and "a committed CSV
+  import announces itself" with `nothing between csvCommit and the result screen
+  tells the member list to refetch, so the cards keep what they read before the
+  upload`. Against the fixed tree, 2 pass 0 fail.
+
 FAIL-FIRST: src/data/auditGroups.test.ts - 3 of 15 failed with the grouping key loosened
   to "any entries sharing an instant and an actor", i.e. with the requirement that the
   database itself recorded an import (member.bulk_imported / csv_import.completed) removed:
@@ -293,6 +302,46 @@ NOT OBSERVED FAILING: src/components/reportsPeriodFilter.test.ts,
      The commit messages say which session's work each one is. -->
 
 ## Gate run - 2026-09-07 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-08 - VERDICT: FAIL
 
 Steps: 6 pass, 4 fail, 1 blocked.
 

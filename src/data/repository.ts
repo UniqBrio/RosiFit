@@ -2817,6 +2817,26 @@ function attendanceChanged(): void {
 }
 
 /**
+ * A CSV import landed.
+ *
+ * The import is written by an Edge Function through `api.ts`, not through
+ * this file, so none of the notifications above fire on their own -- and
+ * what it wrote is exactly what the member cards, the day strip and the
+ * week view are showing. Without this the Members tab keeps the figures it
+ * loaded before the upload until something remounts it, which reads as an
+ * import that did nothing.
+ *
+ * Both, for the reason setAttendance announces both: the register moved AND
+ * the per-member figures derived from it did, and a card whose attendance
+ * changed beside a Missed count that did not is two answers to one question
+ * on one screen.
+ */
+export function attendanceImported(): void {
+  attendanceChanged();
+  membersChanged();
+}
+
+/**
  * MARKING one member present or absent on one day.
  *
  * WHY AN RPC and not a write on the table

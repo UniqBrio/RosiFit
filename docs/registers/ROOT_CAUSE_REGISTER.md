@@ -59,6 +59,51 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-034 — the CSV import wrote the register through a path that announces nothing, so every mounted list kept its pre-upload figures
+**Date:** 08-Sep-2026  ·  **Severity:** S3  ·  **Modules:** `src/data/repository.ts`, `app/upload.tsx`, `src/data/importRevalidates.test.ts`
+
+**Symptom** — In the requester's words: *"On uploading attendance csv file the data is reflecting
+on members card only after refresh"*. The import reported its counts, the rows were in the
+database, and the member cards beside them went on showing the attendance and Missed figures they
+had loaded before the file was chosen.
+
+**Root cause** — `src/data/repository.ts` is where every write announces itself: it owns
+`membersChanged()` and `attendanceChanged()`, and every mounted list refetches when it hears one.
+The CSV commit does not go through that file. It is an Edge Function call made from
+`src/data/api.ts` (`csvCommit`), which by design holds no notifications at all — so the one write
+that moves the most rows was the one write no listener heard. Not a caching bug: nothing stale was
+stored. Nobody was told to ask again.
+
+**Fix** — `repository.ts` exports `attendanceImported()`, which fires `attendanceChanged()` and
+`membersChanged()` together, and `app/upload.tsx` calls it the moment `csvCommit` returns. Both,
+for the reason `setAttendance` fires both: the register moving and the per-member figures derived
+from it moving are one event, and announcing half of it would leave a filled chip beside an
+unchanged Missed count. It sits on the success path only — a commit that threw wrote nothing.
+
+**Files** — `src/data/repository.ts`, `app/upload.tsx`, `src/data/importRevalidates.test.ts`.
+
+**How to verify** — with the Members tab already open behind it, upload an attendance file for a
+day those members attended and leave the app alone: the cards must carry the new attendance and
+Missed figures when the result screen appears, with no reload. In the spec:
+`npx tsx --test src/data/importRevalidates.test.ts`.
+
+**Recurrence risk** — the class is any write made through `src/data/api.ts` rather than
+`repository.ts`, since only the latter announces. Grepping every `callFn` caller: `sendFollowUps`
+announces through `onSentChanged` (`src/data/sent.ts`); the PIN and staff writes call their own
+screen's `retry()` at the call site (`app/staff/index.tsx`), which covers that screen and only
+that screen; the auth and recovery calls change no list. `csvCommit` was the one caller that
+told nothing at all.
+
+**Prevention** — `src/data/importRevalidates.test.ts` asserts that the announcement covers both
+lists and that the commit path makes it. No rung guards the general class — a test cannot see
+that a future `api.ts` write is displayed somewhere — so the module docs on `attendanceImported`
+and on `api.ts` state the rule where a next caller will read it.
+
+**Process check** — no. The gates run without a browser, and a screen that is correct on mount and
+stale afterwards is invisible to every one of them.
+
+---
+
 ## RC-033 — a bulk-imported member had no joining date, because create_member stored the date it was PASSED and enrolled her from the date it COMPUTED
 **Date:** 08-Sep-2026  ·  **Severity:** S3  ·  **Modules:** `supabase/migrations/0049_imported_member_joins_on_the_upload_date.sql`, `supabase/tests/38_imported_member_joined_on.sql`, `src/data/repository.ts`, `src/data/joined.ts`
 
