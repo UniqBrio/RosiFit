@@ -343,6 +343,48 @@ _Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ## Gate run - 2026-09-08 - VERDICT: FAIL
 
+Steps: 4 pass, 4 fail, 3 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - FAIL
+
+```
+app/staff/pin.tsx(66,36): error TS2304: Cannot find name 'APP_LINK'.
+app/staff/pin.tsx(67,32): error TS2304: Cannot find name 'APP_LINK'.
+app/staff/pin.tsx(73,64): error TS2304: Cannot find name 'APP_LINK'.
+```
+
+- **G6 Lint** - BLOCKED - prerequisite G5 did not pass
+- **G7 Unit + pure specs** - BLOCKED - prerequisite G5 did not pass
+- **G8 Functional / integration** - BLOCKED - prerequisite G5 did not pass
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-08 - VERDICT: FAIL
+
 Steps: 6 pass, 4 fail, 1 blocked.
 
 - **G1 Theme artifacts in sync** - FAIL
