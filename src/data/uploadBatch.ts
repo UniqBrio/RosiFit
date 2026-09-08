@@ -42,26 +42,60 @@ export type PickedFile = {
 /** a file that will not be imported, and the sentence that says why */
 export type SetAside = { fileName: string; reason: string };
 
+/**
+ * ONE DAY'S REGISTER, and the file or files it is built from.
+ *
+ * N MEETINGS IN A DAY IS NORMAL, and this is the correction that says so.
+ * The first cut of this module set aside every file that shared a day with
+ * another, on the reading that two files for one day meant two exports of the
+ * same class and RosiFit could not tell which was right. The requester, on
+ * being shown that refusing a perfectly ordinary upload:
+ *
+ *   *"multiple files upload for a day is possible as they have different
+ *    meeting codes because each day there can be n number meetings and i am
+ *    uploading attendnace of all at one go"*
+ *
+ * Two Meet calls at 4:48:06 and 4:48:17 with different codes are two MEETINGS,
+ * not two exports — a call that dropped and was restarted, or a morning and an
+ * evening batch. Both are the same class on the same day.
+ *
+ * The database still holds ONE register per offering per day
+ * (`sessions_unique_live`), so those meetings cannot each have a session. They
+ * MERGE: every name from every call for that day goes into that day's
+ * register, de-duplicated, so a woman who was in two of them is marked present
+ * once. That is the only reading that both obeys the invariant and loses
+ * nobody — importing them one after another would leave whichever ran last and
+ * silently revert the rest.
+ */
+export type BatchGroup = {
+  day: string;
+  /** the files that make up this day's register, in the order she picked */
+  fileNames: string[];
+};
+
 export type BatchPlan = {
-  /** the files that will be previewed and imported, in the order picked */
-  ready: { fileName: string; day: string }[];
-  /** the files that will not, each with its reason, in the order picked */
+  /** one entry per DAY, in the order that day first appeared in the pick */
+  ready: BatchGroup[];
+  /** the files that will not run at all, each with its reason, in pick order */
   setAside: SetAside[];
 };
 
 /**
- * Which of these files run, and what is said about the ones that do not.
+ * Which of these files run, grouped into the register each day will get, and
+ * what is said about the ones that cannot run at all.
  *
- * The three refusals are applied in this order deliberately: a file with no
- * date cannot be tested for being in the future, and a file already refused
- * for either reason cannot collide with anything, so the collision check sees
- * only files that were otherwise going to import.
+ * Only TWO things set a file aside now, and both are about the file itself
+ * rather than about its neighbours: it does not say which day it covers, or
+ * it says a day that has not happened. Sharing a day with another file is no
+ * longer one of them — that is a merge, not a refusal.
  */
 export function planBatch(
   files: PickedFile[], todayIso: string, label: DayLabel
 ): BatchPlan {
-  const ready: { fileName: string; day: string }[] = [];
   const setAside: SetAside[] = [];
+  // Insertion-ordered, so the days come out in the order she picked them and
+  // the file names inside a day likewise.
+  const byDay = new Map<string, string[]>();
 
   for (const file of files) {
     if (!file.day) {
@@ -80,41 +114,34 @@ export function planBatch(
       setAside.push({ fileName: file.fileName, reason: future });
       continue;
     }
-    ready.push({ fileName: file.fileName, day: file.day });
+    byDay.set(file.day, [...(byDay.get(file.day) ?? []), file.fileName]);
   }
 
-  /* --------------------------------------- two files, one day, one register */
-  const perDay = new Map<string, string[]>();
-  for (const r of ready) perDay.set(r.day, [...(perDay.get(r.day) ?? []), r.fileName]);
-
-  const clashingDays = new Set(
-    [...perDay.entries()].filter(([, names]) => names.length > 1).map(([day]) => day));
-
-  if (clashingDays.size === 0) return { ready, setAside };
-
-  const kept: { fileName: string; day: string }[] = [];
-  for (const r of ready) {
-    if (!clashingDays.has(r.day)) { kept.push(r); continue; }
-    const names = perDay.get(r.day) ?? [];
-    // BOTH go, not "the first wins". Which of two exports of the same class is
-    // the right one is a judgement RosiFit does not have, and guessing it is
-    // exactly the silent overwrite this check exists to prevent.
-    setAside.push({
-      fileName: r.fileName,
-      reason: `${names.length} files in this upload cover ${label(r.day)} — ${names.join(', ')}. `
-        + `A day holds one register, so importing them together would leave whichever went `
-        + `last. Neither was imported: upload the one you want.`,
-    });
-  }
-  // Rebuilt rather than spliced, so `ready` keeps the order she picked in.
-  return { ready: kept, setAside: reorder(files, setAside) };
+  return {
+    ready: [...byDay.entries()].map(([day, fileNames]) => ({ day, fileNames })),
+    setAside,
+  };
 }
 
-/** set-aside rows back into the order the files were picked in */
-function reorder(files: PickedFile[], setAside: SetAside[]): SetAside[] {
-  const order = new Map(files.map((f, i) => [f.fileName, i]));
-  return [...setAside].sort(
-    (a, b) => (order.get(a.fileName) ?? 0) - (order.get(b.fileName) ?? 0));
+/**
+ * What a merged import is FILED as, in `csv_imports.file_name`.
+ *
+ * Every name, joined — not "meeting_a.csv and 2 others". This string is the
+ * receipt: it is what the override warning names when a later upload replaces
+ * this register, and what somebody reads in the audit log a month from now
+ * trying to work out where a mark came from. A name that says "2 others" sends
+ * them looking for files it declined to name. The column is `text`, so length
+ * is not the constraint it would be worth trading honesty for.
+ */
+export function mergedFileName(fileNames: string[]): string {
+  return fileNames.join(' + ');
+}
+
+/** the sentence a merged day's result row carries, or null for a single file */
+export function mergedNote(fileNames: string[], day: string, label: DayLabel): string | null {
+  if (fileNames.length < 2) return null;
+  return `Merged from ${fileNames.length} meetings on ${label(day)}: ${fileNames.join(', ')}. `
+    + `A day holds one register, so anybody in more than one of those calls is marked present once.`;
 }
 
 /**

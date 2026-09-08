@@ -36,12 +36,13 @@ import {
 import {
   MEMBERS, COURSE_LIST, GLOBAL_RULE, COURSE_RULES, TEMPLATES, STAFF, AUDIT, REMARKS,
   BRANCHES, COURSES, MONTH_DAYS, PENDING_SESSIONS, WEEK_ROWS, attendanceFixture,
-  MANUAL_MARKS, markFixtureAttendance, resetFixtureDay, primaryEmail,
+  MANUAL_MARKS, markFixtureAttendance, resetFixtureDay, primaryEmail, sessionsFor,
   HOLIDAYS, HOLIDAY_PREVIEW, SENDERS, COURSE_MESSAGES,
   type Member, type MemberStatus, type Course, type FollowUpRule, type Template, type Staff,
   type StaffAccess, type AuditEntry, type Remark, type SessionDay, type WeekRow,
-  type AttendanceRow, type AttendanceStatus, type Holiday,
+  type AttendanceRow, type AttendanceStatus, type Holiday, type MemberSession,
 } from './mock';
+import { memberWeek, NO_SESSIONS_ROW, type MemberWeekSession } from './memberWeek';
 
 export const dataSource: 'live' | 'fixtures' = isConfigured ? 'live' : 'fixtures';
 
@@ -136,7 +137,11 @@ export async function fetchMembers(period: Period): Promise<Member[]> {
     supabase.from('members').select('id, member_code, full_name, status, inactive_from, joined_on').is('deleted_at', null).order('full_name'),
     supabase.from('member_emails').select('member_id, email, is_primary, status').is('deleted_at', null),
     supabase.from('member_aliases').select('member_id, alias_display').eq('alias_type', 'name'),
-    supabase.from('member_stats').select('member_id, current_streak, last_emailed_at'),
+    // last_present_date DATES the streak beside it. The run was printed bare
+    // ("consecutive 6") beside a weekly miss count on a five-day course, which
+    // is a number a reader can neither verify nor divide by anything on
+    // screen; the day it counts back to is what makes it checkable.
+    supabase.from('member_stats').select('member_id, current_streak, last_present_date, last_emailed_at'),
     supabase.from('member_enrollments').select('member_id, offering_id').eq('status', 'active'),
     supabase.from('member_schedules').select('member_id, weekdays, effective_from, effective_to'),
     supabase.rpc('member_period_metrics', { p_from: period.from, p_to: period.to }),
@@ -249,6 +254,9 @@ export async function fetchMembers(period: Period): Promise<Member[]> {
       attended: metric?.attended ?? 0,
       missed: metric?.missed ?? 0,
       streak: (stat?.current_streak as number) ?? 0,
+      // The session that ENDED the run above -- null when she has never been
+      // present, which src/data/streak.ts states rather than papering over.
+      lastPresent: (stat?.last_present_date as string | null) ?? null,
       last: stat?.last_emailed_at ? new Date(stat.last_emailed_at as string).toLocaleDateString() : '—',
       // "Mar 2026", the way the canvas writes it. A day number would be
       // precision nobody asked for under a name. Derived from the date above
@@ -2165,6 +2173,107 @@ export async function fetchAttendance(period: Period): Promise<AttendanceRow[]> 
       minutes: (r.minutes_in_call as number | null) ?? null,
     };
   }).sort((a, b) => (a.date === b.date ? a.member.localeCompare(b.member) : b.date.localeCompare(a.date)));
+}
+
+// ------------------------------------------------------------ her own week
+/**
+ * ONE MEMBER'S SESSIONS in a period, as her pop-up lists them.
+ *
+ * Its own read rather than a slice of `fetchAttendance`, for two reasons the
+ * list exists to serve. `fetchAttendance` returns one row PER ATTENDANCE
+ * RECORD, so a holiday, a cancellation and a day whose file has not arrived --
+ * the three that carry no record at all -- would simply be absent from her
+ * week, and a day that is missing from the list reads as a day that did not
+ * happen. And it carries no `sessions.status`, so a class the academy closed
+ * could not be told from one she skipped.
+ *
+ * Narrowed to the offerings she is actually enrolled at, so the list is hers
+ * and not her branch's.
+ *
+ * The SHAPING is memberWeek.ts, which is pure and tested. Everything below is
+ * the read.
+ */
+export async function fetchMemberWeek(memberId: string, period: Period): Promise<MemberSession[]> {
+  // Offline, her week is the fixture it has always been -- MEMBER_WEEK, via
+  // the same `sessionsFor` the pop-up used to call directly. What changes
+  // live is that the list is HERS; what stays is that the demo has one.
+  if (!isConfigured) {
+    const m = MEMBERS.find(x => x.id === memberId);
+    return m ? sessionsFor(m).map(s => ({ ...s })) : [NO_SESSIONS_ROW];
+  }
+
+  const { data: enrol, error: enrolError } = await supabase
+    .from('member_enrollments').select('offering_id')
+    .eq('member_id', memberId).eq('status', 'active');
+  if (enrolError) fail('Could not load her sessions', enrolError);
+
+  const offeringIds = [...new Set((enrol ?? []).map(e => e.offering_id as string))];
+  // Enrolled at nothing is a fact, and it is the "No sessions" row -- not an
+  // empty list, which would read as a week of misses nobody recorded.
+  if (offeringIds.length === 0) return [NO_SESSIONS_ROW];
+
+  const { data: sessions, error } = await supabase.from('sessions')
+    .select('id, offering_id, session_date, start_time, status, cancellation_reason, holiday_id')
+    .in('offering_id', offeringIds)
+    .gte('session_date', period.from).lte('session_date', period.to)
+    .is('deleted_at', null);
+  if (error) fail('Could not load her sessions', error);
+  if (!sessions || sessions.length === 0) return [NO_SESSIONS_ROW];
+
+  const { data: records, error: recordError } = await supabase.from('attendance_records')
+    .select('session_id, status, expected')
+    .eq('member_id', memberId)
+    .in('session_id', sessions.map(s => s.id as string))
+    .is('deleted_at', null);
+  if (recordError) fail('Could not load her sessions', recordError);
+
+  // The same manual joins the rest of this file uses rather than a PostgREST
+  // embed: an embed returns null for a row RLS hides on the far side, and a
+  // course that vanished that way would read as a blank name on her card.
+  const offerings = await supabase.from('course_offerings')
+    .select('id, course_id, branch_id').in('id', offeringIds).is('deleted_at', null);
+  const courseIds = [...new Set((offerings.data ?? []).map(o => o.course_id as string))];
+  const branchIds = [...new Set((offerings.data ?? []).map(o => o.branch_id as string))];
+  const holidayIds = [...new Set(
+    sessions.map(s => s.holiday_id as string | null).filter((x): x is string => Boolean(x)))];
+  const [coursesRes, branchesRes, holidaysRes] = await Promise.all([
+    courseIds.length ? supabase.from('courses').select('id, name').in('id', courseIds)
+                     : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+    branchIds.length ? supabase.from('branches').select('id, name').in('id', branchIds)
+                     : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+    holidayIds.length ? supabase.from('holidays').select('id, name').in('id', holidayIds)
+                      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+  ]);
+
+  const offeringById = new Map((offerings.data ?? []).map(o => [o.id as string, o]));
+  const courseName = new Map((coursesRes.data ?? []).map(c => [c.id as string, c.name as string]));
+  const branchName = new Map((branchesRes.data ?? []).map(b => [b.id as string, b.name as string]));
+  const holidayName = new Map((holidaysRes.data ?? []).map(h => [h.id as string, h.name as string]));
+  const recordBySession = new Map((records ?? []).map(r => [r.session_id as string, r]));
+
+  const rows: MemberWeekSession[] = sessions.map(s => {
+    const offering = offeringById.get(s.offering_id as string);
+    const record = recordBySession.get(s.id as string);
+    return {
+      iso: s.session_date as string,
+      time: (s.start_time as string | null) ?? null,
+      sessionStatus: s.status as MemberWeekSession['sessionStatus'],
+      // '—' rather than '', so a row whose course RLS hid still reads as a
+      // row instead of an unexplained blank
+      course: offering ? (courseName.get(offering.course_id as string) ?? '—') : '—',
+      branch: offering ? (branchName.get(offering.branch_id as string) ?? '—') : '—',
+      holidayName: s.holiday_id ? (holidayName.get(s.holiday_id as string) ?? null) : null,
+      cancellationReason: (s.cancellation_reason as string | null) ?? null,
+      record: record
+        ? { status: record.status as AttendanceStatus, expected: Boolean(record.expected) }
+        : null,
+    };
+  });
+
+  // `iso(new Date())` and NOT schedule.ts's `today()`, which is
+  // toISOString().slice(0,10) and so reads UTC: before 05:30 IST that names
+  // yesterday, and a day still to run would be listed as "Awaiting upload".
+  return memberWeek(rows, iso(new Date()));
 }
 
 // ----------------------------------------------------------------- holidays

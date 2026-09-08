@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { View, Text } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
-  useMembers, useRules, useSentForPeriod, useCourses, useCourseMessage,
+  useMembers, useRules, useSentForPeriod, useCourses, useCourseMessage, useMemberWeek,
 } from '../../src/data/hooks';
 import {
   FollowUpTriggerPanel, FollowUpTriggerPrompt, type TriggerRecipient,
@@ -22,7 +22,8 @@ import {
   memberDayNames, addressesInOrder, type MemberTab,
 } from '../../src/components/memberDialog';
 import { TabStrip } from '../../src/components/TabStrip';
-import { sessionsFor, attendancePct, primaryEmail, hasEmail, type Member } from '../../src/data/mock';
+import { attendancePct, primaryEmail, hasEmail, type Member } from '../../src/data/mock';
+import { streakReading } from '../../src/data/streak';
 import { flagged, isReachable, recipientSplit } from '../../src/data/followup';
 import { currentWeek, iso } from '../../src/data/period';
 import { mergeSent, sentThisSession, sentOn, recordSent } from '../../src/data/sent';
@@ -92,6 +93,18 @@ export default function MemberDetail() {
   const week = currentWeek();
   const rules = useRules(forced);
   const already = useSentForPeriod(week, forced);
+  /* HER OWN SESSIONS for that week (requests/2026-09-08-her-week-and-the-run.md).
+     A fourth read this dialog does not depend on, for the same reason the
+     three above it are not preconditions: without it the list below says it
+     could not be read, and the record still opens.
+
+     It replaces `sessionsFor(m)`, which returned SIX FIXTURE ROWS -- the same
+     six for every member, every course and every week. A Gentle Yoga member
+     opened in September was shown three Prenatal Flow absences from August
+     under her own live figures, so nothing a reader counted in the list could
+     ever reproduce the numbers above it. That is what made *Missed streak 6*
+     unreadable rather than merely unexplained. */
+  const herWeek = useMemberWeek(m?.id ?? null, week, forced);
   /* HER COURSE'S RECORD, for the trigger panel alone
      (requests/2026-09-08-follow-up-trigger-on-send-and-reach-out.md). The
      member row carries her course by NAME, and the trigger is written against
@@ -146,6 +159,14 @@ export default function MemberDetail() {
   }
 
   const pct = attendancePct(m);
+  /* THE RUN, worded rather than printed bare. `Missed streak 6` sat in the
+     strip beside `Missed 1` for a week on a course running five days, so it
+     read as a contradiction of the number next to it; and the word the roster
+     used for it -- *consecutive* -- named a follow-up trigger the course form
+     no longer offers (0030). One derivation for both screens, so the card and
+     the roster behind it cannot describe one number two ways
+     (src/data/streak.ts). */
+  const run = streakReading({ streak: m.streak, lastPresent: m.lastPresent ?? null });
   const tone = attendanceTone(pct);
   const pctColor = tone === null ? theme.muted : ink(tone);
   const mail = hasEmail(m);
@@ -333,14 +354,23 @@ export default function MemberDetail() {
 
       {tab === 'week' ? (<>
 
-      {/* HER FIGURES, one strip. Expected · Attended · Missed · Streak side
-          by side, each under its own label -- streak and missed are
-          DIFFERENT numbers and are named so neither can be read as the other
-          -- and the week's percentage on the strip's own footer line. */}
+      {/* HER FIGURES FOR THE WEEK, one strip, under the week they belong to.
+          Expected · Attended · Missed side by side, each under its own label,
+          and the week's percentage on the strip's own footer line.
+
+          THE RUN IS NO LONGER IN HERE. It sat as a fourth cell called *Missed
+          streak*, inside a strip whose other three figures are the week's --
+          so a member who missed one session this week and six in a row read
+          as "Missed 1 · Missed streak 6", two counts of what looked like the
+          same thing, in a box that promised one period. It is its own card
+          below, which is where it can say what it counts. Nothing is dropped:
+          the request's MUST NOT CHANGE binds the FACTS, and all five are
+          still on this panel. */}
+      <Label style={{ marginBottom: SPACE.sm }}>{`This week · ${week.label}`}</Label>
       <View accessible
         accessibilityLabel={
-          `${m.expected} expected, ${m.attended} attended, ${m.missed} missed, ` +
-          `current missed streak ${m.streak}. Attendance this week ${pct === null ? 'no figure' : `${pct} percent`}.`}
+          `This week, ${week.label}. ${m.expected} expected, ${m.attended} attended, ` +
+          `${m.missed} missed. Attendance this week ${pct === null ? 'no figure' : `${pct} percent`}.`}
         style={{
           borderRadius: RADIUS.md, backgroundColor: theme.surface,
           borderWidth: 1, borderColor: theme.line, overflow: 'hidden',
@@ -348,8 +378,7 @@ export default function MemberDetail() {
         <View style={{ flexDirection: 'row' }}>
           <Figure label="Expected" value={m.expected} color={theme.fgStrong} />
           <Figure label="Attended" value={m.attended} color={ink('present')} />
-          <Figure label="Missed"   value={m.missed}   color={ink('absent')} />
-          <Figure label="Missed streak" value={m.streak} color={theme.fgStrong} last />
+          <Figure label="Missed"   value={m.missed}   color={ink('absent')} last />
         </View>
         <View style={{
           flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
@@ -364,16 +393,53 @@ export default function MemberDetail() {
         </View>
       </View>
 
+      {/* THE RUN, out of the week's strip and carrying its own sentence.
+          The number is unchanged and is still `member_stats.current_streak`;
+          what is added is the two facts that made it checkable -- what it
+          counts (sessions, across weeks) and the day it counts back to. The
+          word AND the number, never a colour alone (guardrail 3). */}
+      <View testID="member-run" accessible
+        accessibilityLabel={`${run.label}, ${run.count}. ${run.sentence}`}
+        style={{
+          marginTop: SPACE.md, borderRadius: RADIUS.md, backgroundColor: theme.surface,
+          borderWidth: 1, borderColor: theme.line, overflow: 'hidden',
+          flexDirection: 'row', alignItems: 'center',
+          paddingVertical: 10, paddingHorizontal: 12, gap: SPACE.md,
+        }}>
+        <Text style={{
+          fontSize: 22, fontWeight: '800', fontVariant: ['tabular-nums'],
+          color: run.count > 0 ? ink('absent') : theme.fgStrong, minWidth: 22,
+        }}>{run.count}</Text>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Label style={{ fontSize: 9.5, letterSpacing: 0.6 }}>{run.label}</Label>
+          {/* not clipped to a line: the part that explains the number is the
+              part a phone would cut, and it is the reason the row exists */}
+          <Muted style={{ fontSize: 11.5, lineHeight: 16, marginTop: 2 }}>{run.sentence}</Muted>
+        </View>
+      </View>
+
       {/* HER WEEK. One list, one hairline between rows -- not a bordered card
           per session. Holidays and cancellations are still LISTED and still
           say why they do not count (C-92); "no sessions" is still its own
           row rather than an empty list of misses. */}
-      <Label style={{ marginTop: SPACE.xl, marginBottom: SPACE.sm }}>Her sessions this week</Label>
-      <View style={{
+      <Label style={{ marginTop: SPACE.xl, marginBottom: SPACE.sm }}>
+        {`Her sessions · ${week.label}`}
+      </Label>
+      {herWeek.state === 'loading' ? (
+        <Skeleton lines={4} />
+      ) : herWeek.state === 'error' || !herWeek.data ? (
+        /* The list alone, never the record. A week that could not be read says
+           so where the rows would have been -- it does not take the card down,
+           and it does not fall back to somebody else's sessions, which is the
+           whole defect this replaced. */
+        <ErrorState onRetry={herWeek.retry}
+          message={herWeek.error ?? 'Her sessions for this week could not be read.'} />
+      ) : (
+      <View testID="member-sessions" style={{
         borderRadius: RADIUS.md, backgroundColor: theme.surface,
         borderWidth: 1, borderColor: theme.line, overflow: 'hidden',
       }}>
-        {sessionsFor(m).map((s, i) => {
+        {herWeek.data.map((s, i) => {
           const t = STATUS[s.status];
           const c = theme.isDark ? t.fgDark : t.fgLight;
           const box = statusSurface(c);
@@ -406,6 +472,7 @@ export default function MemberDetail() {
           );
         })}
       </View>
+      )}
 
       {/* HER EMAIL, one line. No usable email is shown and counted as
           excluded from every send, never quietly dropped (C-76). */}

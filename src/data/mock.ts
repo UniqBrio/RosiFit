@@ -207,8 +207,27 @@ export type Member = {
    */
   weekdays: number[] | null;
   expected: number; attended: number; missed: number;
-  /** her CURRENT run of consecutive misses -- not the week's total */
+  /** her CURRENT run of missed sessions -- not the week's total */
   streak: number;
+  /**
+   * The last day she was present, ISO, exactly as `member_stats.last_present_date`
+   * holds it -- or null when she has never attended, or when the read predates
+   * this field.
+   *
+   * It is here to DATE `streak` above. The bare run was printed as
+   * "consecutive 6" beside a weekly miss count of 1, on a course running five
+   * days a week: arithmetically impossible-looking, unverifiable against
+   * anything on screen, and named after a trigger the course form no longer
+   * offers. The run is right; what it lacked was the session that ended it.
+   * `src/data/streak.ts` is the whole of the wording, so the roster card and
+   * the member pop-up cannot describe one number two ways.
+   *
+   * OPTIONAL on purpose. Every existing producer of a `Member` -- the offline
+   * fixtures, the import previews, the specs -- goes on satisfying the type
+   * untouched, and a missing date reads as "no attended session on record"
+   * rather than as an invented one.
+   */
+  lastPresent?: string | null;
   /** last time anyone reached out, or '\u2014' for never */
   last: string;
   /**
@@ -244,14 +263,14 @@ export type Member = {
  * follow-up, which is exactly how those numbers drift apart.
  */
 export const MEMBERS: Member[] = [
-  { id: '1', code: 'RF-000102', name: 'Divya Ramesh',       course: 'Prenatal Flow',            course_id: 'c1', branch: 'Coimbatore', aliases: ['Divya', 'Divya R'], emails: [{ address: 'divya.r@gmail.com', primary: true }],   weekdays: null, status: 'active', expected: 3, attended: 0, missed: 3, streak: 3, last: '14 Aug', joinedOn: '2026-03-01', joined: 'Mar 2026' },
-  { id: '2', code: 'RF-000118', name: 'Shazia Begum',       course: 'Postnatal Core',           course_id: 'c2', branch: 'Madurai',    aliases: ['Shazia', 'Shazia F'], emails: [{ address: 'shazia.b@gmail.com', primary: true }], weekdays: [2, 6], status: 'active', expected: 3, attended: 1, missed: 2, streak: 2, last: '20 Aug', joinedOn: '2026-01-01', joined: 'Jan 2026' },
-  { id: '3', code: 'RF-000151', name: 'Meenakshi Sundaram', course: 'Trimester 3 Gentle',       course_id: 'c3', branch: 'Chennai',    aliases: ['Meena S'],          emails: [{ address: 'meena.s@yahoo.in', primary: true }],    weekdays: null, status: 'active', expected: 4, attended: 0, missed: 4, streak: 6, last: '2 Aug', joinedOn: '2026-04-01', joined: 'Apr 2026' },
-  { id: '4', code: 'RF-000127', name: 'Aarthi Venkat',      course: 'Prenatal Flow',            course_id: 'c1', branch: 'Coimbatore', aliases: [],                   emails: [{ address: 'aarthi.v@gmail.com', primary: true }],  weekdays: null, status: 'active', expected: 3, attended: 3, missed: 0, streak: 0, last: '\u2014', joinedOn: '2026-02-01', joined: 'Feb 2026' },
-  { id: '5', code: 'RF-000133', name: 'Nithya Krishnan',    course: 'Pelvic Floor Foundations', course_id: 'c4', branch: 'Madurai',    aliases: [],                   emails: [],                    weekdays: null, status: 'inactive', expected: 0, attended: 0, missed: 0, streak: 0, last: '11 Aug', joinedOn: '2026-05-01', joined: 'May 2026' },
-  { id: '6', code: 'RF-000140', name: 'Fathima Rizwan',     course: 'Postnatal Core',           course_id: 'c2', branch: 'Coimbatore', aliases: ['Fathima'],          emails: [],                    weekdays: null, status: 'active', expected: 3, attended: 0, missed: 3, streak: 4, last: '9 Aug', joinedOn: '2025-12-01', joined: 'Dec 2025' },
-  { id: '7', code: 'RF-000131', name: 'Lakshmi Priya',      course: 'Prenatal Flow',            course_id: 'c1', branch: 'Chennai',    aliases: ['Lakshmi P'],        emails: [{ address: 'lakshmi.p@gmail.com', primary: true }], weekdays: null, status: 'active', expected: 4, attended: 2, missed: 2, streak: 1, last: '\u2014', joinedOn: '2025-11-01', joined: 'Nov 2025' },
-  { id: '8', code: 'RF-000146', name: 'Kavya Balaji',       course: 'Postnatal Core',           course_id: 'c2', branch: 'Madurai',    aliases: [],                   emails: [],                    weekdays: null, status: 'active', expected: 3, attended: 0, missed: 3, streak: 3, last: '6 Aug', joinedOn: '2026-06-01', joined: 'Jun 2026' },
+  { id: '1', code: 'RF-000102', name: 'Divya Ramesh',       course: 'Prenatal Flow',            course_id: 'c1', branch: 'Coimbatore', aliases: ['Divya', 'Divya R'], emails: [{ address: 'divya.r@gmail.com', primary: true }],   weekdays: null, status: 'active', expected: 3, attended: 0, missed: 3, streak: 3, lastPresent: '2026-08-13', last: '14 Aug', joinedOn: '2026-03-01', joined: 'Mar 2026' },
+  { id: '2', code: 'RF-000118', name: 'Shazia Begum',       course: 'Postnatal Core',           course_id: 'c2', branch: 'Madurai',    aliases: ['Shazia', 'Shazia F'], emails: [{ address: 'shazia.b@gmail.com', primary: true }], weekdays: [2, 6], status: 'active', expected: 3, attended: 1, missed: 2, streak: 2, lastPresent: '2026-08-18', last: '20 Aug', joinedOn: '2026-01-01', joined: 'Jan 2026' },
+  { id: '3', code: 'RF-000151', name: 'Meenakshi Sundaram', course: 'Trimester 3 Gentle',       course_id: 'c3', branch: 'Chennai',    aliases: ['Meena S'],          emails: [{ address: 'meena.s@yahoo.in', primary: true }],    weekdays: null, status: 'active', expected: 4, attended: 0, missed: 4, streak: 6, lastPresent: '2026-08-01', last: '2 Aug', joinedOn: '2026-04-01', joined: 'Apr 2026' },
+  { id: '4', code: 'RF-000127', name: 'Aarthi Venkat',      course: 'Prenatal Flow',            course_id: 'c1', branch: 'Coimbatore', aliases: [],                   emails: [{ address: 'aarthi.v@gmail.com', primary: true }],  weekdays: null, status: 'active', expected: 3, attended: 3, missed: 0, streak: 0, lastPresent: '2026-08-24', last: '\u2014', joinedOn: '2026-02-01', joined: 'Feb 2026' },
+  { id: '5', code: 'RF-000133', name: 'Nithya Krishnan',    course: 'Pelvic Floor Foundations', course_id: 'c4', branch: 'Madurai',    aliases: [],                   emails: [],                    weekdays: null, status: 'inactive', expected: 0, attended: 0, missed: 0, streak: 0, lastPresent: null, last: '11 Aug', joinedOn: '2026-05-01', joined: 'May 2026' },
+  { id: '6', code: 'RF-000140', name: 'Fathima Rizwan',     course: 'Postnatal Core',           course_id: 'c2', branch: 'Coimbatore', aliases: ['Fathima'],          emails: [],                    weekdays: null, status: 'active', expected: 3, attended: 0, missed: 3, streak: 4, lastPresent: '2026-08-07', last: '9 Aug', joinedOn: '2025-12-01', joined: 'Dec 2025' },
+  { id: '7', code: 'RF-000131', name: 'Lakshmi Priya',      course: 'Prenatal Flow',            course_id: 'c1', branch: 'Chennai',    aliases: ['Lakshmi P'],        emails: [{ address: 'lakshmi.p@gmail.com', primary: true }], weekdays: null, status: 'active', expected: 4, attended: 2, missed: 2, streak: 1, lastPresent: '2026-08-21', last: '\u2014', joinedOn: '2025-11-01', joined: 'Nov 2025' },
+  { id: '8', code: 'RF-000146', name: 'Kavya Balaji',       course: 'Postnatal Core',           course_id: 'c2', branch: 'Madurai',    aliases: [],                   emails: [],                    weekdays: null, status: 'active', expected: 3, attended: 0, missed: 3, streak: 3, lastPresent: '2026-08-05', last: '6 Aug', joinedOn: '2026-06-01', joined: 'Jun 2026' },
 ];
 
 export const WEEK = { from: '18 Aug', to: '24 Aug 2026', label: '18\u201324 Aug 2026' };

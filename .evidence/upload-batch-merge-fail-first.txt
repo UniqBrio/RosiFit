@@ -1,0 +1,54 @@
+FAIL-FIRST — src/data/uploadBatch.test.ts against HEAD's src/data/uploadBatch.ts
+08-Sep-2026. HEAD = f6e0c1a, the pre-merge module that set same-day files aside.
+Everything else this working tree's. Run: npx tsx --test src/data/uploadBatch.test.ts
+
+not ok 1 - two files for one day are ONE group, not two set-asides
+  error: |-
+  expected: 1
+  actual: 0
+not ok 2 - the group names both files, in the order she picked them
+  error: "Cannot read properties of undefined (reading 'fileNames')"
+not ok 3 - a same-day pair sets NOTHING aside
+  error: |-
+  expected: 0
+  actual: 2
+ok 4 - different days are different groups
+not ok 5 - days come out in the order they first appeared, not sorted
+  error: |-
+    + actual - expected
+  expected:
+  actual:
+not ok 6 - a single file is a group of one
+  error: |-
+    + actual - expected
+  expected:
+  actual:
+ok 7 - a file with no readable date is set aside, and says so
+ok 8 - a file dated tomorrow is set aside as a future date
+not ok 9 - a set-aside file never joins a group
+  error: "Cannot read properties of undefined (reading 'fileNames')"
+ok 10 - set-asides keep pick order among themselves
+ok 11 - today is allowed in a batch, exactly as it is alone
+not ok 12 - a merged import is filed under every name, joined
+  error: '(0 , import_uploadBatch.mergedFileName) is not a function'
+not ok 13 - one file is filed under its own name, unchanged
+  error: '(0 , import_uploadBatch.mergedFileName) is not a function'
+not ok 14 - a single file has no merged note
+  error: '(0 , import_uploadBatch.mergedNote) is not a function'
+not ok 15 - a merged day says how many meetings and names them
+  error: '(0 , import_uploadBatch.mergedNote) is not a function'
+not ok 16 - a merged day says that a woman in two calls is present once
+  error: '(0 , import_uploadBatch.mergedNote) is not a function'
+ok 17 - one override reads in the singular
+ok 18 - two overrides read in the plural
+ok 19 - the ask names each file, its day and what it replaces
+ok 20 - the ask says how many OTHER files land on clear days
+ok 21 - when every file overrides, there is no sentence about "the other 0 files"
+ok 22 - one confirm covers the whole upload
+ok 23 - the batch ask keeps the single-file override’s promise, word for word
+ok 24 - a batch that wrote nothing says so, and still names the course
+ok 25 - the heading counts files and days, singular when one
+ok 26 - two files merged into one day read as two files, one day
+# tests 26
+# pass 15
+# fail 11

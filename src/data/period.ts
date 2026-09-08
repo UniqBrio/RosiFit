@@ -11,6 +11,8 @@ export type Period = { from: string; to: string; label: string };
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+const DAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
 export function iso(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
@@ -61,6 +63,21 @@ export function label(from: Date, to: Date): string {
   // 2027" would hide which December it started in, so both years are stated.
   if (sameYear) return `${from.getDate()} ${MONTHS[from.getMonth()]} – ${to.getDate()} ${MONTHS[to.getMonth()]} ${to.getFullYear()}`;
   return `${from.getDate()} ${MONTHS[from.getMonth()]} ${from.getFullYear()} – ${to.getDate()} ${MONTHS[to.getMonth()]} ${to.getFullYear()}`;
+}
+
+/**
+ * One day, named the way a person reads it back -- '2026-09-07' -> 'Mon 7 Sep'.
+ *
+ * Locale-free for the reason `label()` is: `toLocaleDateString` writes a
+ * different month name per device, and a member's week and the streak sentence
+ * under it have to name the same day the same way on every screen.
+ *
+ * '—' rather than a guess when the date is missing or unparseable -- an
+ * invented day under a number is worse than no day at all.
+ */
+export function shortDate(value: string | null): string {
+  const d = parseISO(value ?? '');
+  return d ? `${DAYS_SHORT[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}` : '—';
 }
 
 export function currentWeek(today = new Date()): Period {
@@ -149,8 +166,6 @@ export function resolvePeriod(choice: PeriodChoice, today = new Date()): Period 
 const MAX_DAILY_SPAN = 8;
 /** Eleven weeks. Past this the weekly grain gives more bars than bars. */
 const MAX_WEEKLY_SPAN = 77;
-
-const DAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const dayCount = (from: Date, to: Date): number =>
   Math.round((to.getTime() - from.getTime()) / 86400000) + 1;

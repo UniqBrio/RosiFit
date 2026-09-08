@@ -26,12 +26,15 @@ import {
   fetchSentForPeriod,
   type Branch, type BranchUsage, type OfferingDetail,
   fetchAttendance, onCoursesChanged, onMembersChanged, onAttendanceChanged, onRulesChanged,
-  fetchHolidays, onHolidaysChanged,
+  fetchHolidays, onHolidaysChanged, fetchMemberWeek,
   type Rules, type PendingSession, type Holiday,
 } from './repository';
 import { flagged } from './followup';
 import type { BucketMetrics } from './buckets';
-import type { Member, Course, Template, Staff, AuditEntry, Remark, SessionDay, WeekRow, AttendanceRow } from './mock';
+import type {
+  Member, Course, Template, Staff, AuditEntry, Remark, SessionDay, WeekRow, AttendanceRow,
+  MemberSession,
+} from './mock';
 import { onSentChanged, type SentMap } from './sent';
 
 export type Async<T> = {
@@ -240,6 +243,29 @@ export function useAttendance(period: Period, forced?: string): Async<Attendance
   const [version, setVersion] = useState(0);
   useEffect(() => onAttendanceChanged(() => setVersion(v => v + 1)), []);
   return useAsync(() => fetchAttendance(period), [period.from, period.to, version], forced);
+}
+
+/**
+ * ONE member's sessions in a period, for her pop-up's *Her sessions this week*.
+ *
+ * That list was `sessionsFor(m)` -- six fixture rows, the same six for every
+ * member, every course and every week. It sat directly under her live figures,
+ * so nothing counted in it could ever reproduce the numbers above it.
+ *
+ * Refetched on the same signals `useAttendance` answers to, and for the same
+ * reason: a member marked present in the roster behind this card, whose card
+ * still lists her absent, is two answers to one question on one screen. It
+ * also refetches when a HOLIDAY moves, because a holiday is what turns one of
+ * these rows from a miss into a day that does not count (C-92).
+ */
+export function useMemberWeek(memberId: string | null, period: Period, forced?: string):
+  Async<MemberSession[]> {
+  const [version, setVersion] = useState(0);
+  useEffect(() => onAttendanceChanged(() => setVersion(v => v + 1)), []);
+  useEffect(() => onHolidaysChanged(() => setVersion(v => v + 1)), []);
+  return useAsync(
+    () => (memberId ? fetchMemberWeek(memberId, period) : Promise.resolve([])),
+    [memberId, period.from, period.to, version], forced);
 }
 
 /** Holidays, refetched whenever one is added or removed -- the list a person

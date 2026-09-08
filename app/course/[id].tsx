@@ -25,6 +25,7 @@ import {
   removalOutcome, removalFailure, deletionWarning, type PreviewState,
 } from '../../src/data/memberRemoval';
 import { dayAttendance, dayInWords, type DayState } from '../../src/data/dayAttendance';
+import { streakReading, missLine } from '../../src/data/streak';
 import { enrolledIn } from '../../src/data/course';
 import { offersUpload } from '../../src/data/uploadWindow';
 import { membersOnDay, joinedLaterNote } from '../../src/data/joined';
@@ -1381,6 +1382,16 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
   // follow-up rule: the rule lives in one place (src/data/followup) and this
   // line never decides anything.
   const heavy = member.missed >= 4 || member.streak >= 4;
+  /* THE RUN, worded rather than printed bare. This line used to read
+     "Missed 7–13 Sep 2026: 1 · consecutive 6" -- a weekly count and an
+     all-time run, side by side, with nothing to say they were counted over
+     different spans. On a course running five days a week the second number
+     looked arithmetically impossible, and *consecutive* named a follow-up
+     trigger the course form no longer offers (0030), directly under the
+     banner stating the trigger that does. Same number, dated to the session
+     that ended it; the member pop-up reads it from the same function, so the
+     two cannot describe it two ways (src/data/streak.ts). */
+  const run = streakReading({ streak: member.streak, lastPresent: member.lastPresent ?? null });
 
   // Taking somebody off the register stops the academy writing to her, so it
   // is asked for rather than toggled -- and the question says which way it is
@@ -1513,7 +1524,7 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
           accessibilityRole="button"
           accessibilityLabel={`${member.name}, ${inactive ? 'inactive' : 'active'}. ${
             noEmail ? 'No email on file, not in follow-up' : member.emails[0]?.address ?? ''
-          }. Missed ${member.missed}, consecutive ${member.streak}`}
+          }. ${missLine({ weekLabel, missed: member.missed, reading: run })}`}
           style={({ pressed }) => ({
             flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10,
             opacity: pressed ? 0.7 : 1,
@@ -1545,7 +1556,7 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
               fontSize: 11, marginTop: 1, fontVariant: ['tabular-nums'],
               color: heavy ? dangerInk : theme.dim,
             }}>
-              {`Missed ${weekLabel}: ${member.missed} · consecutive ${member.streak}`}
+              {missLine({ weekLabel, missed: member.missed, reading: run })}
             </Text>
             {/* A departure that has not happened yet -- the one fact the
                 pill's word cannot carry. It reads "Active", truthfully, and

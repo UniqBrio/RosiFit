@@ -25,7 +25,9 @@ import {
   type AskWords, type ImportAsk, type OverrideCounts, type Supersedes,
 } from '../src/data/uploadOverride';
 import { futureFileRefusal } from '../src/data/uploadWindow';
-import { planBatch, batchAskWords, batchHeading } from '../src/data/uploadBatch';
+import {
+  planBatch, batchAskWords, batchHeading, mergedFileName, mergedNote,
+} from '../src/data/uploadBatch';
 import { iso } from '../src/data/period';
 import {
   alreadyImportedWords, nothingChanged, noChangeWords, changeSummary,
@@ -182,10 +184,30 @@ type Staged = {
  * rather than one per file. A declined batch leaves `previewed` rows behind,
  * inert by construction: both server-side checks count only `completed`.
  */
-type StagedFile = { source: PickedSource; staged: Staged };
+type StagedFile = { source: DayImport; staged: Staged };
 
 /** a file after parsing, before anything has been asked of the server */
 type PickedSource = { name: string; text: string; rows: number; meta: MeetMeta };
+
+/**
+ * ONE DAY'S IMPORT, built from every file that day had — usually one, and any
+ * number when the class ran as several Meet calls. This is what a batch
+ * previews and commits; the files it came from are named on it so the receipt
+ * and the result row can both say where the register came from.
+ */
+type DayImport = {
+  /** the files that fed it, in the order she picked them */
+  fileNames: string[];
+  /** what `csv_imports.file_name` records — every name, joined */
+  name: string;
+  /** every file's text, for the fingerprint */
+  texts: string[];
+  /** every call's rows, merged and de-duplicated */
+  rows: ReturnType<typeof dedupeRows>['rows'];
+  duplicates: string[];
+  meetingCode: string | null;
+  startedAt: string | null;
+};
 
 /**
  * ONE ROW OF THE BATCH RESULT — one file, and what became of it.
@@ -201,13 +223,18 @@ type BatchRow = {
   kind: 'imported' | 'unchanged' | 'already' | 'setAside' | 'failed';
   /** the sentence under the file name, saying what happened to it */
   note: string;
+  /** how many of her files this row stands for — more than one when a day's
+   *  calls were merged into one register */
+  files: number;
   withEmail: number;
   noEmail: number;
 };
 
 type BatchResult = {
   rows: BatchRow[];
-  /** how many files actually wrote a register */
+  /** every file she picked, whatever became of it */
+  files: number;
+  /** how many of those FILES fed a register that ran */
   imported: number;
   /** how many distinct days those files landed on */
   days: number;
@@ -229,9 +256,13 @@ function assembleBatch(rows: BatchRow[], order: string[]): BatchResult {
   // A file that RAN, whether or not it moved anything. "Nothing to update" is
   // an import that happened and found the register already correct.
   const landed = sorted.filter(r => r.kind === 'imported' || r.kind === 'unchanged');
+  // FILES, not rows. Two calls merged into one day are one row and two files,
+  // and "Imported 1 file" over the two she just picked reads as one lost.
+  const files = (rs: BatchRow[]) => rs.reduce((n, r) => n + r.files, 0);
   return {
     rows: sorted,
-    imported: landed.length,
+    files: files(sorted),
+    imported: files(landed),
     days: new Set(landed.map(r => r.day)).size,
     withEmail: sorted.reduce((n, r) => n + r.withEmail, 0),
     noEmail: sorted.reduce((n, r) => n + r.noEmail, 0),
@@ -699,44 +730,70 @@ function UploadBody() {
    */
 
   /**
-   * ONE FILE, PREVIEWED. The staging half of `stage()`, with no screen state
-   * of its own, so a batch can call it once per file and decide afterwards.
+   * ONE DAY'S FILES, MADE INTO ONE IMPORT.
+   *
+   * A day can have any number of Meet calls — a dropped call restarted under a
+   * new code, a morning and an evening batch — and the requester uploads all
+   * of them together. The database holds one register per day, so they merge
+   * here: every row from every call, then the same de-duplication a single
+   * file gets for a woman who rejoined. She was in two of the day's calls; she
+   * is present once.
+   *
+   * The fingerprint is over every text that went in, so re-uploading the same
+   * pair is caught as already imported, and adding a third file to the pair
+   * is a different import — which it is.
    */
-  const previewFile = async (source: PickedSource, day: string): Promise<
-    { kind: 'staged'; staged: Staged } | { kind: 'already'; words: OutcomeWords }> => {
-    const duplicates = () =>
-      [...new Set(dedupeRows(parseMeetCsv(source.text).rows).duplicates)];
+  const mergeDay = (sources: PickedSource[]): DayImport => {
+    const parsed = sources.map(s => parseMeetCsv(s.text));
+    const deduped = dedupeRows(parsed.flatMap(p => p.rows));
+    return {
+      fileNames: sources.map(s => s.name),
+      name: mergedFileName(sources.map(s => s.name)),
+      texts: sources.map(s => s.text),
+      rows: deduped.rows,
+      duplicates: [...new Set(deduped.duplicates)],
+      // Every call's code, so the receipt names each meeting that fed it.
+      meetingCode: parsed.map(p => p.meta.code).filter(Boolean).join(' + ') || null,
+      // The earliest call is when the day's class began.
+      startedAt: parsed.map(p => p.meta.created).filter((c): c is string => !!c).sort()[0] ?? null,
+    };
+  };
 
+  /**
+   * ONE DAY, PREVIEWED. The staging half of `stage()`, over a merged import
+   * rather than a file, with no screen state of its own so the batch can call
+   * it once per day and decide afterwards.
+   */
+  const previewDay = async (src: DayImport, day: string): Promise<
+    { kind: 'staged'; staged: Staged } | { kind: 'already'; words: OutcomeWords }> => {
     if (!isConfigured) {
       // No project configured: the fixtures answer, and they answer at once.
       const name = IMPORTED_DAYS[day];
       return { kind: 'staged', staged: {
         day, preview: null,
         supersedes: name ? { file_name: name, completed_at: `${day}T12:00:00Z` } : null,
-        duplicates: duplicates(),
+        duplicates: src.duplicates,
       } };
     }
 
-    const parsed = parseMeetCsv(source.text);
-    const deduped = dedupeRows(parsed.rows);
     const preview = await csvPreview({
       offering_id: target!.offering_id,
       session_date: day,
-      file_name: source.name,
-      file_sha256: await sha256Hex(source.text),
-      meeting_code: parsed.meta.code,
-      meeting_started_at: parsed.meta.created,
-      rows: deduped.rows,
+      file_name: src.name,
+      file_sha256: await sha256Hex(src.texts.join('\n')),
+      meeting_code: src.meetingCode,
+      meeting_started_at: src.startedAt,
+      rows: src.rows,
     });
 
     if (preview.already_imported) {
       return { kind: 'already', words: alreadyImportedWords(preview.already_imported, {
-        fileName: source.name, course: chosen, label: dayLabel,
+        fileName: src.name, course: chosen, label: dayLabel,
       }) };
     }
     return { kind: 'staged', staged: {
       day, preview, supersedes: preview.supersedes ?? null,
-      duplicates: [...new Set(deduped.duplicates)],
+      duplicates: src.duplicates,
     } };
   };
 
@@ -770,7 +827,7 @@ function UploadBody() {
 
     const other: BatchRow[] = plan.setAside.map(s => ({
       fileName: s.fileName, day: null, kind: 'setAside' as const,
-      note: s.reason, withEmail: 0, noEmail: 0,
+      note: s.reason, files: 1, withEmail: 0, noEmail: 0,
     }));
 
     // Every file was set aside. Nothing to preview and nothing to ask: the
@@ -783,14 +840,20 @@ function UploadBody() {
 
     try {
       const staged: StagedFile[] = [];
-      for (const r of plan.ready) {
-        const source = byName.get(r.fileName);
-        if (!source) continue;
-        const previewed = await previewFile(source, r.day);
+      // One preview per DAY, not per file: a day's files are merged first, so
+      // the server sees one import and the day gets one register.
+      for (const group of plan.ready) {
+        const sources = group.fileNames
+          .map(n => byName.get(n))
+          .filter((s): s is PickedSource => !!s);
+        if (sources.length === 0) continue;
+        const source = mergeDay(sources);
+        const previewed = await previewDay(source, group.day);
         if (previewed.kind === 'already') {
           other.push({
-            fileName: r.fileName, day: r.day, kind: 'already',
-            note: previewed.words.lines[0], withEmail: 0, noEmail: 0,
+            fileName: source.name, day: group.day, kind: 'already',
+            note: previewed.words.lines[0], files: source.fileNames.length,
+            withEmail: 0, noEmail: 0,
           });
         } else {
           staged.push({ source, staged: previewed.staged });
@@ -852,13 +915,19 @@ function UploadBody() {
 
     for (const s of staged) {
       const { source, staged: st } = s;
+      // Said on the row whenever the day came from more than one call, so the
+      // result never shows one file name over a register two files built.
+      const merged = mergedNote(source.fileNames, st.day, dayLabel);
       try {
         if (!st.preview) {
-          // No project configured: the fixtures answer.
-          const o = fixtureOutcome(st.day, source, st.supersedes);
+          // No project configured: the fixtures answer. The fixture counts come
+          // from MATCH_ROWS whatever the text; the rows already merged here are
+          // what a real preview would classify.
+          const o = fixtureOutcome(st.day, { text: source.texts[0] ?? '' }, st.supersedes);
           rows.push({
             fileName: source.name, day: st.day, kind: 'imported',
-            note: `${o.imported} marked present.`,
+            note: [`${o.imported} marked present.`, merged].filter(Boolean).join(' '),
+            files: source.fileNames.length,
             withEmail: o.with_email, noEmail: o.no_email,
           });
           wrote = true;
@@ -874,13 +943,16 @@ function UploadBody() {
           fileName: source.name, day: st.day,
           kind: noChange ? 'unchanged' : 'imported',
           note: noChange
-            ? 'Every name was already marked on this register — nothing added, changed or duplicated.'
+            ? ['Every name was already marked on this register — nothing added, changed or duplicated.',
+               merged].filter(Boolean).join(' ')
             : [
                 `${result.present_or_extra} marked present.`,
                 changeSummary(result.changes ?? null),
                 st.supersedes ? `Replaced ${st.supersedes.file_name}.` : null,
                 overrideSummary(result.overridden ?? null),
+                merged,
               ].filter(Boolean).join(' '),
+          files: source.fileNames.length,
           withEmail: c.matched ?? 0,
           noEmail: (c.noEmail ?? 0) + (c.possible ?? 0) + (c.ambiguous ?? 0) + (c.unmatched ?? 0),
         });
@@ -890,6 +962,7 @@ function UploadBody() {
           note: err instanceof Error
             ? `${err.message} Nothing was written for this file.`
             : 'This file did not import. Nothing was written for it.',
+          files: source.fileNames.length,
           withEmail: 0, noEmail: 0,
         });
       }
@@ -1182,6 +1255,7 @@ function UploadBody() {
                 now hand over all four. */}
             <Muted style={{ marginTop: 6, textAlign: 'center' }}>
               Choose one file or several — each one lands on the day its own “Created on” line says.
+              Several calls on the same day merge into that day’s register.
             </Muted>
             {/* C-74: name the three columns, so an operator handed a
                 different export can tell at a glance that it will not parse */}
@@ -1338,9 +1412,9 @@ function UploadBody() {
                 {batchHeading(batch.imported, batch.days, chosen)}
               </Text>
             </View>
-            {batch.rows.length > batch.imported ? (
+            {batch.files > batch.imported ? (
               <Muted style={{ marginTop: 4, color: theme.fg }}>
-                {`${batch.rows.length - batch.imported} of the ${batch.rows.length} files you chose `
+                {`${batch.files - batch.imported} of the ${batch.files} files you chose `
                  + `did not import. Each one says why below.`}
               </Muted>
             ) : null}
@@ -1358,7 +1432,13 @@ function UploadBody() {
               note="Marked present, listed under No email on the course." />
           </View>
 
-          <Label style={{ marginTop: SPACE.lg }}>{`Every file · ${batch.rows.length}`}</Label>
+          {/* One row per REGISTER the upload touched, plus one per file it
+              could not run — so a day built from two calls is one row naming
+              both. The label counts rows, and says so, rather than promising
+              a file each. */}
+          <Label style={{ marginTop: SPACE.lg }}>
+            {`${batch.files} ${batch.files === 1 ? 'file' : 'files'} · ${batch.rows.length} ${batch.rows.length === 1 ? 'result' : 'results'}`}
+          </Label>
           <View style={{ gap: SPACE.sm, marginTop: SPACE.sm }}>
             {batch.rows.map(row => (
               <BatchFileRow key={row.fileName} row={row} day={dayLabel(row.day)}
