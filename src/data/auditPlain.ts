@@ -503,6 +503,16 @@ export type PlainChange = {
 
 export type PlainEntry = {
   id: string;
+  /**
+   * The raw action code. Nothing RENDERS it -- the whole point of this
+   * module is that no code reaches the screen -- but the grouping in
+   * auditGroups.ts has to recognise a bulk import by its action, and doing
+   * that on the raw rows would mean translating every entry twice.
+   */
+  action: string;
+  /** `audit_logs.metadata`, as recorded. A bulk import puts the file name
+   *  and its counts here; almost nothing else sets it. */
+  meta?: Record<string, unknown>;
   title: string;
   /** who or what it was about, when the record names one */
   subject: string | null;
@@ -533,6 +543,7 @@ export function toPlain(
     branch?: string | null;
     who: string; whoKind?: string | null; when: string;
     changes: { field: string; old: string | null; new: string | null }[];
+    meta?: Record<string, unknown>;
   },
   now: Date = new Date(),
 ): PlainEntry {
@@ -573,7 +584,8 @@ export function toPlain(
   ].join(' ').toLowerCase();
 
   return {
-    id: entry.id, title, subject: entry.subject, branch: entry.branch ?? null, category,
+    id: entry.id, action: entry.action, meta: entry.meta,
+    title, subject: entry.subject, branch: entry.branch ?? null, category,
     icon: categoryIcon(category),
     who: entry.who, role, when, at: entry.when, changes: shown, hiddenCount, haystack,
   };
@@ -593,6 +605,7 @@ export function visibleEntries(
     branch?: string | null;
     who: string; whoKind?: string | null; when: string;
     changes: { field: string; old: string | null; new: string | null }[];
+    meta?: Record<string, unknown>;
   }[],
   opts: { category: AuditCategory | 'all'; query: string; branch?: string | null; now?: Date },
 ): PlainEntry[] {

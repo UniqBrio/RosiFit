@@ -1,4 +1,32 @@
+FAIL-FIRST: src/data/auditGroups.test.ts - 3 of 15 failed with the grouping key loosened
+  to "any entries sharing an instant and an actor", i.e. with the requirement that the
+  database itself recorded an import (member.bulk_imported / csv_import.completed) removed:
+  "WITHOUT the summary row nothing groups", "ordinary changes are untouched and keep their
+  place", and "the group sits where its first entry sat". Those are exactly the three that
+  stop the screen inventing an act that never took place. The other twelve passed with the
+  defect in, which is correct - they assert what a REAL group must contain, and a group that
+  forms too eagerly still contains it. Defect reverted, all 15 pass.
+
 ## Fail-first evidence, 08-Sep-2026 (defect injected into the source, spec run, source restored, spec re-run green)
+FAIL-FIRST: src/data/importCourseScope.test.ts - 12 cases, new file. 7 of 12
+observed failing against the pre-fix tree (csv-import resolving a name against
+every member in the academy): "the matcher imports the course-scope rule",
+"the kind of a row is decided from the candidates in THIS course only", "a
+candidate from another course is offered after the ones from this course",
+"the names that collided with another course come back from the preview", "the
+client knows the field exists", "the result screen names them rather than
+counting them", and "the note says which course, so the collision can be acted
+on". Sample: `app/upload.tsx does not name the rows that collided with another
+course's member`. The 5 that passed are the pure-rule cases over splitByCourse,
+were then observed separately: with splitByCourse's own disqualifying clause
+neutered (`if (false) elsewhere.push(id)`), cases 1 and 4 fail -- "a member
+enrolled in another course is not a candidate for this one" and "the
+requester's case: one name, two courses, and only this course's member is
+offered". Cases 2, 3 and 5 pass under that injection BY DESIGN: they assert
+that a member of THIS course, a member of no course, and candidate order are
+all left alone, which is precisely what the fix must not break. Injection
+reverted; 12/12 on the fixed tree.
+
 
 FAIL-FIRST: src/data/courseDeletion.test.ts - with "attendance record" misspelt in courseDeletion.ts, 5 of 10 fail (the numbered warning, the singulars, the no-records clause, the uncounted fallback, the toast); restored -> 10 pass 0 fail
 FAIL-FIRST: src/data/memberRemoval.test.ts - with "removed" and "attendance record" misspelt in memberRemoval.ts, 8 of 14 fail (the named toast, singular/zero kept, already-gone, offline, the non-Error throw, the single-word first name); restored -> 14 pass 0 fail
@@ -265,6 +293,86 @@ NOT OBSERVED FAILING: src/components/reportsPeriodFilter.test.ts,
      The commit messages say which session's work each one is. -->
 
 ## Gate run - 2026-09-07 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-08 - VERDICT: FAIL
+
+Steps: 6 pass, 4 fail, 1 blocked.
+
+- **G1 Theme artifacts in sync** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS
+- **G5 Types** - PASS
+- **G6 Lint** - BLOCKED - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - PASS
+- **G8 Functional / integration** - FAIL
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS
+- **G10 Backward compatibility (fixtures)** - PASS
+- **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-08 - VERDICT: FAIL
 
 Steps: 6 pass, 4 fail, 1 blocked.
 
@@ -5576,3 +5684,8 @@ CP-015, so it is logged as TD-027 rather than folded into a bug fix that did not
 FAIL-FIRST: src/components/screenHeaderPinned.test.ts - run against the unchanged tree on 07-Sep-2026: 8 of 9 assertions failed (Screen had no header slot; every tabbed screen had its ScreenHeader as the first child of a bare <Screen>; the course bar sat inside the course page ScrollView). The 9th, the no-sticky-mechanism guard, passed as it should. 9 of 9 after the change.
 
 FAIL-FIRST: src/components/dialogDismiss.test.ts - run against the unchanged tree on 07-Sep-2026 (with only the `confirm-scrim` testID pre-added to the old backdrop, so ConfirmDialog's claim is observed on its merits rather than dying at the lookup): 5 of 17 failed - the five claims this change adds (form backdrop acts on press; announced as a control; labelled as a way out; no responder claim; confirm backdrop acts on press). The other 12 pass in both trees as they must: no container acts on a press, neither backdrop was ever pointer-transparent, the header close still closes, Cancel stands, both pickers still close on their backdrop. Seven reviewer-found side doors replayed as mutations of the changed tree, each reddening exactly one test. 17 of 17 after. Full output: `.evidence/dialogs-close-only-on-close-control-fail-first.txt`. Browser: `.evidence/dialogs-close-only-on-close-control-browser.txt` - the FormDialog import-help pop-up (state-closed, no router history to fake a pass), both themes, backdrop pressed twice and left open, × closes; the calendar panel still closes on its backdrop. NOT browser-driven: ConfirmDialog's inert backdrop (every host needs signed-in data), and the press-does-not-reach-the-live-screen claim - both held by the spec and the read of react-native-web's responder system only.
+
+
+FAIL-FIRST: src/data/importedMemberJoinedOn.test.ts - run against the unchanged tree on 08-Sep-2026: 2 of 8 failed, and each named the migration actually in force rather than a file the spec had pinned - "0026_retire_member_code.sql: create_member must store v_from -- the raw p_joined_on is null for every bulk-imported member, so her record says 'not recorded' while her enrolment says today", and "an audit entry saying joined_on: null beside a record dated today is a third answer to the same question". The other 6 pass in both trees as they must: the coalesce is where it always was, the future-date refusal already measured v_from, the client already sends no joining date, offline already dates her today, and commit_csv_import already dates a member by the session that names her (RC-033). 8 of 8 after 0049_imported_member_joins_on_the_upload_date.sql. npm run check green end to end: typecheck . 1,014 unit cases (1,006 before, +8) . 2,840/2,840 contrast pairs . 75/75 icons.
+
+**DB harness - NOT RUN, and this change is a migration.** `bash db/harness/test.sh` fails at `reset.sh: line 9: psql: command not found` - TD-050, ADR 005, the same wall 0047 and 0048 are behind. So `supabase/tests/38_imported_member_joined_on.sql` (8 assertions: her record, her enrolment and the audit entry all read back and compared to EACH OTHER, a named date still stored as named, a future date still refused) has never executed anywhere, exactly as 22_bulk_import_members.sql had never executed when it was asserting the truth nobody had read (RC-014). That is why the same claim is duplicated into the node spec above, which runs on every commit. 0049 is NOT APPLIED to production and awaits the owner's go-ahead.

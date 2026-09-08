@@ -1365,7 +1365,7 @@ export async function fetchAudit(period?: Period | null): Promise<AuditEntry[]> 
   }
 
   let query = supabase.from('audit_logs')
-    .select('id, occurred_at, action, entity_type, entity_id, changes, actor_app_user_id, actor_kind')
+    .select('id, occurred_at, action, entity_type, entity_id, changes, metadata, actor_app_user_id, actor_kind')
     .order('occurred_at', { ascending: false }).limit(50);
   if (period) {
     const { from, to } = dayBounds(period);
@@ -1378,6 +1378,7 @@ export async function fetchAudit(period?: Period | null): Promise<AuditEntry[]> 
     id: number; occurred_at: string; action: string; entity_type: string;
     entity_id: string | null; actor_app_user_id: string | null; actor_kind: string;
     changes: { field: string; old: unknown; new: unknown }[] | null;
+    metadata: Record<string, unknown> | null;
   }[];
 
   // Every identifier anywhere in the batch, in one set: the subjects, the
@@ -1429,6 +1430,10 @@ export async function fetchAudit(period?: Period | null): Promise<AuditEntry[]> 
     changes: (r.changes ?? []).map(c => ({
       field: c.field, old: readable(c.old), new: readable(c.new),
     })),
+    // Passed through as recorded. Nothing here is rendered as a value; one
+    // action's metadata (a bulk import's file name and counts) is read by
+    // the grouping in auditGroups.ts, and the rest is carried for free.
+    meta: r.metadata ?? undefined,
   }));
 }
 
@@ -2348,8 +2353,10 @@ export async function bulkImportMembers(input: {
       course: r.course || null, branch: r.branch || null,
       // No joining date is SENT, and none is asked for: the file has no
       // Joined On column any more. bulk_import_members reads a missing key as
-      // null and create_member coalesces null to current_date, so a
-      // bulk-imported member joins the day she was imported.
+      // null and create_member stores coalesce(p_joined_on, current_date), so
+      // a bulk-imported member joins the day she was imported. That coalesce
+      // reached only her ENROLMENT until 0049 -- her record was dated null and
+      // this comment was wrong about it for two days (RC-033).
       aliases: r.aliases,
     })),
     p_default_offering_id: input.default_offering_id,

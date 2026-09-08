@@ -1,5 +1,44 @@
 # Changelog
 
+## Unreleased — A bulk import is one line in the audit log, not twenty
+
+**Importing four members used to fill the audit log.** Each member wrote a separate entry
+for herself, her name on Meet, her email address and her course enrolment — around twenty
+rows for one import, which pushed everything else off the screen and told you nothing you
+did not already know.
+
+It is now one row: *4 members added by bulk import*, the file it came from, and the members
+it added. Three names are shown; if there are more, **+ more** opens the full list and
+**Show fewer** closes it again.
+
+Nothing has been merged away or deleted. The row says how many entries it stands for —
+*8 entries in this import* — those entries are still stored, still searched, and **Export
+still writes every one of them separately**, exactly as before. The count of members comes
+from what the import itself reported; on the rare entry where that was not recorded the row
+counts what it can see and says so, rather than presenting a tally as a fact.
+
+Rows are only ever grouped where the database itself recorded that an import happened, so
+two unrelated changes that share a moment stay two changes, and two people importing at the
+same instant stay two imports.
+
+## Unreleased — An attendance file never marks a member of another course
+
+**Uploading a register for one course can no longer mark a member of a different one.** A
+name in the file used to be matched against everybody on the academy's register, whichever
+course they were in — so a Postnatal file naming a woman who shares her name with a Prenatal
+member marked *that* member present on the Postnatal session, quietly, and added nobody to
+Postnatal.
+
+A member is in one course at a time, so a name whose only member is enrolled elsewhere is
+not that member. She is now added to the course you uploaded for, as somebody new with no
+email — where she appears under **No email**, exactly like any other name the register did
+not know.
+
+**And the upload says so.** The result names her and says which course the name clashed
+with, so if it really is the same woman who has moved course, *Add display name to existing
+member* folds her in and carries her attendance across. The one judgement this import has to
+make about a shared name is no longer made in silence.
+
 ## Unreleased — Deleting a course now deletes it for good
 
 **Deleting a course removes it and everything recorded in it — its sessions, including the

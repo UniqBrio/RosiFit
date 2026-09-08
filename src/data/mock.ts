@@ -511,6 +511,15 @@ export type AuditEntry = {
    *  no single branch: a message template, a setting, an account. */
   branch: string | null;
   changes: { field: string; old: string | null; new: string | null }[];
+  /**
+   * `audit_logs.metadata` — what the WRITER of the entry chose to record
+   * beside the changed columns. Only a handful of actions set it, and only
+   * one thing reads it: a bulk import's own summary row carries the file
+   * name and the inserted/skipped/failed counts, which is how the screen
+   * can say "4 members added from register.csv" rather than counting rows
+   * and hoping. Absent on almost every entry, so it is optional.
+   */
+  meta?: Record<string, unknown>;
 };
 
 /** A fixed clock for the fixtures, so "Today" in the prototype means today. */
@@ -567,6 +576,49 @@ export const AUDIT: AuditEntry[] = [
       { field: 'member_id', old: null, new: 'Anitha Raman' },
       { field: 'email', old: null, new: 'anitha.r@gmail.com' },
       { field: 'is_primary', old: null, new: 'true' }] },
+  /* ONE BULK IMPORT, as the database actually writes it: every row below
+   * shares an occurred_at, because audit_logs.occurred_at defaults to now()
+   * and now() is the TRANSACTION timestamp. Four members went in and eight
+   * entries came out - the screen shows one row for the run (auditGroups).
+   * Deliberately lopsided: Raja has her alias, address and enrolment here
+   * and the other three do not, so the group cannot be counting entries and
+   * calling it members. */
+  { id: 'a9', who: 'Shazia', whoKind: 'super_admin', when: auditAt(0, 8, 17),
+    action: 'member.bulk_imported', entity: 'member_import_run', subject: null, branch: 'Coimbatore',
+    changes: [],
+    meta: { file_name: 'register-sep.csv', total: 4, inserted: 4, skipped: 0, failed: 0 } },
+  { id: 'a10', who: 'Shazia', whoKind: 'super_admin', when: auditAt(0, 8, 17),
+    action: 'member.insert', entity: 'member', subject: 'Raja', branch: 'Coimbatore',
+    changes: [
+      { field: 'full_name', old: null, new: 'Raja' },
+      { field: 'member_code', old: null, new: 'RF-0201' },
+      { field: 'status', old: null, new: 'active' },
+      { field: 'joined_on', old: null, new: '2026-09-08' },
+      { field: 'created_by', old: null, new: 'Shazia' }] },
+  { id: 'a11', who: 'Shazia', whoKind: 'super_admin', when: auditAt(0, 8, 17),
+    action: 'member_alias.insert', entity: 'member_alias', subject: 'Raja', branch: 'Coimbatore',
+    changes: [
+      { field: 'member_id', old: null, new: 'Raja' },
+      { field: 'alias_display', old: null, new: 'Raj' }] },
+  { id: 'a12', who: 'Shazia', whoKind: 'super_admin', when: auditAt(0, 8, 17),
+    action: 'member_email.insert', entity: 'member_email', subject: 'Raja', branch: 'Coimbatore',
+    changes: [
+      { field: 'member_id', old: null, new: 'Raja' },
+      { field: 'email', old: null, new: 'raja@gmail.com' }] },
+  { id: 'a13', who: 'Shazia', whoKind: 'super_admin', when: auditAt(0, 8, 17),
+    action: 'member_enrollment.insert', entity: 'member_enrollment', subject: 'Raja', branch: 'Coimbatore',
+    changes: [
+      { field: 'member_id', old: null, new: 'Raja' },
+      { field: 'offering_id', old: null, new: 'Prenatal Yoga · Coimbatore' }] },
+  { id: 'a14', who: 'Shazia', whoKind: 'super_admin', when: auditAt(0, 8, 17),
+    action: 'member.insert', entity: 'member', subject: 'Priya Sharma', branch: 'Coimbatore',
+    changes: [{ field: 'full_name', old: null, new: 'Priya Sharma' }] },
+  { id: 'a15', who: 'Shazia', whoKind: 'super_admin', when: auditAt(0, 8, 17),
+    action: 'member.insert', entity: 'member', subject: 'Anu Nair', branch: 'Coimbatore',
+    changes: [{ field: 'full_name', old: null, new: 'Anu Nair' }] },
+  { id: 'a16', who: 'Shazia', whoKind: 'super_admin', when: auditAt(0, 8, 17),
+    action: 'member.insert', entity: 'member', subject: 'Kavya Iyer', branch: 'Coimbatore',
+    changes: [{ field: 'full_name', old: null, new: 'Kavya Iyer' }] },
 ];
 
 // ---------------------------------------------------------------- remarks

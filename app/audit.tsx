@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, ScrollView, TextInput } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Muted, Label, Button, Skeleton, EmptyState, ErrorState } from '../src/components/ui';
+import { Muted, Label, Skeleton, EmptyState, ErrorState } from '../src/components/ui';
 import { ScreenHeader, ShellScreen } from '../src/components/AppShell';
 import { Icon } from '../src/components/Icon';
 import { useTheme } from '../src/theme/ThemeProvider';
@@ -21,6 +21,7 @@ import {
   visibleEntries, isSessionAction, whenText, stampText, CATEGORY_CHIPS,
   type AuditCategory, type PlainEntry,
 } from '../src/data/auditPlain';
+import { groupRows, type PlainGroup, type PlainRow } from '../src/data/auditGroups';
 
 /**
  * The audit log, rebuilt for the one person allowed to open it: the academy
@@ -99,6 +100,14 @@ const COLS = [
 const TABLE_MIN = 980;
 
 /**
+ * How many members a collapsed import names before it offers the rest.
+ * The requester set it: "if more that 3 show +more on hit they can see full
+ * list". Three is enough to recognise the file you just imported without the
+ * row growing back into the wall of entries this collapse exists to remove.
+ */
+const NAMES_SHOWN = 3;
+
+/**
  * One row of the table: ONE changed field, carrying the entry it belongs to.
  *
  * The entry is flattened rather than folded into a single cell because
@@ -108,7 +117,10 @@ const TABLE_MIN = 980;
  */
 type Line = {
   key: string;
-  entry: PlainEntry;
+  /** null on a collapsed run, which stands for many entries and is none */
+  entry: PlainEntry | null;
+  /** set only on a collapsed run */
+  group?: PlainGroup;
   /** the field that changed, or null when the entry recorded no fields */
   label: string | null;
   from: string | null;
@@ -119,13 +131,23 @@ type Line = {
   last: boolean;
 };
 
-function toLines(entries: PlainEntry[]): Line[] {
+function toLines(rows: PlainRow[]): Line[] {
   const lines: Line[] = [];
-  for (const entry of entries) {
+  for (const row of rows) {
+    // A collapsed run is ONE line. It has no per-field breakdown to lay out:
+    // that is the whole point of it, and the entries it stands for are still
+    // there to be expanded.
+    if (row.kind === 'group') {
+      lines.push({ key: row.key, entry: null, group: row.group,
+                   label: null, from: null, to: null, first: true, last: true });
+      continue;
+    }
+    const entry = row.entry;
     if (entry.changes.length === 0) {
       // An action that recorded no field changes is still something somebody
       // did. It gets a line rather than vanishing.
-      lines.push({ key: entry.id, entry, label: null, from: null, to: null, first: true, last: true });
+      lines.push({ key: entry.id, entry, label: null, from: null, to: null,
+                   first: true, last: true });
       continue;
     }
     entry.changes.forEach((c, i) => lines.push({
@@ -182,6 +204,16 @@ function AuditBody() {
    * each holding their own draft would keep half-written notes alive behind
    * a filter change, and the reader would have no way to see they were there.
    */
+  /** Collapsed runs the reader has opened, by group key. Runs start closed:
+   *  the whole reason the row exists is that the expanded form buried the
+   *  log, so it opens only when somebody asks for it. */
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (key: string) => setExpanded(prev => {
+    const next = new Set(prev);
+    if (!next.delete(key)) next.add(key);
+    return next;
+  });
+
   const [composingFor, setComposingFor] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
@@ -251,7 +283,14 @@ function AuditBody() {
     [entries, category, query, branch, now],
   );
   /** The table's rows: one per changed field (see `toLines`). */
-  const lines = useMemo(() => toLines(rows), [rows]);
+  /**
+   * The rows the table draws: every entry, with each bulk import collapsed
+   * into one. Grouping happens AFTER the filters, so a search or a chip
+   * narrows the entries first and the run is then built from what survived
+   * -- a group never claims members the current view has filtered away.
+   */
+  const grouped = useMemo(() => groupRows(rows), [rows]);
+  const lines = useMemo(() => toLines(grouped), [grouped]);
   const narrowed = rows.length !== listed.length;
   /** Whether anything is narrowing the list right now. */
   const filtered = range !== null || branch !== ALL_BRANCHES || query.trim() !== '' || category !== 'all';
@@ -389,7 +428,7 @@ function AuditBody() {
    * saved: the note cannot be edited or deleted once it is in, and somebody
    * should know that while they are still choosing their words.
    */
-  const remarksCell = (r: PlainEntry) => {
+  const remarksCell = (r: { id: string; title: string }) => {
     const mine = remarksFor.get(r.id) ?? [];
     const open = composingFor === r.id;
     return (
@@ -478,8 +517,101 @@ function AuditBody() {
     );
   };
 
+  /**
+   * A whole import on one line.
+   *
+   * WHAT COLUMN GETS WHAT, and why it is not arbitrary: the members it added
+   * are the NEW VALUE, because that is what the run produced. PREVIOUS VALUE
+   * is "nothing before" for the same reason every creation says it. The
+   * heading carries the count and the file, which is the fact the reader
+   * came for.
+   */
+  const groupRow = (l: Line, g: PlainGroup) => {
+    const open = expanded.has(l.key);
+    const shown = open ? g.names : g.names.slice(0, NAMES_SHOWN);
+    const hidden = g.names.length - shown.length;
+    return (
+      <View key={l.key} testID={`audit-row-${l.key}`} style={{
+        flexDirection: 'row', alignItems: 'flex-start',
+        paddingTop: 13, paddingBottom: 11,
+        minWidth: TABLE_MIN, flexGrow: 1,
+        borderBottomWidth: 1, borderBottomColor: theme.line,
+      }}>
+        <View style={cell(0)}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Icon name={g.icon} size={15} color={theme.accentInk} />
+            <Text style={{ flex: 1, fontSize: 12.5, fontWeight: '800', color: theme.fgStrong }}>
+              {g.title}
+            </Text>
+          </View>
+          {g.file ? (
+            <Text style={{ fontSize: 11.5, color: theme.fg, marginTop: 2, marginLeft: 21 }}>
+              {g.file}
+            </Text>
+          ) : null}
+          {/* What the one row stands for. An audit log may summarise how it
+              DISPLAYS entries; it may not leave somebody thinking eight
+              records were one. */}
+          <Text style={{ marginLeft: 21, marginTop: 5, fontSize: 10.5, color: theme.dim }}>
+            {g.entryCount} {g.entryCount === 1 ? 'entry' : 'entries'} in this import
+            {g.countIsReported ? '' : ' · counted from the entries shown'}
+          </Text>
+        </View>
+
+        <View style={cell(1)}>{value(null, 'nothing before', false)}</View>
+
+        <View style={cell(2)}>
+          {shown.map(n => (
+            <Text key={n} style={{ fontSize: 12, fontWeight: '700', color: theme.fgStrong, lineHeight: 17 }}>
+              {n}
+            </Text>
+          ))}
+          {hidden > 0 || open ? (
+            <Pressable testID={`audit-group-more-${g.id}`}
+              onPress={() => toggle(l.key)}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: open }}
+              accessibilityLabel={open
+                ? `Show fewer of the ${g.names.length} members added`
+                : `Show all ${g.names.length} members added`}
+              style={({ pressed }) => ({
+                flexDirection: 'row', alignItems: 'center', gap: 3,
+                minHeight: 24, marginTop: 3, opacity: pressed ? 0.7 : 1,
+              })}>
+              <Icon name={open ? 'expand_less' : 'expand_more'} size={14} color={theme.accentInk} />
+              <Text style={{ fontSize: 11, fontWeight: '700', color: theme.accentInk }}>
+                {open ? 'Show fewer' : `+${hidden} more`}
+              </Text>
+            </Pressable>
+          ) : null}
+          {g.names.length === 0 ? (
+            <Text style={{ fontSize: 12, color: theme.dim }}>No members named</Text>
+          ) : null}
+        </View>
+
+        <View style={cell(3)}>
+          <Text style={{ fontSize: 11.5, color: theme.fg, fontWeight: '600' }}>{g.who}</Text>
+          {g.role ? (
+            <Text style={{ fontSize: 10.5, color: theme.muted, marginTop: 2 }}>{g.role}</Text>
+          ) : null}
+        </View>
+
+        <View style={cell(4)}>
+          <Text style={{ fontSize: 11.5, color: theme.muted }}>{g.when}</Text>
+        </View>
+
+        {/* The run is one act, so it takes one remark -- filed against the
+            import’s own summary entry, which is the row the database wrote
+            to say the import happened. */}
+        <View style={cell(5)}>{remarksCell({ id: g.id, title: g.title })}</View>
+      </View>
+    );
+  };
+
   const tableRow = (l: Line) => {
+    if (l.group) return groupRow(l, l.group);
     const r = l.entry;
+    if (!r) return null;
     return (
       <View key={l.key} testID={`audit-row-${l.key}`} style={{
         flexDirection: 'row', alignItems: 'flex-start',
@@ -777,6 +909,9 @@ function AuditBody() {
 
       children.push(
         <Muted key="foot" style={{ marginTop: SPACE.md }}>
+          A bulk import is one line, however many records it wrote — press “+ more” to see every
+          member it added. Nothing is merged away: the row says how many entries it stands for,
+          and Export writes every one of them separately, as it always has.
           One line per changed field; the lines under a heading are the same act.
           A record being CREATED lists only the fields that name it — everything else it
           was born with is still recorded, and the count of what is not printed is shown
