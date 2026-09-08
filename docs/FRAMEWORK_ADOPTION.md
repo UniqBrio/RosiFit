@@ -13,6 +13,100 @@ current; adopt a **MAJOR** within one quarter.
 
 ---
 
+## v1.25.0 — adopted 08-Sep-2026 (from: v1.20.0, via 1.21 · 1.22 · 1.23 · 1.24)
+
+### What kind of adoption this is
+
+**Half A (PROCESS) only, by hand** — the same method as every pass since v1.6.0: compare each
+upstream-changed process file against framework **v1.20.0**, replace only what is still
+**byte-identical**, never overwrite a file RosiFit has changed.
+
+**Scope held: nothing under `app/`, `src/`, `supabase/`, `assets/`, `db/`, `design/` or
+`.harness/` was touched.** Asserted mechanically from `git status`, not by inspection.
+
+### Auto-applied — pristine in RosiFit, changed upstream (16)
+
+`.claude/commands/framework-update.md` · `FRAMEWORK_MANIFEST.md` · `UPGRADES.md` · `VERSION` ·
+`docs/00-OVERVIEW.md` · `docs/01-SDLC.md` · `docs/16-TESTING-AND-VALIDATION.md` ·
+`docs/registers/COMPONENT_LIBRARY.md` (pristine since v1.11.0) · **`scripts/gate-runner.mjs`**
+(1.23.0: every step timed, total and slowest step named; decides exactly as before) ·
+`tests/cases/FRAMEWORK_PROCESS_CASES.md` · `workflows/agents/README.md` · `workflows/bug.md` ·
+`workflows/feature.md` · `workflows/framework-update.md` · `workflows/request.md` ·
+`workflows/test-gate.md` (1.23.0: the verification lane by scale)
+
+### Added — new since v1.20.0 (9 scripts, 1 register, 2 baselines)
+
+- `scripts/audits/check-fixture-leak.mjs` (1.22.0) · `scripts/gate-timing.test.sh` (1.23.0) ·
+  `scripts/run-log.mjs` + `scripts/run-log.test.sh` (1.24.0) · `scripts/par.mjs` ·
+  `scripts/review-plan.mjs` + `.test.sh` · `scripts/close-out.mjs` + `.test.sh` (1.25.0).
+- **`docs/registers/RUN_LOG.md` — seeded empty, not copied.** `run-log.mjs end` refuses to run
+  without the register ("restore it rather than let this script invent one"), so a copy of the
+  script without the file would be a dead tool. The framework's file carries three rows of
+  *its own* runs (R-001…R-003) and a note about them; those were removed and a one-paragraph
+  provenance note added. Header, columns and vocabulary are the framework's verbatim.
+  RosiFit's first row will be `R-001`.
+- **`.baselines/fixture-leak-baseline.txt`** (src: 2 named placeholders —
+  `SAMPLE_ROWS` in `memberXlsx.ts`, `SAMPLE_MEMBER` in `message.ts`) and
+  **`.baselines/fixture-leak-app-baseline.txt`** (app: 0 — a **clean gate**). Written by the
+  audit's own `--write-baseline`, the same way the five ratchets were baselined at v1.3.0, so
+  the gate is green the day it is wired and blocks only *new* leaks.
+
+### Merged — the one file RosiFit had changed (1)
+
+`checklists/DEFINITION_OF_DONE.md`: RosiFit added the RC-023 item (a CHECK constraint stated by
+the form) after v1.20.0; upstream added *The run log* section. Non-overlapping hunks;
+`git merge-file` three-way against v1.20.0 applied cleanly with zero conflict markers. Both
+items are present.
+
+### Skipped, with the reason
+
+| File(s) | Why |
+|---|---|
+| `.gitignore` | RosiFit's own. Upstream ignores `.run-log.json` (the open-run marker) and `.close-out-commit.txt`. **Add those two lines before the first `run-log start`**, or the marker will show up in `git status` — see Known gaps |
+| `package.json` | RosiFit's own. Upstream rewires `audit:all` and `guard:test` through `par.mjs` (concurrent, every failure aggregated) and adds `audit:fixtures`, `runlog`, `review:plan`, `closeout`, plus `:serial` variants — see Known gaps |
+| `CHANGELOG.md` · `TEST_SUMMARY.md` | RosiFit's own logs |
+| `docs/registers/CANONICAL_PATTERNS.md` | Upstream: **CP-25** (an edit surface loads the record before it renders) and **CP-15 amended** (a date arriving by import/paste/API). RosiFit numbers its own patterns (ADR 002). CP-25 is directly relevant to `app/member/edit.tsx` and `app/course/edit.tsx` — a RosiFit-numbered row is an owner decision |
+| `docs/registers/DESIGN_RULES.md` | Upstream's first rows are **DR-1 sentence case** and **DR-2 a session ends when the user says so** — and RosiFit already has its own **DR-1…DR-5** (the five guardrails). Same IDs, different rules; a copy would silently rename RosiFit's rules. Owner decision: adopt as DR-6/DR-7 if wanted |
+| `docs/registers/ROOT_CAUSE_REGISTER.md` | RosiFit's register (RC-013 onward are RosiFit's). Upstream's RC-007 (seventeen escaped defects) is framework history |
+| `starter/` (7 files) | Half B seed; RosiFit has no `starter/` |
+
+`CLAUDE.md` (expected-divergent) gained only the version reference.
+
+### App action required — checked one by one
+
+All five releases are MINOR; each records "App action required: None". 1.22.0 adds a new
+audit that "arrives baselined" — done above. 1.25.0 notes `audit:all` and `guard:test` changed
+shape upstream; RosiFit's are its own and unchanged.
+
+### Verification — executed here, not read
+
+| Suite | Result |
+|---|---|
+| `scripts/run-log.test.sh` | **32 passed, 0 failed** — scratch registers only; `docs/registers/RUN_LOG.md` untouched, no stray `.run-log.json` |
+| `scripts/review-plan.test.sh` | **20 passed, 0 failed** |
+| `scripts/close-out.test.sh` | **23 passed, 0 failed** — no stray `.close-out-commit.txt` |
+| `scripts/gate-timing.test.sh` | **6 passed, 2 failed — expected here, not a regression.** The suite runs the real gate with `--only G1` and asserts G1 *passes*. In RosiFit G1 has no input (no `design/tokens.json`, ADR 001 / F-1) and reports FAIL, so the two assertions about G1 being green cannot hold. All six assertions about the **timing feature itself** (total stated, slowest step named, per-step durations, `-` for a step that never ran, verdict line intact) pass |
+| `check-fixture-leak.mjs` src + app | OK against the new baselines: 2 known, 0 new · 0 known — clean gate |
+| `check-rule-coverage.mjs` · `check-dead-weight.mjs` | OK, unchanged (1 known · clean) |
+| `npm run check` | **not run** — `node_modules/` absent in the adopting session; nothing under `src/` or `app/` changed |
+
+### Known gaps in this adoption — three, all one-line `package.json` / `.gitignore` edits the owner makes
+
+1. **`audit:fixtures` is baselined but not wired.** Add to `package.json`:
+   `"audit:fixtures": "node scripts/audits/check-fixture-leak.mjs --dirs src && node scripts/audits/check-fixture-leak.mjs --dirs app --baseline .baselines/fixture-leak-app-baseline.txt"`
+   and append `&& npm run audit:fixtures` to `audit:all`.
+2. **Four executed suites are not in `guard:test`** (with `fanout-check.test.sh` from v1.20.0,
+   five). Either append them, or adopt upstream's shape:
+   `node scripts/par.mjs "guards=bash scripts/hooks/guard-reachability.test.sh" "fanout=bash scripts/fanout-check.test.sh" "run-log=bash scripts/run-log.test.sh" "review-plan=bash scripts/review-plan.test.sh" "close-out=bash scripts/close-out.test.sh"`
+   — `gate-timing.test.sh` deliberately **left out** until G1 has an input here (it would fail
+   2/8 on every run, and a suite that always fails is one nobody reads).
+3. **`.gitignore` needs `.run-log.json` and `.close-out-commit.txt`** before `run-log.mjs` or
+   `close-out.mjs` are used.
+
+Recorded here so each is a decision, not an oversight.
+
+---
+
 ## v1.20.0 — adopted 06-Sep-2026 (from: v1.11.0, via 1.12 · 1.13 · 1.14 · 1.15 · 1.15.1 · 1.16 · 1.17 · 1.18 · 1.19)
 
 ### What kind of adoption this is

@@ -102,12 +102,21 @@ round N−1's file.
 | `audits/check-hardcoded-colors.mjs` | Nothing bypassed the token system |
 | `audits/check-testid-coverage.mjs` | Interactive elements are addressable |
 | `audits/check-rule-coverage.mjs` | Every rule names its enforcement point |
+| `audits/check-fixture-leak.mjs` | Placeholder data wired into a screen a user can reach (ratcheted) |
 | `audits/check-column-control.mjs` | A table wider than three columns lets the user choose its columns (CP-21) |
 | `hooks/pre-commit-guard.sh` | Close-out obligations, per-guard escape tokens |
 | `hooks/guard-reachability.test.sh` | **Executes** the guard, proving each one can fire |
 | `upgrade.test.sh` | **Executes** lineage + upgrade against scratch apps — the behaviour rung for the three-way rule |
 | `fanout-check.mjs` | Validates a parallel-build plan before any agent is spawned: no file written twice, no task reading another's write, every task declaring a contract and an acceptance |
 | `fanout-check.test.sh` | **Executes** the validator — each block observed firing, each pass observed passing |
+| `gate-timing.test.sh` | **Executes** the gate runner and proves the report states its own cost — total, slowest step, per-step duration, and `-` for a step that never ran. The rung under FW-SPEED-003 (gate stage) |
+| `run-log.mjs` | Appends a row to the run log: what was asked, its type, and a **measured** duration. Reads the clock at `start` and at `end`; refuses to invent a start it never took |
+| `run-log.test.sh` | **Executes** the logger — including that `end` without `start` is BLOCKED rather than a guessed duration |
+| `par.mjs` | Runs independent checks **concurrently** and reports each one's cost. Backs `audit:all` and `guard:test`; deliberately NOT the gate, whose order is a prerequisite chain. Aggregates every failure instead of stopping at the first |
+| `review-plan.mjs` | Decides **which review passes a change needs, from the diff** — the executable form of the review matrix, and the authority for selection |
+| `review-plan.test.sh` | **Executes** the selector against built diffs in scratch repositories, including that the same diff twice yields a byte-identical plan |
+| `close-out.mjs` | Renders the release story **once** into the four places it must appear (upgrade notes, changelog, commit message, summary). Owns scaffolding and duplication; never the prose |
+| `close-out.test.sh` | **Executes** the generator — one record reaches every rendering, and `--apply` can never overwrite a prior entry |
 | `hooks/tsc-baseline.sh` | Regenerates the type-error ratchet baseline |
 | `audits/check-dead-weight.mjs` | Scripts nothing references any more (review candidates) |
 

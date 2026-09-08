@@ -12,6 +12,252 @@
 
 ---
 
+## 1.25.0 — 08-Sep-2026 — MINOR
+
+**four levers on execution time, aimed by measurement**
+
+Owner report: runs take too long, and the proposal was to replace English decision-making with code. Measured first, on this repository: the whole mechanical stack was ~87s against runs of 27 to 65 minutes, and instruction-interpretation was the SMALLEST term, not the largest. So the four changes here are aimed where the time actually is - generation, sequential checking, and repeated judgement - and the routing question is deliberately still open.
+
+Full analysis: `docs/registers/ROOT_CAUSE_REGISTER.md` **RC-008**.
+
+### Added
+- **Stage breakdown in the run log.** `run-log.mjs stage <ground|plan|build|verify|gate>` marks each boundary from the clock, and the row carries `ground 4m · plan 2m · build 14m` beside the total. Closes the last part of FW-SPEED-003 that was still prose: a total says a run was slow, only the breakdown says what to fix. An unmarked stage is absent, never `0`.
+- **`par.mjs` - independent checks run concurrently.** `audit:all` 17.7s to **5.7s**; `guard:test` 60.2s to **29.4s**; the mechanical stack **87s to ~41s**, now nine suites rather than six. It also aggregates every failure instead of stopping at the first, so one run tells you everything that is wrong. It deliberately does NOT parallelise the gate, whose order is a prerequisite chain: there is no value in running a browser suite against code that does not compile.
+- **`review-plan.mjs` - the review matrix, executed.** Reads the diff and names the passes: scale derived and justified, reviewers selected with reasons, the same diff twice giving a byte-identical plan. The matrix in `workflows/agents/README.md` now points here for SELECTION and keeps the job of saying why each pass exists.
+- **`close-out.mjs` - write the release story once.** One record renders the upgrade section, the changelog paragraph and the commit message. Generation is the dominant cost of a run, and telling the same story four times by hand was the largest single block of writing in a close-out - three quarters of it transcription. The record carries the real sentences; the script owns only scaffolding and repetition.
+- Cases FW-STAGE-001..002, FW-PAR-001, FW-PLAN-001..002, FW-CO-001..002. Two new executed suites (`review-plan.test.sh` 20 cases, `close-out.test.sh` 23) in `guard:test`.
+
+### Fixed
+- **The visible-string detector, twice, before it shipped.** It first looked only for QUOTED strings and so read a component full of user-facing sentences as having none - most React copy is JSX text, which carries no quotes. Broadened to JSX text, it then matched `=> <div`, the arrow function returning JSX that almost every component is written with, which would have selected the copy pass on nearly every change. A pass that fires on everything is noise, and a noisy pass stops being read. Both were caught by their own negative cases.
+
+### Stated as honest debt, not papered over
+- **Only the gate stage arrives measured.** Ground, plan, build and verify are marked by hand, because nothing observes wall-clock across an agent's stages - there is no hook to attach. Honest, but a mark that is forgotten leaves a gap rather than an error.
+- **`review-plan.mjs` cannot see history or schema intent.** Hotspot status is declared, never inferred; a migration is detected but never judged safe. Both are stated in its output rather than guessed at.
+- **Deterministic ROUTING - the owner's original proposal - is not implemented here.** It is the smallest measured term of the four, and the brainstorm on it is still open.
+
+### App action required
+None. Two npm scripts changed shape (`audit:all`, `guard:test`) and now run concurrently; `--serial` variants are kept as the escape hatch for isolating a failure. Everything else is new and optional.
+
+---
+## 1.24.0 — 08-Sep-2026 — MINOR
+
+**The run log — what was asked, which kind of request, and what it actually cost.** Owner
+request, immediately after v1.23.0 taught the gate to measure itself: keep an audit log of runs.
+
+### Added
+- **`docs/registers/RUN_LOG.md`** — one row per run, newest first, append-only:
+  **ID · Action · Type · Scale · Started · Ended · Total · Gate · Verdict · Notes.**
+- **`scripts/run-log.mjs`** (`npm run runlog`) — `start`, `end`, `status`. **The rows are
+  written by the script, not by hand**, and that is the whole design: a start time entered when
+  the run is already over is a recalled time, and a duration built from two recalled times is
+  an estimate presented as a record. This framework has already paid for that once — RC-008,
+  where a stage-timing *rule* produced no measured number for three versions because the only
+  party asked to honour it was a narrator. Writing the same log as a markdown template would
+  have repeated it exactly.
+- **`end` without `start` exits 3 (BLOCKED) and writes nothing.** It does not invent a start
+  time. A log whose durations are sometimes measured and sometimes guessed is worse than no
+  log, because nothing on the row says which kind each one is. Back-filling is supported but
+  **explicit** — `--started <ISO>` — and the row's Notes cell says `back-filled start`.
+- **`Gate` sits next to `Total` on purpose.** The gate's own cost is lifted from the newest
+  `Time:` line in `TEST_SUMMARY.md` — the number v1.23.0 made available — so every row answers
+  the first question a long run raises: *was it the machine or the agent?* The whole mechanical
+  stack measures ~87s, so a fifty-minute gap between those columns is not the tooling.
+- **Wired at both ends, or it would be another unenforced rule**: `/request` **R1** opens the
+  log *before* classifying, and `DEFINITION_OF_DONE.md` closes it. `run-log.mjs status` reports
+  what is still open — an unclosed run is not a fast run, it is an unmeasured one.
+- **`scripts/run-log.test.sh`** — 23 executed cases in `npm run guard:test`. Fail-first by
+  **defect injection** twice: `end` was made to invent a start time (both honesty assertions
+  observed failing), and the row anchoring was reverted to its original form (the regression
+  case below observed failing). Both injections were reverted.
+
+### A defect the first real use found, and the case that now holds it
+Seeding the register's first two rows filed them into **the wrong table**. The file explains its
+columns before it lists anything, so the first markdown table in it is the glossary — and
+`appendRow` anchored on "the first separator". The rows rendered as documentation, and **the
+write still reported success**. It now anchors on the data table's own header
+(`| ID | Action | Type | …`) and refuses a file that has none, rather than guessing. A register
+that silently files entries where nobody reads them is worse than one that refuses.
+
+### The type vocabulary is the one `/request` R1 already uses
+`NEW-APP` · `NEW` · `CHANGE` · `BUG` · `REFACTOR` · `TRIAGE` · `BRAINSTORM` · `FRAMEWORK` —
+covering the owner's four names (new app · new feature · functionality correction · bug
+correction) plus the tracks that produce no request file but still consume time. A second set
+of names for one concern means two different answers to "how many bug runs did we do".
+
+### App action required
+**None.** New register and script; nothing existing changed behaviour. Apps that want the log
+run `node <framework>/scripts/run-log.mjs start …` at the top of a run and `end` at the
+close-out; the register is created from the template on first use.
+
+---
+
+## 1.23.0 — 08-Sep-2026 — MINOR
+
+**Verification was the longest stage in every run, and nothing measured it.** Owner report:
+corrections finish quickly, verification "often exceeds one hour". Full analysis:
+`docs/registers/ROOT_CAUSE_REGISTER.md` **RC-008**.
+
+### What the measurement actually showed
+`audit:all` **17.7s** · `guard:test` **60.2s** · `npm run gate` **8.6s** — about **87 seconds**
+for the entire mechanical stack, roughly **2.4%** of the reported hour. The scripts were never
+the bottleneck. The other ~58 minutes were agent-side and completely unattributed, because
+`grep -rniE "elapsed|duration|hrtime|performance\.now|Date\.now\(\)" scripts/` returned
+**three matches, all CSS `animation-duration`**.
+
+### The two failures
+1. **A rule with no rung — this framework's own first idea, failing on itself.** v1.13.0
+   shipped "run reports carry stage timings", case **FW-SPEED-003**, whose anti-pattern reads
+   *"a slow run with no timing data, diagnosed by feeling."* Nothing executed it; the only
+   party asked to honour it was the narrator. Three versions later the first real report of
+   slowness arrived in exactly that shape.
+2. **Proportionality was applied to half the run.** v1.19.0 gave the **build** side three lanes,
+   v1.20.0 parallelised generation, and the review matrix scaled *who reviews*. Nothing scaled
+   *what verification executes*: `test-gate.md` had nine T1 sub-steps, each marked
+   **(blocking)**, and no scale column — so a two-file label fix enumerated the same constraint
+   and configuration space as a schema migration.
+
+### Added
+- **The gate measures itself.** `scripts/gate-runner.mjs` records per-step wall-clock and
+  prints `Time: <total> total - slowest <id> <name> (<duration>)` plus a duration on every step
+  line, into the append-only `TEST_SUMMARY.md` — so the trend accrues with no upkeep. A step
+  that **never spawned prints `-`, never `0ms`**: zero is a measurement, and a step that did not
+  run has none; printing zero would make the cheapest possible run look like the fastest one.
+- **`scripts/gate-timing.test.sh`** — 8 executed cases, wired into `npm run guard:test`. Four
+  were **observed failing** against the pre-timing runner; the other four are regression guards
+  on the verdict contract and correctly pass in both trees (a gate that got faster and lost its
+  three-valued verdict would be a worse gate wearing a stopwatch).
+- **The verification lane** (`workflows/test-gate.md`) — which T-steps run at micro · scoped ·
+  full-scale, keyed to the **same `SCALE:` declaration guard G8 already verifies against the
+  diff**. No new token, no new guard, no addition to the rule budget. What shrinks is the
+  *enumeration of classes the change cannot reach*; **T1.5 fail-first, T1.6 the registry delta
+  and T2 the mechanical gate are marked "never scales"**, and a skipped row is discharged in
+  `TEST_SUMMARY.md` with its reason — never silent.
+- Cases **FW-SPEED-006..009**; **FW-SPEED-003 updated in place** to name its rung and to state
+  plainly that the four non-gate stages remain narrator-reported.
+
+### Stated as honest debt, not papered over
+**Only the gate stage is mechanically measured.** Ground · plan · build · verify are still
+narrator-reported, because nothing in this framework observes wall-clock across an agent's
+stages — there is no hook to attach. FW-SPEED-003's rung is scoped to the gate stage and says
+so. Equally, **G8 verifies a `micro` claim against the diff, but a `scoped` claim on a
+full-scale change has no mechanical rung** and is review-only. Both are recorded in RC-008
+rather than disguised as coverage.
+
+### Why the rule-coverage audit reported a clean gate over this
+`check-rule-coverage.mjs` reads `CANONICAL_PATTERNS.md`, `ROOT_CAUSE_REGISTER.md` and
+`DESIGN_RULES.md` — IDs `CP|RC|DR|FP`. `FW-*` process cases are outside its population, so
+"backlog is zero" was true of what it reads and silent about this rule. The audit did not
+overclaim; its scope simply never included that register. Left as-is this release: widening it
+is a change to a ratchet's population and deserves its own run, not a footnote in this one.
+
+### App action required
+**None.** The gate prints more; it decides exactly as before, and no check was removed. The
+verification lane is available on the `SCALE:` field your runs already declare.
+
+---
+
+## 1.22.0 — 06-Sep-2026 — MINOR
+
+**Seventeen defects reached a user through a green run. Three process failures, closed.**
+Full analysis: `docs/registers/ROOT_CAUSE_REGISTER.md` **RC-007**.
+
+### The three failures
+1. **Rules with no rung.** "A save is proved against the data, never the toast" is a
+   Definition-of-Done item *and* a documented spec habit — and both false-success defects
+   walked past it, because nothing executed it.
+2. **Rules that did not exist.** Nothing said an edit surface must arrive populated, that an
+   unchanged save must round-trip untouched fields, that selection is keyed by database id,
+   or that placeholder data must not reach shipped source.
+3. **Capabilities re-implemented instead of reused.** The library's dialog already uses the
+   `overlay` token (verified correctly translucent in both themes), CP-11 already forbids raw
+   engine strings, CP-8 already covers fixed-chrome clearance. The black backdrop, the raw
+   database error and the keypad overlap were each a re-encounter of a solved problem.
+   **Rebuilding a registered component re-inherits every bug it had already fixed.**
+
+### Added
+- **`scripts/audits/check-fixture-leak.mjs`** + `npm run audit:fixtures` (now in `audit:all`) —
+  ratcheted detection of fixture-path imports, placeholder-named literals (`MOCK_*`,
+  `sampleRows`) and hardcoded datasets in shipped source. Verified: clean across the
+  framework's own 43 source files with **no false positives** (a legitimate `STATUSES`
+  constant is not flagged), and observed **firing on all three leak shapes**.
+- **CP-25 — editing an existing record.** An edit surface loads before it renders: populated
+  fields, selected multi-selects, edit mode addressed by **database id** — never the create
+  form with a different title, never keyed by a label two records can share. **An unchanged
+  save is a no-op**: every field the form did not load still round-trips, because a field
+  returned empty destroys the stored value silently. Rung: three new journeys in
+  `starter/tests/functional/reference.functional.spec.ts`.
+- **CP-15 amended in place** (superseded text kept): a date arriving by import, paste or API
+  bypasses the picker, so it is **unambiguous or rejected** — `01/09/2026` is two different
+  days, and accepting it silently picks one.
+- **`workflows/bug.md` C2b** — the five classes a green suite does not see (claimed success ·
+  placeholder data · edit parity · non-unique key · resolved actor), each with the assertion
+  that catches it.
+
+### Stated as honest debt, not papered over
+The **false-success** class keeps a rule, a DoD item and a reference assertion but **no
+automated rung**: deciding "asserts a toast but never asserts the write" requires knowing
+which assertion is the effect, which a scanner cannot. The rule budget forbids minting a
+fourth restatement of a rule that already exists, so this is recorded as debt in RC-007 rather
+than disguised as coverage.
+
+### App action required
+**None mechanically** — the new audit arrives baselined at your current state
+(`node <framework>/scripts/audits/check-fixture-leak.mjs --write-baseline`). The six
+application-domain defects (sign-out routing, existence checks before the PIN screen, actor
+propagation) have their classes named in `bug.md` C2b; their fixes belong in the application's
+own `/bug` runs.
+
+---
+
+## 1.21.0 — 06-Sep-2026 — MINOR
+
+**Reuse before you build — made a step, not an aspiration.** Owner finding: nothing in
+`framework-update.md` ever asked whether a correction should become (or already was) a reusable
+component. So the same capability could be rebuilt per application, and a shortfall in a shared
+component could be worked around locally — leaving the gap in place for every other app.
+
+### Added
+- **Route B step 0 — the reuse check, first, always.** Read `COMPONENT_LIBRARY.md` and
+  `CANONICAL_PATTERNS.md` for every concern the correction touches. If it exists, the
+  correction is "wire it up", not "write it again".
+- **Route B step 4 — the capability decision, recorded every run**, one of four:
+  **REUSE** (it exists — delete the local re-implementation) · **REFINE** (it exists but falls
+  short — improve the *shared* one so every app gains it; a local workaround forks this app and
+  abandons the others) · **CONTRIBUTE** (a baseline concern that does not exist yet — generalise,
+  place, flip GAP→READY in this run) · **PARK / APP-ONLY**. *"App-only" is a valid answer;
+  silence is not.* `starter/**` and the library register are now in the governed-files table.
+- **Four components**, each closing a standing GAP and each reusing rather than duplicating:
+  `ConfirmDialog` (composes CP-14; destructive variant separated and **named** — never "OK";
+  reversible actions still use undo, not confirmation) · `MoreMenu` (overflow menu; sign out
+  isolated at the end and routed through confirmation) · `HelpSupport` (email · call · WhatsApp
+  as real links, every channel worded, absent details render no dead channel) ·
+  `text-format.ts` (sentence case that **never lowercases the tail** — the naive version turns
+  "WhatsApp" into "Whatsapp").
+- **`DESIGN_RULES.md` gets its first rows**: **DR-1** sentence case (rung: the unit spec; the
+  rule over arbitrary strings is honestly declared review-only) and **DR-2** session ends when
+  the user says so — survives reload and backgrounding, ends on explicit sign out, for JWT and
+  username/password alike.
+
+### Fixed
+- **The `/framework-update` command shim had drifted**: it said "triple close-out" and listed
+  three legs, omitting **VERSION** — the one leg that makes a change reachable by an app's
+  upgrade command. Now quadruple, matching the workflow.
+
+### Already existed — reused, not rebuilt
+Search / filter / sort (**CP-23**), non-dismissible dialogs and the unsaved-changes guard
+(**CP-14**), dialog-instead-of-navigation (docs/04 §5 + docs/24 §4), custom UI selection
+(`ModuleCustomizer`), role-based access (`ModuleAccessPanel`). The requested list named these;
+none was re-implemented.
+
+### Still open, registered honestly as GAP rows
+Session persistence (policy stated as DR-2) and PWA install. Both are baseline concerns with no
+code yet; the first application to build either contributes it back.
+
+### App action required
+**None.** New seed files and process steps.
+
+---
+
 ## 1.20.0 — 06-Sep-2026 — MINOR
 
 **Validated parallel build — the only lever that shortens generation.** Aimed deliberately:
