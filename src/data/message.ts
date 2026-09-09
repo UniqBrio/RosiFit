@@ -168,6 +168,13 @@ export const SAMPLE_MEMBER: Member = {
 /** The academy's name where the screen has not loaded one yet. */
 export const SAMPLE_ACADEMY = 'RosiFit';
 
+/** Stands in for the member's own signed opt-out link (0066). The real one
+ *  is minted per address by send-followups and cannot exist on a screen that
+ *  is previewing wording rather than addressing anybody -- so this shows the
+ *  SHAPE, which is all the preview is being asked about. */
+export const SAMPLE_UNSUBSCRIBE_URL =
+  'https://rosifit.example/unsubscribe?e=00000000-0000-0000-0000-000000000000&t=sample';
+
 /** Blank, and the em dash a screen uses for "nothing here", are both ABSENT.
  *  Either one substituted into the wording reads as a value the person chose. */
 const filled = (v: string | undefined | null): string | null => {
@@ -236,6 +243,13 @@ function variables(ctx: MessageContext): Record<string, string> {
     last_attendance_date: m.last,
     academy_name: ctx.academyName,
     follow_up_trigger: String(ctx.followUpTrigger),
+    /* {{unsubscribe_url}} -- the sender fills this per RECIPIENT, from a
+       signature over that member_emails row, so there is no real value for it
+       here: this screen previews wording, and it has no address in hand. The
+       SAMPLE is what the preview shows and what stops `unknownTokens` warning
+       about a token the sender fills perfectly well -- the same reason
+       follow_up_trigger is carried above. */
+    unsubscribe_url: SAMPLE_UNSUBSCRIBE_URL,
   };
 }
 

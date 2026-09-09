@@ -5,11 +5,23 @@
 
 import { unquoteSecret, isFromAddress } from '../_shared/from-address.ts';
 
+/** One RFC 5322 header line. SES accepts a limited set through the Headers
+ *  field -- List-Unsubscribe and List-Unsubscribe-Post among them -- and
+ *  refuses the rest, which is why this is a list of what the caller wants
+ *  rather than a free hand over the message. */
+export type EmailHeader = { name: string; value: string };
+
 /** `from` is the address THIS message goes out as, which since 07-Sep-2026
  *  varies per course (chooseFromAddress). Optional so a caller with no opinion
  *  still gets the provider's configured default -- but send-followups always
- *  passes one, and records the one it passed. */
-export type EmailMessage = { to: string; subject: string; text: string; from?: string };
+ *  passes one, and records the one it passed.
+ *
+ *  `headers` carries the List-Unsubscribe pair. Optional for the same reason:
+ *  a caller with nothing to add sends nothing extra, and the provider builds
+ *  the same request it always did. */
+export type EmailMessage = {
+  to: string; subject: string; text: string; from?: string; headers?: EmailHeader[];
+};
 export type EmailResult = { ok: boolean; providerMessageId?: string; error?: string };
 
 export interface EmailProvider {
@@ -25,9 +37,16 @@ export class DevEmailProvider implements EmailProvider {
     // `from` is logged because the dev provider is what the harness's
     // end-to-end send verification reads, and the sender now varies per
     // course -- a log that omits it cannot show the right one was chosen.
+    // Headers are logged for the same reason `from` is: the harness's
+    // end-to-end verification reads this line, and List-Unsubscribe is now
+    // part of what a correct send looks like. A log that omits it cannot
+    // show the header was set.
+    const headers = (msg.headers ?? []).map(h => `${h.name}: ${h.value}`).join('\n');
     console.log(
       `[dev-email] from=${msg.from ?? '(provider default)'} to=${msg.to} `
-      + `subject=${JSON.stringify(msg.subject)}\n${msg.text}\n---`);
+      + `subject=${JSON.stringify(msg.subject)}\n`
+      + (headers ? `${headers}\n` : '')
+      + `${msg.text}\n---`);
     return Promise.resolve({ ok: true, providerMessageId: `dev-${crypto.randomUUID()}` });
   }
 }
@@ -113,6 +132,17 @@ export class SesEmailProvider implements EmailProvider {
           Simple: {
             Subject: { Data: msg.subject, Charset: 'UTF-8' },
             Body: { Text: { Data: msg.text, Charset: 'UTF-8' } },
+            // SESv2's Headers field on Simple content, NOT raw MIME. The
+            // alternative was Content.Raw, which means building and
+            // base64-encoding the whole message here and giving up SES's
+            // own encoding of the subject and body -- a large change to the
+            // one code path that has already produced a "said SENT, sent
+            // nothing" incident (RC-017). Headers is additive: omitted when
+            // the caller passes none, and the request is byte-for-byte what
+            // it was before.
+            ...(msg.headers?.length
+              ? { Headers: msg.headers.map(h => ({ Name: h.name, Value: h.value })) }
+              : {}),
           },
         },
       });

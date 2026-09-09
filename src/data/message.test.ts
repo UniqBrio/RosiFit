@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import {
   fillTokens, unknownTokens, MESSAGE_TOKENS, EVERYDAY_TOKENS, SUBJECT_TOKENS, insertToken,
   wordingProblem, SUBJECT_MAX, BODY_MIN, courseNameProblem, COURSE_NAME_MAX,
-  previewContext, SAMPLE_MEMBER, SAMPLE_ACADEMY,
+  previewContext, SAMPLE_MEMBER, SAMPLE_ACADEMY, SAMPLE_UNSUBSCRIBE_URL,
 } from './message';
 import type { Member } from './mock';
 import { TEMPLATES } from './mock';
@@ -486,4 +486,40 @@ test('the sample is a stand-in and says so — it is on no course row', () => {
   // quietly stand for somebody. It cannot: it belongs to no row.
   assert.equal(SAMPLE_MEMBER.course_id, null);
   assert.equal(SAMPLE_MEMBER.id, 'sample');
+});
+
+// ------------------------------------------------------- the unsubscribe link
+// 0066 puts {{unsubscribe_url}} into the stored templates and send-followups
+// fills it per RECIPIENT, from a signature over that member_emails row. This
+// screen has no address in hand, so the preview shows a stand-in -- but the
+// token must not be reported as one the sender cannot fill, or an academy
+// adding the line to a course's own wording is warned off a token that works.
+test('{{unsubscribe_url}} is a token the sender fills, not a stray', () => {
+  assert.deepEqual(unknownTokens('Stop them here: {{unsubscribe_url}}'), []);
+});
+
+test('the preview resolves it rather than leaving braces in the wording', () => {
+  const shown = fillTokens('Stop them here: {{unsubscribe_url}}', previewContext());
+  assert.equal(shown, `Stop them here: ${SAMPLE_UNSUBSCRIBE_URL}`);
+  assert.ok(!shown.includes('{{'));
+});
+
+test('the stand-in link is a stand-in and could not opt anybody out', () => {
+  // The same rule SAMPLE_MEMBER follows: a sample that carried a real id and a
+  // real signature would be a working unsubscribe link sitting in the source.
+  assert.match(SAMPLE_UNSUBSCRIBE_URL, /^https:\/\/rosifit\.example\//);
+  assert.ok(SAMPLE_UNSUBSCRIBE_URL.includes('t=sample'));
+});
+
+test('the template 0066 writes previews clean, line and all', () => {
+  // The seeded wording as 0066 leaves it. If this leaves a token behind, every
+  // course starts life showing a warning about wording nobody typed -- the
+  // same failure the seeded-template case above pins for the original body.
+  const seeded = 'Hello {{first_name}},\n\nYou were down for {{expected_sessions}} sessions in '
+    + '{{course_name}} between {{period_from}} and {{period_to}}, and made {{attended_sessions}}.'
+    + '\n\nNothing is wrong -- we would just like to see you back on the mat.\n\n{{academy_name}}'
+    + '\n\n--\nIf you would rather not get these check-ins, you can stop them here:\n'
+    + '{{unsubscribe_url}}';
+  assert.deepEqual(unknownTokens(seeded), []);
+  assert.ok(!fillTokens(seeded, previewContext()).includes('{{'));
 });
