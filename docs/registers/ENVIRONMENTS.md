@@ -409,6 +409,9 @@ So: **deploy first, migrate second.**
    reads as intended.
 
 ### ◻ NOT verified — what a statement to AWS must not claim
+> **SUPERSEDED at 19:41 UTC the same day.** Both items below were then proved
+> end to end against live AWS — see "The loop, proved" at the end of this file.
+> Kept unedited: what was honestly unknown at the time is part of the record.
 - **The SESv2 `Headers` field has never been exercised against live SES.** The
   `List-Unsubscribe` pair is set through `Content.Simple.Headers` rather than
   raw MIME. If ap-south-1 refuses the field, EVERY send fails with a 400 — the
@@ -442,3 +445,90 @@ sign in, so there is no session to verify. That is the
 exact failure mode this entry warns about for the two new functions, already
 live on a third. Out of scope here; recorded so it is not found by a staff
 member locked out.
+
+
+---
+
+## 09-Sep-2026, 19:36–19:42 UTC — the loop, proved
+
+Run against the LIVE AWS account, in the SES sandbox, from the deployed
+functions. Every line below is a value read back out of the database or the
+function logs afterwards, not a thing inferred from the code.
+
+### The evidence
+
+Test data, created through `create_member` (the app's own path, so the
+triggers, defaults and audit rows all fired) and attributed to **Shazia**,
+who asked for it. Left in place deliberately — they ARE the evidence:
+
+| member | `member_emails.id` | address |
+|---|---|---|
+| SES Bounce Test | `a8a756ce-054c-4d36-9d04-d5ccfaa135a4` | `bounce@simulator.amazonses.com` |
+| SES Complaint Test | `4528775e-1c8b-4d37-8433-8fa51224ff1d` | `complaint@simulator.amazonses.com` |
+
+Both started at `status = 'unknown'`, the default sendable value. **Neither was
+ever set to `bounced` or `complained` by hand** — that is the whole point of
+the exercise, and a hand-set status would have made it pass while proving
+nothing.
+
+### ✅ The SESv2 `Headers` field is ACCEPTED in ap-south-1
+
+Batch `294d58b5-3a80-44f6-bf95-4ff54567c7d2` returned **`sent: 2, failed: 0`**
+with `failure_reason` NULL on both rows. `List-Unsubscribe` and
+`List-Unsubscribe-Post` therefore go out on every message through
+`Content.Simple.Headers`, and the `Content.Raw` MIME rewrite that was held in
+reserve is **not needed**. This was the last open design risk in the change.
+
+### ✅ Bounce: SES → SNS → ses-feedback → member_emails
+
+| step | observed |
+|---|---|
+| accepted by SES | `sent` 19:36:29.183, id `010901a087abf68f-48f9a8cf-…-000000` |
+| notification | `email_events` id 4, `Bounce`, `bounceType` **Permanent**, 19:36:31.26 |
+| id match | `email_events.provider_message_id` identical to the sent message's |
+| function ran | one `POST | 200` to `ses-feedback`, 19:36:31.62 |
+| suppressed | `member_emails.status` = **`bounced`** @19:36:31.48 — **2.3s** after the send |
+| next send | **`excluded`**, `exclusion_reason` **"Primary email has bounced"**, `provider_message_id` NULL, `sent_at` NULL |
+
+### ✅ Complaint: the same path, and `Permanent` is not the only rule that fires
+
+| step | observed |
+|---|---|
+| accepted by SES | `sent` 19:41:46.453, id `010901a087b0ce03-85d221d4-…-000000` |
+| notification | `email_events` id 9, `Complaint`, `complaintFeedbackType` **abuse**, 19:41:50.30 |
+| id match | identical to the sent message's |
+| suppressed | `member_emails.status` = **`complained`** @19:41:50.53 — **0.5s** after the send |
+
+### ✅ The unsubscribe link renders per recipient
+
+`email_messages.variables->>'unsubscribe_url'` on the sent rows carries a real
+signed link, not the literal `{{unsubscribe_url}}` — e.g.
+`…/unsubscribe?e=a8a756ce-054c-4d36-9d04-d5ccfaa135a4&t=qj7OY6JBP1fmTAAKTYKBCyOhxO1TK7UAiXE70oK4mgQ`.
+The `e` is that member's own `member_emails.id`, and the tokens differ per
+recipient, which is the property the whole signing scheme exists for.
+
+### ⚠ THE DEDUPE DEFECT, OBSERVED IN PRODUCTION
+
+The first complaint message (19:36:29) produced no notification at all:
+Complaint was not yet attached to the topic. Attaching it at ~19:40 produced
+**four** `ses-feedback` invocations, all answered 200, and **not one of them
+left an `email_events` row**. They were the Complaint subscription
+confirmations, and they collided with the Bounce ones on
+`(provider, provider_message_id, event_type)` — every message-less
+notification stores `provider_message_id = ''`, so a second DIFFERENT
+notification of the same type is indistinguishable from a retry and is
+dropped by `ignoreDuplicates`.
+
+Bounces and complaints always carry `mail.messageId`, so the loop this change
+exists for is unaffected and both were recorded correctly. What is lost is
+audit records for message-less notification types. **Not fixed here**, and
+deliberately not fixed mid-verification: changing `ses-feedback` while it was
+producing the evidence would have invalidated the evidence.
+
+### ◻ Still not observed
+
+- **No unsubscribe link has been clicked.** The GET branch, the status flip to
+  `unsubscribed`, the `actor_kind = 'anon'` audit row and the RFC 8058 POST
+  one-click branch are all still unexercised.
+- **A complaint-suppressed address has not yet been refused by a later send.**
+  The bounce half of that check passed; the complaint half has not been run.
