@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased — Set joining and leaving dates for a whole file of members at once
+
+**There is a second import button on the Attendance screen: *Bulk Import Inactive*.** Until now
+the only way to record that a member had joined earlier than the register says, or had stopped
+coming, was to open that member's record and change the two dates by hand — once per member.
+
+The file it takes is one you already have. Download the members report from **Reports → Export**,
+type the dates into the **Active from** and **Inactive from** columns of the *Member details*
+sheet, and upload the same file back. Nothing else needs filling in.
+
+**A blank cell is left alone.** That is the rule the whole thing turns on: almost every cell in a
+report you send back is untouched, so a blank means *as you were*, never *clear this*. Uploading
+an export you have not typed into changes nothing at all, and says so — *Already correct*, for
+every row. An **Inactive from** date with no status beside it is read the only way it can be:
+inactive from that day.
+
+**It never adds anybody.** *Bulk Import* puts members on the register; this one only moves the
+dates of members already on it. A name it does not recognise is reported back with what to do
+about it — add them with Bulk Import first — and nothing is written for that row. The two buttons
+have one job each, which is what makes either safe to press.
+
+When it finishes it tells you what it did, member by member: which dates moved and what they
+moved from, which rows were already correct, and which were not changed and why. Every date is
+checked the same way the member form checks it, so a file cannot record something the form would
+have refused — a joining date in the future, a joining date after the member left, or one later
+than a session they are already marked present at.
+
+Bulk Import itself is untouched.
+
 ## Unreleased — The app updates itself when a new version is deployed
 
 **A new version now reaches the app on its own.** Until today the app only picked up a new

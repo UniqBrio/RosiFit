@@ -162,6 +162,19 @@ export default function Courses() {
       {action('courses-bulk-import', 'Bulk Import', 'Bulk import members from a file',
         'upload_file', '/member/import',
         { bg: theme.surface, border: theme.lineStrong, ink: theme.fg })}
+      {/* THE SECOND IMPORTER, beside the first because the pair is the
+          decision: Bulk Import puts people ON the register, this one moves
+          the dates of people already on it. Two buttons, by the requester's
+          own instruction -- "let there be another button as bulk import
+          inactive dont allow it in bulk import itslef let that be there only
+          to upload member and create their record" -- and the reason holds
+          in the code: bulk_import_members SKIPS a name it already has, and
+          teaching it to update would turn the most conservative path in the
+          app into its most destructive one. */}
+      {action('courses-bulk-import-inactive', 'Bulk Import Inactive',
+        'Set active and inactive dates from the members report',
+        'event_busy', '/member/import-inactive',
+        { bg: theme.surface, border: theme.lineStrong, ink: theme.fg })}
       {action('courses-add', 'Add Course', 'Add a course', 'add', '/course/edit',
         { bg: theme.accent, ink: theme.onAccent })}
     </View>
@@ -183,13 +196,13 @@ export default function Courses() {
        register uploaded and its weekly review run. The course list is how
        you get at all of that, not the subject of the screen.
 
-       THE SCREEN'S ACTIONS, together in its header. Add Course, Add Member
-       and Bulk Import are the three ways a person comes here to put
-       something on the register, so they sit as one group beside the
-       title. Add Member and Bulk Import used to be a row of their own
-       between the search box and the list; the requester asked for them
-       next to Add Course (2026-09-06).
-       On a phone the three do not fit beside a two-line title, so the
+       THE SCREEN'S ACTIONS, together in its header. Add Course, Add Member,
+       Bulk Import and Bulk Import Inactive are the four ways a person comes
+       here to change what the register says, so they sit as one group
+       beside the title. Add Member and Bulk Import used to be a row of
+       their own between the search box and the list; the requester asked
+       for them next to Add Course (2026-09-06).
+       On a phone the four do not fit beside a two-line title, so the
        group drops under it as a full-width row that wraps: buttons grow
        to share the line, and whichever does not fit takes the next one.
 

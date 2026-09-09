@@ -59,6 +59,59 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-037 — Bulk Import Inactive's refusal never named the button that would have worked
+
+**Date:** 09-Sep-2026 · **Severity:** S3 · **Modules:** `supabase/migrations/0058`, member import
+
+**Symptom** — `supabase/tests/42_bulk_set_member_dates.sql` failed from the day it was written,
+at *"the refusal names the OTHER importer -- the one that does create members"*. The spec
+aborted there, so the twenty assertions after it had never run either. In the app, a row naming
+somebody not yet on the register came back **"not on the register — nothing of hers to change"**.
+
+**Root cause** — Three defects in one string, and each is a rule this repo already holds:
+
+1. **It did not name the other button.** The whole feature is a PAIR — `bulk_import_members`
+   only creates, `bulk_set_member_dates` only updates — and the pair is only safe because the
+   boundary between them is readable. The refusal is where that boundary is stated, and it
+   stated nothing actionable: *"nothing to change"* tells the academy the file is wrong, when
+   the file is fine and the member simply is not on the register yet.
+2. **It disagreed with its own client mirror.** `src/data/statusImport.ts` refuses the identical
+   row, before the file is ever sent, with *"not on the register — add them with Bulk Import
+   first, this file only changes dates"*. The same row could therefore produce two different
+   sentences depending on which half caught it first.
+3. **It said "hers".** Member-facing copy is written about *the member* (CLAUDE.md standing
+   rules); the academy is a women's academy, the software is not.
+
+The spec was correct throughout and was never run: the harness needs a local Postgres, the
+session that wrote 0058 had none, and the migration was applied to production unrehearsed.
+
+**Fix** — `supabase/migrations/0059_import_refusal_names_the_other_button.sql`, additive because
+0058 is already applied. The function is restated with one string changed, copied verbatim from
+`statusImport.ts` so the two halves cannot drift again; `diff` against 0058 shows that string and
+the function comment as the only differences.
+
+**Files** — `supabase/migrations/0059_import_refusal_names_the_other_button.sql`,
+`supabase/tests/42_bulk_set_member_dates.sql` (unchanged — it was right)
+
+**How to verify** — `npm run test:db`; spec 42 runs to the end, 24/24. Before 0059 it aborts
+after 3 assertions.
+
+**Recurrence risk** — Every refusal that exists in two places: one in SQL for the bulk path, one
+in TypeScript for the form. The client mirror is written first because it is cheap to test, and
+the SQL copy is retyped rather than copied. The pattern to watch is a refusal whose wording is
+load-bearing — where the sentence IS the feature, not decoration on it.
+
+**Prevention** — The spec that catches it already existed. What was missing was running it:
+a migration must not reach production before `npm run test:db` has replayed it on a fresh
+harness (CLAUDE.md, *Supabase and migrations*). Recorded in TECH_DEBT as TD-010's real cost —
+"no Postgres here" ended a rehearsal instead of postponing an apply.
+
+**Process check** — **Yes.** The binding rule ("rehearsal is the local harness only", then show
+the SQL and wait) was stated and was skipped, and the skip is what let a failing spec ship. The
+rule needs no change; it needed following.
+
+---
+
 ## RC-036 — the audit log had no coupling to the audit writers, so nine migrations of new actions reached the owner as codes and the deletions named nobody
 **Date:** 08-Sep-2026  ·  **Severity:** S2  ·  **Modules:** `src/data/auditPlain.ts`, `src/data/repository.ts`, `app/audit.tsx`, `src/data/mock.ts`
 

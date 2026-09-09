@@ -1,3 +1,22 @@
+## FAIL-FIRST — src/components/bulkImportInactive.test.ts
+
+FAIL-FIRST: src/components/bulkImportInactive.test.ts — run against the
+pre-change tree (this session's changes stashed) the whole file errors:
+`ENOENT: no such file or directory, open '.../app/member/import-inactive.tsx'`
+— 0 pass, 1 fail. The screen it specifies did not exist.
+
+FAIL-FIRST: src/components/bulkImportInactive.test.ts — defect injected into
+the built tree, pointing the second button at the CREATE importer
+(`'event_busy', '/member/import-inactive'` → `'/member/import'`): assertion 2,
+"it opens its own route, never the member importer", fails — 22 pass, 1 fail.
+Reverted, 23 pass. So the spec fails for the reason it claims to guard, not
+only because a file is absent.
+
+FAIL-FIRST: supabase/tests/42_bulk_set_member_dates.sql — already failing on
+main before 0059: "FAIL the refusal names the OTHER importer -- the one that
+does create members", the file aborting at that assertion after 3 passes.
+With 0059 replayed on a fresh harness the spec runs to the end, 24/24.
+
 FAIL-FIRST: src/data/auditRemovedSubject.test.ts - 10 of 10, new file. All ten observed
   failing against the pre-fix tree (`npx tsx --test src/data/auditRemovedSubject.test.ts`
   -> `# pass 0 / # fail 10`), which is the honest count for this defect: nothing in
@@ -371,6 +390,126 @@ exit 1
 - **G9 Automation addressability** - PASS
 - **G10 Backward compatibility (fixtures)** - PASS
 - **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-09 - VERDICT: FAIL
+
+Steps: 5 pass, 5 fail, 1 blocked.
+Time: 18.9s total - slowest G7 Unit + pure specs (12.4s).
+
+- **G1 Theme artifacts in sync** - FAIL (52ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (47ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (45ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (62ms)
+- **G5 Types** - PASS (5.8s)
+- **G6 Lint** - BLOCKED (-) - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - FAIL (12.4s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: the re-uploaded export reads as agreement, not as a failed import
+ok 51 - the re-uploaded export reads as agreement, not as a failed import
+# Subtest: a form asked for a record answers a failed read
+ok 141 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 142 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 155 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+  name: 'AssertionError'
+  expected: true
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+ok 272 - a ring is never a colour alone, and nothing expected is a dash
+```
+
+- **G8 Functional / integration** - FAIL (137ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (56ms)
+- **G10 Backward compatibility (fixtures)** - PASS (121ms)
+- **G11 Wide tables are configurable** - PASS (54ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-09 - VERDICT: FAIL
+
+Steps: 5 pass, 5 fail, 1 blocked.
+Time: 20.3s total - slowest G7 Unit + pure specs (13.3s).
+
+- **G1 Theme artifacts in sync** - FAIL (50ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (47ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (48ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (70ms)
+- **G5 Types** - PASS (6.4s)
+- **G6 Lint** - BLOCKED (-) - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - FAIL (13.3s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: the re-uploaded export reads as agreement, not as a failed import
+ok 51 - the re-uploaded export reads as agreement, not as a failed import
+# Subtest: a form asked for a record answers a failed read
+ok 141 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 142 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 155 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+  name: 'AssertionError'
+  expected: true
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+ok 272 - a ring is never a colour alone, and nothing expected is a dash
+```
+
+- **G8 Functional / integration** - FAIL (122ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (55ms)
+- **G10 Backward compatibility (fixtures)** - PASS (121ms)
+- **G11 Wide tables are configurable** - PASS (52ms)
 
 _Merge blocked. Every FAIL above must resolve. No partial merges._
 
