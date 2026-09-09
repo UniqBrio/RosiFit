@@ -105,6 +105,49 @@ set with `supabase secrets set` and appear in no tracked file.
 
 ---
 
+## Production change applied 09-Sep-2026 (third) — ✅ VERIFIED
+
+**`0061_the_last_gendered_refusals` APPLIED.** Eleven strings across four functions:
+`create_member` (4), `update_member` (4), `merge_member_into` (2), `bulk_import_members` (1).
+
+- **Found by reading the DATABASE, not the repo.** The repo holds superseded copies of these
+  functions; the live definition is the one that talks to people. Every quoted literal in every
+  live function was read, and only these eleven were text a user is actually shown.
+- **It rewrites in place rather than restating the functions.** These four bodies are 28KB of the
+  most load-bearing code in the schema. Restating them to change 11 short strings would mean
+  re-typing 28KB by hand, where one slip is a silent behaviour change in a core write path that
+  no reviewer would reliably catch. Instead `pg_get_functiondef` reconstructs each definition, the
+  named substitutions are applied to that text, and the result is executed — so the function
+  differs by exactly those strings, by construction rather than by inspection.
+- **It cannot silently no-op.** Every substitution is checked before it is applied; a string the
+  migration expects and does not find raises and rolls back. Proved by injecting a wrong
+  expectation, which failed exactly as intended.
+- **✅ Verified afterwards:** `0` functions in `public` now contain a gendered pronoun in any
+  `raise exception` message, and the old Bulk Import reason string is gone.
+
+---
+
+## ⚠️ Production drift found 09-Sep-2026 — `set_attendance` IS NOT IN PRODUCTION
+
+Found while sweeping the live schema for gendered text: the harness has
+`public.set_attendance`, and **production has no function of that name at all**.
+
+`src/data/repository.ts:3535` calls `supabase.rpc('set_attendance', …)`, so **marking attendance
+by hand is broken in the live app** and has been since the feature shipped. The code already
+suspects it — the error branch there reads *"0035 may not be applied yet"* — which is exactly
+what happened: `0035_set_attendance.sql` was never applied.
+
+Not fixed here, because it is nobody's ask in this session and applying an unreviewed migration
+to production is a decision, not a cleanup. It is the largest single thing outstanding on this
+project and should be taken deliberately.
+
+Related, and the same root cause — migrations in the repo that production never received:
+`0035_set_attendance`, `0044_override_scoped_by_meeting_instance`, `0045_import_change_counts`,
+`0046_attendance_backdates_membership`. There is no automated check that the repo's migration
+list and the applied list agree; there should be.
+
+---
+
 ## Production change applied 09-Sep-2026 (second) — ✅ VERIFIED, with a known window
 
 Project `lhpzhkzbnquwjljmbylo` ("Rosifit"). **`0057_reset_only_the_selected_members` APPLIED.**

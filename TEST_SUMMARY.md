@@ -1,3 +1,29 @@
+## FAIL-FIRST — the harness could not fail (09-Sep-2026)
+
+FAIL-FIRST: db/harness/reset.sh — injected a deliberately-wrong expectation into
+0061 so the migration would raise. `npm run test:db` reported the ordinary run
+and exited 0. Root cause: `$PG -f "$f" && echo "ok"` — bash's errexit explicitly
+exempts a command on the LEFT of `&&`, so a failing migration was skipped and the
+rebuild went on to print "database rebuilt." Every "rehearsed against the
+harness" claim in this repo was therefore weaker than it read: a broken migration
+passed the pre-flight check silently. Fixed to an explicit if/else that exits 1.
+Re-tested with the same injection: "MIGRATION FAILED", exit 1.
+
+FAIL-FIRST: the fix immediately exposed a real one. 0055_purge_every_member could
+NOT be replayed from scratch — its section-3 post-condition asserts that
+sessions, courses, offerings, imports, batches and app_users are all non-empty
+afterwards, which reads correctly on production (where all six had rows) and
+raises on a fresh database where all six are empty before and after. So the
+harness had never actually completed a full clean replay. Fixed by capturing a
+before-snapshot and comparing against it, so the check still catches a real
+destruction and no longer fires on an empty database. ASSERTION ONLY — no schema
+statement, no delete, no grant, and nothing 0055 did to any database changed.
+
+FAIL-FIRST: supabase/migrations/0061 — its own guard proved by injection. With
+'her name is needed' changed to a string not present, it raised
+"0061: create_member(...) does not contain the string this migration expects"
+and rolled back. Restored, it applies and all eleven substitutions land.
+
 ## FAIL-FIRST — reset acts on the selection; bulk delete on the no-email list (09-Sep-2026)
 
 FAIL-FIRST: supabase/tests/43_reset_only_the_selected_members.sql — NEW, and it
@@ -455,6 +481,66 @@ exit 1
 - **G9 Automation addressability** - PASS
 - **G10 Backward compatibility (fixtures)** - PASS
 - **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-09 - VERDICT: FAIL
+
+Steps: 5 pass, 5 fail, 1 blocked.
+Time: 34.2s total - slowest G5 Types (16.7s).
+
+- **G1 Theme artifacts in sync** - FAIL (135ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (68ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (123ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (332ms)
+- **G5 Types** - PASS (16.7s)
+- **G6 Lint** - BLOCKED (-) - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - FAIL (16.2s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: a form asked for a record answers a failed read
+ok 150 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 151 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 164 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+  name: 'AssertionError'
+  expected: true
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+ok 281 - a ring is never a colour alone, and nothing expected is a dash
+# Subtest: a failed reset keeps the dialog open, carrying the reason
+ok 318 - a failed reset keeps the dialog open, carrying the reason
+```
+
+- **G8 Functional / integration** - FAIL (181ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (71ms)
+- **G10 Backward compatibility (fixtures)** - PASS (142ms)
+- **G11 Wide tables are configurable** - PASS (81ms)
 
 _Merge blocked. Every FAIL above must resolve. No partial merges._
 
