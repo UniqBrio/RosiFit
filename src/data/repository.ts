@@ -2718,11 +2718,30 @@ export async function bulkSetMemberDates(input: StatusImportInput): Promise<Stat
       // lowered here exactly as the SQL lowers it; and an inactive date with
       // no status beside it means inactive from that day, because
       // members_inactive_from_needs_status allows no other reading.
+      // The same three-way reading wantedPair does, and it has to be the same
+      // or the offline store tells a different story about the same file.
+      // WHICH CELL WAS EDITED decides, measured against the record: the export
+      // always writes a Status, so "a date with no status beside it" never
+      // happens on a real report and cannot be the test.
       const said = r.status?.trim().toLowerCase();
-      const status = (said === 'active' || said === 'inactive' || said === 'paused' ? said
-        : r.inactive_from ? 'inactive'
-        : was.status) as MemberStatus;
-      const from = status === 'active' ? null : (r.inactive_from ?? was.inactiveFrom ?? null);
+      const stated = (said === 'active' || said === 'inactive' || said === 'paused')
+        ? said as MemberStatus : null;
+      const held = was.inactiveFrom ?? null;
+      const statusEdited = stated !== null && stated !== was.status;
+      const dateEdited = !!r.inactive_from && r.inactive_from !== held;
+
+      let status: MemberStatus;
+      let from: string | null;
+      if (statusEdited) {
+        status = stated as MemberStatus;
+        from = status === 'active' ? null : (r.inactive_from ?? held);
+      } else if (dateEdited) {
+        status = 'inactive';
+        from = r.inactive_from;
+      } else {
+        status = stated ?? was.status;
+        from = status === 'active' ? null : (r.inactive_from ?? held);
+      }
       const joinedOn = r.active_from ?? was.joinedOn ?? null;
       const changed = status !== was.status
         || from !== (was.inactiveFrom ?? null)

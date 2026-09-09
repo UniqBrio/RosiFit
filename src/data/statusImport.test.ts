@@ -301,3 +301,70 @@ test('the old "Joined on" header still finds the joining date', () => {
   assert.equal(canonicalStatusColumn('Full Name'), 'Member');
   assert.equal(canonicalStatusColumn('Attendance %'), null);
 });
+
+/* ------------------------------------------------------------------------
+ * WHICH CELL WAS EDITED (0062)
+ *
+ * Reported 09-Sep-2026 with a real 794-member export: a leaving date typed
+ * against two members, uploaded, and nothing happened -- both rows came back
+ * "already correct".
+ *
+ * The rule was "an inactive date with NO STATUS beside it means inactive from
+ * that day". memberDetailSheet writes a Status on every row, so on a report
+ * that came out of this app there is never no status beside it: the exported
+ * "Active" won and the typed date was discarded in silence. The one gesture
+ * the button exists for was the one it could not do.
+ *
+ * These pin the reading that replaced it, and the three cases it has to keep
+ * telling apart.
+ * --------------------------------------------------------------------- */
+
+/** an active member as the export writes one: Status "Active", no date */
+const exported = (over: Partial<StatusMember> = {}): StatusMember =>
+  ({ id: 'm-x', name: 'Sam', status: 'active', joinedOn: '2026-09-09', inactiveFrom: null, ...over });
+
+test('a leaving date typed into an untouched exported row is obeyed', () => {
+  // THE REPORTED BUG, exactly: Status still reads "Active" because that is
+  // what the export wrote, and the date is what the academy typed.
+  const r = row({ name: 'Sam', activeFrom: '2026-09-09', inactiveFrom: '2026-10-10', status: 'Active' });
+  assert.deepEqual(wantedPair(r, exported()), { status: 'inactive', inactiveFrom: '2026-10-10' });
+});
+
+test('and it shows up as a real change, not as "already correct"', () => {
+  const m = exported();
+  const v = validateStatusRows(
+    [row({ name: 'Sam', activeFrom: '2026-09-09', inactiveFrom: '2026-10-10', status: 'Active' })],
+    { members: [m], todayIso: '2026-09-09' })[0];
+  assert.equal(v.state, 'ready');
+});
+
+test('an edited Status still wins over a stale date — that is how you reactivate', () => {
+  // The member is inactive with a date on record; the academy sets Status to
+  // Active and does not bother clearing the date cell. They come back.
+  const m = exported({ status: 'inactive', inactiveFrom: '2026-10-10' });
+  const r = row({ name: 'Sam', inactiveFrom: '2026-10-10', status: 'Active' });
+  assert.deepEqual(wantedPair(r, m), { status: 'active', inactiveFrom: null });
+});
+
+test('the untouched export still writes nothing, on an active member', () => {
+  const r = row({ name: 'Sam', activeFrom: '2026-09-09', inactiveFrom: '', status: 'Active' });
+  assert.deepEqual(wantedPair(r, exported()), { status: 'active', inactiveFrom: null });
+});
+
+test('the untouched export still writes nothing, on an inactive one', () => {
+  // Both cells match the record, so neither was edited and the row is a no-op.
+  const m = exported({ status: 'inactive', inactiveFrom: '2026-10-10' });
+  const r = row({ name: 'Sam', inactiveFrom: '2026-10-10', status: 'Inactive' });
+  assert.deepEqual(wantedPair(r, m), { status: 'inactive', inactiveFrom: '2026-10-10' });
+});
+
+test('moving an existing leaving date is an edit too', () => {
+  const m = exported({ status: 'inactive', inactiveFrom: '2026-10-10' });
+  const r = row({ name: 'Sam', inactiveFrom: '2026-11-01', status: 'Inactive' });
+  assert.deepEqual(wantedPair(r, m), { status: 'inactive', inactiveFrom: '2026-11-01' });
+});
+
+test('Status Inactive with no date still marks them inactive, dateless', () => {
+  const r = row({ name: 'Sam', inactiveFrom: '', status: 'Inactive' });
+  assert.deepEqual(wantedPair(r, exported()), { status: 'inactive', inactiveFrom: null });
+});
