@@ -127,9 +127,13 @@ test('a date typed into the exported sheet is the one that lands', () => {
   cell.activeFrom = '2026-01-15';                       // what the academy types
   const v = one(cell);
   assert.equal(v.state, 'ready');
+  // Shown as dd-mmm-yyyy since 09-Sep-2026: this list is read by the person
+  // who just typed the date in, and it should quote back what they typed. The
+  // VALUE sent to the server is still ISO -- the verdict's row carries it.
   assert.deepEqual(v.state === 'ready' ? v.changes : [], [
-    { field: 'Active from', from: '2026-03-01', to: '2026-01-15' },
+    { field: 'Active from', from: '01-Mar-2026', to: '15-Jan-2026' },
   ]);
+  assert.equal(v.state === 'ready' ? v.row.activeFrom : '', '2026-01-15');
 });
 
 /* ================================================== 2. the boundary holds */
@@ -183,7 +187,7 @@ test('moving only the joining date does not wipe the leaving date', () => {
   const v = one(row({ activeFrom: '2026-01-01' }), m);
   assert.equal(v.state, 'ready');
   assert.deepEqual(v.state === 'ready' ? v.changes : [],
-    [{ field: 'Active from', from: '2026-03-01', to: '2026-01-01' }]);
+    [{ field: 'Active from', from: '01-Mar-2026', to: '01-Jan-2026' }]);
   assert.equal(wantedPair(row({ activeFrom: '2026-01-01' }), m).inactiveFrom, '2026-10-01');
   assert.equal(wantedPair(row({ activeFrom: '2026-01-01' }), m).status, 'inactive');
 });
@@ -194,7 +198,7 @@ test('an inactive date with no status beside it means inactive from that day', (
   const v = one(row({ inactiveFrom: '2026-10-01' }));
   assert.equal(v.state, 'ready');
   assert.deepEqual(v.state === 'ready' ? v.changes : [], [
-    { field: 'Inactive from', from: 'Not on record', to: '2026-10-01' },
+    { field: 'Inactive from', from: 'Not on record', to: '01-Oct-2026' },
     { field: 'Status', from: 'Active', to: 'Inactive' },
   ]);
 });
@@ -203,7 +207,7 @@ test('Active in the status column takes the leaving date off', () => {
   const v = one(row({ status: 'Active' }), her({ status: 'inactive', inactiveFrom: '2026-10-01' }));
   assert.equal(v.state, 'ready');
   assert.deepEqual(v.state === 'ready' ? v.changes : [], [
-    { field: 'Inactive from', from: '2026-10-01', to: 'Not on record' },
+    { field: 'Inactive from', from: '01-Oct-2026', to: 'Not on record' },
     { field: 'Status', from: 'Inactive', to: 'Active' },
   ]);
 });
@@ -211,14 +215,81 @@ test('Active in the status column takes the leaving date off', () => {
 /* ============================================== 4. the refusals it owns */
 
 test('a mistyped date is refused with the cell quoted back', () => {
-  // 0029's lesson: '01/09/2026' is a real date to Postgres, read under
-  // DateStyle, and on this project that is MDY -- so it would import as
-  // 9 January, silently. Only YYYY-MM-DD, on both columns.
+  // 0029's lesson, and it is NOT weakened by the format change below:
+  // '01/09/2026' is a real date to Postgres, read under DateStyle, and on this
+  // project that is MDY -- so it would import as 9 January, silently. An
+  // all-numeric date that is not ISO is still refused, on both columns.
   const a = one(row({ activeFrom: '01/09/2026' }));
   assert.equal(a.state, 'blocked');
   assert.match(a.state === 'blocked' ? a.reason : '', /01\/09\/2026/);
-  const b = one(row({ inactiveFrom: '1 October 2026' }));
+  const b = one(row({ inactiveFrom: '10/10/2026' }));
   assert.equal(b.state, 'blocked');
+  // ONE ASSERTION HERE WAS RE-POINTED on 09-Sep-2026, and it is worth naming
+  // rather than burying. The second case read `inactiveFrom: '1 October 2026'`
+  // and asserted it BLOCKED, on the rule "only YYYY-MM-DD". The requester
+  // replaced that rule -- "if they enter date in any format convert that to
+  // dd-mmm-yyyy" -- so a spelled-out month is now read, and the spec asserting
+  // it is refused was asserting the thing this change exists to remove. The
+  // claim this test is named for is untouched: a date nobody can read is
+  // refused, with the cell quoted back. It is now carried by a value that is
+  // still unreadable, and the new behaviour is pinned directly below.
+});
+
+test('every unambiguous shape a person might type reaches the same day', () => {
+  // The requester's ask, on the importer rather than on the module: "if they
+  // enter date in any format convert that to dd-mmm-yyyy". The exported
+  // column, the shape it is exported IN, and the shapes somebody types over it
+  // by hand all land on 2026-10-10 -- and the verdict carries ISO, because
+  // bulk_set_member_dates takes ISO like every other date the app writes.
+  for (const typed of ['10-Oct-2026', '2026-10-10', '10 Oct 2026',
+                       '10 October 2026', 'Oct 10, 2026', '10-oct-2026']) {
+    const v = one(row({ inactiveFrom: typed }));
+    assert.equal(v.state, 'ready', `“${typed}” was not read as a date`);
+    assert.equal(v.state === 'ready' ? v.row.inactiveFrom : '', '2026-10-10',
+      `“${typed}” did not reach the server as ISO`);
+  }
+});
+
+test('an all-numeric date is handed back with the fix in it, never guessed at', () => {
+  // The one shape this importer will NOT convert, and the reason it refuses
+  // instead of picking: 01/09/2026 is the 1st of September to the academy and
+  // the 9th of January to Postgres, and nothing in the file says which. The
+  // refusal has to carry the remedy, or the person retypes the same cell.
+  const v = one(row({ inactiveFrom: '01/09/2026' }));
+  assert.equal(v.state, 'blocked');
+  const why = v.state === 'blocked' ? v.reason : '';
+  assert.match(why, /01\/09\/2026/, 'the refusal must quote the cell back');
+  assert.match(why, /10-Oct-2026/, 'the refusal must show the shape that works');
+});
+
+test('a report sent back exactly as exported still changes nothing', () => {
+  // The re-upload, now that the export writes dd-mmm-yyyy. This is the whole
+  // round trip in one assertion: the sheet is written by memberDetailSheet's
+  // formatter and read by this validator, and if those two ever disagreed
+  // about a month, every untouched row in a 796-member file would report as
+  // an edit -- which is the exact defect reported on 09-Sep-2026.
+  //
+  // The fixture deliberately uses a PAST leaving date. A member whose leaving
+  // date is still in the FUTURE exports with Status "Active" -- the export
+  // reads status on the day (`statusOn`) and is right to -- and reading that
+  // row back sees the status column disagreeing with the stored one, treats it
+  // as an edit, and would set them active and clear the date. That is a real
+  // defect, it predates this change and is untouched by it (nothing about the
+  // date FORMAT is involved), and it is reported separately rather than pinned
+  // here: a passing spec named after a bug reads as though the bug were
+  // intended.
+  const people = [
+    member(),
+    member({ id: 'm9', name: 'Leaving Member', status: 'inactive',
+      joinedOn: '2026-02-11', inactiveFrom: '2026-08-01' }),
+  ];
+  const register: StatusMember[] = people.map(m => ({
+    id: m.id, name: m.name, status: m.status,
+    joinedOn: m.joinedOn ?? null, inactiveFrom: m.inactiveFrom ?? null,
+  }));
+  for (const v of judge(roundTrip(people), register)) {
+    assert.equal(v.state, 'unchanged', `row ${v.row.row} was read as an edit`);
+  }
 });
 
 test('a word that is not a status is refused, not folded to inactive', () => {

@@ -48,13 +48,20 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
 const MON_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DOW = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
 
-/** '2026-10-20' -> '20 Oct 2026'. An empty value stays empty. */
-export function formatDate(value: string): string {
-  if (!value) return '';
-  const [y, m, d] = value.split('-').map(Number);
-  if (!y || !m || !d) return value;
-  return `${d} ${MON_SHORT[m - 1]} ${y}`;
-}
+/**
+ * '2026-10-20' -> '20-Oct-2026'. An empty value stays empty.
+ *
+ * ONE FORMAT, DEFINED ONCE. This used to write its own '20 Oct 2026' out of
+ * MON_SHORT above; it now delegates to src/data/memberDate.ts, which is the
+ * module the bulk import and the Reports export read and write dates through.
+ * The requester chose dd-mmm-yyyy on 09-Sep-2026 and asked for it "under
+ * reports and also update it in app" -- a date field that shows one shape
+ * while the file the same date came out of shows another is the seam this
+ * removes. The value held and passed to `onChange` is still ISO; nothing about
+ * the wire format changed.
+ */
+import { formatDate } from '../data/memberDate';
+export { formatDate };
 
 /** '18:30' -> '6:30 PM'. The 24-hour value is what is stored. */
 export function formatTime(hhmm: string): string {

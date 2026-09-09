@@ -59,6 +59,66 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-038 — a report re-uploaded untouched marks a future-dated leaver ACTIVE and clears their date
+**Date:** 09-Sep-2026  ·  **Severity:** S3  ·  **Modules:** `src/data/statusImport.ts`, `src/data/reportSheets.ts`
+
+**FOUND, NOT FIXED.** Logged here the day it was found, during the dd-mmm-yyyy
+date-format change, which is not its cause and does not touch it. Recorded before it
+is fixed because a defect nobody wrote down is a defect nobody remembers.
+
+**Symptom** — a member stored inactive from a date that has not arrived yet (say
+01-Dec-2026, entered in September) exports on the members report with Status
+**Active**. Upload that report back with nothing typed into it, and Bulk Import
+reports the row as an edit: it sets the member Active and clears the leaving date
+that was scheduled for December. The academy's own file, sent back untouched, undoes
+a departure somebody entered on purpose.
+
+**Root cause** — the export and the reader read the Status column differently, and
+each is right on its own terms. `memberDetailSheet` writes `statusOn(m, todayIso)` —
+the status **on the day**, which is what a report about today should say, and a member
+leaving in December is active in September. `wantedPair` compares that word against
+`members.status`, the **stored** answer, and treats any difference as a cell somebody
+typed in. For a future-dated leaver the two differ by construction, so an untouched
+cell reads as an edit. Neither module is wrong about status; they are answering
+different questions with one column.
+
+**Fix** — none yet. The shape of it: the exported Status has to carry, or the reader
+has to reconstruct, the fact that the difference is the DATE talking rather than a
+person. Reading the exported status against `statusOn(m, todayIso)` instead of against
+`m.status` closes it in one line and needs `todayIso` threaded into `wantedPair`,
+which is already in `StatusContext`. That is a behaviour change to the importer and
+belongs in its own change, with its own specs, not appended to a formatting one.
+
+**Files** — `src/data/statusImport.ts` (`wantedPair`), `src/data/reportSheets.ts`
+(`memberDetailSheet`, the Status cell).
+
+**How to verify** — export a members report while a member holds a leaving date in the
+future, upload the file back with no edits, and read the result. Correct behaviour is
+"already correct" on that row. In specs: the fixture in `src/data/statusImport.test.ts`
+→ "a report sent back exactly as exported still changes nothing", with the leaving date
+moved from `2026-08-01` to a date after `TODAY`. It fails today; a comment in that spec
+says why the fixture is dated the way it is.
+
+**Recurrence risk** — this is the general shape of every derived-then-read-back column,
+and this file has exactly one other: `Active from`, which is written from stored
+`joined_on` with no derivation over it and so cannot drift. Searched
+`src/data/reportSheets.ts` for every cell in `memberDetailSheet` computed from more than
+the column it names; `statusOn` is the only one.
+
+**Prevention** — no rung today. The nearest honest one is a spec over
+`memberDetailSheet` → `validateStatusRows` driven by a fixture set that includes a
+future-dated leaver, which is precisely the assertion above. Until that is made to pass
+it is prose plus a dated comment in the spec file.
+
+**Process check** — would a correct process have caught this? Yes, and the gap is
+nameable: the round-trip spec that exists ("the report uploaded untouched changes
+nothing at all") was written with three members and none of them future-dated, so it
+proved the round trip for the cases somebody thought of. A round-trip spec is only as
+good as the states in its fixture, and "one member in every state the column can hold"
+is the rule that was missing.
+
+---
+
 ## RC-037 — Bulk Import Inactive's refusal never named the button that would have worked
 
 **Date:** 09-Sep-2026 · **Severity:** S3 · **Modules:** `supabase/migrations/0058`, member import

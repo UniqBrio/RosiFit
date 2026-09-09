@@ -54,7 +54,7 @@ test('sessions with nobody marked on them say so rather than inventing a count',
 
 test('a course nothing has happened in is permanent but has no history to warn about', () => {
   const empty: DeletionPreview = {
-    offerings: 1, membersEnrolled: 0, sessions: 0, sessionsCompleted: 0,
+    offerings: 1, membersEnrolled: 0, membersRemoved: 0, sessions: 0, sessionsCompleted: 0,
     attendanceRecords: 0, imports: 0,
   };
   assert.equal(deletionWarning({ kind: 'counted', preview: empty }),

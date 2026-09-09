@@ -238,7 +238,9 @@ test('the member sheet carries every field her form holds', () => {
   ]);
   assert.deepEqual(s.rows[0], [
     'Divya', 'RF-0007', 'Active', '', 'Prenatal Flow', 'Coimbatore',
-    '2026-03-01', 'Mon · Fri',
+    // dd-mmm-yyyy since 09-Sep-2026 -- see the shape spec further down for
+    // what changed and what did not.
+    '01-Mar-2026', 'Mon · Fri',
     // primary first, whatever order the record stores them in
     'first@b.com', 'first@b.com, second@b.com',
     'Divya B, D', '4', '3', '1', '75%', PERIOD,
@@ -259,9 +261,10 @@ test('no address is a stated fact with its consequence, never a blank cell', () 
 });
 
 test('the joining DATE is exported, not the "Mar 2026" label', () => {
-  // A month cannot be sorted or compared in a spreadsheet, and the label is
-  // on the screen anyway.
-  assert.equal(memberDetailSheet([member()], PERIOD, TODAY).rows[0][6], '2026-03-01');
+  // A month is not a day: "Mar 2026" cannot say which session a member was
+  // first expected at, and it is on the screen anyway. The DAY is what this
+  // column has always carried and still does -- only its shape moved.
+  assert.equal(memberDetailSheet([member()], PERIOD, TODAY).rows[0][6], '01-Mar-2026');
   assert.equal(memberDetailSheet([member({ joinedOn: null })], PERIOD, TODAY).rows[0][6],
     'Not on record');
 });
@@ -278,13 +281,24 @@ test('the joining DATE is exported, not the "Mar 2026" label', () => {
  * wrote one of them in words and the other in digits would be teaching the
  * person filling it in that either will do.
  */
-test('both dates are exported ISO, because the file is read back in', () => {
+test('both dates are exported in ONE shape, because the file is read back in', () => {
+  // WHAT THIS SPEC IS FOR, unchanged: the two ends of the membership window
+  // are written the same way, because a person filling one of them in copies
+  // the cells already in the column, and whatever they copy is what Bulk
+  // Import is handed back. Two shapes here is two shapes there.
+  //
+  // WHAT MOVED, on 09-Sep-2026: the shape is dd-mmm-yyyy, not ISO. The
+  // requester chose it -- "easier to understand month" -- and the round trip
+  // this spec protects survives it exactly, because src/data/memberDate.ts
+  // reads dd-mmm-yyyy back to the same day on every month of the year
+  // (memberDate.test.ts pins that round trip). The title said ISO; ISO was
+  // never the point, the ONE SHAPE was.
   const s = memberDetailSheet([member({ status: 'inactive', inactiveFrom: '2026-10-01' })],
     PERIOD, TODAY);
   assert.equal(s.rows[0][2], 'Active');            // on 8 Sep she still is
-  assert.equal(s.rows[0][3], '2026-10-01');
+  assert.equal(s.rows[0][3], '01-Oct-2026');
   // and the near end of the same window, in the same shape
-  assert.equal(s.rows[0][6], '2026-03-01');
+  assert.equal(s.rows[0][6], '01-Mar-2026');
 });
 
 test('no leaving date on record is a blank cell, not the word "none"', () => {

@@ -1,3 +1,76 @@
+## FAIL-FIRST — dd-mmm-yyyy is the one date format (09-Sep-2026)
+
+Requested: "we shall go with dd-mmm-yyyy format as its easier to understand
+month for both bulk import in template and also under reports and also update
+it in app and also in template and give same as info beside date field as that
+or if they enter date in any format convert that to dd-mmm-yyyy."
+
+FAIL-FIRST: the old strict-ISO reader was put back inside validateStatusRows
+(a local `oldReadDate` doing exactly what the two column checks used to do) and
+src/data/statusImport.test.ts run against it — 35 pass, 4 FAIL:
+
+  - every unambiguous shape a person might type reaches the same day
+  - an all-numeric date is handed back with the fix in it, never guessed at
+  - a report sent back exactly as exported still changes nothing
+  - the report uploaded untouched changes nothing at all  (the EXISTING spec)
+
+The fourth is the one worth reading: with the export writing dd-mmm-yyyy and
+the reader demanding ISO, the commonest upload in the app — the report sent
+back untouched — reports every row as an edit. The two halves are genuinely
+coupled and the spec suite proves it. Source restored: 39 pass, 0 fail.
+
+FAIL-FIRST: src/data/memberDate.test.ts is new, 23 assertions, and two of them
+caught my own wrong claims before anything shipped. '10-Octobre-2026' IS read
+(the first three letters are matched, and no other month begins "Oct");
+Portuguese 'Setembro' is NOT (it begins "Set"). The spec now states that rule
+exactly rather than claiming a language competence the module does not have.
+
+COPY-LOCKS RE-POINTED — six, exact-string locks kept, only the literals moved:
+three in reportSheets.test.ts (the exported Active from / Inactive from cells)
+and three in statusImport.test.ts (the change list the import screen shows).
+One spec TITLE changed with them: "both dates are exported ISO, because the
+file is read back in" → "...exported in ONE shape...". The claim it protects is
+that both ends of the window are written the same way and read back to the same
+day; ISO was the shape that satisfied it, never the point. The comment in the
+spec says so.
+
+ONE ASSERTION RE-POINTED THAT IS NOT A COPY-LOCK, and it is flagged rather than
+buried. "a mistyped date is refused with the cell quoted back" asserted that
+`inactiveFrom: '1 October 2026'` is BLOCKED, under the rule "only YYYY-MM-DD".
+The requester replaced that rule, so the spec was pinning the behaviour this
+change exists to remove. The claim the test is named for is untouched and is
+now carried by '10/10/2026', which is still unreadable and still refused; the
+new behaviour is pinned by the three appended specs above. The re-point is
+documented in place, in the test file, next to the assertion.
+
+NOT CHANGED, deliberately:
+  - The member TEMPLATE has no date column and none was added. Every member the
+    create path imports joins on the day it is imported and the info sheet
+    already says so. There is nothing there to reformat.
+  - activeFromProblem / inactiveFromProblem still say "write it as YYYY-MM-DD".
+    Neither can be reached with a non-ISO value any more: the form feeds them a
+    calendar pick and the import now normalises before calling them. Touching
+    them would mean making them read dd-mmm-yyyy too, and they compare dates as
+    ISO strings — a half-conversion there is a wrong comparison, not a nicer
+    message.
+  - dateInWords ("1 October 2026") is prose inside sentences, not a date field,
+    and is already unambiguous.
+
+DEFECT FOUND AND NOT FIXED HERE (reported separately): a member whose leaving
+date is in the FUTURE exports with Status "Active" — `memberDetailSheet` reads
+status on the day and is right to — and re-uploading that untouched report
+reads the status column as an edit, sets them active and clears the date. It
+predates this change, is independent of the date format, and is documented in a
+comment in statusImport.test.ts rather than pinned by a passing spec named
+after a bug.
+
+GATE: FAIL, identically to clean main — G8 fails on
+`app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's
+menu`, which is the same single failure the branch carried before this change.
+Unit suite 1428 pass / 6 fail, all six the pre-existing baseline
+(formDropdownMenu + five message.test.ts `followUpTrigger` typing failures).
+Contrast 2842/2842, icons 75/75.
+
 ## FAIL-FIRST — the No email section's own bar (09-Sep-2026)
 
 Reported from a screenshot: no ticking, no select/deselect, no bulk delete on
@@ -604,6 +677,66 @@ exit 1
 - **G9 Automation addressability** - PASS
 - **G10 Backward compatibility (fixtures)** - PASS
 - **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-09 - VERDICT: FAIL
+
+Steps: 5 pass, 5 fail, 1 blocked.
+Time: 17.9s total - slowest G7 Unit + pure specs (11.8s).
+
+- **G1 Theme artifacts in sync** - FAIL (44ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (43ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (45ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (60ms)
+- **G5 Types** - PASS (5.5s)
+- **G6 Lint** - BLOCKED (-) - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - FAIL (11.8s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: a form asked for a record answers a failed read
+ok 169 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 170 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 183 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+  name: 'AssertionError'
+  expected: true
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+ok 300 - a ring is never a colour alone, and nothing expected is a dash
+# Subtest: a failed reset keeps the dialog open, carrying the reason
+ok 337 - a failed reset keeps the dialog open, carrying the reason
+```
+
+- **G8 Functional / integration** - FAIL (107ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (49ms)
+- **G10 Backward compatibility (fixtures)** - PASS (100ms)
+- **G11 Wide tables are configurable** - PASS (48ms)
 
 _Merge blocked. Every FAIL above must resolve. No partial merges._
 

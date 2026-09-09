@@ -24,6 +24,7 @@ import {
 import { TabStrip } from '../../src/components/TabStrip';
 import { attendancePct, primaryEmail, hasEmail, type Member } from '../../src/data/mock';
 import { streakReading } from '../../src/data/streak';
+import { formatDate } from '../../src/data/memberDate';
 import { flagged, isReachable, recipientSplit } from '../../src/data/followup';
 import { currentWeek, iso } from '../../src/data/period';
 import { mergeSent, sentThisSession, sentOn, recordSent } from '../../src/data/sent';
@@ -606,8 +607,14 @@ function HerDetails({ m }: { m: Member }) {
           same day, and the register's other end is "Inactive from" two
           rows down -- so this is the half of the pair that was reading as
           an unrelated fact. The COLUMN is still joined_on. */}
-      <Detail label="Active from"><Value text={m.joined === '—' ? 'Not on record' : m.joined}
-        faint={m.joined === '—'} /></Detail>
+      {/* THE DAY, not the "Mar 2026" the subtitle carries. `joined` is a
+          MONTH label and a month is the right size for a one-line subtitle;
+          it is the wrong size for a row headed "Active from", which names an
+          exact day the Edit form picks, the members report writes and Bulk
+          Import types back in. Shown as 01-Mar-2026 -- the one format
+          (src/data/memberDate.ts), so the app and the file agree. */}
+      <Detail label="Active from"><Value text={formatDate(m.joinedOn) || 'Not on record'}
+        faint={!formatDate(m.joinedOn)} /></Detail>
 
       <Detail label="Days they attend">
         <Value text={days ? days.join(' · ') : 'Follows the course schedule'} faint={!days} />
