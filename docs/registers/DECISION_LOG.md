@@ -51,6 +51,8 @@
 
 | 037 | [A member's status carries a DATE, and dates follow-up only](../decisions/030-a-status-is-a-date-not-a-moment.md) | Accepted | 07-Sep-2026 | extends 018 and 025 — the same column, the same write path, with `members.inactive_from` (0045) saying from WHEN it applies. Rejects closing `member_enrollments.effective_to` (that dates EXPECTATION, and 0031 promises the status moves no enrolment, session or attendance record) and rejects an effective-dated status table (a second list of one fact, against guardrail 1). Null reads as it always did, so no existing row moves. `follow_up_candidates()` judges on `current_date`; every status reading in the app becomes a reading about a day |
 
+| 038 | [A deployment reaches a session that is already running](../decisions/031-a-deployment-reaches-a-running-session.md) | Accepted | 09-Sep-2026 | amends 032 — the worker keeps every rule it has, including no skipWaiting; only the reading of "a new build activates on the next LAUNCH" changes, because the installed app is a tab that is never closed. A running session watches the start URL for a newer content-hashed bundle and reloads the PAGE — backgrounded, or after an unbroken minute of no touch. Rejects a version file, a public build-id variable, skipWaiting + controllerchange, an "update available" banner, and reloading on sight |
+
 Status: `Proposed` · `Accepted` · `Superseded by NNN` · `Deprecated`
 
 ---

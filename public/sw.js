@@ -20,9 +20,17 @@
  * (CP-002 / CP-003) — "we could not reach the server, nothing was changed".
  * It does NOT show yesterday's attendance as though it were today's.
  *
- * UPDATE POLICY. No skipWaiting, deliberately. A new deployment takes effect
- * the next time the app is launched, never by swapping the JS bundle underneath
- * somebody half way through marking a register.
+ * UPDATE POLICY. No skipWaiting, deliberately: nothing here ever swaps the JS
+ * bundle underneath somebody half way through marking a register.
+ *
+ * That used to mean a new deployment took effect ONLY on the next launch —
+ * and the installed app is a tab that is never closed, so a session could run
+ * a build for days after it was replaced. It no longer does:
+ * `src/pwa/DeploymentRefresh.tsx` watches the start URL for a newer bundle and
+ * reloads the page, in the background or after an unbroken minute of no touch.
+ * The promise above is unchanged — that reload is what puts the new build on
+ * screen, at a moment when it costs nobody anything, and this worker still
+ * activates the way it always has.
  */
 
 /*

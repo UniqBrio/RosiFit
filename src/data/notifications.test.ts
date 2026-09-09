@@ -61,7 +61,7 @@ test('two of the same kind keep their incoming order', () => {
 test('an awaiting session says what is missing and what it costs', () => {
   const item = awaitingNotification({
     id: 's1', title: 'Prenatal Flow · 6:00 pm',
-    meta: 'Coimbatore · 18 expected · awaiting upload',
+    meta: 'Coimbatore · 18 expected · Awaiting upload',
     label: 'Fri 22 Aug · Prenatal Flow 6:00 pm',
   });
   assert.equal(item.kind, 'awaiting');

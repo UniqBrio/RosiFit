@@ -137,7 +137,7 @@ test('a joining date that is not a date is read as no date, not as a hidden memb
 
 test('the roster says how many it left out, and that they are still on the course', () => {
   assert.equal(joinedLaterNote(1, 'Sun 6 Sep 2026'),
-    '1 member joined after Sun 6 Sep 2026 and is not listed for it. She is still on the course.');
+    '1 member joined after Sun 6 Sep 2026 and is not listed for it. They are still on the course.');
   assert.equal(joinedLaterNote(3, 'Sun 6 Sep 2026'),
     '3 members joined after Sun 6 Sep 2026 and are not listed for it. They are still on the course.');
 });

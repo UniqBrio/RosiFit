@@ -286,7 +286,7 @@ export default function Attendance() {
         </View>
         <Muted style={{ marginTop: SPACE.md, paddingTop: SPACE.md, borderTopWidth: 1, borderTopColor: theme.line }}>
           These are counts of the rows below, under the filters above — nothing is calculated twice.
-          An extra attended is someone who came when she was not expected, so it is never a miss.
+          An extra attended is someone who came when they were not expected, so it is never a miss.
         </Muted>
       </View>
 

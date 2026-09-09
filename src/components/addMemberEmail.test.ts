@@ -55,7 +55,7 @@ test('the form SAYS the address is required, with the shared mark', () => {
   // The footer no longer promises that her name is enough.
   assert.ok(!src.includes('Her name is all that is required'),
     'the footer still says her name is all that is required');
-  assert.ok(src.includes('Her name and an email address are required'),
+  assert.ok(src.includes('Member name and an email address are required'),
     'the footer names both required fields');
   // A member with no address can no longer be SAVED from here, so the form
   // must not describe that as a state it will produce.

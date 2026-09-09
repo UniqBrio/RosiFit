@@ -135,7 +135,7 @@ export function alreadyImportedWords(a: AlreadyImported, ctx: {
       lines: [
         `${ctx.fileName} was already imported for ${where} — the ${day} register${filed} — but `
         + `nobody is marked present on it now. Every mark it made has been changed since.`,
-        `RosiFit imports a file once, so this upload changed nothing. Mark her on the ${day} `
+        `RosiFit imports a file once, so this upload changed nothing. Mark them on the ${day} `
         + `roster, or export ${day} again from Meet and upload that file.`,
       ],
       note: 'Nothing was written, and no attendance record was duplicated.',
@@ -198,7 +198,7 @@ export function noChangeWords(changes: ImportChanges, ctx: {
       + `${n} ${n === 1 ? 'member' : 'members'} matched what RosiFit already had, so nothing `
       + `was added, changed or duplicated.`,
     ],
-    note: 'A member cannot be in her own session twice — one attendance record per member per day.',
+    note: 'A member cannot be in their own session twice — one attendance record per member per day.',
   };
 }
 

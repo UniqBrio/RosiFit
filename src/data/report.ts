@@ -204,7 +204,7 @@ export function memberDetailLine(m: Member, todayIso: string): string {
     named(m.course, NO_COURSE_LABEL),
     named(m.branch, NO_BRANCH_LABEL),
     active ? 'Active' : 'Inactive',
-    m.joined && m.joined !== DASH ? `joined ${m.joined}` : 'joining date not on record',
+    m.joined && m.joined !== DASH ? `Joined ${m.joined}` : 'Joining date not on record',
   ].join(' · ');
 }
 
@@ -267,7 +267,7 @@ export function courseDetailLine(count: number, course?: CourseFacts | null): st
     const branches = courseBranchNames(course);
     if (branches.length) parts.push(branches.join(', '));
     const days = courseDayNames(course);
-    parts.push(days.length ? days.join(' · ') : 'no days set');
+    parts.push(days.length ? days.join(' · ') : 'No days set');
     const from = clockTime(course.start_time);
     const to = clockTime(course.end_time);
     if (from && to) parts.push(`${from}–${to}`);

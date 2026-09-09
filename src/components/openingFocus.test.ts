@@ -33,7 +33,7 @@ const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 /** The first input a screen renders, and the text that identifies it. */
 const FIRST_INPUT: Array<[file: string, marker: string]> = [
   ['app/course/edit.tsx', '<Field label="Course name" autoFocus'],
-  ['app/member/edit.tsx', '<Field label="Her name" autoFocus'],
+  ['app/member/edit.tsx', '<Field label="Member name" autoFocus'],
   ['app/staff/add.tsx', '<Field label="Full name" autoFocus'],
   ['app/holiday.tsx', '<Field label="Name or reason" autoFocus'],
   ['app/change-mobile.tsx', '<Field label="Your current PIN" autoFocus'],

@@ -975,7 +975,7 @@ function AuditBody() {
           “Nothing before” is a record being created, “cleared” is a value taken away, and a
           dash means the record a value pointed at is no longer there. A permanent deletion
           reads “no longer on record”: it names who or what was removed, from the name the
-          deletion itself wrote down before the row went, and says what went with her. On a
+          deletion itself wrote down before the row went, and says what went with them. On a
           narrow screen the table scrolls sideways and the header follows it.
           Only the fifty most recent changes are shown{range ? ' for the dates chosen' : ''}.
           {branch === ALL_BRANCHES ? '' : ` A change is matched to ${branch} by what it points at`

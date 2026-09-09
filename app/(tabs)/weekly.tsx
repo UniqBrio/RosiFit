@@ -105,7 +105,7 @@ export default function Weekly() {
             filter === 'follow' ? (
               <EmptyState
                 title="Nobody needs following up"
-                body={`Every member met her course's rule for ${week.label}. Nothing to do this week.`} />
+                body={`Every member met their course's rule for ${week.label}. Nothing to do this week.`} />
             ) : (
               <EmptyState
                 title="Nothing matches this filter"
@@ -121,7 +121,7 @@ export default function Weekly() {
           )}
 
           <Muted style={{ textAlign: 'center', paddingVertical: SPACE.lg }}>
-            “Streak” is her current run of missed sessions. “Miss” is the week’s total.
+            “Streak” is the current run of missed sessions. “Miss” is the week’s total.
             They are different numbers.
           </Muted>
 

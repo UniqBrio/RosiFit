@@ -104,7 +104,7 @@ export default function MemberDetail() {
      under her own live figures, so nothing a reader counted in the list could
      ever reproduce the numbers above it. That is what made *Missed streak 6*
      unreadable rather than merely unexplained. */
-  const herWeek = useMemberWeek(m?.id ?? null, week, forced);
+  const memberWeek = useMemberWeek(m?.id ?? null, week, forced);
   /* HER COURSE'S RECORD, for the trigger panel alone
      (requests/2026-09-08-follow-up-trigger-on-send-and-reach-out.md). The
      member row carries her course by NAME, and the trigger is written against
@@ -120,8 +120,8 @@ export default function MemberDetail() {
      The wording is read for one reason only: the send made from the prompt
      needs the course's `template_id`, which is the only thing that decides what
      a member reads (guardrail 5). */
-  const herCourse = (courses.data ?? []).find(c => c.name === m?.course) ?? null;
-  const message = useCourseMessage(herCourse?.id ?? null, forced);
+  const memberCourse = (courses.data ?? []).find(c => c.name === m?.course) ?? null;
+  const message = useCourseMessage(memberCourse?.id ?? null, forced);
   const [warning, setWarning] = useState(false);
   /* The send made from the prompt, once a trigger has been applied. Its own
      state and not the draft's: this dialog now owns a send, and it reports its
@@ -143,7 +143,7 @@ export default function MemberDetail() {
      it does not flash a page and then become one. */
   if (members.state === 'loading') {
     return (
-      <FormDialog title="Member" subtitle="Fetching her record" closeTestID="member-close">
+      <FormDialog title="Member" subtitle="Fetching the record" closeTestID="member-close">
         <Skeleton lines={7} />
       </FormDialog>
     );
@@ -153,7 +153,7 @@ export default function MemberDetail() {
       <FormDialog title="Member" closeTestID="member-close">
         <ErrorState onRetry={members.retry}
           message={members.error
-            ?? 'That member is not on the register. She may have been removed since this link was opened.'} />
+            ?? 'That member is not on the register. They may have been removed since this link was opened.'} />
       </FormDialog>
     );
   }
@@ -210,17 +210,17 @@ export default function MemberDetail() {
      number that decides it are one fact stated twice, and until now only half
      of it was on screen. */
   const trigger = rules.data ? readTrigger(m.course, rules.data) : null;
-  const herCourseDays = herCourse
-    ? (herCourse.offerings[0]?.weekdays.length || herCourse.frequency || null)
+  const memberCourseDays = memberCourse
+    ? (memberCourse.offerings[0]?.weekdays.length || memberCourse.frequency || null)
     : null;
   /* WHY it cannot be changed from here, when it cannot -- and the two reasons
      are different facts. A list still arriving is a wait; a member whose
      course has no row (renamed, removed, or an ended enrolment, which leaves
      `course` as '—') is judged by the academy-wide rule, and saying "more than
      one course" over either of them would be untrue. */
-  const herCourseNote = courses.state === 'loading'
-    ? 'Her course is still being read, so the trigger cannot be changed from here yet.'
-    : `${m.course === '—' ? 'She is not on a course' : `${m.course} is not on the course list`}, so her follow-up is judged by the academy-wide trigger above. It is changed on the course form.`;
+  const memberCourseNote = courses.state === 'loading'
+    ? 'The course is still being read, so the trigger cannot be changed from here yet.'
+    : `${m.course === '—' ? 'This member is not on a course' : `${m.course} is not on the course list`}, so their follow-up is judged by the academy-wide trigger above. It is changed on the course form.`;
 
   /* The order of the two questions: the RULE first, then the duplicate.
      Whether to change the trigger is a decision about who should be written
@@ -252,8 +252,8 @@ export default function MemberDetail() {
   const flaggedNow = rules.data
     ? flagged(members.data ?? [], rules.data.global, rules.data.byCourseName)
     : [];
-  const flaggedHere = herCourse
-    ? enrolledIn(flaggedNow, herCourse)
+  const flaggedHere = memberCourse
+    ? enrolledIn(flaggedNow, memberCourse)
     : flaggedNow.filter(x => x.id === m.id);
   // Both halves from ONE call, so the prompt cannot claim to reach somebody it
   // will skip. Named while being excluded, never dropped (C-76).
@@ -325,9 +325,9 @@ export default function MemberDetail() {
           onContinue={afterTrigger}
           continueLabel="Send communication"
           reading={trigger}
-          courseId={herCourse?.id ?? null}
-          daysPerWeek={herCourseDays}
-          readOnlyNote={herCourseNote}
+          courseId={memberCourse?.id ?? null}
+          daysPerWeek={memberCourseDays}
+          readOnlyNote={memberCourseNote}
           /* The list Apply opens, and the send it enables. `listPending` is
              the rules read that Apply set off: until it lands, the list on
              screen is still the old rule's answer and must not be sendable. */
@@ -344,7 +344,7 @@ export default function MemberDetail() {
         <ConfirmDialog
           open={warning}
           onClose={() => setWarning(false)}
-          title="She has already had this week’s message"
+          title="Already had this week’s message"
           body={`${m.name.split(' ')[0]} was sent this week’s follow-up${sentAt && sentOn(sentAt) ? ` on ${sentOn(sentAt)}` : ''}.`
             + ' Reaching out again means a second identical email, and it cannot be recalled.'}
           cancelLabel="Not yet"
@@ -423,23 +423,23 @@ export default function MemberDetail() {
           say why they do not count (C-92); "no sessions" is still its own
           row rather than an empty list of misses. */}
       <Label style={{ marginTop: SPACE.xl, marginBottom: SPACE.sm }}>
-        {`Her sessions · ${week.label}`}
+        {`Sessions · ${week.label}`}
       </Label>
-      {herWeek.state === 'loading' ? (
+      {memberWeek.state === 'loading' ? (
         <Skeleton lines={4} />
-      ) : herWeek.state === 'error' || !herWeek.data ? (
+      ) : memberWeek.state === 'error' || !memberWeek.data ? (
         /* The list alone, never the record. A week that could not be read says
            so where the rows would have been -- it does not take the card down,
            and it does not fall back to somebody else's sessions, which is the
            whole defect this replaced. */
-        <ErrorState onRetry={herWeek.retry}
-          message={herWeek.error ?? 'Her sessions for this week could not be read.'} />
+        <ErrorState onRetry={memberWeek.retry}
+          message={memberWeek.error ?? 'Sessions for this week could not be read.'} />
       ) : (
       <View testID="member-sessions" style={{
         borderRadius: RADIUS.md, backgroundColor: theme.surface,
         borderWidth: 1, borderColor: theme.line, overflow: 'hidden',
       }}>
-        {herWeek.data.map((s, i) => {
+        {memberWeek.data.map((s, i) => {
           const t = STATUS[s.status];
           const c = theme.isDark ? t.fgDark : t.fgLight;
           const box = statusSurface(c);
@@ -489,7 +489,7 @@ export default function MemberDetail() {
           <Muted style={{ fontSize: 12, lineHeight: 17, marginTop: 2 }}>
             {mail
               ? `${primaryEmail(m)} · verified 4 Aug`
-              : 'She is shown and counted as excluded from every send, never quietly dropped.'}
+              : 'The member is shown and counted as excluded from every send, never quietly dropped.'}
           </Muted>
           <Muted style={{ fontSize: 12, lineHeight: 17, marginTop: 2 }}>
             {`Last contacted ${m.last === '—' ? 'never' : m.last}`}
@@ -527,8 +527,8 @@ export default function MemberDetail() {
           only once the rules have arrived, exactly as the label is. */}
       <View style={{ marginTop: SPACE.md }}>
         <FollowUpTriggerPanel testID="member-trigger"
-          reading={trigger} courseId={herCourse?.id ?? null} daysPerWeek={herCourseDays}
-          readOnlyNote={herCourseNote} />
+          reading={trigger} courseId={memberCourse?.id ?? null} daysPerWeek={memberCourseDays}
+          readOnlyNote={memberCourseNote} />
       </View>
 
       </>) : <HerDetails m={m} />}
@@ -601,14 +601,19 @@ function HerDetails({ m }: { m: Member }) {
           are three facts that fit. */}
       <Detail label="Course"><Value text={m.course} /></Detail>
       <Detail label="Branch"><Value text={m.branch} /></Detail>
-      <Detail label="Joined"><Value text={m.joined === '—' ? 'Not on record' : m.joined}
+      {/* "Joined" until 0057. One word for one thing: the Edit form's
+          picker, the members report's column and this row all name the
+          same day, and the register's other end is "Inactive from" two
+          rows down -- so this is the half of the pair that was reading as
+          an unrelated fact. The COLUMN is still joined_on. */}
+      <Detail label="Active from"><Value text={m.joined === '—' ? 'Not on record' : m.joined}
         faint={m.joined === '—'} /></Detail>
 
-      <Detail label="Days she attends">
+      <Detail label="Days they attend">
         <Value text={days ? days.join(' · ') : 'Follows the course schedule'} faint={!days} />
         {days ? (
           <Muted style={{ fontSize: 11.5, lineHeight: 16, marginTop: 2 }}>
-            Her own days, not every day her course runs
+            Custom days, not every day the course runs
           </Muted>
         ) : null}
       </Detail>
@@ -619,7 +624,7 @@ function HerDetails({ m }: { m: Member }) {
           (C-76). */}
       <Detail label="Email addresses">
         {addresses.length === 0 ? (
-          <Value text="None on file — she is excluded from every send" faint />
+          <Value text="None on file — excluded from every send" faint />
         ) : addresses.map(e => (
           <View key={e.address} style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }}>
             <Text style={{ flex: 1, fontSize: 13, color: theme.fgStrong }}>{e.address}</Text>

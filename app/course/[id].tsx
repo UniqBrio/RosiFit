@@ -4,7 +4,9 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Muted, Label, Skeleton, EmptyState, ErrorState, DeepBackground } from '../../src/components/ui';
 import { Icon } from '../../src/components/Icon';
 import { ConfirmDialog, SearchPicker } from '../../src/components/Sheet';
-import { DropdownRow, DropdownField, DropdownPanel, DropdownList } from '../../src/components/Dropdown';
+import {
+  DropdownRow, DropdownField, DropdownPanel, DropdownList, DropdownCheckList,
+} from '../../src/components/Dropdown';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useAutoFocus } from '../../src/components/openingFocus';
 import { useToast } from '../../src/components/Toast';
@@ -25,6 +27,13 @@ import {
   removalOutcome, removalFailure, deletionWarning, type PreviewState,
 } from '../../src/data/memberRemoval';
 import { dayAttendance, dayInWords, type DayState } from '../../src/data/dayAttendance';
+import {
+  ROSTER_FILTER_OPTIONS, ALL_MEMBERS, rosterFilterKeys, rosterFilterPhrase,
+  narrowRoster, rosterFilterCounts, type RosterScope,
+} from '../../src/data/rosterFilter';
+// The two the Overview's own multi-choice filters are built from, so this one
+// prints its field and toggles its ticks by exactly the same rules.
+import { fieldValue, toggle } from '../../src/data/overview';
 import { streakReading, missLine } from '../../src/data/streak';
 import { enrolledIn } from '../../src/data/course';
 import { offersUpload } from '../../src/data/uploadWindow';
@@ -82,6 +91,36 @@ const CHIPS: { state: DayState; word: string; icon: string; tone: StatusKey | nu
   { state: 'absent',   word: 'Absent',       icon: 'close',                   tone: 'absent'  },
   { state: 'unmarked', word: 'Yet to mark',  icon: 'radio_button_unchecked',  tone: null      },
 ];
+
+/**
+ * How wide a filter control on this screen gets.
+ *
+ * A field holding "2 filters" and a list of five short words does not need
+ * the 1900pt a desktop will hand it: at full width the checkbox and the count
+ * on the same row end up at opposite ends of the screen, with a hand's width
+ * of empty rule between the word and the number it belongs to. The search box
+ * above it stays full width on purpose -- a name being typed uses the room, a
+ * five-word list does not.
+ *
+ * A MAXIMUM, paired with width 100%, so a phone still gets every point it
+ * has and only a wide screen is capped. The panel takes the row's width, so
+ * capping the row caps both halves of the control and they cannot drift into
+ * two different widths.
+ */
+const FILTER_WIDTH = 340;
+
+/**
+ * What the roster says when the reading filter leaves nobody on it. Each is
+ * the card's own word turned into a sentence about the day -- an empty list
+ * under a filter has to say which fact emptied it, or it reads as a roster
+ * that lost its members.
+ */
+const FILTER_EMPTY: Record<string, string> = {
+  present: 'Nobody is marked present',
+  absent: 'Nobody is marked absent',
+  unmarked: 'Nothing is left to mark',
+  'no-email': 'Everybody here has an email address',
+};
 
 type DayCell = {
   iso: string;
@@ -161,6 +200,13 @@ function CourseDetailBody() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [branch, setBranch] = useState<string>(ALL_BRANCHES);
   const [branchOpen, setBranchOpen] = useState(false);
+  // The roster's reading filter -- Present · Absent · Yet to mark · No email,
+  // any number of them at once. Held as LABELS, because that is what the
+  // checkbox rows tick and what the field prints; rosterFilterKeys turns them
+  // into the decision (src/data/rosterFilter). EMPTY is every member: on a
+  // checkbox list "All" is the absence of ticks, never a row of its own.
+  const [rosterShow, setRosterShow] = useState<string[]>([]);
+  const [showOpen, setShowOpen] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   // Roster search. It filters what this screen DRAWS and nothing else -- no
   // refetch, no scope change: the branch filter above is what narrows the
@@ -344,15 +390,53 @@ function CourseDetailBody() {
   const leftEarlier = chosen ? leftEarlierNote(joinedByDay.length - onDay.length,
     dayLabel(chosen.iso)) : null;
 
-  // What the roster shows: the members of that day, less anything the search
-  // box hides. Name or address, because those are the two things written on a
-  // card.
-  const shown = useMemo(() => {
+  // The members of that day, less anything the search box hides. Name or
+  // address, because those are the two things written on a card.
+  const searched = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return onDay;
     return onDay.filter(m => m.name.toLowerCase().includes(q)
       || m.emails.some(e => e.address.toLowerCase().includes(q)));
   }, [onDay, query]);
+
+  /**
+   * ...and then the READING filter, asked for by name: "add filter to choose
+   * present, absent, yet to mark & no emails".
+   *
+   * SEARCH FIRST, THEN THE FILTER, so the panel's own counts are counts of
+   * what picking that row would actually give -- the same rule the Attendance
+   * tab's totals follow, where every figure is a count of the rows below it.
+   *
+   * The decision itself is in src/data/rosterFilter, which asks dayAttendance
+   * -- the very function each card's chips are drawn from. One derivation, so
+   * a card reading *Absent* can never appear under *Present*.
+   */
+  const rosterScope: RosterScope = useMemo(() => ({
+    rows: attendance.data ?? [],
+    dayIso: chosen?.iso ?? null,
+    weekdays: scopeWeekdays,
+    todayIso,
+    ready: attendance.state === 'ready',
+  }), [attendance.data, attendance.state, chosen?.iso, scopeWeekdays, todayIso]);
+
+  // Recomputed from the labels rather than held beside them: two pieces of
+  // state for one choice is how a tick and the list it narrows drift apart.
+  const showKeys = useMemo(() => rosterFilterKeys(rosterShow), [rosterShow]);
+  const shown = useMemo(
+    () => narrowRoster(searched, showKeys, rosterScope), [searched, showKeys, rosterScope]);
+  const showCounts = useMemo(
+    () => rosterFilterCounts(searched, rosterScope), [searched, rosterScope]);
+  // What the field prints, and what the notes below say in words. Several
+  // ticks are an OR and the phrase says so -- "Present or No email".
+  const showValue = fieldValue(rosterShow, ALL_MEMBERS, 'filters');
+  const showPhrase = rosterFilterPhrase(rosterShow, ALL_MEMBERS);
+
+  // A reading filter with no register behind it narrows NOTHING (rosterFilter
+  // says why), so the roster is wider than the field claims. Said in a line
+  // rather than left to be noticed: this screen's own rule is that a count
+  // which drops -- or keeps -- rows silently is the defect.
+  const showPending = showKeys.some(k => k !== 'no-email')
+    && attendance.state !== 'ready';
 
   const withEmail = shown.filter(m => m.emails.length > 0);
   const withoutEmail = shown.filter(m => m.emails.length === 0);
@@ -485,7 +569,7 @@ function CourseDetailBody() {
   const freqLine = course.offerings.length === 0
     ? 'No offering yet, so no schedule and nobody is expected'
     : course.offerings.map(o => `${o.branch}: ${o.weekdays.length
-        ? o.weekdays.map(d => DAY_NAMES[d]).join(', ') : 'no days set'}`).join(' · ');
+        ? o.weekdays.map(d => DAY_NAMES[d]).join(', ') : 'No days set'}`).join(' · ');
 
   const memberSplit = `${withEmail.length} with email · ${withoutEmail.length} without`;
 
@@ -589,25 +673,49 @@ function CourseDetailBody() {
 
       <ScrollView style={{ flex: 1, backgroundColor: theme.bg }}
         contentContainerStyle={{ paddingBottom: 110 }}>
-        <View style={{ paddingHorizontal: SPACE.lg, paddingTop: SPACE.md }}>
+        {/* THE LIFT THAT LETS A FILTER PANEL FLOAT. Read with the twin on
+            the members block below and the note on the Show filter itself.
+
+            Both panels are pop-ups: absolutely positioned, painted OVER the
+            page rather than pushing it down. That only holds if the container
+            they sit in out-ranks the member cards, which are a LATER SIBLING
+            of this View -- and a later sibling wins by default however high
+            the z-index INSIDE this one goes. So the lift is applied at every
+            step of the chain from the panel to the cards' own parent, and
+            only while a panel is actually out: a container left permanently
+            above the rest of the page would take presses meant for them. */}
+        <View style={{
+          paddingHorizontal: SPACE.lg, paddingTop: SPACE.md,
+          zIndex: branchOpen || showOpen ? 40 : 0,
+        }}>
           {rule ? <Muted style={{ marginBottom: SPACE.sm }}>{ruleSentence(rule, course.name)}</Muted> : null}
 
           {/* ------------------------------------------------ branch filter */}
           {branchOptions.length > 2 ? (
             <>
-              <DropdownRow open={branchOpen}>
+              {/* The panel belongs INSIDE the row: it was a sibling of it,
+                  so "below the field" resolved against this whole padded
+                  block and put the branch list under the member heading, half
+                  a screen from the field that opened it. The same defect the
+                  requester reported on the Show filter, in the control next
+                  to it -- unseen only because it is drawn at two branches and
+                  up. It floats, like every other filter in this app; what
+                  makes that safe is the lift on this View's own container. */}
+              <DropdownRow open={branchOpen}
+                style={{ width: '100%', maxWidth: FILTER_WIDTH }}
+                dismiss={{ onPress: () => setBranchOpen(false), testID: 'course-branch-dismiss' }}>
                 <DropdownField label="Branch" value={branch} open={branchOpen}
                   testID="course-branch-field"
-                  onPress={() => setBranchOpen(o => !o)} />
+                  onPress={() => { setShowOpen(false); setBranchOpen(o => !o); }} />
+                {branchOpen ? (
+                  <DropdownPanel>
+                    <DropdownList
+                      options={branchOptions.map(b => ({ label: b }))}
+                      value={branch} testID="course-branch"
+                      onSelect={v => { setBranch(v); setBranchOpen(false); }} />
+                  </DropdownPanel>
+                ) : null}
               </DropdownRow>
-              {branchOpen ? (
-                <DropdownPanel>
-                  <DropdownList
-                    options={branchOptions.map(b => ({ label: b }))}
-                    value={branch} testID="course-branch"
-                    onSelect={v => { setBranch(v); setBranchOpen(false); }} />
-                </DropdownPanel>
-              ) : null}
             </>
           ) : null}
 
@@ -875,7 +983,13 @@ function CourseDetailBody() {
 
               Bulk Import is still not here, on the earlier request that took
               it off this heading. It remains on the Attendance tab. */}
-          <View style={{ gap: SPACE.sm, marginTop: SPACE.xl }}>
+          <View style={{
+            gap: SPACE.sm, marginTop: SPACE.xl,
+            // the middle link of the chain described at the top of this
+            // ScrollView -- without it the Show panel is lifted inside a
+            // block that is not itself lifted, and the cards paint over it
+            zIndex: showOpen ? 40 : 0,
+          }}>
             <View style={{
               minWidth: 0,
               flexDirection: 'row', alignItems: 'baseline', gap: SPACE.sm,
@@ -904,6 +1018,66 @@ function CourseDetailBody() {
                 style={{ flex: 1, minWidth: 0, color: theme.fgStrong, fontSize: 13.5, fontWeight: '600',
                   outlineWidth: 0, outlineStyle: 'solid' }} />
             </View>
+
+            {/* ------------------------------------------ the reading filter
+                "add filter to choose present, absent, yet to mark & no
+                emails" -- the four words already printed on the cards below,
+                and ANY NUMBER of them at once, which is the second half of
+                the ask: "like in overview drop down multi selection is
+                possible". So it is the OVERVIEW's control rather than the
+                Attendance tab's: checkboxes, headed by the All members row
+                that clears them, ticking as many as you like. Several ticks
+                are an OR, and the line under the field says so in words.
+
+                UNDER THE SEARCH BOX, not beside it: at 360pt a field and a
+                search box on one row leave neither enough to read, and this
+                is the same stack the branch filter above uses.
+
+                IT IS A POP-UP, drawn OVER the roster and never pushing it
+                down -- the requester, on being shown the pushing version:
+                "on click of filter open it on top of it as pop up does".
+
+                That is what the panel does by default, and it is why the
+                options were invisible to begin with: a floating panel is
+                placed by z-order, and this row is nested two containers deep
+                inside the scroller while the member cards are a LATER SIBLING
+                of those containers. A later sibling wins by default, so the
+                cards painted over the options however high the z-index went
+                HERE. Lifting the row alone cannot settle it; the lift has to
+                run the whole chain, which is what the two containers above
+                now carry while a panel is open. With that in place the panel
+                floats, the roster stays exactly where it was, and the counts
+                the filter is being chosen against stay on screen (ADR-035).
+
+                It stays OPEN on a tick, because a multi-choice panel that shut
+                on the first one could never take a second (ADR-035); the way
+                out is the field again, or a press beside it. Each row carries
+                the number it would leave, counted off the very list below. */}
+            <DropdownRow open={showOpen}
+              style={{ width: '100%', maxWidth: FILTER_WIDTH }}
+              dismiss={{ onPress: () => setShowOpen(false), testID: 'course-show-dismiss' }}>
+              <DropdownField label="Show" value={showValue} open={showOpen}
+                testID="course-show-field"
+                highlight={rosterShow.length > 0}
+                onPress={() => { setBranchOpen(false); setShowOpen(o => !o); }} />
+              {showOpen ? (
+                <DropdownPanel>
+                  <DropdownCheckList testID="course-show"
+                    allLabel={ALL_MEMBERS}
+                    options={ROSTER_FILTER_OPTIONS.map(f => ({
+                      label: f.label,
+                      // null is "the week has not arrived", and it is drawn as
+                      // no number at all -- a 0 there would claim nobody is
+                      // present when nothing has been counted yet.
+                      meta: showCounts[f.key] === null ? undefined
+                        : `${showCounts[f.key]}`,
+                    }))}
+                    selected={rosterShow}
+                    onToggle={l => setRosterShow(v => toggle(v, l))}
+                    onAll={() => setRosterShow([])} />
+                </DropdownPanel>
+              ) : null}
+            </DropdownRow>
 
             {/* WHICH DAY the chips below are about, said once for the whole
                 roster rather than on every card. The strip above highlights
@@ -1034,6 +1208,28 @@ function CourseDetailBody() {
               }}>{leftEarlier}</Text>
             ) : null}
 
+            {/* WHAT THE FILTER IS LEAVING OUT, for the same reason the two
+                notes above exist: a count that changes with nothing on
+                screen to explain it reads as members who have disappeared.
+                The field above says which filter is on; this line says what
+                it cost and how to undo it.
+
+                And where the week has not arrived, the opposite admission:
+                the filter is narrowing NOTHING yet, so the roster is wider
+                than the field claims and the line says so rather than
+                letting the extra names read as matches. */}
+            {showPending ? (
+              <Text testID="course-show-note" style={{ fontSize: 11.5, color: theme.muted }}>
+                {attendance.state === 'error'
+                  ? `This week's register could not be loaded, so the roster is not narrowed to ${showPhrase}. Every member of the day is listed.`
+                  : `This week's register is still loading, so the roster is not narrowed to ${showPhrase} yet.`}
+              </Text>
+            ) : rosterShow.length > 0 && shown.length < searched.length ? (
+              <Text testID="course-show-note" style={{ fontSize: 11.5, color: theme.muted }}>
+                {`Showing ${shown.length} of ${searched.length} — ${showPhrase} only. The rest are on this roster and unchanged; All members brings them back.`}
+              </Text>
+            ) : null}
+
             {/* What is selected, and the bulk action over it. LAST before the
                 cards, so the count and the ticks it counts are adjacent --
                 the two notes above are rare, and putting the bar over them
@@ -1102,7 +1298,7 @@ function CourseDetailBody() {
                 title={`Nobody had joined by ${chosen ? dayLabel(chosen.iso) : 'that day'}`}
                 body={`All ${scoped.length} ${scoped.length === 1 ? 'member' : 'members'} of this course joined later, so there is no attendance to show for that day. Pick a later day on the strip above.`} />
             </View>
-          ) : shown.length === 0 ? (
+          ) : searched.length === 0 ? (
             /* SEARCHED away, not absent. The count it offers to bring back is
                the day's roster, so the two states can never be confused. */
             <View style={{ marginTop: SPACE.md }}>
@@ -1110,6 +1306,21 @@ function CourseDetailBody() {
                 title="No member matches that"
                 body={`Nothing on this roster matches “${query.trim()}”. Clearing the search brings all ${onDay.length} back.`}
                 action="Clear search" onAction={() => setQuery('')} />
+            </View>
+          ) : shown.length === 0 ? (
+            /* FILTERED away -- a third state, and it must not borrow either of
+               the other two's words. The roster has members, the search kept
+               them, and the reading picked above is true of none of them. It
+               says which reading and which day, and the way out is the filter
+               itself rather than the search. */
+            <View style={{ marginTop: SPACE.md }}>
+              <EmptyState
+                title={(showKeys.length === 1 ? FILTER_EMPTY[showKeys[0]] : null)
+                  ?? 'Nobody matches those filters'}
+                body={showKeys.length === 1 && showKeys[0] === 'no-email'
+                  ? `Every member on this roster has an address, so every one of them is counted for follow-up.${query.trim() ? ' That is of the members matching your search.' : ''}`
+                  : `No member on this roster reads ${showPhrase} for ${chosen ? dayLabel(chosen.iso) : 'that day'}.${query.trim() ? ' That is of the members matching your search.' : ''} All members brings all ${searched.length} back.`}
+                action="Show all members" onAction={() => setRosterShow([])} />
             </View>
           ) : (
             <>

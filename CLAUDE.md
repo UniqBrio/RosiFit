@@ -101,7 +101,19 @@ There is no free-form send path anywhere.
   traces to the request.
 - **Both themes, always** — verified, not assumed (`.harness/` route checks).
 - **Every backend change is a migration file.** No direct edits.
+- **Copy is gender-neutral.** Member-facing copy AND the comments around it are
+  written about "the member", never "she". Prefer restructuring the sentence
+  ("Joins a course at one branch") over swapping the pronoun; use "the member",
+  "member's", or drop the possessive. Singular "they" only where a pronoun is
+  genuinely unavoidable. Never "he/she", "(s)he" or "his/her". The academy is a
+  women's academy; the software is not, and the copy must read correctly for any
+  academy that licenses it.
 - **Test files are append-only.** Never overwrite an existing spec.
+  **One exemption:** a *copy-lock* — an assertion whose whole job is to pin an
+  exact user-facing string — may be re-pointed at the new string when changing
+  that copy is the intent of the work. Re-pinning is the spec doing its job. The
+  diff must show only the expected string literal changing: no assertion
+  removed, no `.skip`, no matcher loosened. Anything else is overwriting a spec.
 - **Verify every dependency before installing** — it exists, it is the
   intended name, it is pinned.
 

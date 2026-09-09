@@ -111,7 +111,7 @@ test('the headline is generated from what is on screen', () => {
 });
 
 test('none needing follow-up is a sentence, not a zero', () => {
-  assert.equal(coursesHeadline(4, 3, 0), '4 courses · 3 branches · nobody needs follow-up');
+  assert.equal(coursesHeadline(4, 3, 0), '4 courses · 3 branches · Nobody needs follow-up');
 });
 
 test('one of each is singular', () => {
@@ -119,7 +119,7 @@ test('one of each is singular', () => {
 });
 
 test('an empty academy does not read as broken', () => {
-  assert.equal(coursesHeadline(0, 0, 0), '0 courses · 0 branches · nobody needs follow-up');
+  assert.equal(coursesHeadline(0, 0, 0), '0 courses · 0 branches · Nobody needs follow-up');
 });
 
 // --------------------------------------------------------- rosterScope

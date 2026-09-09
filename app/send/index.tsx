@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text, Pressable, TextInput } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Muted, Label, Button, Skeleton, ErrorState, EmptyState } from '../../src/components/ui';
 import { FormDialog } from '../../src/components/FormDialog';
@@ -9,6 +9,7 @@ import { useTheme } from '../../src/theme/ThemeProvider';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../../src/theme/tokens';
 import { primaryEmail, initials, AVATAR_TINTS } from '../../src/data/mock';
 import { recipientSplit } from '../../src/data/followup';
+import { narrowBySearch, searchTerm } from '../../src/data/memberSearch';
 import { enrolledIn } from '../../src/data/course';
 import { mergeSent, sentThisSession, recordSent, defaultSelection, sentLabel } from '../../src/data/sent';
 import { useCourses, useFollowUp, useCourseMessage, useSentForPeriod } from '../../src/data/hooks';
@@ -105,6 +106,14 @@ function SendDraftBody() {
   const [confirming, setConfirming] = useState(false);
   const [sending, setSending] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  /* WHAT IS ON SCREEN, not what is selected and not what is sent: a real
+     week put 456 flagged members in this list, and finding one of them meant
+     scrolling all of it ("Enable search bar to select and deselect easily").
+     Empty is no search at all -- the whole list -- which is why this is a
+     string and not a nullable one: there is no "no answer yet" state to
+     distinguish, unlike `chosen` above. */
+  const [query, setQuery] = useState('');
+  const [searching, setSearching] = useState(false);
 
   const ink = (k: keyof typeof STATUS) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
   const sentInk = ink('present');
@@ -138,7 +147,37 @@ function SendDraftBody() {
   const toggle = (mid: string) => setChosen(
     isPicked(mid) ? picked.filter(pid => pid !== mid) : [...picked, mid]);
 
-  const allPicked = recipients.length > 0 && picked.length === recipients.length;
+  /* THE SEARCH NARROWS WHAT IS DRAWN, NEVER WHAT IS SENT.
+     `picked` above is filtered against the RECIPIENT ids and not against
+     these, so a tick on a row the current query hides is KEPT and the footer
+     still counts everybody who will be written to. That is deliberate: a
+     search that quietly unticked everything it scrolled past would be the
+     second, disagreeing list guardrail 1 exists to prevent. What it costs is
+     a list reading "2 shown" over a button reading "Send to 456", so the
+     chrome states both numbers whenever a query is on.
+
+     The excluded panel is narrowed by the SAME query. Half a filtered screen
+     is a claim about the list that is only true of part of it. */
+  const q = searchTerm(query);
+  const shown = narrowBySearch(recipients, query);
+  const shownIds = shown.map(m => m.id);
+  const shownExcluded = narrowBySearch(excluded, query);
+
+  /* One tint per member, fixed to her place in the WHOLE list rather than to
+     her row number in the search result -- otherwise every avatar changes
+     colour as the query is typed. */
+  const tintOf = new Map(recipients.map((m, i) => [m.id, AVATAR_TINTS[i % AVATAR_TINTS.length]]));
+
+  /* The bulk control acts on WHAT IS ON SCREEN. With no query that is the
+     whole list, exactly as before. With one it is the half of the ask that
+     "select and deselect easily" is actually about: every Priya in one press
+     -- and it ADDS to the selection rather than replacing it with the search
+     result, so the ticks made under the last three searches survive. */
+  const allShownPicked = shown.length > 0 && shownIds.every(id => picked.includes(id));
+  const bulk = () => setChosen(allShownPicked
+    ? picked.filter(pid => !shownIds.includes(pid))
+    : [...picked, ...shownIds.filter(id => !picked.includes(id))]);
+
   const skipped = recipients.length - picked.length;
   const resending = picked.filter(pid => sent[pid]).length;
   const everyoneAlreadySent = recipients.length > 0 && recipients.every(m => sent[m.id]);
@@ -360,24 +399,95 @@ function SendDraftBody() {
               : `No member of ${course?.name ?? 'this academy'} is over the follow-up threshold for ${week.label}. Nothing to send.`} />
       ) : (
         <>
-          {/* One row of chrome for the whole list: how many are ticked, and
-              the only bulk action worth a control. */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.md }}>
-            <Pressable testID="send-select-all"
-              accessibilityRole="button"
-              accessibilityLabel={allPicked ? 'Clear the selection' : 'Select every member'}
-              onPress={() => setChosen(allPicked ? [] : recipientIds)}
-              style={({ pressed }) => ({
-                minHeight: TAP_MIN, justifyContent: 'center', paddingHorizontal: SPACE.md,
-                borderRadius: RADIUS.pill, borderWidth: 1, borderColor: theme.line,
-                backgroundColor: theme.surface, opacity: pressed ? 0.7 : 1,
-              })}>
-              <Text style={{ fontSize: 12.5, fontWeight: '700', color: theme.accentInk }}>
-                {allPicked ? 'Clear all' : 'Select all'}
-              </Text>
-            </Pressable>
-            <Label style={{ flex: 1, textAlign: 'right' }}>{`${picked.length} of ${recipients.length} selected`}</Label>
+          {/* THE SEARCH, and the two controls it scopes, sit directly above
+              the list they are about and directly under the trigger panel
+              that produced it (on request, 09-Sep-2026: "bring search bar
+              next to follow up trigger just above members list").
+
+              It was pinned under the dialog title for one revision. Pinned,
+              it sat ABOVE the trigger panel -- which reads as chrome for the
+              whole dialog rather than for the list -- and it put the trigger
+              card between the count and the rows being counted. Here the
+              order is the order of the decision: this is the rule, this is
+              how to find somebody in what the rule returned, these are the
+              members. The cost is stated and accepted: on a 435-member list
+              the box scrolls out of reach, and getting back to it is a
+              scroll to the top.
+
+              Drawn only where there is a list worth narrowing: the
+              one-member draft that Reach out opens gets the card it had,
+              with no box over a list of one. */}
+          {recipients.length + excluded.length < 2 ? null : (
+          <View style={{ gap: SPACE.sm }}>
+            <View style={{
+              flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
+              height: 42, borderRadius: RADIUS.md, backgroundColor: theme.surface,
+              borderWidth: 1, borderColor: searching ? theme.accent : theme.lineStrong,
+              paddingHorizontal: 12,
+            }}>
+              <Icon name="search" size={18} color={theme.muted} />
+              <TextInput testID="send-search"
+                value={query} onChangeText={setQuery}
+                placeholder="Search by name or email"
+                placeholderTextColor={theme.muted}
+                accessibilityLabel="Search the members on this draft by name or email"
+                onFocus={() => setSearching(true)} onBlur={() => setSearching(false)}
+                selectionColor={theme.accent}
+                style={{ flex: 1, minWidth: 0, color: theme.fgStrong, fontSize: 13.5,
+                  fontWeight: '600', outlineWidth: 0, outlineStyle: 'solid' }} />
+              {/* The way back to the whole list, one press, without selecting
+                  and deleting what was typed. Its own word is the label a
+                  screen reader gets; the glyph is the same close used to
+                  leave every dialog. */}
+              {q ? (
+                <Pressable testID="send-search-clear" onPress={() => setQuery('')}
+                  accessibilityRole="button" accessibilityLabel="Clear the search"
+                  style={({ pressed }) => ({ padding: 4, opacity: pressed ? 0.6 : 1 })}>
+                  <Icon name="close" size={17} color={theme.muted} />
+                </Pressable>
+              ) : null}
+            </View>
+
+            {/* One row of chrome for the whole list: how many are ticked, and
+                the only bulk action worth a control. Its two labels say WHICH
+                members they are about -- "Clear all" over a list showing
+                three of 435 would untick 435, and there is no undo on a tick
+                a person did not see happen. */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.md }}>
+              <Pressable testID="send-select-all"
+                accessibilityRole="button"
+                disabled={shown.length === 0}
+                accessibilityLabel={q
+                  ? (allShownPicked
+                    ? 'Clear the selection for the members matching the search'
+                    : 'Select every member matching the search')
+                  : (allShownPicked ? 'Clear the selection' : 'Select every member')}
+                onPress={bulk}
+                style={({ pressed }) => ({
+                  minHeight: TAP_MIN, justifyContent: 'center', paddingHorizontal: SPACE.md,
+                  borderRadius: RADIUS.pill, borderWidth: 1, borderColor: theme.line,
+                  backgroundColor: theme.surface,
+                  opacity: shown.length === 0 ? 0.45 : pressed ? 0.7 : 1,
+                })}>
+                <Text style={{ fontSize: 12.5, fontWeight: '700', color: theme.accentInk }}>
+                  {q
+                    ? (allShownPicked ? `Clear these ${shown.length}` : `Select these ${shown.length}`)
+                    : allShownPicked ? 'Clear all' : 'Select all'}
+                </Text>
+              </Pressable>
+              <Label style={{ flex: 1, textAlign: 'right' }}>{`${picked.length} of ${recipients.length} selected`}</Label>
+            </View>
+
+            {/* The two numbers a search puts at odds -- what is on screen,
+                and what the button is about to do. Said out loud, because
+                the only other way to learn it is to send. */}
+            {q ? (
+              <Muted>
+                {`Showing ${shown.length} of ${recipients.length}. Ticks outside the search are kept — Send goes to all ${picked.length}.`}
+              </Muted>
+            ) : null}
           </View>
+          )}
 
           {everyoneAlreadySent && picked.length === 0 ? (
             <Muted style={{ marginTop: SPACE.sm }}>
@@ -385,8 +495,20 @@ function SendDraftBody() {
             </Muted>
           ) : null}
 
+          {/* Not an empty draft -- a query with nobody behind it. The
+              difference matters: "nobody needs following up" is a fact about
+              the week, this is a fact about six characters in a box, and the
+              way out of it is named. */}
+          {q && shown.length === 0 ? (
+            <View style={{ marginTop: SPACE.md }}>
+              <EmptyState
+                title="Nobody to write to matches that"
+                body={`No member on this draft matches “${query.trim()}”${shownExcluded.length ? ', apart from the excluded below' : ''}. Clearing the search brings all ${recipients.length} back — every tick you have made is still there.`} />
+            </View>
+          ) : null}
+
           <View style={{ gap: SPACE.sm, marginTop: SPACE.md }}>
-            {recipients.map((m, i) => {
+            {shown.map(m => {
               const on = isPicked(m.id);
               const at = sent[m.id];
               return (
@@ -409,7 +531,7 @@ function SendDraftBody() {
                     color={on ? theme.accentInk : theme.dim} />
                   <View style={{
                     width: 32, height: 32, borderRadius: 16,
-                    backgroundColor: AVATAR_TINTS[i % AVATAR_TINTS.length],
+                    backgroundColor: tintOf.get(m.id) ?? AVATAR_TINTS[0],
                     alignItems: 'center', justifyContent: 'center',
                   }}>
                     <Text style={{ fontSize: 12, fontWeight: '800', color: theme.onAccent }}>{initials(m.name)}</Text>
@@ -438,11 +560,17 @@ function SendDraftBody() {
 
           {excluded.length ? (
             <>
+              {/* The heading keeps the TRUE total under a search -- these
+                  members are counted in every figure whether or not the box
+                  above is hiding them, and a count that shrank with the
+                  query would say the opposite. */}
               <Label style={{ marginTop: SPACE.xl }}>
-                {`Excluded · ${excluded.length} · counted, not dropped`}
+                {q
+                  ? `Excluded · ${shownExcluded.length} of ${excluded.length} matching · counted, not dropped`
+                  : `Excluded · ${excluded.length} · counted, not dropped`}
               </Label>
               <View style={{ gap: SPACE.sm, marginTop: SPACE.sm }}>
-                {excluded.map(m => (
+                {shownExcluded.map(m => (
                   <View key={m.id} style={{
                     flexDirection: 'row', alignItems: 'center', gap: SPACE.md, padding: SPACE.md,
                     borderRadius: RADIUS.md, backgroundColor: theme.surface2,

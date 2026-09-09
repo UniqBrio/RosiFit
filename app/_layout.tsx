@@ -6,6 +6,7 @@ import { ThemeProvider, useTheme } from '../src/theme/ThemeProvider';
 import { ToastProvider } from '../src/components/Toast';
 import { AcademyProvider } from '../src/state/academy';
 import { AdminRouteGuard } from '../src/components/AdminOnly';
+import { DeploymentRefresh } from '../src/pwa/DeploymentRefresh';
 
 /**
  * EVERY FORM IS A DIALOG -- and it takes THREE things, not the two this file
@@ -155,6 +156,14 @@ function Nav() {
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
+      {/* A DEPLOYMENT REACHES A SESSION THAT IS ALREADY RUNNING. The worker is
+          network-first, so a LAUNCH has always picked up the newest build --
+          but the installed app is a tab that is never closed, and nothing told
+          it a newer build existed. This watches for one and reloads, in the
+          background or after a minute of no touch, never mid register
+          (requests/2026-09-09-refresh-on-every-deployment.md). It renders
+          nothing, and on native and during the export it does nothing. */}
+      <DeploymentRefresh />
       <ThemeProvider>
         <AcademyProvider>
           <ToastProvider><Nav /></ToastProvider>

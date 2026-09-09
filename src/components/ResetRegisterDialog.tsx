@@ -198,7 +198,7 @@ export function ResetRegisterDialog({
 
                     <Text style={{ fontSize: 11.5, color: theme.muted, lineHeight: 17, marginTop: 6 }}>
                       They were imported by an upload and have no address on file. Tick the ones to
-                      delete; leave one unticked to keep her — clearing the day does not remove her
+                      delete; leave one unticked to keep them — clearing the day does not remove them
                       by itself. Nothing here is deleted unless you tick it.
                     </Text>
 

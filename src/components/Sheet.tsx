@@ -356,7 +356,7 @@ export function SearchPicker({ open, onClose, title, placeholder, options, value
       {twoStep ? (
         <View style={{ marginTop: SPACE.md, borderTopWidth: 1, borderTopColor: theme.line, paddingTop: SPACE.md }}>
           <Text style={{ fontSize: 12, color: theme.muted, lineHeight: 19, minHeight: 38 }}>
-            {stagedOption && confirmNote ? confirmNote(stagedOption) : 'Pick the member she is, then confirm.'}
+            {stagedOption && confirmNote ? confirmNote(stagedOption) : 'Pick the right member, then confirm.'}
           </Text>
           <View style={{ flexDirection: 'row', gap: 10, marginTop: SPACE.md }}>
             <Pressable testID="picker-cancel" onPress={close} accessibilityRole="button"

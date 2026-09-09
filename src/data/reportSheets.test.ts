@@ -137,7 +137,7 @@ test('the group that points at nothing gets no course, honestly', () => {
 // ================================================== what a row is ABOUT
 test('a member row states her course, branch, status and joining month', () => {
   assert.equal(memberDetailLine(member(), TODAY),
-    'Prenatal Flow · Coimbatore · Active · joined Mar 2026');
+    'Prenatal Flow · Coimbatore · Active · Joined Mar 2026');
 });
 
 test('a member row reads her status ON THE DAY, not off the column', () => {
@@ -152,7 +152,7 @@ test('an unenrolled member says so on her row rather than showing a dash', () =>
   const line = memberDetailLine(unenrolled({ joined: '—' }), TODAY);
   assert.ok(!line.includes('—'), line);
   assert.equal(line,
-    `${NO_COURSE_LABEL} · ${NO_BRANCH_LABEL} · Active · joining date not on record`);
+    `${NO_COURSE_LABEL} · ${NO_BRANCH_LABEL} · Active · Joining date not on record`);
 });
 
 test('a course row leads with the MEMBER COUNT, then where and when it runs', () => {
@@ -165,7 +165,7 @@ test('one member is singular', () => {
 });
 
 test('a course with no days says so — a blank reads as "no days set yet"', () => {
-  assert.equal(courseDetailLine(2, COURSES[1]), '2 members · no days set');
+  assert.equal(courseDetailLine(2, COURSES[1]), '2 members · No days set');
 });
 
 test('the count stands alone while the course list is still loading', () => {
@@ -216,7 +216,7 @@ test('sheet 1 says "no sessions scheduled" where the screen says it', () => {
   // An exported "0%" where the screen says "no sessions" is the report
   // disagreeing with itself in the file somebody keeps.
   const rows = reportRows([member({ expected: 0, attended: 0 })], 'Courses');
-  assert.equal(attendanceSheet(rows, 'Courses', PERIOD).rows[0][4], 'no sessions scheduled');
+  assert.equal(attendanceSheet(rows, 'Courses', PERIOD).rows[0][4], 'No sessions scheduled');
 });
 
 test('an extra attendance never exports a negative missed count', () => {
@@ -233,7 +233,7 @@ test('the member sheet carries every field her form holds', () => {
   })], PERIOD, TODAY);
   assert.deepEqual(s.header, [
     'Member', 'Member code', 'Status', 'Inactive from', 'Course', 'Branch',
-    'Joined on', 'Days she attends', 'Primary email', 'All email addresses',
+    'Active from', 'Days they attend', 'Primary email', 'All email addresses',
     'Also known as', 'Expected', 'Attended', 'Missed', 'Attendance %', 'Period',
   ]);
   assert.deepEqual(s.rows[0], [
@@ -266,11 +266,32 @@ test('the joining DATE is exported, not the "Mar 2026" label', () => {
     'Not on record');
 });
 
-test('a leaving date is written in words beside the status it explains', () => {
+/**
+ * THIS ASSERTED PROSE -- "1 October 2026" -- and was right to, while this
+ * sheet was only ever read by a person. Bulk Import Inactive (0057) reads it
+ * BACK: the academy exports the register, fills the two date columns in and
+ * uploads the same file. A prose date cannot survive that round trip, and the
+ * person typing into the column copies the format of the cells already in it,
+ * so the export has to state the format the import accepts.
+ *
+ * Both columns, not one. They are the two ends of one window and a sheet that
+ * wrote one of them in words and the other in digits would be teaching the
+ * person filling it in that either will do.
+ */
+test('both dates are exported ISO, because the file is read back in', () => {
   const s = memberDetailSheet([member({ status: 'inactive', inactiveFrom: '2026-10-01' })],
     PERIOD, TODAY);
   assert.equal(s.rows[0][2], 'Active');            // on 8 Sep she still is
-  assert.equal(s.rows[0][3], '1 October 2026');
+  assert.equal(s.rows[0][3], '2026-10-01');
+  // and the near end of the same window, in the same shape
+  assert.equal(s.rows[0][6], '2026-03-01');
+});
+
+test('no leaving date on record is a blank cell, not the word "none"', () => {
+  // A blank round-trips as "leave this alone", which is what an active member
+  // with no date means. Any word here would be a value the importer then has
+  // to know is not a date.
+  assert.equal(memberDetailSheet([member()], PERIOD, TODAY).rows[0][3], '');
 });
 
 // ------------------------------------------------------- course details

@@ -46,7 +46,7 @@ export type MemberWeekSession = {
 /** Nothing scheduled is its own state, not an empty list of misses. */
 export const NO_SESSIONS_ROW: MemberSession = {
   status: 'none', date: 'No sessions', time: '—',
-  detail: 'She had none scheduled this week',
+  detail: 'None scheduled this week',
 };
 
 /**
@@ -100,7 +100,7 @@ function readSession(s: MemberWeekSession, todayIso: string): MemberSession {
     // and the row says which -- the run above the list skips it either way,
     // because current_streak_for counts expected sessions only.
     if (s.record.status === 'extra') {
-      return { status: 'extra', date, time, detail: `${where} — she was not expected` };
+      return { status: 'extra', date, time, detail: `${where} — not expected` };
     }
     if (s.record.status === 'absent') {
       return { status: 'absent', date, time, detail: where };
@@ -112,7 +112,7 @@ function readSession(s: MemberWeekSession, todayIso: string): MemberSession {
   // frozen (session_expectations), so her having no row in it is a fact and
   // not a gap: she was not expected, and it counts for nobody.
   if (s.sessionStatus === 'completed') {
-    return { status: 'none', date, time, detail: `${where} — she was not expected` };
+    return { status: 'none', date, time, detail: `${where} — not expected` };
   }
 
   // Still 'scheduled'. Before today that means the file has not arrived;

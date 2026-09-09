@@ -60,7 +60,7 @@ function StaffPinBody() {
 
   const copyPin = async () => {
     await Clipboard.setStringAsync(pin);
-    flash('PIN copied — clear your clipboard once she has it');
+    flash('PIN copied — clear your clipboard once it is handed over');
   };
   // Read at the moment it is handed over, not declared here. It is the
   // sign-in screen -- the app's root -- because the person following it has
@@ -97,13 +97,13 @@ function StaffPinBody() {
         <Text style={{
           fontSize: 11.5, fontWeight: '700', letterSpacing: 1,
           textTransform: 'uppercase', color: theme.accentInk,
-        }}>Her PIN — shown once</Text>
+        }}>The PIN — shown once</Text>
 
         {/* Read as a single unit: four separate digits would be announced as
             four unrelated numbers, which is unusable for anyone reading it out. */}
         <View
           accessible
-          accessibilityLabel={`Her PIN is ${pin.split('').join(' ')}`}
+          accessibilityLabel={`The PIN is ${pin.split('').join(' ')}`}
           style={{ flexDirection: 'row', gap: SPACE.md, marginTop: SPACE.lg }}>
           {pin.split('').map((d, i) => (
             <View key={i} style={{
@@ -130,7 +130,7 @@ function StaffPinBody() {
         backgroundColor: panel, borderWidth: 1, borderColor: theme.line,
       }}>
         <Body style={{ fontSize: 12.5, lineHeight: 20 }}>
-          Read it out to her in person, or send it on WhatsApp from your own phone. It will not be shown
+          Read it out in person, or send it on WhatsApp from your own phone. It will not be shown
           again — if it is lost, reset it from Staff &amp; access.
         </Body>
       </View>

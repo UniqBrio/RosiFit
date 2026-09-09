@@ -85,8 +85,8 @@ export function pinResetNotification(request:
     id: `pinreset-${request.id}`,
     kind: 'pinReset',
     title: `${request.name} needs a new PIN`,
-    body: 'She cannot sign in until you reset it. Open Staff & access, '
-      + 'reset her PIN, and give her the new one.',
+    body: 'They cannot sign in until you reset it. Open Staff & access, '
+      + 'reset the PIN, and give them the new one.',
     when: request.when,
   };
 }

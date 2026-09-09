@@ -114,13 +114,23 @@ export function resetPreview(
   known: WithEmails[],
   courseId: string | null | undefined,
   dayIso: string | null,
+  /**
+   * The members the operator selected. Since 0057 a reset acts on these and
+   * nothing else — "only those members attendance should be reset".
+   *
+   * Null or empty means the whole day, which is what a caller that genuinely
+   * means the whole register passes; the app always names a selection.
+   */
+  onlyMembers?: string[] | null,
 ): ResetPreview {
   if (!courseId || !dayIso || !ISO_DATE.test(dayIso)) {
     return { marks: 0, members: 0, keeping: 0, deletable: [] };
   }
 
   const emailsById = new Map(known.map(m => [m.id, m.emails.length > 0]));
-  const onDay = rows.filter(r => r.course_id === courseId && r.date === dayIso);
+  const picked = onlyMembers && onlyMembers.length > 0 ? new Set(onlyMembers) : null;
+  const onDay = rows.filter(r => r.course_id === courseId && r.date === dayIso
+    && (!picked || picked.has(r.member_id)));
 
   // Every other day of hers that carries a mark, anywhere -- the number the
   // dialog owes her, because the delete reaches all of them.
@@ -160,28 +170,41 @@ export function resetPreview(
 /**
  * WHAT THE RESET WILL DO, said before it is done.
  *
- * Two sentences, never folded into one: clearing the day and deleting a
- * member are different sizes of write, and the second is permanent. A single
- * sentence covering both would let the permanent half be read as part of the
- * reversible one.
+ * ABOUT THE SELECTED MEMBERS, since 0057. The requester scoped it outright --
+ * "when they select members and click on reset only those members attendance
+ * should be reset" -- so the sentence counts the selection, never the day.
+ *
+ * `marksLeft` is what would STILL be recorded afterwards, and it decides the
+ * last clause. A reset that empties the day returns it to awaiting a file; a
+ * reset of three members out of eight leaves a register that is still a
+ * register, and promising "the day goes back to awaiting" there would be a
+ * sentence the database deliberately does not honour (0057 holds the session
+ * and the import back on a partial reset). Two outcomes, two sentences.
  */
-export function resetWarning(preview: ResetPreview, dayWords: string): string {
+export function resetWarning(
+  preview: ResetPreview, dayWords: string, marksLeft = 0,
+): string {
   if (preview.marks === 0) {
-    return `Nothing is recorded for ${dayWords}, so there is nothing to reset.`;
+    return `Nothing is selected on ${dayWords}, so there is nothing to reset.`;
   }
   const marks = preview.marks === 1 ? '1 mark' : `${preview.marks} marks`;
-  // THE WITH-EMAIL HALF, STATED FIRST AND BY NAME. The requester asked for
-  // this outright -- "it should ask the attendance will be reset for members
-  // with email" -- and it is the half that is easy to leave implicit: a total
-  // of four members says nothing about which of them merely lose a mark and
-  // which are about to be deleted.
+  const members = preview.members === 1
+    ? '1 selected member' : `${preview.members} selected members`;
+  // THE WITH-EMAIL HALF, STATED BY NAME. The requester asked for it outright
+  // -- "it should ask the attendance will be reset for members with email" --
+  // and it is the half that is easy to leave implicit: a total says nothing
+  // about which of them merely lose a mark.
   const kept = preview.keeping === 0
-    ? 'No member on this day has an email on file.'
+    ? ''
     : preview.keeping === 1
-      ? 'Attendance will be reset for 1 member with an email — she stays on the course and reads Yet to mark.'
-      : `Attendance will be reset for ${preview.keeping} members with an email — they stay on the course and read Yet to mark.`;
-  return `${kept} This clears ${marks} on ${dayWords}, and the day goes back to `
-    + `awaiting a file so it can be uploaded again.`;
+      ? ' 1 of them has an email and stays on the course, reading Yet to mark.'
+      : ` ${preview.keeping} of them have an email and stay on the course, reading Yet to mark.`;
+  const after = marksLeft === 0
+    ? `Nothing else is recorded that day, so it goes back to awaiting a file and can be uploaded again.`
+    : marksLeft === 1
+      ? `1 other mark stays on that day, so it is not returned to awaiting a file.`
+      : `${marksLeft} other marks stay on that day, so it is not returned to awaiting a file.`;
+  return `This clears ${marks} on ${dayWords} — ${members}.${kept} ${after}`;
 }
 
 /**
@@ -205,11 +228,11 @@ export function deleteWarning(ticked: ResetTarget[]): string | null {
     : `${ticked.length} members with no email are deleted outright`;
   const elsewhere = ticked.reduce((n, t) => n + t.other_days, 0);
   const spill = elsewhere === 0
-    ? `${one ? 'She has' : 'They have'} attendance on no other day.`
+    ? 'They have attendance on no other day.'
     : elsewhere === 1
       ? 'This also removes 1 mark on another day.'
       : `This also removes ${elsewhere} marks on other days.`;
-  return `${who} — permanently, with every record of ${one ? 'hers' : 'theirs'}. `
+  return `${who} — permanently, with every record of theirs. `
     + `${spill} This cannot be undone.`;
 }
 

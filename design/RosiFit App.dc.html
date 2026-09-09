@@ -281,7 +281,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
                     </span>
                   </button>
                 </sc-for>
-                <div style="padding:14px 4px;font-size:11.5px;color:var(--rf-muted);line-height:1.55;text-align:center">“Streak” is her current run of missed sessions. “Miss” is the week's total. They are different numbers.</div>
+                <div style="padding:14px 4px;font-size:11.5px;color:var(--rf-muted);line-height:1.55;text-align:center">“Streak” is the current run of missed sessions. “Miss” is the week's total. They are different numbers.</div>
               </div>
             </sc-if>
           </div>
@@ -302,7 +302,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
                 <div style="flex:1;min-width:0">
                   <div style="font-family:'Bricolage Grotesque',sans-serif;font-size:24px;font-weight:700;color:#ffffff;letter-spacing:-.02em">{{ member.name }}</div>
                   <div style="font-size:13px;color:var(--rf-accent-200);margin-top:3px">{{ member.course }}</div>
-                  <div style="font-size:12px;color:var(--rf-on-deep-2);margin-top:2px">{{ member.branch }} · joined Mar 2026</div>
+                  <div style="font-size:12px;color:var(--rf-on-deep-2);margin-top:2px">{{ member.branch }} · Joined Mar 2026</div>
                 </div>
               </div>
             </div>
@@ -334,7 +334,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
                 </div>
               </div>
 
-              <div style="margin-top:22px;font-family:'Bricolage Grotesque',sans-serif;font-size:17px;font-weight:700;color:var(--rf-fg-strong);letter-spacing:-.01em">Her sessions this week</div>
+              <div style="margin-top:22px;font-family:'Bricolage Grotesque',sans-serif;font-size:17px;font-weight:700;color:var(--rf-fg-strong);letter-spacing:-.01em">Sessions this week</div>
               <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">
                 <sc-for list="{{ member.sessions }}" as="s" hint-placeholder-count="5">
                   <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:14px;background:var(--rf-surface);border:1px solid var(--rf-line-08)">
@@ -637,7 +637,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
                     <span style="flex:1;min-width:0;font-size:13px;font-weight:700;color:var(--rf-fg-strong)">Template · {{ chosenTemplate }}</span>
                     <button onClick="{{ goComposePick }}" style="flex:none;padding:8px 12px;border-radius:11px;background:var(--rf-control);border:1px solid var(--rf-line-14);color:var(--rf-fg);font-family:inherit;font-size:11.5px;font-weight:700;cursor:pointer">Change</button>
                   </div>
-                  <div style="margin-top:10px;font-size:12px;color:var(--rf-muted);line-height:1.6">{{ templateSubject }}<br><br>The wording is fixed. Only her own figures change, and they come from the attendance engine — never a placeholder.</div>
+                  <div style="margin-top:10px;font-size:12px;color:var(--rf-muted);line-height:1.6">{{ templateSubject }}<br><br>The wording is fixed. Only their own figures change, and they come from the attendance engine — never a placeholder.</div>
                 </div>
               </div>
             </sc-if>
@@ -769,7 +769,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
             <button onClick="{{ goStaff }}" style="background:var(--rf-surface);border:1px solid var(--rf-line-12);border-radius:12px;width:38px;height:38px;display:flex;align-items:center;justify-content:center;cursor:pointer"><span class="ms" style="font-size:21px;color:var(--rf-fg-strong)">arrow_back</span></button>
             <div style="flex:1">
               <div style="font-family:'Bricolage Grotesque',sans-serif;font-size:20px;font-weight:700;color:var(--rf-fg-strong);letter-spacing:-.02em">Add staff</div>
-              <div style="font-size:12px;color:var(--rf-muted);margin-top:2px">She signs in with her number and a PIN</div>
+              <div style="font-size:12px;color:var(--rf-muted);margin-top:2px">Signs in with a number and a PIN</div>
             </div>
           </div>
           <div class="scr" style="flex:1;overflow-y:auto;padding:16px 20px 24px">
@@ -783,7 +783,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
               <input class="num" value="{{ formPhone }}" onChange="{{ setPhone }}" placeholder="98765 43210" style="flex:1;background:transparent;border:none;outline:none;color:var(--rf-fg-strong);font-family:inherit;font-size:15px;font-weight:600;letter-spacing:.04em">
             </div>
 
-            <div style="display:flex;align-items:center;gap:8px;margin-top:9px;font-size:11.5px;color:var(--rf-muted);line-height:1.45"><span class="ms" style="font-size:16px;color:#B487EA">badge</span>This number becomes her sign-in ID and cannot be changed later.</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:9px;font-size:11.5px;color:var(--rf-muted);line-height:1.45"><span class="ms" style="font-size:16px;color:#B487EA">badge</span>This number becomes the sign-in ID and cannot be changed later.</div>
 
             <div style="margin-top:18px;font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--rf-muted)">Role label</div>
             <button onClick="{{ openRolePicker }}" style="margin-top:8px;width:100%;height:52px;border-radius:14px;background:var(--rf-surface);border:1px solid var(--rf-line-14);padding:0 14px;display:flex;align-items:center;gap:10px;cursor:pointer;font-family:inherit;text-align:left">
@@ -795,7 +795,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
 
             <div style="margin-top:20px;padding:15px;border-radius:16px;background:rgba(232,185,59,.08);border:1px solid rgba(232,185,59,.3);display:flex;gap:11px">
               <span class="ms" style="font-size:19px;color:#E8B93B">lock_open</span>
-              <div style="flex:1;font-size:11.5px;color:var(--rf-fg);line-height:1.55">Saving her record does not give her app access. She will appear as <strong>Not enabled</strong> until you generate a login PIN for her — a separate, deliberate step.</div>
+              <div style="flex:1;font-size:11.5px;color:var(--rf-fg);line-height:1.55">Saving this record does not give app access. They will appear as <strong>Not enabled</strong> until you generate a login PIN for them — a separate, deliberate step.</div>
             </div>
           </div>
           <div style="flex:none;padding:14px 20px 24px;background:var(--rf-shell);border-top:1px solid var(--rf-line-08)">
@@ -825,7 +825,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
             </div>
 
             <div style="margin-top:26px;padding:16px;border-radius:18px;background:rgba(12,4,9,.5);border:1px solid rgba(255,255,255,.14)">
-              <div style="font-size:12.5px;color:#EDE3EA;line-height:1.6">Hand this to her yourself — read it out, or send it from your own phone. She changes it on first sign-in. It will not be shown again; if it is lost, reset it from Staff &amp; access. Super admins never receive a PIN this way — they set their own at registration.</div>
+              <div style="font-size:12.5px;color:#EDE3EA;line-height:1.6">Hand this over yourself — read it out, or send it from your own phone. It is changed on first sign-in. It will not be shown again; if it is lost, reset it from Staff &amp; access. Super admins never receive a PIN this way — they set their own at registration.</div>
             </div>
 
             <div style="display:flex;flex-direction:column;gap:9px;margin-top:18px">
@@ -1236,7 +1236,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
             </div>
           </div>
           <div class="scr" style="flex:1;min-height:0;overflow-y:auto;padding:16px 20px 20px">
-            <div style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--rf-muted)">Her name</div>
+            <div style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--rf-muted)">Member name</div>
             <input value="{{ nmName }}" onChange="{{ setNmName }}" placeholder="e.g. Anitha Rajesh" style="margin-top:8px;width:100%;height:52px;border-radius:14px;background:var(--rf-surface);border:1px solid var(--rf-line-14);padding:0 14px;color:var(--rf-fg-strong);font-family:inherit;font-size:15px;font-weight:600;outline:none">
 
             <div style="margin-top:18px;font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--rf-muted)">Course</div>
@@ -1258,7 +1258,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
             <div style="display:flex;align-items:center;gap:8px;margin-top:9px;font-size:11.5px;color:var(--rf-muted);line-height:1.45"><span class="ms" style="font-size:16px;color:#2FBE8C">lock</span>No phone number is held for members. It was never used to identify anyone.</div>
 
             <div style="margin-top:20px;font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--rf-muted)">Google Meet display names</div>
-            <div style="font-size:11.5px;color:var(--rf-muted);margin-top:7px;line-height:1.5">The names that may appear in the attendance file. Adding one here means the file matches it to her automatically.</div>
+            <div style="font-size:11.5px;color:var(--rf-muted);margin-top:7px;line-height:1.5">The names that may appear in the attendance file. Adding one here means the file matches it to the member automatically.</div>
             <div style="display:flex;flex-direction:column;gap:8px;margin-top:11px">
               <sc-for list="{{ nmAliases }}" as="a" hint-placeholder-count="1">
                 <div style="display:flex;align-items:center;gap:10px;padding:12px 13px;border-radius:14px;background:var(--rf-surface);border:1px solid {{ a.bd }}">
@@ -1295,7 +1295,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
             </div>
             <div style="display:flex;align-items:center;gap:8px;margin-top:9px;font-size:11.5px;color:var(--rf-muted);line-height:1.45"><span class="ms" style="font-size:16px;color:{{ nmMailIconFg }}">{{ nmMailIcon }}</span>{{ nmMailNote }}</div>
 
-            <div style="margin-top:20px;font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--rf-muted)">Her own days — optional</div>
+            <div style="margin-top:20px;font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--rf-muted)">Custom days — optional</div>
             <div style="font-size:11.5px;color:var(--rf-muted);margin-top:7px;line-height:1.5">{{ nmDayNote }}</div>
             <div style="display:flex;gap:7px;margin-top:11px">
               <sc-for list="{{ nmDays }}" as="d" hint-placeholder-count="7">
@@ -1509,7 +1509,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
             </div>
             <div style="margin-top:16px;padding:15px;border-radius:16px;background:var(--rf-surface-2);border:1px solid var(--rf-line-08);display:flex;gap:11px">
               <span class="ms" style="flex:none;font-size:19px;color:#2FBE8C">verified_user</span>
-              <div style="flex:1;font-size:11.5px;color:var(--rf-fg);line-height:1.55">There is no free-form email anywhere in the app. Every message sent comes from one of these templates plus her own figures, so nothing unreviewed can reach a member. Editing a template is audited.</div>
+              <div style="flex:1;font-size:11.5px;color:var(--rf-fg);line-height:1.55">There is no free-form email anywhere in the app. Every message sent comes from one of these templates plus their own figures, so nothing unreviewed can reach a member. Editing a template is audited.</div>
             </div>
             <div style="margin-top:12px;padding:15px;border-radius:16px;background:var(--rf-surface-2);border:1px solid var(--rf-line-08)">
               <div style="font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--rf-muted)">Values a template may use</div>
@@ -1654,7 +1654,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
             <div style="margin-top:20px;padding:16px 15px;border-radius:20px;background:var(--rf-surface);border:1px solid var(--rf-line-08)">
               <div style="display:flex;align-items:baseline;gap:8px">
                 <div style="flex:1;min-width:0;font-size:13px;font-weight:800;color:var(--rf-fg-strong)">{{ reportChartTitle }}</div>
-                <div style="flex:none;font-size:10.5px;color:var(--rf-muted);white-space:nowrap">attended vs missed</div>
+                <div style="flex:none;font-size:10.5px;color:var(--rf-muted);white-space:nowrap">Attended vs missed</div>
               </div>
               <div style="display:flex;flex-direction:column;gap:14px;margin-top:16px">
                 <sc-for list="{{ reportBars }}" as="b" hint-placeholder-count="4">
@@ -1897,7 +1897,7 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
                 </div>
               </sc-for>
 
-              <div style="font-size:12.5px;font-weight:700;color:var(--rf-fg-strong)">When should she be listed?</div>
+              <div style="font-size:12.5px;font-weight:700;color:var(--rf-fg-strong)">When should a member be listed?</div>
               <div style="display:flex;gap:8px;margin-top:10px">
                 <sc-for list="{{ combineOptions }}" as="o" hint-placeholder-count="2">
                   <button onClick="{{ o.press }}" style="flex:1;padding:12px 8px;border-radius:14px;background:{{ o.bg }};border:1.5px solid {{ o.bd }};cursor:pointer;font-family:inherit">
@@ -1932,10 +1932,10 @@ input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;bac
           <div style="position:relative;background:var(--rf-surface);border-top-left-radius:28px;border-top-right-radius:28px;border-top:1px solid var(--rf-line-10);padding:12px 20px 28px;animation:rf-sheet 240ms cubic-bezier(.2,0,0,1) both">
             <div style="width:42px;height:4px;border-radius:99px;background:var(--rf-line-20);margin:0 auto 16px"></div>
             <div style="font-family:'Bricolage Grotesque',sans-serif;font-size:20px;font-weight:700;color:var(--rf-fg-strong);line-height:1.25">{{ resetTitle }}</div>
-            <div style="font-size:12.5px;color:var(--rf-muted);margin-top:9px;line-height:1.55">Her current PIN stops working straight away. The new one is shown once, on the next screen.</div>
+            <div style="font-size:12.5px;color:var(--rf-muted);margin-top:9px;line-height:1.55">The current PIN stops working straight away. The new one is shown once, on the next screen.</div>
             <button onClick="{{ toggleSignOut }}" style="display:flex;align-items:center;gap:12px;width:100%;margin-top:16px;padding:14px;border-radius:16px;background:var(--rf-surface-2);border:1px solid var(--rf-line-10);cursor:pointer;font-family:inherit;text-align:left">
               <span style="flex:none;width:22px;height:22px;border-radius:7px;background:{{ signOutBg }};border:1.5px solid {{ signOutBd }};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:var(--rf-fg-strong)">{{ signOutMark }}</span>
-              <span style="flex:1;font-size:13px;font-weight:700;color:var(--rf-fg)">Also sign her out everywhere</span>
+              <span style="flex:1;font-size:13px;font-weight:700;color:var(--rf-fg)">Also sign them out everywhere</span>
             </button>
             <div style="display:flex;gap:10px;margin-top:16px">
               <button onClick="{{ closeAll }}" style="flex:1;height:50px;border-radius:15px;background:none;border:1px solid var(--rf-line-16);color:var(--rf-fg);font-family:inherit;font-size:14px;font-weight:700;cursor:pointer">Cancel</button>
@@ -2267,7 +2267,7 @@ const AUDIT = [
     by:'Aliya Banu', at:'31 Aug 2026, 8:20 pm' },
   { action:'Branch added', name:'Salem', old:'NA', now:'Salem',
     by:'Shazia Farheen', at:'28 Aug 2026, 3:10 pm' },
-  { action:'Course added', name:'Pelvic Floor Foundations', old:'NA', now:'Coimbatore \u00b7 no days set',
+  { action:'Course added', name:'Pelvic Floor Foundations', old:'NA', now:'Coimbatore \u00b7 No days set',
     by:'Shazia Farheen', at:'21 Aug 2026, 10:15 am' },
 ];
 const PENDING = [
@@ -2317,7 +2317,7 @@ const MATCHES = [
       aliases:'none yet', hint:'Also a plausible reading', hintColor:'#E8B93B' } ] },
   { kind:'noEmail', row:88, raw:'Meena Raj', join:'6:04 pm', mins:52, blocks:false, cands:[
     { id:12, name:'Meena Raj', code:'RF-000204', course:'Prenatal Yoga', branch:'Salem', last:'27 Aug', attendance:'66%',
-      aliases:'\u201cMeena Raj\u201d', hint:'Matched on her canonical name', hintColor:'#2FBE8C' } ] },
+      aliases:'\u201cMeena Raj\u201d', hint:'Matched on the canonical name', hintColor:'#2FBE8C' } ] },
   { kind:'unmatched', row:91, raw:'kavi.s', join:'6:11 pm', mins:9, blocks:true, cands:[] },
 ];
 const OUTCOME = {
@@ -2650,9 +2650,9 @@ class Component extends DCLogic {
       { ...S.awaiting,  date:'Sat 23 Aug', time:'8:00 am', detail:'File not uploaded \u2014 counts for nobody' },
     ];
     const member = { ...mr,
-      sessions: m.expected === 0 ? [{ ...S.none, date:'No sessions', time:'\u2014', detail:'She had none scheduled this week' }] : sess,
+      sessions: m.expected === 0 ? [{ ...S.none, date:'No sessions', time:'\u2014', detail:'None scheduled this week' }] : sess,
       mailTitle: m.email ? 'Email on file' : 'No usable email',
-      mailBody: m.email ? m.email + ' \u00b7 verified 4 Aug' : 'She is shown and counted as excluded from every send, never quietly dropped.',
+      mailBody: m.email ? m.email + ' \u00b7 verified 4 Aug' : 'The member is shown and counted as excluded from every send, never quietly dropped.',
       mailBg: m.email ? 'rgba(47,190,140,.07)' : 'rgba(242,104,60,.08)',
       mailBd: m.email ? 'rgba(47,190,140,.26)' : 'rgba(242,104,60,.3)',
       mailIcon: m.email ? 'mark_email_read' : 'mail_off',
@@ -2742,10 +2742,10 @@ class Component extends DCLogic {
           active:     { ...S.present, word:'Active', icon:'lock', action:'Reset PIN', primary:false, rank:3 },
         };
         const base = [
-          { name:'Sowmya Iyer',   role:'Front desk', phone:'+91 90032 71144', meta:'added 21 Aug', k:'notEnabled' },
+          { name:'Sowmya Iyer',   role:'Front desk', phone:'+91 90032 71144', meta:'Added 21 Aug', k:'notEnabled' },
           { name:'Nandhini R',    role:'Coach', phone:'+91 99406 33871', meta:'PIN issued 22 Aug, not used yet', k:'awaiting' },
-          { name:'Deepa Suresh',  role:'Coach', phone:'+91 94422 10098', meta:'left the academy', k:'disabled' },
-          { name:'Revathi Anand', role:'Coach', phone:'+91 98431 55210', meta:'signed in today', k:'active' },
+          { name:'Deepa Suresh',  role:'Coach', phone:'+91 94422 10098', meta:'Left the academy', k:'disabled' },
+          { name:'Revathi Anand', role:'Coach', phone:'+91 98431 55210', meta:'Signed in today', k:'active' },
           { name: me.name, role: me.label, phone:'+91 ' + me.phone, meta:'that\u2019s you', k:'active' },
         ].concat(st.added.map(a => ({ ...a, meta:'added just now', k:'notEnabled' })));
         return base.map((p, i) => ({ ...p, ...ST[p.k] }))
@@ -2977,9 +2977,9 @@ class Component extends DCLogic {
       ruleEditOpacity: '1',
       ruleConditions: [
         { key:'we', tkey:'wt', label:'Weekly missed sessions', min:1, max:7,
-          hint: 'Listed when she misses this many of the week\u2019s scheduled sessions.' },
+          hint: 'Listed when a member misses this many of the week\u2019s scheduled sessions.' },
         { key:'ce', tkey:'ct', label:'Consecutive missed sessions', min:1, max:12,
-          hint: 'Listed when her current run of misses reaches this length.' },
+          hint: 'Listed when the current run of misses reaches this length.' },
       ].map(c => { const on = !!d[c.key], v = d[c.tkey];
         const set = patch => this.setState({ draftCfg: { ...d, ...patch } });
         return { label:c.label, hint:c.hint, value:v,
@@ -3002,7 +3002,7 @@ class Component extends DCLogic {
       rulePlain: (() => {
         const w = 'misses ' + d.wt + ' or more sessions in the week', c = 'misses ' + d.ct + ' sessions in a row';
         const body = d.we && d.ce ? (w + (d.comb === 'AND' ? ' AND ' : ' OR ') + c) : d.we ? w : c;
-        return 'A member ' + (st.ruleCourse ? 'in ' + st.ruleCourse : 'in any course') + ' is listed for follow-up when she ' + body + '.';
+        return 'A member ' + (st.ruleCourse ? 'in ' + st.ruleCourse : 'in any course') + ' is listed for follow-up when they ' + body + '.';
       })(),
       ruleCount: MEMBERS.filter(m => eligible(m, d)).length,
       ruleCountNote: 'members would be listed for the current week, out of ' + MEMBERS.length + '. Nothing is saved until you press save.',
@@ -3079,7 +3079,7 @@ class Component extends DCLogic {
       newStaffRole: st.issued ? st.issued.role + ' \u00b7 ' + st.issued.branch : '',
       copyPin: () => this.flash('PIN copied \u2014 it clears from the clipboard in 60 seconds'),
       copyLink: () => this.flash('App link copied \u00b7 rosifit.app/staff'),
-      sharePin: () => this.flash('Opening WhatsApp with her number'),
+      sharePin: () => this.flash('Opening WhatsApp with their number'),
       showTabs: ['home','courses','addCourse','course','addMember','reports','more','weekly','members','calendar'].includes(st.screen),
       isReports: st.screen === 'reports',
       isBranches: st.screen === 'branches',
@@ -3228,12 +3228,12 @@ class Component extends DCLogic {
           mailBg: m.email ? 'rgba(47,190,140,.1)' : 'rgba(242,104,60,.1)',
           mailBd: m.email ? 'rgba(47,190,140,.3)' : 'rgba(242,104,60,.32)',
           meta: m.expected === 0 ? 'no sessions this week' : m.attended + '/' + m.expected + ' this week',
-          open: () => m.id ? this.go('member', { memberId:m.id }) : this.flash('She has no sessions yet'),
+          open: () => m.id ? this.go('member', { memberId:m.id }) : this.flash('No sessions yet'),
           edit: () => this.flash('Editing ' + m.name.split(' ')[0] + '\u2019s record'),
-          remove: () => this.flash('Remove ' + m.name.split(' ')[0] + '? Her attendance history is kept', 'warn') })),
+          remove: () => this.flash('Remove ' + m.name.split(' ')[0] + '? Their attendance history is kept', 'warn') })),
 
       nmTitle: st.editingMember ? 'Edit member' : 'Welcome a new member',
-      nmSub: st.editingMember ? (st.nmName || '') + ' \u00b7 ' + (st.nmCourse || '') : 'She joins a course at one branch',
+      nmSub: st.editingMember ? (st.nmName || '') + ' \u00b7 ' + (st.nmCourse || '') : 'Joins a course at one branch',
       nmCta: st.editingMember ? 'Save Changes' : 'Add Member',
       nmIcon: st.editingMember ? 'check' : 'favorite',
       nmName: st.nmName || '', nmJoin: st.nmJoin || '',
@@ -3241,7 +3241,7 @@ class Component extends DCLogic {
       setNmJoin: e => this.setState({ nmJoin: e.target.value }),
       nmAliasDraft: st.nmAliasDraft || '',
       setNmAliasDraft: e => this.setState({ nmAliasDraft: e.target.value }),
-      nmAliases: [{ name: (st.nmName || '').trim() || 'Her full name', canonical:true }]
+      nmAliases: [{ name: (st.nmName || '').trim() || 'Full name', canonical:true }]
         .concat(st.nmAliasList || []).map((a, i) => ({
           name: a.name,
           canonical: a.canonical,
@@ -3258,7 +3258,7 @@ class Component extends DCLogic {
         const taken = ['Shazia','Shazia F'].includes(q);
         if (taken) return this.flash('\u201c' + q + '\u201d is already a display name for Shazia Khan', 'warn');
         this.setState(s => ({ nmAliasList: [...(s.nmAliasList || []), { name:q }], nmAliasDraft:'' }));
-        this.flash('\u201c' + q + '\u201d will now match her in the attendance file'); },
+        this.flash('\u201c' + q + '\u201d will now match the member in the attendance file'); },
       nmEmailDraft: st.nmEmailDraft || '',
       setNmEmailDraft: e => this.setState({ nmEmailDraft: e.target.value }),
       nmEmails: (st.nmEmailList || []).map((addr, i) => {
@@ -3272,13 +3272,13 @@ class Component extends DCLogic {
           remove: () => this.setState(s => { const list = (s.nmEmailList || []).filter((_, j) => j !== i);
             return { nmEmailList: list, nmPrimary: Math.min(s.nmPrimary ?? 0, Math.max(list.length - 1, 0)) }; }) }; }),
       addNmEmail: () => { const q = (st.nmEmailDraft || '').trim(); if (!q) return;
-        if ((st.nmEmailList || []).some(a => a.toLowerCase() === q.toLowerCase())) return this.flash('That address is already on her record', 'warn');
+        if ((st.nmEmailList || []).some(a => a.toLowerCase() === q.toLowerCase())) return this.flash('That address is already on the record', 'warn');
         this.setState(s => ({ nmEmailList: [...(s.nmEmailList || []), q], nmEmailDraft:'' })); },
       nmMailIcon: (st.nmEmailList || []).length ? 'mark_email_read' : 'mail_off',
       nmMailIconFg: (st.nmEmailList || []).length ? '#2FBE8C' : '#F2683C',
       nmMailNote: (st.nmEmailList || []).length
         ? 'Follow-up emails go to the primary address only.'
-        : 'With no address she is listed and counted as excluded from every send \u2014 never quietly dropped.',
+        : 'With no address the member is listed and counted as excluded from every send \u2014 never quietly dropped.',
       nmCourse: st.nmCourse || 'Prenatal Flow',
       nmBranch: st.nmBranch || 'Coimbatore',
       openCoursePicker: () => this.setState({ picker:'course', pickerQuery:'' }),
@@ -3409,7 +3409,7 @@ class Component extends DCLogic {
         : 'No course matches that. Type the full name and add it; you set its days later, on an offering.',
       nmDayNote: (() => { const all = COURSES.concat(st.newCourses || []);
         const c = all.find(x => x.name === (st.nmCourse || 'Prenatal Flow')) || all[0];
-        return c.days.length ? 'Leave blank and she follows the days ' + c.name + ' offerings run \u2014 ' + c.days.join(', ') + '. Only those days can be picked.'
+        return c.days.length ? 'Leave blank and the member follows the days ' + c.name + ' offerings run \u2014 ' + c.days.join(', ') + '. Only those days can be picked.'
           : c.name + ' has no offering running yet, so there are no days to pick.'; })(),
       nmDays: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(label => {
         const all2 = COURSES.concat(st.newCourses || []);
@@ -3426,8 +3426,8 @@ class Component extends DCLogic {
       nmBg: (st.nmName || '').trim() ? P : 'var(--rf-off-bg)',
       nmFg: (st.nmName || '').trim() ? '#fff' : 'var(--rf-muted)',
       nmHint: (st.nmName || '').trim()
-        ? (st.nmCourse || 'Prenatal Flow') + ' \u00b7 ' + (st.nmBranch || 'Coimbatore') + ((st.nmEmailList || []).length ? '' : ' \u00b7 no email, she will be excluded from sends')
-        : 'Her name is all that is required',
+        ? (st.nmCourse || 'Prenatal Flow') + ' \u00b7 ' + (st.nmBranch || 'Coimbatore') + ((st.nmEmailList || []).length ? '' : ' \u00b7 no email, excluded from sends')
+        : 'A member name is all that is required',
       createMember: () => {
         const name = (st.nmName || '').trim(); if (!name) return;
         const email = ((st.nmEmailList || [])[st.nmPrimary ?? 0] || '').trim();
@@ -3650,7 +3650,7 @@ class Component extends DCLogic {
         return s2 === 0 ? '\u2014' : Math.round((a2 / s2) * 100) + '%'; })(),
       reportBigNote: (() => { const rows = REPORT_SETS(st)[st.scope || 'Courses'];
         const s2 = rows.reduce((n, r) => n + r.sched, 0), a2 = rows.reduce((n, r) => n + r.att, 0);
-        if (s2 === 0) return 'no sessions scheduled in this period';
+        if (s2 === 0) return 'No sessions scheduled in this period';
         return 'of ' + s2 + ' scheduled sessions attended \u00b7 ' + ((st.scope || 'Courses') === 'Members' ? 'this week' : 'this month'); })(),
       reportBars: (() => {
         const rows = REPORT_SETS(st)[st.scope || 'Courses'];
@@ -3732,7 +3732,7 @@ class Component extends DCLogic {
           title:'1 check-in email sent', body:'Meenakshi Sundaram \u00b7 Trimester 3 Gentle \u00b7 sent from support@getfit.ravisfit.com using the Long absence template.',
           when:'2 Sep 2026, 8:42 pm', press: () => { this.setState({ notifsOpen:false }); this.go('audit'); } },
         { icon:'mail_off', iBg:'rgba(242,104,60,.12)', iFg:'#F2683C', bd:'rgba(242,104,60,.26)',
-          title:'1 email could not be sent', body:'Fathima Rizwan meets the rule for Postnatal Core but has no email on file, so she was excluded from the send.',
+          title:'1 email could not be sent', body:'Fathima Rizwan meets the rule for Postnatal Core but has no email on file, so they were excluded from the send.',
           when:'2 Sep 2026, 8:42 pm', press: () => { this.setState({ notifsOpen:false }); this.go('course', { courseName:'Postnatal Core' }); } },
       ]),
       goHome: () => this.go('home'), goWeekly: () => this.showWeekly(),
@@ -3746,7 +3746,7 @@ class Component extends DCLogic {
       openModal: () => this.setState({ confirmOpen:true }),
       confirmOpen: !!st.confirmOpen,
       confirmTitle: 'Send ' + sendSelected.length + (sendSelected.length === 1 ? ' check-in email?' : ' check-in emails?'),
-      confirmBody: 'Each email carries her own attendance figures and goes out from ' + curCourse.sender
+      confirmBody: 'Each email carries their own attendance figures and goes out from ' + curCourse.sender
         + ' using the ' + curCourse.template + ' template.'
         + (courseNoEmail.length ? ' ' + courseNoEmail.length + (courseNoEmail.length === 1 ? ' member is' : ' members are')
           + ' excluded for having no usable email — they stay on your list.' : ''),
@@ -3834,13 +3834,13 @@ class Component extends DCLogic {
         const msg = cur.kind === 'possible'
             ? 'Possible existing member found. Nothing is applied until you choose \u2014 this is the prompt that stops a duplicate being created.'
           : cur.kind === 'noEmail'
-            ? 'Member identified, but no email is configured. Her attendance is recorded either way. She will not be included in follow-up emails until an address is added.'
+            ? 'Member identified, but no email is configured. Attendance is recorded either way. They will not be included in follow-up emails until an address is added.'
           : cur.kind === 'ambiguous'
             ? 'Two members could carry this name. Pick one explicitly \u2014 the import will not guess.'
             : 'Member not found. No email, course or branch is invented; course and branch come from the session being imported.';
         return { ...cur, tag:o.tag, tagIcon:o.icon, tagFg:o.fg, tagBg:o.bg, tagBd:o.bd,
           msgIcon: cur.kind === 'noEmail' ? 'warning' : o.icon, msg, msgBg:o.bg, msgBd:o.bd,
-          question: cur.kind === 'possible' ? 'Is this her?' : cur.kind === 'noEmail' ? 'Matched to' : cur.kind === 'ambiguous' ? 'Who is she?' : 'What should happen to this row?' }; })(),
+          question: cur.kind === 'possible' ? 'Is this the same member?' : cur.kind === 'noEmail' ? 'Matched to' : cur.kind === 'ambiguous' ? 'Who is this?' : 'What should happen to this row?' }; })(),
       candidates: cur.cands.map(c => ({ ...c,
         bg:'var(--rf-surface)', bd: cur.kind === 'noEmail' ? 'rgba(47,190,140,.26)' : 'var(--rf-line-10)',
         ring: cur.kind === 'noEmail' ? '#2FBE8C' : 'var(--rf-muted)', dot: cur.kind === 'noEmail' ? '#2FBE8C' : 'transparent',
@@ -3856,7 +3856,7 @@ class Component extends DCLogic {
           { icon:'person_add', label:'Add as new member', note:'Pre-filled from this row \u00b7 email left blank \u00b7 duplicate guard runs first', d:'add_new' },
           { icon:'help_outline', label:'Keep unmatched', note:'Recorded as not-a-member. Nothing is created', d:'keep' },
         ] : cur.kind === 'noEmail' ? [
-          { icon:'alternate_email', label:'Add email to existing member', note:'She becomes eligible for follow-up sends', d:'add_email' },
+          { icon:'alternate_email', label:'Add email to existing member', note:'Becomes eligible for follow-up sends', d:'add_email' },
           { icon:'east', label:'Continue without email', note:'Attendance still imports \u00b7 excluded from sends, with the reason shown', d:'no_email' },
         ] : cur.kind === 'unmatched' ? [
           { icon:'person_add', label:'Add as new member', note:'Course and branch come from ' + pick.date + ' \u00b7 ' + pick.course + ' (' + pick.branch + ')', d:'add_new' },
@@ -3870,8 +3870,8 @@ class Component extends DCLogic {
           fg: (a2.d === 'add_new' || a2.d === 'add_email') ? 'var(--rf-accent-200)' : 'var(--rf-muted)',
           press: () => {
             const msgs = { add_new:'Added as a new member \u00b7 decision audited', keep:'Row kept unmatched \u00b7 nothing created',
-              add_email:'Email added to her record \u00b7 she is now eligible', no_email:'Continuing without email \u00b7 attendance still imports',
-              link:'Pick her from the register' };
+              add_email:'Email added to the record \u00b7 now eligible', no_email:'Continuing without email \u00b7 attendance still imports',
+              link:'Pick the member from the register' };
             if (a2.d === 'link') return this.flash(msgs.link);
             this.flash(msgs[a2.d] || 'Recorded');
             decide(cur.raw, 0, a2.d); } })),
@@ -3893,10 +3893,10 @@ class Component extends DCLogic {
           word: failed ? 'FAILED' : 'SENT',
           fg: failed ? '#F2683C' : '#2FBE8C',
           bd: failed ? 'rgba(242,104,60,.3)' : 'rgba(47,190,140,.26)',
-          note: failed ? 'Mailbox full at her provider. Retry, or call her instead.'
+          note: failed ? 'Mailbox full at the provider. Retry, or call the member instead.'
             : 'Delivered to ' + m.email + ' from ' + curCourse.sender };
       }).concat(courseNoEmail.map(m => ({ name: m.name, icon:'mail_off', word:'EXCLUDED', fg:'#F2683C',
-        bd:'rgba(242,104,60,.24)', note:'No usable email \u2014 she stays on your list and her attendance is still recorded.' }))),
+        bd:'rgba(242,104,60,.24)', note:'No usable email \u2014 they stay on your list and attendance is still recorded.' }))),
       sendCtaLabel: 'Send to ' + sendSelected.length + (sendSelected.length === 1 ? ' member' : ' members'),
       composeSub: st.composeStage === 'pick' ? (sendSelected.length + (sendSelected.length === 1 ? ' member selected' : ' members selected') + ' · ' + curCourse.name)
         : st.composeStage === 'review' ? ((st.template || curCourse.template) + ' · ' + curCourse.name) : 'Sent 8:42 pm · 22 Aug',
@@ -3934,16 +3934,16 @@ class Component extends DCLogic {
       sendToNames: sendSelected.map(m => m.name + ' \u00b7 ' + m.email).join('\n'),
       sendTemplate: curCourse.template,
       sendFrom: curCourse.sender,
-      sendDraftSubject: (curCourse.subject ?? tplSeed.subject).replace(/\{first_name\}/g, 'her first name'),
+      sendDraftSubject: (curCourse.subject ?? tplSeed.subject).replace(/\{first_name\}/g, 'their first name'),
       sendDraftBody: (curCourse.body ?? tplSeed.body)
-        .replace(/\{first_name\}/g, 'her first name')
+        .replace(/\{first_name\}/g, 'their first name')
         .replace(/\{course_name\}/g, curCourse.name)
         .replace(/\{branch\}/g, curCourse.branch)
-        .replace(/\{expected\}/g, 'her expected')
-        .replace(/\{attended\}/g, 'her attended')
-        .replace(/\{missed_sessions_week\}/g, 'her missed')
-        .replace(/\{consecutive_missed_sessions\}/g, 'her run')
-        .replace(/\{attendance_percentage\}/g, 'her percentage'),
+        .replace(/\{expected\}/g, 'their expected')
+        .replace(/\{attended\}/g, 'their attended')
+        .replace(/\{missed_sessions_week\}/g, 'their missed')
+        .replace(/\{consecutive_missed_sessions\}/g, 'their run')
+        .replace(/\{attendance_percentage\}/g, 'their percentage'),
       sendSkipNote: (() => { const n = courseNoEmail.length;
         return n ? n + (n === 1 ? ' member has no email and is' : ' members have no email and are') + ' skipped from follow-up entirely.'
           : 'Every member in this course has a usable email.'; })(),

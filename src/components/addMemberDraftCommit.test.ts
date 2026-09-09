@@ -67,7 +67,7 @@ test('blur is not a laxer way in than + Add', () => {
   assert.ok(addAlias, 'addAlias must still be the one display-name path');
   assert.match(addAlias[0], /if \(!a\) return;/,
     'an empty display-name draft must add nothing');
-  assert.ok(addAlias[0].includes('That display name is already on her record'),
+  assert.ok(addAlias[0].includes('That display name is already on the record'),
     'a duplicate display name must still be refused');
 });
 

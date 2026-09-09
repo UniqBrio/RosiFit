@@ -183,6 +183,35 @@ export const triggerDirty = (r: TriggerReading, draft: number): boolean =>
 export const triggerResettable = (r: TriggerReading, draft: number): boolean =>
   clampThreshold(draft) !== r.resetTo;
 
+/**
+ * THE ONE LINE A COLLAPSED PANEL STILL SAYS.
+ *
+ * The panel can be shrunk to its heading once the trigger has been dealt with
+ * (requests/2026-09-09-follow-up-trigger-collapses.md). What it must not
+ * shrink to is silence: "saying nothing at all is what this change exists to
+ * stop" is the whole reason the panel is on these screens, and a card reading
+ * only *Follow-up trigger* over a list of 435 people states nothing about the
+ * rule that produced them.
+ *
+ * So collapsed still carries the number IN FORCE — `r.threshold` and `r.kind`,
+ * which is what the list below was actually drawn from, never the stepper's
+ * draft.
+ *
+ * A TYPED-BUT-UNAPPLIED number is NAMED rather than hidden. Collapsing with a
+ * change pending is the one way this control could lose something: the number
+ * on the stepper is not the number in force, and with the stepper folded away
+ * there is nothing on screen to say so. It converts on Apply, so the pending
+ * half is phrased as weekly — the same conversion `triggerConverts` warns
+ * about, said the same way.
+ */
+export function triggerSummary(r: TriggerReading, draft: number): string {
+  const d = clampThreshold(draft);
+  const inForce = triggerPhrase(r.threshold, r.kind);
+  return d === r.threshold
+    ? inForce
+    : `${inForce} · ${triggerPhrase(d, 'weekly')} typed, not applied`;
+}
+
 /** What was saved, in one line for the toast — the number AND what it counts,
  *  so a person who looks away mid-save still knows what landed. */
 export const triggerSavedLine = (courseName: string | null, threshold: number): string =>

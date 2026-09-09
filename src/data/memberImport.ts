@@ -100,11 +100,11 @@ export const EMAIL_MAX = 254;
 /** What each column is for, shown on the screen and written into the
  *  template's instructions sheet -- one source for both. */
 export const MEMBER_IMPORT_HELP: { column: string; means: string }[] = [
-  { column: 'Full Name', means: 'required — her name as the academy writes it' },
+  { column: 'Full Name', means: 'required — the member name as the academy writes it' },
   { column: 'Email', means: 'required — the address the academy writes to' },
   { column: 'Course', means: 'pick from the list; blank means the course this import was opened from' },
   { column: 'Branch', means: 'pick from the list; blank means that course’s branch' },
-  { column: 'Display Names', means: 'the names Google Meet shows for her, separated by commas' },
+  { column: 'Display Names', means: 'the names Google Meet shows for them, separated by commas' },
 ];
 
 export type MemberImportRow = {
@@ -191,7 +191,7 @@ export function validateMemberRows(
       ({ state: 'blocked', row, reason, kind });
     const name = row.full_name.trim();
 
-    if (name.length < NAME_MIN) return blocked('No name in this row — her name and her email address are both required.');
+    if (name.length < NAME_MIN) return blocked('No name in this row — member name and email address are both required.');
     if (name.length > NAME_MAX) return blocked(`That name is longer than ${NAME_MAX} characters.`);
 
     const norm = normalizeForMatch(name);
@@ -200,7 +200,7 @@ export function validateMemberRows(
     if (ctx.existingNames.has(norm)) {
       // The reference SKIPS a duplicate rather than overwriting. Shown here
       // before the tap so the person is not surprised by the count.
-      return blocked(`“${name}” is already on the register — she was skipped. Edit her instead.`, 'duplicate');
+      return blocked(`“${name}” is already on the register — skipped. Edit the member instead.`, 'duplicate');
     }
 
     const course = row.course || ctx.defaultCourse;

@@ -23,6 +23,7 @@ import { bucketFixture, type BucketMetrics } from './buckets';
 import type { SentMap } from './sent';
 import { currentSchedules, today } from './schedule';
 import { inactiveFromProblem } from './inactiveFrom';
+import { activeFromProblem } from './joined';
 import { enrolledIn, endEnrolment } from './course';
 import { isoWeekday, storedStatus, dayInWords } from './dayAttendance';
 // One blessed reading of a removal's metadata, shared with the plain-language
@@ -1365,10 +1366,10 @@ export async function fetchStaff(): Promise<Staff[]> {
     const access = accessOf(u as never);
     const when = (v: string | null) => (v ? new Date(v).toLocaleDateString() : '');
     const meta =
-      access === 'disabled' ? 'access turned off'
-      : access === 'notEnabled' ? `added ${when(u.created_at as string)}`
+      access === 'disabled' ? 'Access turned off'
+      : access === 'notEnabled' ? `Added ${when(u.created_at as string)}`
       : access === 'awaiting' ? `PIN issued ${when(u.pin_set_at as string)}, not used yet`
-      : `last signed in ${when(u.last_login_at as string)}`;
+      : `Last signed in ${when(u.last_login_at as string)}`;
     return {
       id: u.id as string, name: u.name as string, phone: u.phone_e164 as string,
       role: u.role_label as string, access, meta,
@@ -1858,6 +1859,8 @@ export async function fetchWeekRows(weeks: Period[]): Promise<WeekRow[]> {
 // Re-exported here because this is where callers expect to find it.
 import type { PendingSession } from './mock';
 import type { MemberImportRow, ImportResult } from './memberImport';
+import { normalizeForMatch } from './memberImport';
+import type { StatusImportResult, StatusRowResult } from './statusImport';
 export type { PendingSession };
 
 const MONTHS_SHORT = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
@@ -1906,7 +1909,7 @@ export async function fetchPendingSessions(): Promise<PendingSession[]> {
       dayNum: String(date.getDate()),
       mon: MONTHS_SHORT[date.getMonth()],
       title: `${course}${time ? ` · ${time}` : ''}`,
-      meta: `${branch} · ${s.expected_count ?? 0} expected · awaiting upload`,
+      meta: `${branch} · ${s.expected_count ?? 0} expected · Awaiting upload`,
       label: `${DAYS_SHORT[date.getDay()]} ${date.getDate()} ${MONTHS_SHORT[date.getMonth()][0]}${MONTHS_SHORT[date.getMonth()].slice(1).toLowerCase()} · ${course}${time ? ` ${time}` : ''}`,
     };
   });
@@ -2205,7 +2208,7 @@ export async function fetchMemberWeek(memberId: string, period: Period): Promise
   const { data: enrol, error: enrolError } = await supabase
     .from('member_enrollments').select('offering_id')
     .eq('member_id', memberId).eq('status', 'active');
-  if (enrolError) fail('Could not load her sessions', enrolError);
+  if (enrolError) fail('Could not load these sessions', enrolError);
 
   const offeringIds = [...new Set((enrol ?? []).map(e => e.offering_id as string))];
   // Enrolled at nothing is a fact, and it is the "No sessions" row -- not an
@@ -2217,7 +2220,7 @@ export async function fetchMemberWeek(memberId: string, period: Period): Promise
     .in('offering_id', offeringIds)
     .gte('session_date', period.from).lte('session_date', period.to)
     .is('deleted_at', null);
-  if (error) fail('Could not load her sessions', error);
+  if (error) fail('Could not load these sessions', error);
   if (!sessions || sessions.length === 0) return [NO_SESSIONS_ROW];
 
   const { data: records, error: recordError } = await supabase.from('attendance_records')
@@ -2225,7 +2228,7 @@ export async function fetchMemberWeek(memberId: string, period: Period): Promise
     .eq('member_id', memberId)
     .in('session_id', sessions.map(s => s.id as string))
     .is('deleted_at', null);
-  if (recordError) fail('Could not load her sessions', recordError);
+  if (recordError) fail('Could not load these sessions', recordError);
 
   // The same manual joins the rest of this file uses rather than a PostgREST
   // embed: an embed returns null for a row RLS hides on the far side, and a
@@ -2605,7 +2608,7 @@ export async function bulkImportMembers(input: {
       if (MEMBERS.some(m => m.name.toLowerCase() === r.full_name.toLowerCase())) {
         result.skipped++;
         result.rows.push({ row: r.row, full_name: r.full_name, status: 'skipped',
-          reason: 'already on the register — edit her instead' });
+          reason: 'already on the register — edit the member instead' });
         continue;
       }
       const course = COURSE_LIST.find(c => c.name.toLowerCase() === r.course.toLowerCase())
@@ -2662,6 +2665,95 @@ export async function bulkImportMembers(input: {
   return data as ImportResult;
 }
 
+/**
+ * BULK IMPORT INACTIVE -- the register's two dates, set from the re-uploaded
+ * report (0058).
+ *
+ * A SECOND importer, by the requester's decision: "let there be another button
+ * as bulk import inactive dont allow it in bulk import itslef let that be
+ * there only to upload member and create their record."
+ *
+ * `bulkImportMembers` above CREATES and only creates -- a name already on the
+ * register is skipped, never overwritten, and that skip is what has stopped a
+ * re-uploaded file rewriting forty records since 0028. This one is its exact
+ * complement: it NEVER inserts, and a name it cannot find comes back with an
+ * instruction to use the other button.
+ *
+ * Every row is written server-side through set_member_status (0045) and
+ * set_member_active_from (0057) -- the two functions that already own these
+ * columns -- so a bulk row is refused by the same sentence the Edit form would
+ * show for it.
+ */
+export type StatusImportInput = {
+  rows: { row: number; full_name: string;
+          active_from: string | null; inactive_from: string | null; status: string | null }[];
+  file_name: string | null;
+};
+
+export async function bulkSetMemberDates(input: StatusImportInput): Promise<StatusImportResult> {
+  if (!isConfigured) {
+    // Offline the fixture list IS the store, exactly as bulkImportMembers
+    // says. The rules are the server's, restated: a name that is not on the
+    // register is refused, a blank cell leaves its column alone, and a row
+    // that changes nothing is `unchanged` rather than a write.
+    const rows: StatusRowResult[] = [];
+    let updated = 0, unchanged = 0, failed = 0;
+    for (const r of input.rows) {
+      const key = normalizeForMatch(r.full_name);
+      const found = MEMBERS.filter(m => normalizeForMatch(m.name) === key);
+      if (found.length !== 1) {
+        failed++;
+        rows.push({ row: r.row, full_name: r.full_name, status: 'failed',
+          reason: found.length === 0
+            ? 'not on the register — add them with Bulk Import first, this file only changes dates'
+            : `more than one member is called “${r.full_name}”` });
+        continue;
+      }
+      const i = MEMBERS.indexOf(found[0]);
+      const was = MEMBERS[i];
+      // The same three lines bulk_set_member_dates (0058) resolves server-side,
+      // and they have to be the same three or the offline store tells a
+      // different story about the same file. The status arrives as the WORD
+      // the sheet carries ('Active'), not as the column's value, so it is
+      // lowered here exactly as the SQL lowers it; and an inactive date with
+      // no status beside it means inactive from that day, because
+      // members_inactive_from_needs_status allows no other reading.
+      const said = r.status?.trim().toLowerCase();
+      const status = (said === 'active' || said === 'inactive' || said === 'paused' ? said
+        : r.inactive_from ? 'inactive'
+        : was.status) as MemberStatus;
+      const from = status === 'active' ? null : (r.inactive_from ?? was.inactiveFrom ?? null);
+      const joinedOn = r.active_from ?? was.joinedOn ?? null;
+      const changed = status !== was.status
+        || from !== (was.inactiveFrom ?? null)
+        || joinedOn !== (was.joinedOn ?? null);
+      if (!changed) { unchanged++; rows.push({ row: r.row, full_name: was.name, status: 'unchanged' }); continue; }
+      MEMBERS[i] = {
+        ...was, status, inactiveFrom: from,
+        joinedOn, joined: joinedLabel(joinedOn),
+      };
+      updated++;
+      rows.push({ row: r.row, full_name: was.name, status: 'updated', member_id: was.id });
+    }
+    membersChanged();
+    return { total: input.rows.length, updated, unchanged, failed, rows };
+  }
+
+  const { data, error } = await supabase.rpc('bulk_set_member_dates', {
+    p_rows: input.rows,
+    p_file_name: input.file_name,
+  });
+  if (error || !data) {
+    console.error('bulkSetMemberDates:', error?.message ?? 'no row returned');
+    throw new Error(memberWriteError(error));
+  }
+  // Both ends of the membership window moved, and every date-scoped screen
+  // narrows by one or the other -- the roster for a day, the period figures,
+  // the follow-up list. One revalidation is all of them (guardrail 1).
+  membersChanged();
+  return data as StatusImportResult;
+}
+
 /** The academy's own name, for the branded template file. */
 export async function fetchAcademyName(): Promise<string> {
   if (!isConfigured) return 'RosiFit Academy';
@@ -2677,14 +2769,18 @@ export async function fetchAcademyName(): Promise<string> {
  * an address removed is a row soft-deleted. A patch API behind a screen that
  * shows the complete set is how a removal turns into a silent no-op.
  *
- * `joined_on` is deliberately NOT a parameter. The day she joined is a fact
- * about the past; a write path that could rewrite it would let a typo move
- * every session she was ever expected at.
+ * `joined_on` is deliberately NOT a parameter, and it stays that way after
+ * 0057 made the date editable. The day she joined moves every session she was
+ * ever expected at, so it does not travel with a general-purpose save that
+ * carries five other fields: an ordinary edit to her address must not be able
+ * to touch it even by accident.
  *
- * The Edit form SHOWS it -- read-only, seeded from `Member.joinedOn` -- which
- * is a different thing from offering to change it. Saving her therefore
- * cannot clear or overwrite the date, because no save carries one:
- * src/data/memberJoined.test.ts holds both halves of that.
+ * Since 0057 the Edit form DOES offer a picker for it -- labelled "Active
+ * from" -- and that picker calls `setMemberActiveFrom`, its own narrow write
+ * path, only when the date actually moved. So saving her still cannot clear
+ * or overwrite the date, because no save carries one:
+ * src/data/memberJoinedOn.test.ts holds both halves of that, and asserts the
+ * separate call as well.
  */
 export type MemberUpdate = Omit<MemberInput, 'joined_on'> & { id: string };
 
@@ -2807,12 +2903,12 @@ export async function mergeMemberInto(strayId: string, targetId: string):
     const ti = MEMBERS.findIndex(m => m.id === targetId);
     if (si < 0 || ti < 0) throw new Error('That member is not on the register. Nothing has been saved.');
     if (strayId === targetId) {
-      throw new Error('That is the same member — a member cannot be merged into herself.');
+      throw new Error('That is the same member — a member cannot be merged into themselves.');
     }
     const stray = MEMBERS[si];
     if (stray.emails.length > 0) {
       throw new Error(
-        `${stray.name} has an email address of her own, so merging her would have to choose which address wins. Add the display name by hand instead.`);
+        `${stray.name} has an email address of their own, so merging them would have to choose which address wins. Add the display name by hand instead.`);
     }
     // The same rule the unique index applies live, run against the fixture
     // register -- one module, so the two paths cannot tell different stories.
@@ -2917,7 +3013,7 @@ export async function setMemberStatus(
     // of the form was refused, which is the very thing this change was asked
     // to fix (requests/2026-09-07-display-name-refusal-clears-and-case.md).
     // The missing personReadable() guard here is TD-030, not this change.
-    throw new Error(`${sentenceOpening((error?.message ?? '').trim() || 'Her status could not be changed')}. Nothing has been saved.`);
+    throw new Error(`${sentenceOpening((error?.message ?? '').trim() || 'The status could not be changed')}. Nothing has been saved.`);
   }
 
   // Her eligibility for follow-up moves with it, and the flagged set is
@@ -2925,6 +3021,72 @@ export async function setMemberStatus(
   // the dashboard count, the weekly list and the send draft, all of them.
   membersChanged();
   return { changed: Boolean((data as { changed?: boolean }).changed) };
+}
+
+/**
+ * ACTIVE FROM -- moving the day a member went ON the register (0057).
+ *
+ * WHY THIS IS A WRITE AT ALL
+ * `members.joined_on` has had exactly one writer since 0006 -- `create_member`,
+ * at the moment she is added -- and after that nothing in the schema could
+ * move it. `update_member` (0027) takes no parameter for it, which is why
+ * `MemberUpdate` is `Omit<MemberInput, 'joined_on'>` and why the Edit form
+ * rendered the date read-only: a picker that accepts a change the form cannot
+ * save is worse than a field that says it is not editable.
+ *
+ * That was tolerable while the date was only ever set by the person adding
+ * her. It stopped being tolerable at 0049, which dates every bulk-imported
+ * member to the day of the UPLOAD -- so an academy that onboards forty
+ * members in one morning has forty joining dates that are all the same and
+ * all wrong, and `joined.ts` narrows every date-scoped screen by them.
+ *
+ * WHY AN RPC, and not `.update({ joined_on })`
+ * The same three reasons setMemberStatus gives, plus one this date has of its
+ * own: her ENROLMENT opens on the same day (0049), so moving one and not the
+ * other is the two-answers defect 0049 was written to remove. A direct update
+ * can only reach `members`. `set_member_active_from` moves the pair.
+ *
+ * The three refusals are the server's -- future date, after her inactive
+ * date, after the earliest session she is recorded at. The first two are
+ * mirrored client-side by `activeFromProblem` so the form does not have to
+ * round-trip a date it can already tell is wrong; the third only the database
+ * can answer, and its sentence is shown as it comes back.
+ */
+export async function setMemberActiveFrom(
+  id: string, activeFrom: string):
+  Promise<{ changed: boolean; enrolmentMoved: boolean }> {
+  if (!isConfigured) {
+    // Offline the fixture list IS the store, exactly as setMemberStatus says.
+    const i = MEMBERS.findIndex(m => m.id === id);
+    if (i < 0) throw new Error('That member is not on the register. Nothing has been saved.');
+    const problem = activeFromProblem(
+      activeFrom, MEMBERS[i].inactiveFrom ?? null, iso(new Date()));
+    if (problem) throw new Error(`${problem}. Nothing has been saved.`);
+    const changed = (MEMBERS[i].joinedOn ?? null) !== activeFrom;
+    // `joined` is the SUBTITLE derived from this column (period.joinedLabel).
+    // Writing one without the other is how the member card came to disagree
+    // with the record it is drawn from.
+    MEMBERS[i] = { ...MEMBERS[i], joinedOn: activeFrom, joined: joinedLabel(activeFrom) };
+    membersChanged();
+    return { changed, enrolmentMoved: false };
+  }
+
+  const { data, error } = await supabase.rpc('set_member_active_from', {
+    p_member_id: id,
+    p_active_from: activeFrom,
+  });
+  if (error || !data) {
+    console.error('setMemberActiveFrom:', error?.message ?? 'no row returned');
+    throw new Error(`${sentenceOpening((error?.message ?? '').trim() || 'The joining date could not be changed')}. Nothing has been saved.`);
+  }
+
+  // Every date-scoped screen narrows by this column (src/data/joined.ts), so
+  // the roster for a day, the period figures and the member card all move
+  // with it -- the same revalidation setMemberStatus does for the other end
+  // of the window.
+  membersChanged();
+  const row = data as { changed?: boolean; enrolment_moved?: boolean };
+  return { changed: Boolean(row.changed), enrolmentMoved: Boolean(row.enrolment_moved) };
 }
 
 /** What a deletion actually did, so the toast can say it rather than guess.
@@ -3045,9 +3207,9 @@ export async function deleteMember(id: string): Promise<MemberDeletion> {
   if (error) {
     console.error('deleteMember:', error.message);
     if (/not writable/i.test(error.message)) {
-      throw new Error('She could not be removed — the subscription has to be active. Nothing has been changed.');
+      throw new Error('The member could not be removed — the subscription has to be active. Nothing has been changed.');
     }
-    throw new Error(`${personReadable(error.message, 'She could not be removed')}. Nothing has been changed.`);
+    throw new Error(`${personReadable(error.message, 'The member could not be removed')}. Nothing has been changed.`);
   }
 
   // The flagged set is DERIVED from this one list (guardrail 1), so
@@ -3295,7 +3457,7 @@ export async function setAttendance(
     const expected = schedule.includes(isoWeekday(date));
     if (status === 'absent' && !expected) {
       throw new Error(`${member.name} was not expected on ${dayInWords(date)}. `
-        + 'Mark her present and it is recorded as extra.');
+        + 'Mark them present and it is recorded as extra.');
     }
     const stored = storedStatus(status, expected);
     const changed = MANUAL_MARKS.get(`${memberId}|${date}`) !== stored;
@@ -3323,7 +3485,7 @@ export async function setAttendance(
         + 'migration 0035 has not been applied. Nothing has been saved.');
     }
     throw new Error(`${sentenceOpening((error?.message ?? '').trim()
-      || 'Her attendance could not be changed')}. Nothing has been saved.`);
+      || 'The attendance could not be changed')}. Nothing has been saved.`);
   }
 
   const result = data as { changed?: boolean; status?: AttendanceStatus };

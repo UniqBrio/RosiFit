@@ -265,7 +265,7 @@ export default function Reports() {
               <Text style={{ flex: 1, fontSize: 13, fontWeight: '800', color: theme.fgStrong }}>
                 {`By ${scope.toLowerCase().replace(/s$/, '')}`}
               </Text>
-              <Text style={{ fontSize: 10.5, color: theme.muted }}>attended vs missed</Text>
+              <Text style={{ fontSize: 10.5, color: theme.muted }}>Attended vs missed</Text>
             </View>
 
             <View style={{ gap: 14, marginTop: 16 }}>

@@ -27,7 +27,7 @@ import { statusOn, statusNote } from '../data/inactiveFrom';
  */
 export function memberSubtitle(m: { course: string; branch: string; joined: string }): string {
   const where = `${m.course} · ${m.branch}`;
-  return m.joined === '—' ? where : `${where} · joined ${m.joined}`;
+  return m.joined === '—' ? where : `${where} · Joined ${m.joined}`;
 }
 
 /**
@@ -55,7 +55,7 @@ export function attendanceTone(pct: number | null): Extract<StatusKey, 'present'
  */
 export const MEMBER_TABS = [
   { key: 'week', label: 'This week' },
-  { key: 'details', label: 'Her details' },
+  { key: 'details', label: 'Details' },
 ] as const;
 
 export type MemberTab = typeof MEMBER_TABS[number]['key'];

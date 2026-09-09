@@ -54,7 +54,7 @@ test('committing a display name clears the refusal', () => {
     'addAlias must clear the refusal -- it is what + Add, Enter and blur all run');
   // The duplicate refusal returns BEFORE the clear: nothing changed, so
   // nothing about the banner should change either.
-  assert.ok(addAlias.indexOf('already on her record') < addAlias.indexOf('clearRefusal()'),
+  assert.ok(addAlias.indexOf('already on the record') < addAlias.indexOf('clearRefusal()'),
     'the on-record duplicate must still return before anything is cleared');
 });
 

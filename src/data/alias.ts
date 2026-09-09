@@ -31,7 +31,7 @@ export const ALIAS_FAILED = 'That display name could not be saved. Nothing has b
 /** The merge moves attendance as well as the name, so a failure has to say
  *  that BOTH halves were left alone -- "the name was not saved" would leave
  *  somebody wondering whether the class records moved anyway. */
-export const MERGE_FAILED = 'That merge did not run. Nothing has been changed — she is still on the register under her own name.';
+export const MERGE_FAILED = 'That merge did not run. Nothing has been changed — the member is still on the register under their own name.';
 
 /**
  * Why this display name cannot be saved, or `null` when it can.

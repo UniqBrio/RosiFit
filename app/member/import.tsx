@@ -286,7 +286,7 @@ function MemberImportBody() {
 
         <Muted style={{ marginTop: SPACE.md }}>
           {tally.imported === tally.total
-            ? `Every row landed — ${tally.imported} member${tally.imported === 1 ? '' : 's'} on the register, each in the course her row named.`
+            ? `Every row landed — ${tally.imported} member${tally.imported === 1 ? '' : 's'} on the register, each in the course their row named.`
             : 'Skipped rows were already on the register and were not changed. Nothing was written for the others; the reasons are below, row by row.'}
         </Muted>
 
@@ -420,7 +420,7 @@ function MemberImportBody() {
             }>
             <Body>
               {`An Excel workbook (.xlsx), one member per row on the Member Data sheet, up to ${MEMBER_IMPORT_MAX_ROWS} rows. `
-               + 'Her name and her email address are both required \u2014 a row with no address is not imported. '
+               + 'Member name and email address are both required \u2014 a row with no address is not imported. '
                + 'Each row picks its own course from a dropdown \u2014 one file can cover every course you run.'}
             </Body>
             <View style={{

@@ -253,7 +253,7 @@ export default function Members() {
         // no members yet is NOT the same as no search results
         <EmptyState
           title="No members yet"
-          body="Add your first member, or import a member list. Attendance starts counting from the first session after she joins."
+          body="Add your first member, or import a member list. Attendance starts counting from the first session after joining."
           action="Add a member" onAction={() => router.push('/member/edit')} />
       )}
 
@@ -263,7 +263,7 @@ export default function Members() {
       {state === 'ready' && members.length > 0 && scoped.length === 0 && scopedTo && (
         <EmptyState
           title={`Nobody is enrolled in ${scopedTo}`}
-          body="Add her here and she is enrolled at this course's branch. Attendance starts counting from the first session after she joins."
+          body="Add the member here and they are enrolled at this course's branch. Attendance starts counting from the first session after joining."
           action="Add a member"
           onAction={() => router.push(courseId
             ? { pathname: '/member/edit', params: { courseId } }

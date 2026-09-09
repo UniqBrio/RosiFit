@@ -48,10 +48,10 @@ export function fieldValue(selected: string[], allLabel: string, noun: string): 
  * cannot end up claiming four different scopes for the same numbers.
  */
 export function scopeSentence(s: Selection, periodLabel: string): string {
-  const courses = s.courses.length === 0 ? 'every course'
+  const courses = s.courses.length === 0 ? 'Every course'
     : s.courses.length === 1 ? s.courses[0]
     : `${s.courses.length} courses`;
-  const branches = s.branches.length === 0 ? 'every branch'
+  const branches = s.branches.length === 0 ? 'Every branch'
     : s.branches.length === 1 ? s.branches[0]
     : `${s.branches.length} branches`;
   return `${courses} \u00b7 ${branches} \u00b7 ${periodLabel}`;

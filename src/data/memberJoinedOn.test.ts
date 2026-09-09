@@ -124,15 +124,46 @@ test('her joining date is seeded from the stored date, never from today', () => 
     'the Add form still opens on today');
 });
 
-test('the row is shown, and shown as not editable, on the Edit form', () => {
+/**
+ * THIS TEST USED TO ASSERT THE OPPOSITE, and the reason it did is worth
+ * keeping: `readOnly={Boolean(editing)}` was correct for as long as no write
+ * path existed, because an editable row would have accepted a change the form
+ * then discarded. The requester asked for the picker -- "we have inactive
+ * from date selection but not active from, fix that" -- and 0057 built the
+ * write path it was waiting for (`set_member_active_from`), so the condition
+ * the read-only claim rested on is gone.
+ *
+ * What is NOT relaxed is the thing that claim was protecting: the date still
+ * cannot be written by `update_member`, and the three tests below still hold
+ * that shut. The picker is live because it now has its own writer, not
+ * because the column stopped being dangerous.
+ */
+test('the row is a live picker on the Edit form, and it is labelled Active from', () => {
   const src = read(FORM);
-  const row = src.slice(src.indexOf('<DateField label="Joined on"'));
-  assert.notEqual(row.length, 0, 'the form no longer has a Joined on row');
-  assert.match(row.slice(0, 600), /readOnly=\{Boolean\(editing\)\}/,
-    'the Edit form must show the date without offering a picker for it — '
-    + 'update_member takes no joining date, so an editable row would discard what it was told');
-  assert.match(row.slice(0, 600), /testID="member-joined-on"/,
-    'the row a reviewer looks for must stay findable by testID');
+  const at = src.indexOf('<DateField label="Active from"');
+  assert.notEqual(at, -1,
+    'the form no longer has an Active from row — the column the academy sets the register from');
+  const row = src.slice(at, at + 600);
+  assert.doesNotMatch(row, /readOnly/,
+    'the Edit form must offer the picker: 0057 gave the date a write path, so a row that '
+    + 'refuses the change is now refusing one the database would take');
+  assert.match(row, /testID="member-joined-on"/,
+    'the row a reviewer looks for must stay findable by the testID it has always had');
+  // A future joining date stays impossible, on both forms. It was the other
+  // half of this row's original reason for existing and no request touched it.
+  assert.match(row, /max=\{/,
+    'the picker must still carry a max — a member cannot have started next week');
+});
+
+test('the picker writes through set_member_active_from, not through the update', () => {
+  const src = read(FORM);
+  assert.match(src, /await setMemberActiveFrom\(existing\.id, wantedActiveFrom\)/,
+    'the joining date must go through its own write path (0057), which also moves the '
+    + 'enrolment that has to open on the same day');
+  // Only when it actually moved. A form that re-sends an unchanged date on
+  // every save stamps updated_by over somebody else's edit for nothing.
+  assert.match(src, /if \(activeFromChanged && wantedActiveFrom\) \{/,
+    'the write must be guarded by an actual change, the way the status write is');
 });
 
 /* -------------------------------------------------------- 3. SAVING her */

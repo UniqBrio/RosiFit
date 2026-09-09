@@ -121,10 +121,10 @@ function StaffListBody() {
     setRemoving(true);
     try {
       await deleteStaff(s.id);
-      flash(`${s.name.split(' ')[0]} removed · her PIN no longer works`);
+      flash(`${s.name.split(' ')[0]} removed · the PIN no longer works`);
       retry();
     } catch (err) {
-      flash(err instanceof Error ? err.message : 'She could not be removed. Nothing has been changed.', 'warn');
+      flash(err instanceof Error ? err.message : 'That staff member could not be removed. Nothing has been changed.', 'warn');
     } finally {
       setRemoving(false);
     }
@@ -260,13 +260,13 @@ function StaffListBody() {
           ? (target.access === 'active' ? `Reset ${target.name}’s PIN?` : `Generate a PIN for ${target.name}?`)
           : ''}>
         <Muted style={{ marginTop: 9 }}>
-          Her current PIN stops working straight away. The new one is shown once, on the next screen.
+          The current PIN stops working straight away. The new one is shown once, on the next screen.
         </Muted>
 
         <Pressable onPress={() => setSignOutEverywhere(v => !v)}
           accessibilityRole="checkbox"
           accessibilityState={{ checked: signOutEverywhere }}
-          accessibilityLabel="Also sign her out everywhere"
+          accessibilityLabel="Also sign them out everywhere"
           style={{
             flexDirection: 'row', alignItems: 'center', gap: SPACE.md, marginTop: SPACE.lg,
             padding: 14, borderRadius: RADIUS.lg, backgroundColor: theme.surface2,
@@ -281,7 +281,7 @@ function StaffListBody() {
             {signOutEverywhere ? <Icon name="check" size={14} color={theme.onAccent} /> : null}
           </View>
           <Text style={{ flex: 1, fontSize: 13, fontWeight: '700', color: theme.fg }}>
-            Also sign her out everywhere
+            Also sign them out everywhere
           </Text>
         </Pressable>
 
@@ -301,7 +301,7 @@ function StaffListBody() {
         onClose={() => setConfirmRemove(null)}
         title={confirmRemove ? `Remove ${confirmRemove.name}?` : ''}
         body={confirmRemove
-          ? `She leaves this list and her PIN stops working straight away — it cannot be given back, only replaced by adding her again. The registers she took and the changes she made stay in the records, still in her name. Her mobile number is freed for whoever replaces her.`
+          ? `They leave this list and their PIN stops working straight away — it cannot be given back, only replaced by adding them again. The registers they took and the changes they made stay in the records, still in their name. Their mobile number is freed for whoever replaces them.`
           : ''}
         cancelLabel="Cancel"
         confirmLabel={removing ? 'Removing…' : 'Remove'}

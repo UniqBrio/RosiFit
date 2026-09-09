@@ -156,7 +156,7 @@ export async function buildMemberTemplate(opts: TemplateOptions): Promise<ArrayB
   info.addRow(['How to use this file']).font = { bold: true };
   info.addRow(['', `Fill in the "${SHEET_DATA}" sheet, one member per row. "${MEMBER_IMPORT_REQUIRED}" and "Email" are both required.`]);
   info.addRow(['', `Up to ${MEMBER_IMPORT_MAX_ROWS} members per file. Blank rows are ignored.`]);
-  info.addRow(['', 'A member already on the register is skipped, never changed — edit her in the app instead.']);
+  info.addRow(['', 'A member already on the register is skipped, never changed — edit the member in the app instead.']);
   info.addRow(['', 'No joining date is asked for — every member this file imports joins today.']);
   info.addRow(['', 'THE COURSE IS PER ROW. One file can carry members for as many courses as you run — pick each row’s course from the dropdown.']);
   info.addRow(['', 'The dropdown lists the courses this academy has TODAY. A course typed by hand is refused; add it in RosiFit first, then download the template again.']);
@@ -222,9 +222,9 @@ export async function buildMemberTemplate(opts: TemplateOptions): Promise<ArrayB
     type: 'textLength', operator: 'between', allowBlank: true,
     showErrorMessage: true, errorStyle: 'stop', formulae: [NAME_MIN, NAME_MAX],
     showInputMessage: true, promptTitle: 'Full Name',
-    prompt: 'Required — her name as the academy writes it.',
+    prompt: 'Required — the member name as the academy writes it.',
     errorTitle: 'Not a name',
-    error: `Her name as the academy writes it, between ${NAME_MIN} and ${NAME_MAX} characters. Leave the whole row blank to skip it.`,
+    error: `The member name as the academy writes it, between ${NAME_MIN} and ${NAME_MAX} characters. Leave the whole row blank to skip it.`,
   });
 
   const email = at('Email');
@@ -246,9 +246,9 @@ export async function buildMemberTemplate(opts: TemplateOptions): Promise<ArrayB
     type: 'textLength', operator: 'lessThanOrEqual', allowBlank: true,
     showErrorMessage: true, errorStyle: 'stop', formulae: [ALIAS_CELL_MAX],
     showInputMessage: true, promptTitle: 'Display Names',
-    prompt: 'The names Google Meet shows for her, separated by commas.',
+    prompt: 'The names Google Meet shows for them, separated by commas.',
     errorTitle: 'Too much for one cell',
-    error: `The names Google Meet shows for her, separated by commas — up to ${ALIAS_CELL_MAX} characters in all.`,
+    error: `The names Google Meet shows for them, separated by commas — up to ${ALIAS_CELL_MAX} characters in all.`,
   });
   // STOP, not warn. Excel's default for a list rule is an "information"
   // prompt with a Continue button, so a course typed by hand lands in the
@@ -285,7 +285,17 @@ export async function buildMemberTemplate(opts: TemplateOptions): Promise<ArrayB
   return out as unknown as ArrayBuffer;
 }
 
-function cellText(cell: ExcelJS.Cell): string {
+/**
+ * One cell as text, with the two shapes a DATE arrives in folded to ISO.
+ *
+ * Exported since 0058: statusXlsx.ts reads the Reports export back in, and a
+ * person who types a date into a spreadsheet gets a real date CELL, not the
+ * string they typed -- so a reader that took `cell.text` would see whatever
+ * Excel decided to display it as, in the locale of the machine that saved it.
+ * That is 0029's defect arriving through the front door, and both readers have
+ * to be immune to it, not one.
+ */
+export function cellText(cell: ExcelJS.Cell): string {
   const v = cell.value;
   if (v === null || v === undefined) return '';
   if (v instanceof Date) return v.toISOString().slice(0, 10);   // a real date cell

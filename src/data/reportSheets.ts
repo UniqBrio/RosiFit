@@ -23,7 +23,7 @@
  */
 import { DAY_NAMES, hasEmail, type Member, type FollowUpRule } from './mock';
 import { ruleSentence } from './followup';
-import { statusOn, dateInWords } from './inactiveFrom';
+import { statusOn } from './inactiveFrom';
 import {
   reportGroups, courseForGroup, courseBranchNames, courseDayNames,
   NO_COURSE_LABEL, NO_BRANCH_LABEL,
@@ -47,9 +47,9 @@ const named = (value: string, missing: string) =>
   !value || value === DASH ? missing : value;
 
 /** The screen's own words for a percentage, so an exported "0%" where the
- *  screen says "no sessions" can never happen. */
+ *  screen says "No sessions" can never happen. */
 const pctCell = (pct: number | null) =>
-  pct === null ? 'no sessions scheduled' : `${pct}%`;
+  pct === null ? 'No sessions scheduled' : `${pct}%`;
 
 const missedOf = (row: { expected: number; attended: number }) =>
   String(Math.max(row.expected - row.attended, 0));
@@ -109,7 +109,7 @@ export function memberDetailSheet(
     name: SHEET_MEMBER_DETAILS,
     header: [
       'Member', 'Member code', 'Status', 'Inactive from', 'Course', 'Branch',
-      'Joined on', 'Days she attends', 'Primary email', 'All email addresses',
+      'Active from', 'Days they attend', 'Primary email', 'All email addresses',
       'Also known as', 'Expected', 'Attended', 'Missed', 'Attendance %', 'Period',
     ],
     rows: members.map(m => {
@@ -123,7 +123,14 @@ export function memberDetailSheet(
         m.name,
         m.code,
         active ? 'Active' : 'Inactive',
-        m.inactiveFrom ? dateInWords(m.inactiveFrom) : '',
+        // ISO, not "1 October 2026" (0057). This sheet stopped being only a
+        // read-out the day Bulk Import Inactive started READING it back: a
+        // prose date cannot round-trip, and the person filling the column in
+        // copies the format of the cells already in it. It is the same
+        // argument the joining date below has always carried -- a month, or a
+        // month name, cannot be sorted or compared in a spreadsheet -- now
+        // owed by both ends of the window.
+        m.inactiveFrom ?? '',
         named(m.course, NO_COURSE_LABEL),
         named(m.branch, NO_BRANCH_LABEL),
         // The stored day, not the "Mar 2026" label: a month cannot be sorted

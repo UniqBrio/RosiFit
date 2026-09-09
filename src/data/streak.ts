@@ -47,7 +47,7 @@ export const STREAK_LABEL = 'Missed in a row';
 
 /** The run does not answer to the week, and saying so is the whole point. */
 const CARRIES =
-  'It counts her course’s own sessions and carries across weeks, '
+  'It counts the course’s own sessions and carries across weeks, '
   + 'so it is not capped by the number the week holds.';
 
 export function streakReading(input: {
@@ -68,7 +68,7 @@ export function streakReading(input: {
       // Nothing is appended to the card's miss line. A card that reads
       // "0 in a row" spends a line saying nothing happened.
       short: null,
-      sentence: 'Nothing running — she attended the last session she was expected at.',
+      sentence: 'Nothing running — they attended the last session they were expected at.',
     };
   }
 
@@ -80,10 +80,10 @@ export function streakReading(input: {
     label: STREAK_LABEL,
     short: since ? `${count} in a row since ${since}` : `${count} in a row`,
     sentence: since
-      ? `${sessions} missed in a row — she was last present on ${since}. ${CARRIES}`
+      ? `${sessions} missed in a row — they were last present on ${since}. ${CARRIES}`
       // No attended session on record is a different fact from one we failed
       // to read, and it is stated rather than dressed as a date.
-      : `${sessions} missed in a row — she has no attended session on record. ${CARRIES}`,
+      : `${sessions} missed in a row — they have no attended session on record. ${CARRIES}`,
   };
 }
 

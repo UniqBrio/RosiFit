@@ -90,10 +90,10 @@ Each step needs the one before it. Roughly an hour, once.
    at a branch creates the thing that actually runs, and its weekdays are what attendance
    is counted from. Set each course's **follow-up rule**, **from address** and **wording**
    on the same form.
-4. **Add your team** — More → Staff & access. Add the person, then issue her PIN. Two
+4. **Add your team** — More → Staff & access. Add the person, then issue their PIN. Two
    deliberate steps.
 5. **Load your members** — Attendance → Bulk Import for a list, or Add Member one at a
-   time. Every member needs an email address; that is what the follow-up reaches her on.
+   time. Every member needs an email address; that is what the follow-up reaches them on.
 6. **Upload your first register** after the next class, and the loop above starts turning.
 
 ---
@@ -292,7 +292,7 @@ always see what the numbers in front of you cover.
 | Section | What you see | What it tells you |
 |---|---|---|
 | **Attendance** | One ring, Present against Absent, with the percentage. Under it: Members · Courses · **Need follow-up** | The whole picture for the filtered set. **Need follow-up** is tappable and opens the weekly review. |
-| **Based on member** | Ranked horizontal bars, lowest attendance first, six shown | Who to chase. Bar *length* is session volume, so a member due at ten draws a longer bar than one due at three. Each bar names her course and branch. |
+| **Based on member** | Ranked horizontal bars, lowest attendance first, six shown | Who to chase. Bar *length* is session volume, so a member due at ten draws a longer bar than one due at three. Each bar names the course and branch. |
 | **Based on course** | A small ring per course | Which class is slipping. |
 | **Based on period** | A small ring per sub-range | Whether the period is even across itself. A week splits into days, a month into weeks, longer into months. |
 
@@ -318,7 +318,7 @@ how many members need following up. Beside it sit the three things you come here
 
 | Button | Opens |
 |---|---|
-| **Add Member** | The member form, asking which course she joins |
+| **Add Member** | The member form, asking which course they join |
 | **Bulk Import** | The member-list importer (an `.xlsx` file) |
 | **Add Course** | The course form |
 
@@ -403,7 +403,7 @@ letting the count drop silently.
 
 Each member card carries:
 
-- Her name, her avatar and her email address (or *No email on file*)
+- Member name, avatar and email address (or *No email on file*)
 - **Present · Absent · Yet to mark** for the selected day. **This is a reading, not a
   control.** Nothing on the row is tappable. *Yet to mark* means a session ran and no file
   is in; *Not expected* means the course does not run that day.
@@ -429,15 +429,15 @@ Each card in this group carries two extra buttons:
 
 | Button | Use it when |
 |---|---|
-| **Add as new member** | She really is somebody new. It opens **her** record so you can add the email; that is what takes her out of this group. |
-| **Add display name to existing member** | She is somebody you already have, under a different Meet name. |
+| **Add as new member** | Really is somebody new. It opens **their** record so you can add the email; that is what takes them out of this group. |
+| **Add display name to existing member** | Somebody you already have, under a different Meet name. |
 
 The second one opens a searchable picker of every member (by name *or* any email address
-she holds, with her primary address printed on the row so two people with the same name
+they hold, with the primary address printed on the row so two people with the same name
 are told apart). Before you confirm it states both halves of what it does:
 
 > *"Anitha R" becomes a display name for Anitha Rajesh, and every class Anitha R was
-> marked present at moves across to her. Anitha R is then retired — the same person is not
+> marked present at moves across to them. Anitha R is then retired — the same person is not
 > on the register twice.*
 
 ---
@@ -449,39 +449,39 @@ are told apart). Before you confirm it states both halves of what it does:
 Reached from a course card's chevron (scoped to that course) or from the members route
 directly (the whole academy).
 
-- **Search** covers her name, her email address and her **Google Meet display names** —
+- **Search** covers the member name, email address and **Google Meet display names** —
   that last one is how a name off a CSV gets found at all. An old member code from a
-  pre-2026 export still finds her too, though no code is displayed anywhere.
+  pre-2026 export still finds them too, though no code is displayed anywhere.
 - **Chips:** All · No email · Needs follow-up · (branch).
 - When the list is scoped to one course, a **Show every member** button says so and gets
   you out. A filtered list that does not admit it is a list that has silently lost rows.
-- Each card shows a **NO EMAIL** / **EMAIL OK** pill in words, her course and branch, ✎
-  Edit, 🗑 Remove, and an **Attendance** link that opens her record.
+- Each card shows a **NO EMAIL** / **EMAIL OK** pill in words, the course and branch, ✎
+  Edit, 🗑 Remove, and an **Attendance** link that opens their record.
 
-### 7.2 Her record (a pop-up)
+### 7.2 The member record (a pop-up)
 
 Tapping a member opens a card over the list, not a new page. It holds:
 
-- Her name; **course · branch · joined** underneath
+- Member name; **course · branch · joined** underneath
 - **Expected · Attended · Missed · Missed streak** for the week
-- **Her sessions this week**, one hairline list — holidays and cancellations are still
+- **Sessions this week**, one hairline list — holidays and cancellations are still
   listed, with why they do not count
-- Her email address, or *No usable email*
-- One line saying **whether an email is actually going to her**, in one of four states:
+- Email address, or *No usable email*
+- One line saying **whether an email is actually going to them**, in one of four states:
   - *Rule is met, Email sent*
   - *Rule is met, Email not sent yet*
-  - *Rule is met, No email to send* (she is counted but unreachable)
+  - *Rule is met, No email to send* (counted but unreachable)
   - *Rule is not met, No email to send*
 - **Edit** and **Reach out** pinned at the foot
 
-**Reach out** opens the send draft filtered to her alone, using her own course's wording.
-If she has already had this period's message, it asks first — *"She has already had this
+**Reach out** opens the send draft filtered to them alone, using their own course's wording.
+If they have already had this period's message, it asks first — *"Already had this
 week's message"*, naming the day it went, over **Not yet** / **Reach out anyway**. It is a
 warning, never a bar.
 
 ### 7.3 Adding a member
 
-**Required: her name, her course, her branch, and an email address.** Add Member stays
+**Required: member name, course, branch, and an email address.** Add Member stays
 disabled until an address is on the form. The reason is plain: a member with no address
 cannot be written to, and this is one of only two places a member is deliberately created.
 
@@ -490,40 +490,40 @@ The form also holds:
 - **Joined on** — optional; blank means "not on record"
 - **Status** — on the Add form this is *stated*, not offered: it reads **Active**, because
   that is what a new member is. Use Edit to make somebody inactive.
-- **Google Meet display names** — the names Meet shows for her. Add as many as you need;
+- **Google Meet display names** — the names Meet shows for them. Add as many as you need;
   this is what an upload matches on.
 - **Email addresses** — several allowed, exactly one primary
-- **Her own days — optional** — day chips open with **every day her course runs already
-  selected**. Take off the days she will not attend. Leave the row untouched and she
+- **Custom days — optional** — day chips open with **every day the course runs already
+  selected**. Take off the days the member will not attend. Leave the row untouched and they
   simply follows the course, including if the course's schedule changes later. Only a
-  *narrower* selection gives her a schedule of her own.
+  *narrower* selection gives them a schedule of their own.
 
 ### 7.4 Editing a member
 
 Same form, same rules. **An email address is required here too** — a member the attendance
-import created opens with Save disabled and the footer asking for her address. Nothing of
-hers, status included, is saved until one is on the form.
+import created opens with Save disabled and the footer asking for an address. Nothing of
+theirs, status included, is saved until one is on the form.
 
-While her record is still loading, the dialog says *Edit member · Fetching her record*
+While the record is still loading, the dialog says *Edit member · Fetching the record*
 over a skeleton with no Save. It never shows you a blank Add form by mistake.
 
 **Status** on the Edit form is a two-choice field like any other: the pick is pending,
 Cancel discards it, **Save** writes it.
 
 **Inactive from** appears under the Inactive choice. It defaults to today and accepts any
-later date, so *"she is active today but leaves at the end of the month"* is recordable.
-It is refused before her joining day.
+later date, so *"active today but leaves at the end of the month"* is recordable.
+It is refused before the joining day.
 
-> **Inactive means one thing only: she is out of the follow-up rule** — not listed, not
-> written to. She stays on the roster, her attendance goes on being recorded, and her
-> enrolment and history are untouched. Marking her active again puts her straight back.
+> **Inactive means one thing only: out of the follow-up rule** — not listed, not
+> written to. The member stays on the roster, attendance goes on being recorded, and
+> enrolment and history are untouched. Marking them active again puts them straight back.
 
 ### 7.5 Removing a member
 
 The 🗑 on either card — the member list or the course roster — opens the same
-confirmation, worded identically, and states what will be destroyed. Read it: it takes her
-attendance with her. Cancel leaves the register untouched. The toast afterwards addresses
-her by first name so you can see it was the person you meant.
+confirmation, worded identically, and states what will be destroyed. Read it: it takes their
+attendance with them. Cancel leaves the register untouched. The toast afterwards addresses
+them by first name so you can see it was the person you meant.
 
 ### 7.6 Bulk import (a member list)
 
@@ -541,11 +541,11 @@ her by first name so you can see it was the person you meant.
 
    | Column | Means |
    |---|---|
-   | **Full Name** | required — her name as the academy writes it |
+   | **Full Name** | required — the member name as the academy writes it |
    | **Email** | required — the address the academy writes to |
    | **Course** | pick from the dropdown; blank means the course this import was opened from |
    | **Branch** | pick from the dropdown; blank means that course's branch |
-   | **Display Names** | the names Google Meet shows for her, comma-separated |
+   | **Display Names** | the names Google Meet shows for them, comma-separated |
 
    **The course is per row**, so one file can cover every course you run. The Course and
    Branch dropdowns are fed from your academy's real offerings and Excel itself **refuses a
@@ -561,7 +561,7 @@ her by first name so you can see it was the person you meant.
 **Rules**
 
 - Up to **500 rows**, **5 MB**. Blank rows ignored.
-- A member already on the register is **skipped, never overwritten** — edit her in the app
+- A member already on the register is **skipped, never overwritten** — edit the member in the app
   instead.
 - No joining date is asked for: everyone this file imports joins **today**.
 - With no course on the register the template is not offered at all — the screen tells you
@@ -644,13 +644,13 @@ Then, only when they apply:
 - **What this file changed** — added, updated, skipped
 - **N names belong to another course** — a member is in one course at a time, so a name
   whose only member is enrolled elsewhere was added here as somebody new rather than
-  marked present over there. If it is the same woman, use *Add display name to existing
+  marked present over there. If it is the same member, use *Add display name to existing
   member*.
-- **N staff names left off the register** — whoever ran the class was in the call. She is
-  not a member, so she is set aside and named rather than silently marked present in her
+- **N staff names left off the register** — whoever ran the class was in the call. They are
+  not a member, so they are set aside and named rather than silently marked present in the
   own class.
 - **N repeated names — counted once** — Meet writes a line per *join*, so a dropped
-  connection appears twice. She is marked present once, and the repeats are named.
+  connection appears twice. They are marked present once, and the repeats are named.
 - **N rows dropped before matching** — blank names, or repeats.
 - **This day already had a file** — what the override moved.
 
@@ -663,16 +663,16 @@ file is in, the register says so, and RosiFit says exactly that.
 
 | The name is | RosiFit does |
 |---|---|
-| Her canonical name, or a display name already confirmed for her | Marks her present |
-| A member with no email address on file | Marks her present; she lands in **No email** |
-| Anything else — a near-match, a name two members share, a stranger | Files her as a **new member with no email** in this course |
+| The canonical name, or a display name already confirmed for them | Marks them present |
+| A member with no email address on file | Marks them present; they land in **No email** |
+| Anything else — a near-match, a name two members share, a stranger | Files them as a **new member with no email** in this course |
 | A staff name | Sets it aside before matching, and names it on the result |
 | Blank, or a repeat | Drops it, and names it on the result |
 
-The reasoning for that third row is deliberate: a wrong **link** marks the wrong woman
+The reasoning for that third row is deliberate: a wrong **link** marks the wrong member
 present and looks exactly like a right one — nothing on any screen would say it happened.
 A wrong **create** puts a name you recognise in the **No email** group, where two taps fold
-her into the real member and carry her attendance across. Visible and reversible beats
+them into the real member and carry their attendance across. Visible and reversible beats
 invisible and permanent.
 
 **Time in the call decides nothing.** Being named in the file is the evidence. A member who
@@ -698,11 +698,11 @@ stored list, so a count on one screen can never drift from the list on another.
 Three chips: **Needs follow-up · N** / **All N** / **No email · N**, then a table of
 members with `E` (expected), `A` (attended), `M` (missed) and `Att %`.
 
-> *"Streak" is her current run of missed sessions. "Miss" is the week's total. They are
+> *"Streak" is the current run of missed sessions. "Miss" is the week's total. They are
 > different numbers.*
 
 Nobody flagged is **good news** and the screen says so — *"Nobody needs following up.
-Every member met her course's rule."*
+Every member met their course's rule."*
 
 ### 9.3 Sending
 
@@ -715,7 +715,7 @@ button.
 
 - Everyone **not yet written to this period starts ticked**. Somebody who has already had
   this week's message starts **unticked** and carries a green **Sent 3 Sep** badge — a
-  second email to her is a deliberate tick, never an accident.
+  second email to them is a deliberate tick, never an accident.
 - **Select all / Clear all**, and `N of M selected`.
 - Members with **no email address** are listed in their own **Excluded · counted, not
   dropped** block with the reason. They are never silently removed.
@@ -786,7 +786,7 @@ states needing action are never below the ones that do not.
 1. **Add staff** — full name (required), mobile number (required), and a role label. Role
    labels — *Coach*, *Front desk* — are **display labels, not permission tiers**. They
    carry identical rights. You can type a new label.
-2. **Generate PIN** on her row.
+2. **Generate PIN** on their row.
 
 | State | What it means | Action offered |
 |---|---|---|
@@ -797,10 +797,10 @@ states needing action are never below the ones that do not.
 
 **The PIN is shown once.** The *PIN issued* screen says so — *"Shown once. There is no way
 back to this screen."* It offers **Copy the PIN**, **Copy the app link** and **Share**.
-Give it to her before you leave.
+Give it to them before you leave.
 
 A staff member who has asked for a reset carries a **Requested a PIN reset** badge and
-sorts to the top. Resetting her PIN closes the request automatically.
+sorts to the top. Resetting the PIN closes the request automatically.
 
 **Disabling** is one switch and it closes everything at once — every read and every write.
 It is how a coach who leaves is switched off everywhere in one action.
@@ -877,7 +877,7 @@ names every row that did not land.
 been sent."* If the server did not answer, the app does not pretend it did.
 
 **No phone number and no member code is held for a member.** Neither identifies anybody a
-person could check against. Her joining month is what her record carries instead. Old codes
+person could check against. The joining month is what the record carries instead. Old codes
 stay *searchable* for anyone holding one from an export, but nothing displays one.
 
 **PINs are never stored readable, never logged, never shown twice.**
@@ -892,10 +892,10 @@ stay *searchable* for anyone holding one from an export, but nothing displays on
 | The sign-in screen after you were signed in | The app could not reach the server. **Your session was not thrown away.** | Reconnect and reopen — it resumes with no PIN. |
 | *"This file carries no 'Created on' line…"* | Not a Meet export, or the header lines were stripped. | Export again from Meet and upload it untouched. |
 | *"No course to upload for"* | The course runs at no branch yet. | Add the branch/offering first — the days it runs do not have to be decided. |
-| A member is on the register twice after an import | Meet used a different display name for her. | On the course, **No email** group → **Add display name to existing member**. Her attendance moves across. |
+| A member is on the register twice after an import | Meet used a different display name for them. | On the course, **No email** group → **Add display name to existing member**. Their attendance moves across. |
 | Attendance for a day is wrong | There is no per-member tick, by design. | Re-upload that day's file. It **replaces** the register and tells you what it moved. |
-| A member is not being emailed | She has no address, or she is Inactive, or she is under the rule's threshold. | Her record's status line says which of the four it is. |
-| *"She has already had this week's message"* | She has. | **Not yet**, or **Reach out anyway** — the second send is allowed, just deliberate. |
+| A member is not being emailed | They have no address, or they are Inactive, or they are under the rule's threshold. | The record's status line says which of the four it is. |
+| *"Already had this week's message"* | They have. | **Not yet**, or **Reach out anyway** — the second send is allowed, just deliberate. |
 | *"Remarks are not switched on for this academy yet"* | The audit-remarks update has not been applied. | The log above it is unaffected. Nothing to do. |
 | A form opens as a blank coloured screen | A known display fault when a form is opened from a bookmark or a page refresh rather than by tapping into it. | Resize the window, or reach the form by tapping. Report it and we will fix it. |
 | Anything else | | Help & support → **Call** or **WhatsApp**. |
@@ -931,11 +931,11 @@ of it blocks the weekly loop in §1.
 | **Offering** | A course **at one branch**, with the weekdays it runs. Attendance is counted from the offering's weekdays. |
 | **Session** | One class on one date. Created by the schedule, or by an import for a date nobody scheduled. |
 | **Register** | One session's attendance, as uploaded. |
-| **Expected** | She was due at that session. |
-| **Extra attended** | She came when she was not expected. Never a miss. |
+| **Expected** | The member was due at that session. |
+| **Extra attended** | Came when not expected. Never a miss. |
 | **Holiday** | A **closure** — not a cancellation. Excluded from every figure. |
-| **Alias / display name** | The name Google Meet shows for her. What an upload matches on. |
-| **Flagged / needs follow-up** | Over her course's rule for the period. Derived, never stored. |
+| **Alias / display name** | The name Google Meet shows for them. What an upload matches on. |
+| **Flagged / needs follow-up** | Over the course's rule for the period. Derived, never stored. |
 | **Inactive** | Out of the follow-up rule. Still on the roster, attendance still recorded. |
 | **Academy admin** | You — the single owner. One per academy, enforced. |
 | **Staff** | Your coaches and front desk. Identical rights to each other. |
@@ -950,7 +950,7 @@ of it blocks the weekly loop in §1.
 | **Scheduled** | 🕐 | A session still to come |
 | **Cancelled** | ⃠ | A session that did not run |
 | **Holiday** | 🎉 | A declared closure |
-| **Extra attended** | ＋ | She came unexpected |
+| **Extra attended** | ＋ | Came unexpected |
 | **Not expected** | — | The course does not run that day |
 
 Every one of them carries the word as well as the icon, everywhere. Colour is never the
@@ -986,9 +986,9 @@ Two more rules sit above all of the above:
 | When | Do this | Where |
 |---|---|---|
 | After each class | Upload the Meet file | The day card marked **Awaiting upload** |
-| When a new member joins | Add her — with her email | Attendance → **Add Member** |
+| When a new member joins | Add them — with an email | Attendance → **Add Member** |
 | When a batch joins | Bulk Import | Attendance → **Bulk Import** |
-| When the register shows a stray name | Fold her in | Course → **No email** → *Add display name to existing member* |
+| When the register shows a stray name | Fold them in | Course → **No email** → *Add display name to existing member* |
 | Saturday | Review who is drifting, and write to them | Overview → **Need follow-up**, then the course's **Send Communication** |
 | Month end | Check whether a dip is a trend, and export it | **Reports** |
 | When a coach joins or leaves | Add / disable, and issue or revoke the PIN | More → **Staff & access** |

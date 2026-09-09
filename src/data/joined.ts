@@ -29,6 +29,11 @@
  * become invisible for a day because the browser is in London.
  */
 
+// `dateInWords` only. inactiveFrom.ts pulls in nothing at run time but
+// `period` -- its `MemberStatus` import is type-only and is erased -- so the
+// two ends of the membership window may name each other without a cycle.
+import { dateInWords } from './inactiveFrom';
+
 /** Anything carrying the column. Structural, so a caller may pass a row. */
 export type HasJoinedOn = { joinedOn?: string | null };
 
@@ -101,6 +106,44 @@ export function membersInPeriod<T extends HasJoinedOn>(
 export function joinedLaterNote(hidden: number, dayLabel: string): string | null {
   if (hidden <= 0) return null;
   return hidden === 1
-    ? `1 member joined after ${dayLabel} and is not listed for it. She is still on the course.`
+    ? `1 member joined after ${dayLabel} and is not listed for it. They are still on the course.`
     : `${hidden} members joined after ${dayLabel} and are not listed for it. They are still on the course.`;
+}
+
+/**
+ * ACTIVE FROM (0057) -- why this date cannot be saved, as a sentence, or null
+ * when it can.
+ *
+ * The exact mirror of `inactiveFromProblem` (src/data/inactiveFrom.ts), and
+ * written to be read beside it: the two ends of the membership window get one
+ * shape of answer, in the same order the database raises them, so the form
+ * and `set_member_active_from` never disagree about which refusal applies.
+ * The database is still the thing that decides -- this is what stops the
+ * round trip, not what replaces it.
+ *
+ * THE THIRD REFUSAL IS NOT HERE, ON PURPOSE. `set_member_active_from` also
+ * refuses a date later than the earliest session she is recorded at (0046
+ * read forward), and the app cannot check it: `Member` carries her figures for
+ * the period on screen, never the day of her first attendance row. Guessing
+ * at it would be a fourth answer to a question the server already answers
+ * exactly, so the form sends the date and shows what comes back.
+ */
+export function activeFromProblem(
+  value: string,
+  /** the far end of the window, ISO, or null when she has no date on record */
+  inactiveFrom: string | null,
+  /** today, ISO -- passed in rather than read, so this stays testable */
+  todayIso: string,
+): string | null {
+  const trimmed = (value ?? '').trim();
+  if (!trimmed) return 'Choose the day the member goes on the register';
+  if (!ISO.test(trimmed)) return `“${trimmed}” is not a date — write it as YYYY-MM-DD`;
+  // A member cannot have started next week. Same rule create_member (0016) and
+  // set_member_active_from (0057) carry, said before the round trip.
+  if (trimmed > todayIso) return 'A joining date in the future cannot be recorded';
+  if (inactiveFrom && trimmed > inactiveFrom) {
+    return `The member becomes inactive on ${dateInWords(inactiveFrom)},`
+      + ' so cannot go on the register after that';
+  }
+  return null;
 }

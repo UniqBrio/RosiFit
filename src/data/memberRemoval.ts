@@ -112,7 +112,7 @@ export function firstName(name: string): string {
  * repeating it.
  */
 export function deletionWarning(_state: PreviewState): string {
-  return 'You are deleting this member and all her records. '
+  return 'You are deleting this member and all their records. '
     + 'Do you want to delete it permanently?';
 }
 
@@ -147,7 +147,7 @@ export function removalOutcome(
   // plainly -- a member who never attended reads that way, and silence there
   // would look like the count failed rather than being none.
   if (result.attendanceRemoved === 0) {
-    return { message: `${first} removed — nothing of hers is left`, tone: 'ok' };
+    return { message: `${first} removed — nothing of theirs is left`, tone: 'ok' };
   }
 
   return {
@@ -173,7 +173,7 @@ export function removalFailure(err: unknown): RemovalFlash {
   return {
     message: err instanceof Error
       ? err.message
-      : 'She could not be removed. Nothing has been changed.',
+      : 'The member could not be removed. Nothing has been changed.',
     tone: 'warn',
   };
 }

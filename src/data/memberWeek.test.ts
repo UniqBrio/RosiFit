@@ -74,7 +74,7 @@ test('a completed session she has no row in is "not expected", not a gap', () =>
     session({ iso: '2026-09-07', sessionStatus: 'completed', record: null }),
   ], TODAY);
   assert.equal(rows[0].status, 'none');
-  assert.match(rows[0].detail, /she was not expected/);
+  assert.match(rows[0].detail, /not expected/);
 });
 
 test('a day that has run with no file is awaiting; one still to come is not', () => {
@@ -96,7 +96,7 @@ test('turning up unexpected reads as extra, never as an ordinary present', () =>
     session({ iso: '2026-09-07', sessionStatus: 'completed', record: { status: 'extra', expected: false } }),
   ], TODAY);
   assert.equal(rows[0].status, 'extra');
-  assert.match(rows[0].detail, /she was not expected/);
+  assert.match(rows[0].detail, /not expected/);
 });
 
 test('no sessions is its own row, not an empty list of misses', () => {

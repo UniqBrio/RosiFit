@@ -574,8 +574,8 @@ export default function CourseEdit() {
                 <Icon name="info" size={15} color={theme.dim} />
                 <Muted style={{ flex: 1 }}>
                   Tap a detail to add it. It appears as {'{{first_name}}'} while you write, and
-                  each member receives her own name in its place — the preview below shows what
-                  she will actually read.
+                  each member receives their own name in its place — the preview below shows what
+                  they will actually read.
                 </Muted>
               </View>
 
@@ -620,7 +620,7 @@ export default function CourseEdit() {
                 </Text>
                 {sample ? null : (
                   <Muted style={{ marginTop: SPACE.sm }}>
-                    Nobody is enrolled yet, so these are stand-in figures. Each member receives her own.
+                    Nobody is enrolled yet, so these are stand-in figures. Each member receives their own.
                   </Muted>
                 )}
               </View>

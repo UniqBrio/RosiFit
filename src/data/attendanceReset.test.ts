@@ -115,8 +115,8 @@ test('the reset states the with-email half FIRST, and by name', () => {
   // sentences and this is the first of them.
   assert.equal(
     resetWarning({ marks: 4, members: 4, keeping: 1, deletable: [] }, 'Tue 8 Sept'),
-    'Attendance will be reset for 1 member with an email — she stays on the course '
-    + 'and reads Yet to mark. This clears 4 marks on Tue 8 Sept, and the day goes back '
+    'Attendance will be reset for 1 member with an email — they stay on the course '
+    + 'and read Yet to mark. This clears 4 marks on Tue 8 Sept, and the day goes back '
     + 'to awaiting a file so it can be uploaded again.');
 });
 
@@ -153,13 +153,13 @@ test('nothing ticked says nothing — the delete half simply is not drawn', () =
 test('the warning describes what is TICKED, not what was offered', () => {
   // Three were offered; one is ticked, and the sentence is about her alone.
   assert.equal(deleteWarning([target('Rani')]),
-    'Rani is deleted outright — permanently, with every record of hers. '
-    + 'She has attendance on no other day. This cannot be undone.');
+    'Rani is deleted outright — permanently, with every record of theirs. '
+    + 'They have attendance on no other day. This cannot be undone.');
 });
 
 test('a member’s marks on other days are named, because the hard delete takes them', () => {
   assert.equal(deleteWarning([target('Rani', 1)]),
-    'Rani is deleted outright — permanently, with every record of hers. '
+    'Rani is deleted outright — permanently, with every record of theirs. '
     + 'This also removes 1 mark on another day. This cannot be undone.');
 });
 

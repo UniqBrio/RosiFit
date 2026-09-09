@@ -68,9 +68,9 @@ function SendResultBody() {
       <Muted>{result ? `Sent ${new Date().toLocaleString()}` : 'Sent 8:42 pm · 22 Aug'}</Muted>
 
       <View style={{ flexDirection: 'row', marginTop: SPACE.lg, gap: SPACE.md }}>
-        <Count n={sent.length} label="sent" color={okInk} />
-        <Count n={failed.length} label="failed" color={badInk} />
-        <Count n={excluded.length} label="excluded" color={theme.muted} />
+        <Count n={sent.length} label="Sent" color={okInk} />
+        <Count n={failed.length} label="Failed" color={badInk} />
+        <Count n={excluded.length} label="Excluded" color={theme.muted} />
       </View>
 
       <View style={{ gap: SPACE.md, marginTop: SPACE.lg }}>
@@ -99,7 +99,7 @@ function SendResultBody() {
             </View>
             {/* the reason and the fallback, not just "failed" */}
             <Text style={{ fontSize: 12, color: theme.fg, marginTop: SPACE.sm, lineHeight: 18 }}>
-              {m.reason ?? 'Her provider refused the message. Retry, or call her.'}
+              {m.reason ?? 'The provider refused the message. Retry, or call the member.'}
             </Text>
             <Button testID={`result-retry-${m.id}`}
               label="Retry this one" variant="secondary" style={{ marginTop: SPACE.md }}
@@ -117,7 +117,7 @@ function SendResultBody() {
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 13.5, fontWeight: '700', color: theme.fg }}>{m.name}</Text>
               <Text style={{ fontSize: 11.5, color: theme.muted, marginTop: 2 }}>
-                {`${m.reason ?? 'No email on file'} — she stays in the report`}
+                {`${m.reason ?? 'No email on file'} — they stay in the report`}
               </Text>
             </View>
             <Text style={{ fontSize: 10, fontWeight: '800', color: theme.muted }}>EXCLUDED</Text>

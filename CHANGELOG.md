@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — The app updates itself when a new version is deployed
+
+**A new version now reaches the app on its own.** Until today the app only picked up a new
+version when it was opened fresh — and the installed app is almost never closed, so a fix
+that had already shipped could go unseen for days, and a problem that had been solved could
+be reported again.
+
+It now watches for a new version in the background and moves onto it at the first moment
+that costs nothing: while the app is put away, or after a minute of not being touched. There
+is nothing to press and nothing to close — you simply have the latest version. It will never
+reload while you are working: not mid register, not mid form, not mid send.
+
+Nothing on any screen has changed.
+
 ## Unreleased — An uploaded attendance file shows on the member cards at once
 
 **Uploading an attendance CSV now updates the member cards as soon as the import finishes.**

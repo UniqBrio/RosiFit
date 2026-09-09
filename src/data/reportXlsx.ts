@@ -40,7 +40,7 @@ function widths(sheet: Sheet): number[] {
  * The workbook, as bytes.
  *
  * Every cell is written as the STRING the sheet builder produced. That is
- * deliberate: "no sessions scheduled" is a percentage cell on some rows, a
+ * deliberate: "No sessions scheduled" is a percentage cell on some rows, a
  * member code can carry leading zeroes, and a joining date that Excel decides
  * is a number becomes a serial nobody can read. The screen states all of these
  * as words too, so the file and the screen say the same thing.

@@ -77,7 +77,7 @@ const ENTITY_NOUN: Record<string, string> = {
   member_email: 'Member email address',
   member_alias: 'Name used on Meet',
   member_enrollment: 'Course enrolment',
-  member_schedule: 'Days of her own',
+  member_schedule: 'Custom days',
   course: 'Course',
   offering: 'Course offering',
   offering_schedule: 'Course schedule',
@@ -94,6 +94,7 @@ const ENTITY_NOUN: Record<string, string> = {
   email_batch: 'Follow-up emails',
   csv_import: 'Attendance upload',
   member_import_run: 'Member import',
+  member_dates_import: 'Member dates import',
   'auth.mobile_changed': 'Mobile number',
 };
 
@@ -112,7 +113,7 @@ const ENTITY_OP_TITLE: Record<string, Record<string, string>> = {
   attendance: { insert: 'Attendance marked', update: 'Attendance changed', delete: 'Attendance removed' },
   app_settings: { insert: 'Academy settings set', update: 'Academy settings updated', delete: 'Academy settings removed' },
   session: { insert: 'Session scheduled', update: 'Session changed', delete: 'Session removed' },
-  member_schedule: { insert: 'Days of her own set', update: 'Days of her own changed', delete: 'Days of her own removed' },
+  member_schedule: { insert: 'Custom days set', update: 'Custom days changed', delete: 'Custom days removed' },
   'auth.mobile_changed': { insert: 'Mobile number changed', update: 'Mobile number changed', delete: 'Mobile number change withdrawn' },
 };
 
@@ -125,6 +126,10 @@ const ACTION_TITLE: Record<string, string> = {
   'member.updated': 'Member updated',
   'member.merged': 'Two member records merged',
   'member.bulk_imported': 'Members added from a file',
+  // 0058, and deliberately worded so it cannot be mistaken for the line
+  // above it: that one ADDED people, this one only moved the dates of
+  // people already here. Two importers, two sentences.
+  'member.dates_imported': 'Member dates set from a file',
   'communication.batch_sent': 'Follow-up emails sent',
   'csv_import.completed': 'Attendance file uploaded',
   'csv_import.member_created': 'Member added from the upload',
@@ -263,6 +268,7 @@ const ENTITY_CATEGORY: Record<string, AuditCategory> = {
   // this line `member_import_run.hard_deleted` fell to the default and filed
   // eight removals under Settings.
   member_import_run: 'uploads',
+  member_dates_import: 'uploads',
   csv_import: 'uploads',
   email_template: 'messages',
   course_communication: 'messages',
@@ -332,7 +338,10 @@ const FIELD_LABEL: Record<string, string> = {
   name: 'Name',
   title: 'Title',
   member_code: 'Member code',
-  joined_on: 'Joined on',
+  // 'Joined on' until 0057. The column is still `joined_on` -- renaming it
+  // would cost a migration nobody can review -- but every screen an end
+  // user reads now calls it Active from, and an audit line is one of them.
+  joined_on: 'Active from',
   status: 'Status',
   // The audit trigger reports every changed column by name; without a
   // label this one would reach an end user as `inactive_from` (0045).

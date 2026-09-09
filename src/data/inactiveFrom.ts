@@ -157,7 +157,7 @@ export function membersActiveOn<T extends StatusRecord>(
 export function leftEarlierNote(hidden: number, dayLabel: string): string | null {
   if (hidden <= 0) return null;
   return hidden === 1
-    ? `1 member was inactive on ${dayLabel} and is not listed for it. She is still on the course.`
+    ? `1 member was inactive on ${dayLabel} and is not listed for it. They are still on the course.`
     : `${hidden} members were inactive on ${dayLabel} and are not listed for it. They are still on the course.`;
 }
 
@@ -170,7 +170,7 @@ export function statusNote(m: StatusRecord, todayIso: string): string | null {
   const from = m.inactiveFrom ?? null;
   if (m.status === 'active' || !from) return null;
   return from > todayIso
-    ? `Inactive from ${dateInWords(from)} — she is in the follow-up rule until then`
+    ? `Inactive from ${dateInWords(from)} — in the follow-up rule until then`
     : `Inactive since ${dateInWords(from)}`;
 }
 
@@ -193,10 +193,10 @@ export function inactiveFromProblem(
   joinedOn: string | null,
 ): string | null {
   const trimmed = (value ?? '').trim();
-  if (!trimmed) return 'Choose the date she becomes inactive';
+  if (!trimmed) return 'Choose the date they become inactive';
   if (!parseISO(trimmed)) return `“${trimmed}” is not a date — write it as YYYY-MM-DD`;
   if (joinedOn && trimmed < joinedOn) {
-    return `She joined on ${dateInWords(joinedOn)}, so she cannot become inactive before that`;
+    return `The member joined on ${dateInWords(joinedOn)}, so cannot become inactive before that`;
   }
   return null;
 }

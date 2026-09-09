@@ -1537,7 +1537,7 @@ function UploadBody() {
           {outcome.other_course.length > 0 ? (
             <Note testID="upload-other-course" ink={warnInk} icon="swap_horiz"
               title={`${outcome.other_course.length} ${outcome.other_course.length === 1 ? 'name belongs' : 'names belong'} to another course`}
-              body={`${outcome.other_course.join(', ')} ${outcome.other_course.length === 1 ? 'matches a member' : 'match members'} enrolled elsewhere, and a member is in one course at a time — so ${outcome.other_course.length === 1 ? 'she was added to this course as somebody new' : 'they were added to this course as new members'}, not marked present on the other register. If it is the same woman, “Add display name to existing member” on the course folds her in and carries her attendance across.`} />
+              body={`${outcome.other_course.join(', ')} ${outcome.other_course.length === 1 ? 'matches a member' : 'match members'} enrolled elsewhere, and a member is in one course at a time — so ${outcome.other_course.length === 1 ? 'they were added to this course as somebody new' : 'they were added to this course as new members'}, not marked present on the other register. If it is the same member, “Add display name to existing member” on the course folds them in and carries their attendance across.`} />
           ) : null}
 
           {/* WHO RAN THE CLASS. Named, because leaving the instructor off the
@@ -1546,7 +1546,7 @@ function UploadBody() {
           {outcome.staff.length > 0 ? (
             <Note testID="upload-staff" ink={theme.accentInk} icon="school"
               title={`${outcome.staff.length} staff ${outcome.staff.length === 1 ? 'name' : 'names'} left off the register`}
-              body={`${outcome.staff.join(', ')} ${outcome.staff.length === 1 ? 'was' : 'were'} in the call as staff, not as a member. Attendance is for members, so ${outcome.staff.length === 1 ? 'she is' : 'they are'} not counted here.`} />
+              body={`${outcome.staff.join(', ')} ${outcome.staff.length === 1 ? 'was' : 'were'} in the call as staff, not as a member. Attendance is for members, so they are not counted here.`} />
           ) : null}
 
           {/* ONE PERSON, ONE SESSION, ONE DAY -- with the names. Meet writes
@@ -1556,7 +1556,7 @@ function UploadBody() {
           {outcome.duplicates.length > 0 ? (
             <Note testID="upload-duplicates" ink={warnInk} icon="content_copy"
               title={`${outcome.duplicates.length} repeated ${outcome.duplicates.length === 1 ? 'name' : 'names'} — counted once`}
-              body={`${outcome.duplicates.join(', ')} ${outcome.duplicates.length === 1 ? 'appears' : 'appear'} more than once, which Meet does when somebody rejoins. She is marked present once — a member cannot be in her own session twice.`} />
+              body={`${outcome.duplicates.join(', ')} ${outcome.duplicates.length === 1 ? 'appears' : 'appear'} more than once, which Meet does when somebody rejoins. They are marked present once — a member cannot be in their own session twice.`} />
           ) : null}
 
           {outcome.dropped.length > 0 ? (

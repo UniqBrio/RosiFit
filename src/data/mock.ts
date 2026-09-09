@@ -29,7 +29,7 @@ export type MatchKind = 'matched' | 'noEmail' | 'possible' | 'ambiguous' | 'unma
 
 export const OUTCOME_META: Record<MatchKind, { tag: string; blocks: boolean; note: string }> = {
   matched:   { tag: 'A · Matched',          blocks: false, note: 'Matched to an existing member.' },
-  noEmail:   { tag: 'B · No email',         blocks: false, note: 'Member identified, but no email is configured. Her attendance will still be recorded. She will not be included in follow-up emails until an address is added.' },
+  noEmail:   { tag: 'B · No email',         blocks: false, note: 'Member identified, but no email is configured. Attendance will still be recorded. They will not be included in follow-up emails until an address is added.' },
   possible:  { tag: 'C · Possible member',  blocks: true,  note: 'Possible existing member found. Nothing is applied until you choose — this is the prompt that stops a duplicate being created.' },
   ambiguous: { tag: 'D · Ambiguous',        blocks: true,  note: 'Two members could carry this name. Pick one explicitly — the import will not guess.' },
   unmatched: { tag: 'E · Not found',        blocks: true,  note: 'Member not found. No email, course or branch is invented; course and branch come from the session being imported.' },
@@ -56,7 +56,7 @@ export const MATCH_ROWS: MatchRow[] = [
     candidates: [{ member_id: '1', name: 'Divya Ramesh', email: 'divya.r@gmail.com',
       course: 'Prenatal Flow', branch: 'Coimbatore', last_attended: '21 Aug', attendance: '78%',
       aliases: '\u201cDivya\u201d, \u201cDivya R\u201d',
-      hint: 'Matched on her canonical name', hintTone: 'sure' }] },
+      hint: 'Matched on the canonical name', hintTone: 'sure' }] },
   { row: 47, kind: 'possible', raw: 'Shazia', first_seen: '6:02 pm', minutes: 58,
     candidates: [{ member_id: '2', name: 'Shazia Begum', email: 'shazia.b@gmail.com',
       course: 'Postnatal Core', branch: 'Madurai', last_attended: '28 Aug', attendance: '71%',
@@ -73,7 +73,7 @@ export const MATCH_ROWS: MatchRow[] = [
   { row: 88, kind: 'noEmail', raw: 'Meena Raj', first_seen: '6:04 pm', minutes: 52,
     candidates: [{ member_id: '8', name: 'Kavya Balaji', email: '',
       course: 'Postnatal Core', branch: 'Madurai', last_attended: '27 Aug', attendance: '66%',
-      aliases: '\u201cMeena Raj\u201d', hint: 'Matched on her canonical name', hintTone: 'sure' }] },
+      aliases: '\u201cMeena Raj\u201d', hint: 'Matched on the canonical name', hintTone: 'sure' }] },
   { row: 91, kind: 'unmatched', raw: 'kavi.s', first_seen: '6:11 pm', minutes: 9, candidates: [] },
 ];
 
@@ -93,7 +93,7 @@ export const MATCH_ACTIONS: Record<MatchKind, MatchAction[]> = {
   ],
   noEmail: [
     { icon: 'alternate_email', label: 'Add email to existing member', primary: true,
-      note: 'She becomes eligible for follow-up sends' },
+      note: 'Becomes eligible for follow-up sends' },
     { icon: 'east', label: 'Continue without email',
       note: 'Attendance still imports \u00b7 excluded from sends, with the reason shown' },
   ],
@@ -112,9 +112,9 @@ export const MATCH_ACTIONS: Record<MatchKind, MatchAction[]> = {
 /** The question each outcome puts to the person deciding. */
 export const MATCH_QUESTION: Record<MatchKind, string> = {
   matched: 'Matched to',
-  possible: 'Is this her?',
+  possible: 'Is this the same member?',
   noEmail: 'Matched to',
-  ambiguous: 'Who is she?',
+  ambiguous: 'Who is this?',
   unmatched: 'What should happen to this row?',
 };
 
@@ -476,11 +476,11 @@ export const STAFF_ACCESS: Record<StaffAccess, {
 };
 
 export const STAFF: Staff[] = [
-  { id: 's1', name: 'Sowmya Iyer',   phone: '+91 90032 71144', role: 'Front desk',    access: 'notEnabled', meta: 'added 21 Aug' },
+  { id: 's1', name: 'Sowmya Iyer',   phone: '+91 90032 71144', role: 'Front desk',    access: 'notEnabled', meta: 'Added 21 Aug' },
   { id: 's2', name: 'Nandhini R',    phone: '+91 99406 33871', role: 'Coach',         access: 'awaiting',   meta: 'PIN issued 22 Aug, not used yet' },
-  { id: 's3', name: 'Deepa Suresh',  phone: '+91 94422 10098', role: 'Coach',         access: 'disabled',   meta: 'left the academy' },
-  { id: 's4', name: 'Revathi Anand', phone: '+91 98431 55210', role: 'Coach',         access: 'active',     meta: 'signed in today' },
-  { id: 's5', name: 'Priya Menon',   phone: '+91 80563 29742', role: 'Academy admin', access: 'active',     meta: 'that\u2019s you' },
+  { id: 's3', name: 'Deepa Suresh',  phone: '+91 94422 10098', role: 'Coach',         access: 'disabled',   meta: 'Left the academy' },
+  { id: 's4', name: 'Revathi Anand', phone: '+91 98431 55210', role: 'Coach',         access: 'active',     meta: 'Signed in today' },
+  { id: 's5', name: 'Priya Menon',   phone: '+91 80563 29742', role: 'Academy admin', access: 'active',     meta: 'That\u2019s you' },
 ];
 
 /**
@@ -711,7 +711,7 @@ export const REMARKS: Remark[] = [
   { id: 'r1', who: 'Rosi Owner', when: auditAt(1, 19, 5), entryId: 'a3',
     body: 'Lowered the Prenatal Yoga thresholds after the Saturday batch moved — expect more follow-ups for a fortnight.' },
   { id: 'r2', who: 'Priya Menon', when: auditAt(0, 10, 40), entryId: 'a1',
-    body: 'She goes by Shazia on the call, so the register matches what the tutor hears.' },
+    body: 'They go by Shazia on the call, so the register matches what the tutor hears.' },
 ];
 
 // --------------------------------------------------------------- sessions
@@ -820,7 +820,7 @@ export const MEMBER_WEEK: MemberSession[] = [
 
 /** Nothing scheduled is its own state, not an empty list of misses. */
 export const NO_SESSIONS: MemberSession[] = [
-  { status: 'none', date: 'No sessions', time: '—', detail: 'She had none scheduled this week' },
+  { status: 'none', date: 'No sessions', time: '—', detail: 'None scheduled this week' },
 ];
 
 export const sessionsFor = (m: Member): MemberSession[] =>
@@ -856,11 +856,11 @@ export const PENDING_SESSIONS = [
   // upload entry points rather than only the academy-wide one.
   { dayNum: '22', mon: 'AUG', date: '2026-08-22', course_id: 'c1', course: 'Prenatal Flow',
     title: 'Prenatal Flow · 6:00 pm',
-    meta: 'Coimbatore · 18 expected · awaiting upload',
+    meta: 'Coimbatore · 18 expected · Awaiting upload',
     label: 'Fri 22 Aug · Prenatal Flow 6:00 pm' },
   { dayNum: '23', mon: 'AUG', date: '2026-08-23', course_id: 'c2', course: 'Postnatal Core',
     title: 'Postnatal Core · 8:00 am',
-    meta: 'Madurai · 12 expected · awaiting upload',
+    meta: 'Madurai · 12 expected · Awaiting upload',
     label: 'Sat 23 Aug · Postnatal Core 8:00 am' },
 ];
 

@@ -52,7 +52,7 @@ const preview = (over: Partial<DeletionPreview> = {}): DeletionPreview => ({
 
 test('the warning says the records go, and that it is permanent', () => {
   const body = deletionWarning({ kind: 'counted', preview: preview() });
-  assert.match(body, /all her records/,
+  assert.match(body, /all their records/,
     'the records going with her is half of what the tap decides');
   assert.match(body, /permanently/,
     'and the other half is that it cannot be taken back');
@@ -122,7 +122,7 @@ test('a member who never attended is told nothing of hers is left', () => {
   // promises, so it is the right sentence for the case that proves it.
   const out = removalOutcome('Priya Raman',
     { attendanceRemoved: 0, sessionsTouched: 0, alreadyDeleted: false }, 'live');
-  assert.equal(out.message, 'Priya removed — nothing of hers is left');
+  assert.equal(out.message, 'Priya removed — nothing of theirs is left');
   assert.equal(out.tone, 'ok');
 });
 
@@ -171,9 +171,9 @@ test('a refusal shows the reason the repository already made readable', () => {
   // 33_delete_member_subscription_gate.sql pins on the database side --
   // unchanged by 0051, which kept both guards exactly as 0044 had them.
   const out = removalFailure(new Error(
-    'She could not be removed — the subscription has to be active. Nothing has been changed.'));
+    'The member could not be removed — the subscription has to be active. Nothing has been changed.'));
   assert.equal(out.message,
-    'She could not be removed — the subscription has to be active. Nothing has been changed.');
+    'The member could not be removed — the subscription has to be active. Nothing has been changed.');
   assert.equal(out.tone, 'warn');
 });
 
@@ -181,7 +181,7 @@ test('something thrown that is not an Error still says nothing has been changed'
   // After a destructive action that failed, the first question is not what
   // went wrong but whether it went half-way.
   const out = removalFailure('websocket closed');
-  assert.equal(out.message, 'She could not be removed. Nothing has been changed.');
+  assert.equal(out.message, 'The member could not be removed. Nothing has been changed.');
   assert.equal(out.tone, 'warn');
 });
 

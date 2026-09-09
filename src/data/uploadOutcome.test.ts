@@ -95,7 +95,7 @@ test('"attendance is already marked" is NOT said when nothing is marked', () => 
   assert.doesNotMatch(words.lines.join(' '), /nothing to update/i);
   assert.match(words.lines[0], /nobody is marked present on it now/);
   // and it says what to do instead, because there IS something to do here
-  assert.match(words.lines[1], /Mark her on the Mon 31 Aug roster, or export Mon 31 Aug again/);
+  assert.match(words.lines[1], /Mark them on the Mon 31 Aug roster, or export Mon 31 Aug again/);
 });
 
 test('and not when the register it wrote has been deleted', () => {
@@ -121,7 +121,7 @@ test('a run that moved nothing is reported as nothing, not as an import', () => 
     + 'Prenatal Flow · Coimbatore. 12 members matched what RosiFit already had, so nothing '
     + 'was added, changed or duplicated.');
   assert.equal(words.note,
-    'A member cannot be in her own session twice — one attendance record per member per day.');
+    'A member cannot be in their own session twice — one attendance record per member per day.');
 });
 
 test('anything that moved is NOT nothing', () => {

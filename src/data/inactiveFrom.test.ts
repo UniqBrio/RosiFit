@@ -110,7 +110,7 @@ test('a date still ahead of her is pending; one that has arrived is not', () => 
 
 test('the note dates the word, in the tense the day makes true', () => {
   assert.equal(statusNote(LEAVING, TODAY),
-    'Inactive from 1 October 2026 — she is in the follow-up rule until then');
+    'Inactive from 1 October 2026 — in the follow-up rule until then');
   assert.equal(statusNote(LEAVING, '2026-10-02'), 'Inactive since 1 October 2026');
   // Nothing to add: an active member, and a member off the register with no
   // date on record. A note reading "since —" would invent a day.
@@ -131,7 +131,7 @@ test('dates are written one way, locale-free, so the form and its refusal quote 
 test('a departure before her arrival is refused, with both dates in the sentence', () => {
   assert.equal(
     inactiveFromProblem('2026-02-01', '2026-03-01'),
-    'She joined on 1 March 2026, so she cannot become inactive before that');
+    'The member joined on 1 March 2026, so cannot become inactive before that');
 });
 
 test('the joining day itself is allowed — she may leave the day she arrived', () => {
@@ -153,7 +153,7 @@ test('no joining date on record is not a reason to refuse a date', () => {
 });
 
 test('a blank and a half-typed date are named as what they are', () => {
-  assert.equal(inactiveFromProblem('', '2026-03-01'), 'Choose the date she becomes inactive');
+  assert.equal(inactiveFromProblem('', '2026-03-01'), 'Choose the date they become inactive');
   assert.equal(inactiveFromProblem('2026-1', '2026-03-01'),
     '“2026-1” is not a date — write it as YYYY-MM-DD');
 });
@@ -297,7 +297,7 @@ test('the two ends compose: joined in March, gone from October', () => {
 
 test('the omission is STATED, never a count that drops rows in silence', () => {
   assert.equal(leftEarlierNote(1, 'Thu 1 Oct'),
-    '1 member was inactive on Thu 1 Oct and is not listed for it. She is still on the course.');
+    '1 member was inactive on Thu 1 Oct and is not listed for it. They are still on the course.');
   assert.equal(leftEarlierNote(3, 'Thu 1 Oct'),
     '3 members were inactive on Thu 1 Oct and are not listed for it. They are still on the course.');
   assert.equal(leftEarlierNote(0, 'Thu 1 Oct'), null, 'nothing hidden, nothing said');

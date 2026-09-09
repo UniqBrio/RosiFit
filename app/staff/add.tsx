@@ -60,7 +60,7 @@ export default function StaffAdd() {
   return (
     <FormDialog
       title="Add staff"
-      subtitle="She signs in with her number and a PIN"
+      subtitle="Signs in with a number and a PIN"
       confirmLabel={busy ? 'Saving…' : 'Save Staff Member'}
       confirmTestID="staff-save"
       confirmDisabled={!valid || busy}
@@ -72,7 +72,7 @@ export default function StaffAdd() {
       <Field
         label="Mobile number" required value={phone} onChange={setPhone}
         placeholder="98765 43210" keyboardType="phone-pad" prefix="+91"
-        hint="This number becomes her sign-in ID and cannot be changed later."
+        hint="This number becomes the sign-in ID and cannot be changed later."
         error={digits.length > 0 && digits.length < 10 ? 'A 10-digit mobile number is needed.' : undefined} />
 
       <Label style={{ marginTop: SPACE.sm }}>Role label</Label>
@@ -98,9 +98,9 @@ export default function StaffAdd() {
       }}>
         <Icon name="lock_open" size={19} color={warnInk} />
         <Text style={{ flex: 1, fontSize: 12.5, color: theme.fg, lineHeight: 19 }}>
-          Saving her record does not give her app access. She will appear as{' '}
+          Saving this record does not give app access. They will appear as{' '}
           <Text style={{ fontWeight: '800', color: theme.fgStrong }}>Not enabled</Text> until you generate a
-          login PIN for her — a separate, deliberate step.
+          login PIN for them — a separate, deliberate step.
         </Text>
       </View>
 

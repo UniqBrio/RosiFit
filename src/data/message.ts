@@ -83,16 +83,16 @@ export const MESSAGE_TOKENS: {
   /** offered on the SUBJECT row before the More chip */
   subjectLine: boolean;
 }[] = [
-  { token: '{{first_name}}', means: 'her first name', chip: 'Her first name', everyday: true, subjectLine: true },
-  { token: '{{member_name}}', means: 'her full name', chip: 'Her full name', everyday: false, subjectLine: false },
+  { token: '{{first_name}}', means: 'their first name', chip: 'First name', everyday: true, subjectLine: true },
+  { token: '{{member_name}}', means: 'their full name', chip: 'Full name', everyday: false, subjectLine: false },
   { token: '{{course_name}}', means: 'the course name', chip: 'Course name', everyday: true, subjectLine: false },
   { token: '{{branch_name}}', means: 'the branch', chip: 'Branch', everyday: false, subjectLine: false },
   { token: '{{period_from}}', means: 'start of the period', chip: 'Period from', everyday: true, subjectLine: false },
   { token: '{{period_to}}', means: 'end of the period', chip: 'Period to', everyday: true, subjectLine: false },
-  { token: '{{expected_sessions}}', means: 'sessions she was due at', chip: 'Sessions due', everyday: true, subjectLine: false },
-  { token: '{{attended_sessions}}', means: 'sessions she made', chip: 'Sessions made', everyday: true, subjectLine: false },
-  { token: '{{missed_sessions}}', means: 'sessions she missed', chip: 'Sessions missed', everyday: false, subjectLine: false },
-  { token: '{{attendance_pct}}', means: 'her attendance', chip: 'Attendance %', everyday: false, subjectLine: false },
+  { token: '{{expected_sessions}}', means: 'sessions they were due at', chip: 'Sessions due', everyday: true, subjectLine: false },
+  { token: '{{attended_sessions}}', means: 'sessions they made', chip: 'Sessions made', everyday: true, subjectLine: false },
+  { token: '{{missed_sessions}}', means: 'sessions they missed', chip: 'Sessions missed', everyday: false, subjectLine: false },
+  { token: '{{attendance_pct}}', means: 'their attendance', chip: 'Attendance %', everyday: false, subjectLine: false },
   { token: '{{consecutive_missed}}', means: 'missed in a row', chip: 'Missed in a row', everyday: false, subjectLine: false },
   /* THE RULE THAT LISTED HER, not a figure about her
      (requests/2026-09-08-follow-up-trigger-on-send-and-reach-out.md). Every
@@ -101,8 +101,8 @@ export const MESSAGE_TOKENS: {
      not say. It resolves to the count IN FORCE FOR HER COURSE at the moment
      the send runs -- so a trigger changed just before a send is the number the
      email carries, not the one it was written under. */
-  { token: '{{follow_up_trigger}}', means: 'the trigger that listed her', chip: 'Follow-up trigger', everyday: false, subjectLine: false },
-  { token: '{{last_attendance_date}}', means: 'when she was last present', chip: 'Last present', everyday: false, subjectLine: false },
+  { token: '{{follow_up_trigger}}', means: 'the trigger that listed them', chip: 'Follow-up trigger', everyday: false, subjectLine: false },
+  { token: '{{last_attendance_date}}', means: 'when they were last present', chip: 'Last present', everyday: false, subjectLine: false },
   { token: '{{academy_name}}', means: 'the academy name', chip: 'Academy name', everyday: true, subjectLine: false },
 ];
 

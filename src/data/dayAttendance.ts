@@ -110,6 +110,6 @@ export function dayAttendance(input: {
     canAbsent: expected,
     reason: expected ? null
       : `${member.name} was not expected on ${dayInWords(dayIso)}. `
-        + 'Mark her present and it is recorded as extra.',
+        + 'Mark them present and it is recorded as extra.',
   };
 }

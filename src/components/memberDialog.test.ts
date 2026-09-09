@@ -17,7 +17,7 @@ import {
 test('the subtitle names her course, her branch and her joining month', () => {
   assert.equal(
     memberSubtitle({ course: 'Prenatal Flow', branch: 'Coimbatore', joined: 'Mar 2026' }),
-    'Prenatal Flow · Coimbatore · joined Mar 2026');
+    'Prenatal Flow · Coimbatore · Joined Mar 2026');
 });
 
 test('a member with no joining month on record is not shown "joined —"', () => {
@@ -51,7 +51,7 @@ test('the card opens on her week, and the record is the second panel', () => {
   // The first tab is the panel the card has always shown. If this ever
   // reverses, the same tap starts showing a different thing.
   assert.deepEqual(MEMBER_TABS.map(t => t.key), ['week', 'details']);
-  assert.deepEqual(MEMBER_TABS.map(t => t.label), ['This week', 'Her details']);
+  assert.deepEqual(MEMBER_TABS.map(t => t.label), ['This week', 'Details']);
 });
 
 test('her status carries a word and an icon, never a colour alone', () => {

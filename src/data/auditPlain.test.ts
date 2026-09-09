@@ -65,7 +65,13 @@ test('every category resolves for an entity nobody has mapped', () => {
 
 test('a column name becomes a label', () => {
   assert.equal(fieldLabel('full_name'), 'Name');
-  assert.equal(fieldLabel('joined_on'), 'Joined on');
+  // 'Joined on' until 0057 gave the column a picker and a name to go with
+  // it. The COLUMN is still joined_on -- renaming it would cost a
+  // migration nobody can review -- so this map is exactly where the two
+  // vocabularies are allowed to meet, and an audit line is read by the
+  // same person who read the form that wrote it.
+  assert.equal(fieldLabel('joined_on'), 'Active from');
+  assert.equal(fieldLabel('inactive_from'), 'Inactive from');
   assert.equal(fieldLabel('created_by'), 'Added by');
 });
 

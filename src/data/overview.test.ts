@@ -68,7 +68,7 @@ test('one tick names it; several are counted, never truncated', () => {
 test('the caption describes the same selection the predicate applies', () => {
   assert.equal(
     scopeSentence({ courses: [], branches: [] }, '31 Aug–6 Sep 2026'),
-    'every course · every branch · 31 Aug–6 Sep 2026');
+    'Every course · Every branch · 31 Aug–6 Sep 2026');
   assert.equal(
     scopeSentence({ courses: ['Prenatal Flow'], branches: ['Chennai', 'Erode'] }, 'this week'),
     'Prenatal Flow · 2 branches · this week');

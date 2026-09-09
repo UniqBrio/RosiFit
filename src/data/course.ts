@@ -139,7 +139,7 @@ export function coursesHeadline(
   const branches = `${branchCount} ${branchCount === 1 ? 'branch' : 'branches'}`;
   const need = needFollowUp
     ? `${needFollowUp} need follow-up`
-    : 'nobody needs follow-up';
+    : 'Nobody needs follow-up';
   return `${courses} · ${branches} · ${need}`;
 }
 
