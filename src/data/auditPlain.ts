@@ -164,6 +164,10 @@ const ACTION_TITLE: Record<string, string> = {
   'member.hard_deleted': 'Member deleted permanently',
   'course.hard_deleted': 'Course deleted permanently',
   'branch.hard_deleted': 'Branch deleted permanently',
+  // 0063. Not a hard delete: the branch is soft-deleted and whatever ran
+  // there was MOVED, so the wording says "removed" rather than "deleted" and
+  // the counts below name where things went.
+  'branch.removed': 'Branch removed',
   'member_email.hard_deleted': 'Email address deleted permanently',
   'member_import_run.hard_deleted': 'Import receipt deleted permanently',
   // Attendance, whose writers are functions rather than the row trigger:
@@ -649,6 +653,10 @@ const REMOVAL_COUNTS: Record<string, readonly [key: string, one: string, many: s
   'branch.hard_deleted': [
     ['offerings', 'offering', 'offerings'],
     ['holidays', 'holiday', 'holidays'],
+  ],
+  'branch.removed': [
+    ['offerings_moved', 'course moved', 'courses moved'],
+    ['holidays_moved', 'holiday moved', 'holidays moved'],
   ],
   'member_import_run.hard_deleted': [
     ['total_rows', 'row', 'rows'],

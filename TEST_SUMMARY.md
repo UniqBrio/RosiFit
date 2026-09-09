@@ -1,3 +1,40 @@
+## FAIL-FIRST — the reported 794-member upload (09-Sep-2026)
+
+Reported with the real file: a 794-member members report, an Inactive from date
+typed against two members, uploaded. Two defects, one behind the other.
+
+FAIL-FIRST (1): the file was refused outright — "A file may carry at most 500
+members; this one has 794." Reproduced by running the real export through the
+real parser: 794 rows, and the ceiling was MEMBER_IMPORT_MAX_ROWS, the member
+TEMPLATE's guard against a runaway file creating thousands of people. This file
+is the academy's own register sent back, so its natural size is however many
+members the academy has. Fixed with STATUS_IMPORT_MAX_ROWS = 5000. Re-run: 794
+rows parse.
+
+FAIL-FIRST (2), and the worse one: with the ceiling lifted, BOTH edits were
+still silently discarded — the two rows came back "unchanged". Proved on the
+real file before the fix: verdicts {unchanged: 792, blocked: 7}, ready: 0.
+Root cause in wantedPair: the rule was "an inactive date with NO STATUS beside
+it means inactive from that day", and memberDetailSheet writes a Status on
+every row, so on a real export there is never no status beside it. The exported
+"Active" won and the typed date was dropped. The one gesture the button exists
+for was the one it could not do.
+
+Fixed by reading WHICH CELL WAS EDITED against the record. Re-run on the real
+file: {unchanged: 792, ready: 2} — exactly John (row 289) and Sam (row 565),
+each "Inactive from: Not on record -> 2026-10-10, Status: Active -> Inactive".
+
+FAIL-FIRST (3): the seven new assertions in statusImport.test.ts were run
+against the OLD rule restored in place. Exactly the two that describe the
+reported bug failed — "a leaving date typed into an untouched exported row is
+obeyed" and "and it shows up as a real change" — 27 pass, 2 fail. The other
+five describe behaviour that was already correct and pass under both rules,
+which is what they should do. Restored: 29 pass.
+
+supabase/tests/44_typed_leaving_date_is_an_instruction.sql — NEW, 8/8. The same
+three cases server-side, because 0062 has to resolve them identically to
+wantedPair or the two halves disagree about one file.
+
 ## FAIL-FIRST — the harness could not fail (09-Sep-2026)
 
 FAIL-FIRST: db/harness/reset.sh — injected a deliberately-wrong expectation into
@@ -481,6 +518,126 @@ exit 1
 - **G9 Automation addressability** - PASS
 - **G10 Backward compatibility (fixtures)** - PASS
 - **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-09 - VERDICT: FAIL
+
+Steps: 5 pass, 5 fail, 1 blocked.
+Time: 18.6s total - slowest G7 Unit + pure specs (12.2s).
+
+- **G1 Theme artifacts in sync** - FAIL (54ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (51ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (50ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (64ms)
+- **G5 Types** - PASS (5.9s)
+- **G6 Lint** - BLOCKED (-) - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - FAIL (12.2s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: a form asked for a record answers a failed read
+ok 164 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 165 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 178 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+  name: 'AssertionError'
+  expected: true
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+ok 295 - a ring is never a colour alone, and nothing expected is a dash
+# Subtest: a failed reset keeps the dialog open, carrying the reason
+ok 332 - a failed reset keeps the dialog open, carrying the reason
+```
+
+- **G8 Functional / integration** - FAIL (114ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (51ms)
+- **G10 Backward compatibility (fixtures)** - PASS (118ms)
+- **G11 Wide tables are configurable** - PASS (52ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-09 - VERDICT: FAIL
+
+Steps: 5 pass, 5 fail, 1 blocked.
+Time: 33.2s total - slowest G7 Unit + pure specs (17.0s).
+
+- **G1 Theme artifacts in sync** - FAIL (143ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (71ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (114ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (150ms)
+- **G5 Types** - PASS (15.1s)
+- **G6 Lint** - BLOCKED (-) - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - FAIL (17.0s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: a form asked for a record answers a failed read
+ok 150 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 151 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 164 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+  name: 'AssertionError'
+  expected: true
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+ok 281 - a ring is never a colour alone, and nothing expected is a dash
+# Subtest: a failed reset keeps the dialog open, carrying the reason
+ok 318 - a failed reset keeps the dialog open, carrying the reason
+```
+
+- **G8 Functional / integration** - FAIL (170ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (69ms)
+- **G10 Backward compatibility (fixtures)** - PASS (150ms)
+- **G11 Wide tables are configurable** - PASS (74ms)
 
 _Merge blocked. Every FAIL above must resolve. No partial merges._
 

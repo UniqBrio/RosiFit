@@ -1,5 +1,53 @@
 # Changelog
 
+## Unreleased — A branch that runs courses can now be removed
+
+**Removing a branch no longer stops at a padlock.** Until now, a branch with any course on it
+could not be removed at all — the button was locked and said *"move them first"*, which was advice
+with nothing behind it: there was no way to move them.
+
+Pressing remove on such a branch now asks **where its courses should go**, and moves them there.
+The courses carry on at the new branch with everything intact — their registers, their sessions,
+every member and every attendance record. **Nothing is deleted.**
+
+If a course already runs at the branch you pick, that one cannot move there — the two registers
+would end up on top of each other — so RosiFit says which course it is and changes nothing. Move
+or remove that one first.
+
+A branch with nothing on it is removed as before, behind the same plain confirmation.
+
+**To actually delete a course, delete the course.** Removing a location does not destroy a
+register, and there is a separate control on each course for when you mean that.
+
+Adding and removing branches is still the academy admin's, unchanged.
+
+## Unreleased — A leaving date typed into the report now actually takes
+
+Two fixes to Bulk Import, both found from one real upload: a 794-member report with an
+**Inactive from** date filled in against two members.
+
+**The file is no longer too big.** It was refused with *"A file may carry at most 500 members;
+this one has 794"* — a limit that belongs to the member template, which creates people, and never
+should have applied to your own register sent back. The report can now carry up to 5,000 members,
+which is past any register we expect to see.
+
+**And the dates you type now take effect.** This is the more serious of the two. Underneath, the
+app read an **Inactive from** date as meaning "inactive" only when the **Status** cell beside it
+was blank — but the report always writes a Status, so on a real export that was never true. The
+exported *Active* won every time and the date you had just typed was thrown away, and the upload
+reported *Already correct*. Both members in that file were silently skipped.
+
+The app now looks at **which cell you changed**, comparing against what the register already
+holds:
+
+- type a leaving date and leave Status alone → the member is inactive from that day
+- set Status to **Active** → the member is back on the register, and the old date comes off
+- send the export back untouched → nothing is written, every row *Already correct*
+
+**One thing to know about names.** Rows are matched to members by name, so if two members share a
+name the app refuses those rows rather than guessing which one you meant — it says so on the
+result, per row, and nothing is written for them.
+
 ## Unreleased — Reset clears the members you picked, and you can delete the ones with no email
 
 **Reset now acts on the members you tick, not on the whole day.** Pick the members whose marks are

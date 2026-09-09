@@ -847,27 +847,52 @@ export async function createBranch(name: string): Promise<void> {
  * delete is refused by the foreign key anyway; and keeping the row is what
  * lets a past session still name the branch it happened at.
  */
-export async function removeBranch(id: string, name: string): Promise<void> {
+/**
+ * Remove a branch -- and, when it still runs courses, move them somewhere
+ * first (0063).
+ *
+ * `moveTo` is the branch its offerings and holidays go to. Omitted, this is
+ * 0019's behaviour unchanged: the branch is removed only if nothing is left
+ * on it, and `branches_guard_removal` says so if something is.
+ *
+ * NOTHING IS DESTROYED either way. Enrolments, sessions and attendance hang
+ * off the OFFERING, and the offering survives the move with a new branch_id.
+ * Deleting the courses is delete_course's job (0047), with its own preview.
+ *
+ * Through the RPC rather than the direct UPDATE this used to do, because the
+ * move and the removal have to be one act: offerings reassigned and then a
+ * removal that fails would leave the courses at a branch nobody chose.
+ */
+export async function removeBranch(
+  id: string, name: string, moveTo?: string | null,
+): Promise<{ movedTo: string | null; offeringsMoved: number }> {
   if (!isConfigured) {
     const at = BRANCHES.indexOf(name);
     if (at >= 0) BRANCHES.splice(at, 1);
     branchesChanged();
-    return;
+    return { movedTo: null, offeringsMoved: 0 };
   }
 
-  const { data, error } = await supabase.from('branches')
-    .update({ deleted_at: new Date().toISOString() })
-    .eq('id', id).is('deleted_at', null).select('id');
+  const { data, error } = await supabase.rpc('remove_branch', {
+    p_branch_id: id,
+    p_move_to: moveTo ?? null,
+  });
   if (error) {
     console.error('removeBranch:', error.message);
+    if (error.code === 'PGRST202' || error.code === '42883') {
+      throw new Error('The academy database cannot move a branch\u2019s courses yet — '
+        + 'migration 0063 has not been applied. Nothing has been changed.');
+    }
     throw new Error(branchWriteError(error, 'remove'));
   }
-  // RLS refuses an UPDATE by matching NO ROWS rather than by erroring -- the
-  // same shape that let updateCourse report a save the policy had declined.
-  if (!data || data.length === 0) {
-    throw new Error(`${name} could not be removed — only the super admin may, and only while the subscription is active. Nothing has been changed.`);
-  }
   branchesChanged();
+  // The courses moved, so every screen that reads a course by branch is stale.
+  coursesChanged();
+  const r = (data ?? {}) as Record<string, unknown>;
+  return {
+    movedTo: (r.moved_to as string | null) ?? null,
+    offeringsMoved: Number(r.offerings_moved ?? 0),
+  };
 }
 
 export type OfferingDetail = {
@@ -2718,11 +2743,30 @@ export async function bulkSetMemberDates(input: StatusImportInput): Promise<Stat
       // lowered here exactly as the SQL lowers it; and an inactive date with
       // no status beside it means inactive from that day, because
       // members_inactive_from_needs_status allows no other reading.
+      // The same three-way reading wantedPair does, and it has to be the same
+      // or the offline store tells a different story about the same file.
+      // WHICH CELL WAS EDITED decides, measured against the record: the export
+      // always writes a Status, so "a date with no status beside it" never
+      // happens on a real report and cannot be the test.
       const said = r.status?.trim().toLowerCase();
-      const status = (said === 'active' || said === 'inactive' || said === 'paused' ? said
-        : r.inactive_from ? 'inactive'
-        : was.status) as MemberStatus;
-      const from = status === 'active' ? null : (r.inactive_from ?? was.inactiveFrom ?? null);
+      const stated = (said === 'active' || said === 'inactive' || said === 'paused')
+        ? said as MemberStatus : null;
+      const held = was.inactiveFrom ?? null;
+      const statusEdited = stated !== null && stated !== was.status;
+      const dateEdited = !!r.inactive_from && r.inactive_from !== held;
+
+      let status: MemberStatus;
+      let from: string | null;
+      if (statusEdited) {
+        status = stated as MemberStatus;
+        from = status === 'active' ? null : (r.inactive_from ?? held);
+      } else if (dateEdited) {
+        status = 'inactive';
+        from = r.inactive_from;
+      } else {
+        status = stated ?? was.status;
+        from = status === 'active' ? null : (r.inactive_from ?? held);
+      }
       const joinedOn = r.active_from ?? was.joinedOn ?? null;
       const changed = status !== was.status
         || from !== (was.inactiveFrom ?? null)

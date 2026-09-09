@@ -53,6 +53,26 @@ export type StatusImportColumn = (typeof STATUS_IMPORT_COLUMNS)[number];
 /** The column that decides whether a sheet is this file at all. */
 export const STATUS_IMPORT_REQUIRED: StatusImportColumn = 'Member';
 
+/**
+ * HOW MANY ROWS THIS FILE MAY CARRY -- and why it is not the template's 500.
+ *
+ * The member TEMPLATE creates people, so 500 there is a guard against a
+ * runaway file inventing thousands of members. This file is the opposite: it
+ * is the academy's own register, exported and sent back, so its natural size
+ * is however many members the academy has. Capping it at 500 told an academy
+ * of 794 to "narrow the report by course or branch and upload it in two
+ * parts" -- asking them to work around the app on a file the app itself
+ * produced. That is the defect this constant exists to close (09-Sep-2026,
+ * reported with a real 794-member export).
+ *
+ * A ceiling still exists, because an unbounded read is how a corrupt workbook
+ * becomes an out-of-memory error rather than a refusal. 5,000 is well past any
+ * plausible register and still a small request: at roughly 120 bytes a row it
+ * is under a megabyte, and only the rows that actually CHANGE are ever sent to
+ * the server.
+ */
+export const STATUS_IMPORT_MAX_ROWS = 5000;
+
 /** The sheet the Reports export writes these on. */
 export const STATUS_IMPORT_SHEET = 'Member details';
 
@@ -164,14 +184,47 @@ export function wantedPair(row: StatusImportRow, m: StatusMember):
   { status: MemberStatus; inactiveFrom: string | null } {
   const stated = readStatus(row.status);
   const dated = cellValue(row.inactiveFrom);
-  const status: MemberStatus = stated && stated !== 'bad' ? stated
-    : dated ? 'inactive'
-    : m.status;
-  // Her stored date is the default, so a row that only moves the JOINING date
-  // cannot wipe the leaving one on its way past. Active takes the date off,
-  // exactly as set_member_status does with it.
-  const inactiveFrom = status === 'active' ? null : (dated || m.inactiveFrom || null);
-  return { status, inactiveFrom };
+  const held = m.inactiveFrom ?? '';
+
+  // WHICH CELL WAS EDITED. Both are read against what the register already
+  // holds, because that is the only way to tell a cell somebody TYPED from a
+  // cell the export wrote and nobody touched.
+  const statusEdited = stated !== null && stated !== 'bad' && stated !== m.status;
+  const dateEdited = dated !== '' && dated !== held;
+
+  if (statusEdited) {
+    // The status column was changed by hand, so it is the instruction. Active
+    // takes the leaving date off, exactly as set_member_status does with it.
+    const status = stated as MemberStatus;
+    return {
+      status,
+      inactiveFrom: status === 'active' ? null : (dated || m.inactiveFrom || null),
+    };
+  }
+
+  if (dateEdited) {
+    // A DATE TYPED INTO AN OTHERWISE UNTOUCHED ROW, and this is the case the
+    // whole button exists for. It used to be lost: the reading was "an
+    // inactive date with NO STATUS beside it means inactive from that day",
+    // and the export always writes a Status -- so on a real report there was
+    // never no status beside it, the exported "Active" won, and the date the
+    // academy had just typed was discarded in silence (reported 09-Sep-2026
+    // against a 794-member export with two dates filled in).
+    //
+    // Typing a date is an explicit act and the exported status is not, so the
+    // date wins. To put somebody back on the register you clear the cell, or
+    // set Status to Active -- both of which are edits, and both land above.
+    return { status: 'inactive', inactiveFrom: dated };
+  }
+
+  // Nothing was edited: the row agrees with the register and must write
+  // nothing. The stored date is the default, so a row that only moves the
+  // JOINING date cannot wipe the leaving one on its way past.
+  const status = stated && stated !== 'bad' ? stated : m.status;
+  return {
+    status,
+    inactiveFrom: status === 'active' ? null : (dated || m.inactiveFrom || null),
+  };
 }
 
 /** The word a status is shown as, so a change reads in the file's own terms. */

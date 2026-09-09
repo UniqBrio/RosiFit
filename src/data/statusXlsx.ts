@@ -18,10 +18,9 @@ import type ExcelJS from 'exceljs';
 import { excel, cellText } from './memberXlsx';
 import {
   canonicalStatusColumn, cellValue, MemberImportError,
-  STATUS_IMPORT_REQUIRED, STATUS_IMPORT_SHEET,
+  STATUS_IMPORT_REQUIRED, STATUS_IMPORT_SHEET, STATUS_IMPORT_MAX_ROWS,
   type StatusImportRow,
 } from './statusImport';
-import { MEMBER_IMPORT_MAX_ROWS } from './memberImport';
 import { importKindOf, type ImportKind, type SheetShape } from './importKind';
 
 /**
@@ -136,10 +135,13 @@ export async function parseStatusXlsx(bytes: ArrayBuffer): Promise<StatusImportR
   if (rows.length === 0) {
     throw new MemberImportError('That file has a header and no rows under it. Nothing to import.');
   }
-  if (rows.length > MEMBER_IMPORT_MAX_ROWS) {
+  // The REGISTER's ceiling, not the template's: this file is the academy's own
+  // export and is as long as the academy is (STATUS_IMPORT_MAX_ROWS).
+  if (rows.length > STATUS_IMPORT_MAX_ROWS) {
     throw new MemberImportError(
-      `A file may carry at most ${MEMBER_IMPORT_MAX_ROWS} members; this one has ${rows.length}. `
-      + 'Narrow the report by course or branch and upload it in two parts.');
+      `That report carries ${rows.length} members, and this import reads at most `
+      + `${STATUS_IMPORT_MAX_ROWS} at a time. Narrow it by course or branch in Reports `
+      + 'and upload it in parts.');
   }
   return rows;
 }
