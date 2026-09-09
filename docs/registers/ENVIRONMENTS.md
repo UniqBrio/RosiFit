@@ -105,6 +105,36 @@ set with `supabase secrets set` and appear in no tracked file.
 
 ---
 
+## Production change applied 09-Sep-2026 (second) — ✅ VERIFIED, with a known window
+
+Project `lhpzhkzbnquwjljmbylo` ("Rosifit"). **`0057_reset_only_the_selected_members` APPLIED.**
+
+- **Rehearsed first.** `npm run test:db` replayed every migration from scratch; the new
+  `supabase/tests/43` passes 13/13, and the ten failures elsewhere in the suite are pre-existing
+  and unrelated.
+- **`reset_day_attendance` now takes `p_member_ids`** — the members whose marks to CLEAR. The
+  0056 function taking `p_delete_member_ids` (members to DELETE) is **dropped**, not overloaded.
+  Verified: one definition only, `(p_course_id uuid, p_session_date date, p_member_ids uuid[])`,
+  `EXECUTE` to `authenticated` and `service_role`.
+- **A KNOWN WINDOW WAS ACCEPTED, deliberately, and this is the record of it.** The application
+  code that calls the new signature is on `claude/pull-latest-main-7azgnr` (PR #8) and was NOT
+  merged when this was applied. Until that deploys, pressing Reset in the live app fails with
+  *"The register could not be reset"* and clears nothing. The decision was the repo owner's,
+  taken with the trade-off stated; the failure is loud, writes nothing, risks no data, and
+  touches one occasional admin control and nothing else.
+- **Why zero-downtime was not available.** Postgres identifies a function by name and argument
+  TYPES, not parameter names, so `(uuid, date, uuid[])` cannot exist twice — the old and new
+  versions could not coexist for a phased cutover. The only alternative was renaming the
+  function, which was judged more churn than the window is worth.
+- **The old 2-argument `attendance_reset_preview` SURVIVES**, because 0057 adds the 3-argument
+  form rather than replacing it. That is why the window is narrower than it first appears: the
+  live app can still OPEN the reset dialog and see its numbers, and only the confirm fails.
+- **Follow-up owed:** once PR #8 is deployed, nothing calls the 2-argument preview. It should be
+  dropped — it is also one of the twelve functions still carrying gendered text, so the drop and
+  that sweep are the same piece of work.
+
+---
+
 ## Production change applied 09-Sep-2026 — ✅ VERIFIED against the live project
 
 Project `lhpzhkzbnquwjljmbylo` ("Rosifit", ap-southeast-1). Two migrations, applied **one at a
