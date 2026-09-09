@@ -377,7 +377,7 @@ async function preview(admin: SupabaseClient, actorId: string, body: Record<stri
                   offering ? (courseNameById.get(offering.course_id as string) ?? 'another course') : 'another course'
                 } — not this one`
             : tier === 'alias' ? 'Matched on a confirmed display name'
-            : tier === 'canonical' ? 'Matched on her canonical name'
+            : tier === 'canonical' ? 'Matched on the canonical name'
             : 'Fuzzy match — nothing is assumed',
         hint_tone: elsewhere.includes(id) || tier === 'fuzzy' ? 'unsure' : 'sure',
       };

@@ -1,5 +1,68 @@
 # Changelog
 
+## Unreleased — Reset clears the members you picked, and you can delete the ones with no email
+
+**Reset now acts on the members you tick, not on the whole day.** Pick the members whose marks are
+wrong, press Reset, and only those marks are cleared. Everybody else's attendance for that day is
+left exactly as it was.
+
+Reset is unavailable until you have ticked somebody — pressing it with nothing selected used to
+clear the entire register for that day, which is a much bigger thing than it looked. If you do want
+the whole day, *Select all* is one tap and then Reset does exactly that, on purpose rather than by
+default.
+
+**The day only goes back to *awaiting a file* when the reset empties it.** Clearing three of eight
+members leaves five marks standing, so that day is still a register and is no longer advertised as
+ready for an upload — which would have invited a second file on top of the marks that survived.
+
+**Deleting is now its own button, with its own question.** Tick members in the *no email* list and a
+Delete button appears beside the count; it asks before anything happens, and names who is being
+removed and what else goes with them. It only ever offers the members with no email address on
+file — anybody the academy can still write to is never removed by a bulk control.
+
+Deleting used to be folded into the reset: a list of tick boxes inside the reset dialog, and one
+press that both cleared the day and deleted whoever was ticked. One button carrying a reversible
+act and an irreversible one meant the whole dialog had to be read at the size of its worst half,
+every time. They are two separate decisions now, and each says plainly what it does.
+
+## Unreleased — Bulk Import now also sets joining and leaving dates
+
+**Bulk Import takes a second kind of file, and works out for itself which one you chose.**
+It is the same button in the same place; nothing about adding members has changed.
+
+*To add members*, as always: download the template, fill in the Member Data sheet, upload it.
+Members already on the register are skipped, never overwritten — exactly as before.
+
+*To change dates on members already here*: download the members report from **Reports → Export**,
+type into the **Active from** and **Inactive from** columns of the *Member details* sheet, and
+upload that same file back. There is no template for this one and nothing to re-key: the file is
+the report you already have.
+
+**A blank cell is left alone.** That is the rule the whole thing turns on. Almost every cell of a
+report you send back is untouched, so a blank means *as you were*, never *clear this* — where no
+Active from is typed, the joining date already on record stands. Uploading an export you have not
+edited changes nothing at all, and says so: *Already correct*, for every row. An **Inactive from**
+date with no status beside it is read the only way it can be — inactive from that day.
+
+**The dates file never adds anybody**, and the template never changes anyone's dates. One button,
+still two jobs, and each file gets only the one it came for. A name the report mentions that is
+not on the register is reported back with what to do about it, and nothing is written for that row.
+
+When it finishes it says what it did, member by member: which dates moved and what they moved
+from, which rows were already correct, and which were not changed and why. Every date is checked
+the same way the member form checks it, so a file cannot record something the form would have
+refused — a joining date in the future, one after the member left, or one later than a session
+they are already marked present at.
+
+## Unreleased — The app no longer says "she"
+
+**Every message the app shows is now written about *the member*.** The academy is a women's
+academy; the software is not, and a licensee running a mixed academy was being shown copy that
+did not fit. Nothing changed about what any of these messages mean or when they appear — the
+delete confirmation, the status pill and its confirmation, the send screen's refusals, the
+member-import notes and the database's own refusals about joining and leaving dates all say the
+same things about the same records, in wording that reads correctly for anybody.
+
 ## Unreleased — The app updates itself when a new version is deployed
 
 **A new version now reaches the app on its own.** Until today the app only picked up a new

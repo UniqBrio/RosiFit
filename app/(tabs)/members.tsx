@@ -297,7 +297,7 @@ export default function Members() {
       <ConfirmDialog
         open={confirmRemove !== null}
         onClose={() => setConfirmRemove(null)}
-        title={confirmRemove ? `Delete ${confirmRemove.name} and her records?` : ''}
+        title={confirmRemove ? `Delete ${confirmRemove.name} and every record?` : ''}
         body={confirmRemove ? deletionWarning(previewState) : ''}
         cancelLabel="No"
         confirmLabel={removing ? 'Deleting…' : 'Yes'}

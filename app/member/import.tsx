@@ -40,6 +40,15 @@ import {
   buildMemberTemplate, parseMemberXlsx, buildErrorReport, templateFileName, templateColumns,
   type ReportLine,
 } from '../../src/data/memberXlsx';
+import {
+  validateStatusRows, tallyStatusImport, cellValue,
+  STATUS_IMPORT_HELP, STATUS_IMPORT_SHEET,
+  type StatusVerdict, type StatusChange, type StatusImportResult,
+} from '../../src/data/statusImport';
+import { parseStatusXlsx, detectImportKind } from '../../src/data/statusXlsx';
+import { bulkSetMemberDates } from '../../src/data/repository';
+import { iso } from '../../src/data/period';
+import type { ImportKind } from '../../src/data/importKind';
 
 const ink = (k: keyof typeof STATUS, dark: boolean) => (dark ? STATUS[k].fgDark : STATUS[k].fgLight);
 
@@ -51,6 +60,10 @@ const ink = (k: keyof typeof STATUS, dark: boolean) => (dark ? STATUS[k].fgDark 
  */
 const NOTHING_SENT: ImportResult = {
   run_id: 'not-sent', total: 0, inserted: 0, skipped: 0, failed: 0, rows: [],
+};
+/** The same, for the dates half: every row refused here, nothing sent. */
+const NO_DATES_SENT: StatusImportResult = {
+  total: 0, updated: 0, unchanged: 0, failed: 0, rows: [],
 };
 const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
@@ -78,6 +91,18 @@ function MemberImportBody() {
   const [result, setResult] = useState<ImportResult | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
 
+  /* THE DATES HALF, on the same button (09-Sep-2026). One press, two files:
+     the template CREATES members, the members report MOVES THE DATES of
+     members already on the register. `kind` is what the chosen file turned
+     out to be -- null until one is chosen -- and it is read from the FILE,
+     never asked of the person. Its state is kept apart from the create
+     path's above rather than shared with it: the two results count
+     different things, and one set of variables meaning two things is how
+     the wrong count reaches a screen. */
+  const [kind, setKind] = useState<ImportKind | null>(null);
+  const [dateVerdicts, setDateVerdicts] = useState<StatusVerdict[] | null>(null);
+  const [dateResult, setDateResult] = useState<StatusImportResult | null>(null);
+
   // THE COURSE IS PER ROW, and it lives in the file. There is no picker
   // here: one spreadsheet can carry members for as many courses as the
   // academy runs, and asking for a single course up front would have meant
@@ -102,6 +127,48 @@ function MemberImportBody() {
   }), [roster.data, offerings, chosenCourse, chosenBranch]);
 
   const blocked = verdicts?.filter(v => v.state === 'blocked') ?? [];
+
+  /* The register, as much of it as judging a REPORT row needs. Names, not
+     ids: the report carries a name and nothing else that identifies anybody,
+     and an id edited in a spreadsheet is how one member's dates land on
+     another. */
+  const dateCtx = useMemo(() => ({
+    members: (roster.data ?? []).map(m => ({
+      id: m.id, name: m.name, status: m.status,
+      joinedOn: m.joinedOn ?? null,
+      inactiveFrom: m.inactiveFrom ?? null,
+    })),
+    todayIso: iso(new Date()),
+  }), [roster.data]);
+
+  const dateTally = useMemo(
+    () => tallyStatusImport(dateVerdicts ?? [], dateResult), [dateVerdicts, dateResult]);
+
+  /* WHAT MOVED, per member -- the point of the dates half. "3 updated" is a
+     number somebody has to take on trust; the field, the old value and the
+     new one is the change itself, and this is the only screen that shows it.
+     The CHANGES come from the verdict, which judged the row against the
+     register before anything was sent; the row being here at all comes from
+     the server, which is what makes it true. */
+  const moved = useMemo(() => {
+    const byRow = new Map<number, StatusChange[]>();
+    for (const v of dateVerdicts ?? []) if (v.state === 'ready') byRow.set(v.row.row, v.changes);
+    return (dateResult?.rows ?? [])
+      .filter(r => r.status === 'updated')
+      .map(r => ({ row: r.row, name: r.full_name, changes: byRow.get(r.row) ?? [] }))
+      .sort((a, b) => a.row - b.row);
+  }, [dateVerdicts, dateResult]);
+
+  /** Every report row that did not move and was not meant to, in sheet order,
+   *  whichever side refused it. */
+  const dateNotLanded = useMemo(() => [
+    ...(dateVerdicts ?? []).filter(v => v.state === 'blocked')
+      .map(v => ({ row: v.row.row, name: v.row.name,
+                   status: v.state === 'blocked' ? v.kind : 'failed',
+                   reason: v.state === 'blocked' ? v.reason : '' })),
+    ...(dateResult?.rows ?? []).filter(r => r.status === 'failed')
+      .map(r => ({ row: r.row, name: r.full_name, status: 'failed', reason: r.reason ?? '' })),
+  ].sort((a, b) => a.row - b.row), [dateVerdicts, dateResult]);
 
   // The four counts, from BOTH halves: rows this screen refused never reached
   // the server and have no verdict there, and rows that were sent have none
@@ -180,15 +247,76 @@ function MemberImportBody() {
    * each accepted one in her own sub-transaction, so the count that comes
    * back is the count the database accepted -- never the count sent.
    */
+  /**
+   * THE REPORT SENT BACK -- read, judge, write, report, exactly as the
+   * template path below does it and for the same reason.
+   *
+   * The workflow is the requester's: "user downloads member list from
+   * reports section and updates active from and inactive from and on upload
+   * it should update the exsiting members data". So there is no template to
+   * download for this half -- the file IS the export, and every column but
+   * the two dates and the status is carried along and ignored.
+   *
+   * BLANK MEANS LEAVE IT ALONE, which is why a blank cell is sent as null
+   * and never as ''. Almost every cell of a re-uploaded export is untouched;
+   * a blank that cleared a date would make the export a bulk eraser. Where
+   * no Active from is typed the member keeps the joining date already on
+   * record -- active from IS the joining date, one fact in one column.
+   *
+   * It NEVER creates anybody. A name the register does not have comes back
+   * with what to do about it, and nothing is written for that row: the two
+   * verbs stay separate under one button.
+   */
+  const importDates = async (picked: { name: string; bytes: ArrayBuffer }) => {
+    const rows = await parseStatusXlsx(picked.bytes);
+    const judged = validateStatusRows(rows, dateCtx);
+    setFile({ name: picked.name, rows: [] });
+    setDateVerdicts(judged);
+
+    const send = judged.filter(v => v.state === 'ready');
+    // The re-uploaded export, every row already correct, lands here every
+    // time. Calling the server with an empty list would only ask it to agree.
+    if (send.length === 0) { setDateResult(NO_DATES_SENT); return; }
+
+    setBusy('importing');
+    const r = await bulkSetMemberDates({
+      rows: send.map(v => ({
+        row: v.row.row,
+        full_name: v.row.name.trim(),
+        active_from: cellValue(v.row.activeFrom) || null,
+        inactive_from: cellValue(v.row.inactiveFrom) || null,
+        // the WORD the sheet carries; the server lowers it
+        status: v.row.status.trim() || null,
+      })),
+      file_name: picked.name,
+    });
+    setDateResult(r);
+  };
+
   const choose = async () => {
     setRefusal(null);
     setResult(null);
     setVerdicts(null);
     setFile(null);
+    setKind(null);
+    setDateVerdicts(null);
+    setDateResult(null);
     try {
       const picked = await pickFile(`.xlsx,${XLSX}`, MEMBER_IMPORT_MAX_BYTES);
       if (!picked) return;
       setBusy('reading');
+
+      /* WHICH FILE IS THIS -- asked of the file, never of the person
+         (src/data/importKind.ts). The template creates members; the members
+         report moves the dates of members already on the register. Anything
+         unrecognisable answers 'members', so it lands in the importer that
+         has always handled it and gets that importer's own refusal: a file
+         that used to work goes on working, and a file that used to be
+         refused is refused in the same words. */
+      const which = await detectImportKind(picked.bytes);
+      setKind(which);
+      if (which === 'dates') { await importDates(picked); return; }
+
       const rows = await parseMemberXlsx(picked.bytes);
       const judged = validateMemberRows(rows, ctx);
       setFile({ name: picked.name, rows });
@@ -245,6 +373,12 @@ function MemberImportBody() {
   // import was a page underneath; the import is a dialog now, so the answer
   // arrives where the question was asked.
   const showResult = result !== null && file !== null;
+  /* The dates half's own result, on the same dialog. Kept a separate flag
+     rather than folded into `showResult`: the two count different things,
+     and a screen that shows "Imported" for a file that created nobody is
+     the exact confusion merging the buttons could have introduced. */
+  const showDates = kind === 'dates' && dateResult !== null && file !== null;
+  const dateChanged = dateTally.updated > 0;
 
   const body = loading ? <Skeleton lines={6} />
     : failed ? (
@@ -254,6 +388,62 @@ function MemberImportBody() {
       <EmptyState title="Add a course first"
         body="The template's Course column is a dropdown of your own courses, and a course typed by hand is refused — so there is nothing to build one from yet. Add a course, then come back and download the template."
         action="Add Course" onAction={() => router.push('/course/edit')} />
+    ) : showDates && dateResult && file ? (
+      <>
+        {/* The WORD and the icon, never the fill alone (guardrail 3). */}
+        <View style={{
+          flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.md,
+          padding: SPACE.lg, borderRadius: RADIUS.md,
+          backgroundColor: dateChanged ? ink('present', dark) : ink('awaiting', dark),
+        }}>
+          <Icon name={dateChanged ? 'check_circle' : 'warning'} size={22} color={onStatusFill(dark)} />
+          <Text style={{ fontSize: 17, fontWeight: '800', color: onStatusFill(dark) }}>
+            {dateChanged ? 'Dates updated' : 'Nothing was changed'}
+          </Text>
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: SPACE.md, marginTop: SPACE.md }}>
+          <Count testID="import-dates-updated" n={dateTally.updated}
+            label="Updated" color={ink('present', dark)} />
+          <Count testID="import-dates-unchanged" n={dateTally.unchanged}
+            label="Already correct" color={ink('awaiting', dark)} />
+        </View>
+        <View style={{ flexDirection: 'row', gap: SPACE.md, marginTop: SPACE.md }}>
+          <Count testID="import-dates-failed" n={dateTally.failed}
+            label="Failed" color={ink('absent', dark)} />
+          <Count testID="import-dates-unknown" n={dateTally.unknown}
+            label="Not on the register" color={ink('cancelled', dark)} />
+        </View>
+
+        <Muted style={{ marginTop: SPACE.md }}>
+          {!dateChanged && dateTally.unchanged === dateTally.total
+            ? 'Every row already matched the register, so nothing was written. That is what a report uploaded untouched should do.'
+            : dateChanged
+              ? 'Blank cells were left alone — only the dates typed into the file were moved. Nobody was added to the register.'
+              : 'Nothing was written. The reasons are below, row by row.'}
+        </Muted>
+
+        {moved.length ? (
+          <>
+            <Label style={{ marginTop: SPACE.xl }}>What moved</Label>
+            <View style={{ marginTop: SPACE.sm, gap: 7 }}>
+              {moved.map(m => <MovedRow key={`moved-${m.row}`} {...m} dark={dark} />)}
+            </View>
+          </>
+        ) : null}
+
+        {dateNotLanded.length ? (
+          <>
+            <Label style={{ marginTop: SPACE.xl }}>Rows that were not changed</Label>
+            <View style={{ marginTop: SPACE.sm, gap: 7 }}>
+              {dateNotLanded.map(r => <ReportRow key={`${r.status}-${r.row}`} {...r} dark={dark} />)}
+            </View>
+            <Muted style={{ marginTop: SPACE.md }}>
+              Fix those rows in your file and choose it again — the ones that landed already match, so they come back as Already correct rather than being written twice.
+            </Muted>
+          </>
+        ) : null}
+      </>
     ) : showResult && result && file ? (
       <>
         {/* The WORD and the icon, never the fill alone (guardrail 3). The ink
@@ -388,11 +578,12 @@ function MemberImportBody() {
   // The URL is unchanged.
   return (
     <FormDialog
-      title={showResult ? 'Import complete' : 'Bulk import members'}
-      subtitle={showResult && file ? file.name : 'A member list — not the attendance register'}
+      title={showDates ? 'Dates updated' : showResult ? 'Import complete' : 'Bulk import'}
+      subtitle={(showResult || showDates) && file ? file.name
+        : 'A member list to add people, or the members report to change their dates'}
       onClose={() => router.back()}
-      closeTestID={showResult ? 'import-result-close' : 'import-close'}
-      footer={showResult ? (
+      closeTestID={showResult || showDates ? 'import-result-close' : 'import-close'}
+      footer={showResult || showDates ? (
         <View style={{
           padding: SPACE.lg, borderTopWidth: 1, borderTopColor: theme.line,
           backgroundColor: theme.shell,
@@ -419,10 +610,32 @@ function MemberImportBody() {
               </View>
             }>
             <Body>
-              {`An Excel workbook (.xlsx), one member per row on the Member Data sheet, up to ${MEMBER_IMPORT_MAX_ROWS} rows. `
+              {'This button takes TWO files, and reads which one you chose. '
+               + `To ADD members: the template below, one member per row on the Member Data sheet, up to ${MEMBER_IMPORT_MAX_ROWS} rows. `
                + 'Member name and email address are both required \u2014 a row with no address is not imported. '
                + 'Each row picks its own course from a dropdown \u2014 one file can cover every course you run.'}
             </Body>
+            {/* THE SECOND FILE, described where somebody about to upload one
+                will read it. It is not a template and there is nothing to
+                download for it: it is the report they already have. */}
+            <Body style={{ marginTop: SPACE.lg }}>
+              {`To CHANGE DATES on members already here: the members report from Reports \u2192 Export, its \u201c${STATUS_IMPORT_SHEET}\u201d sheet, `
+               + 'with Active from and Inactive from typed in. A blank cell is left alone, so a report sent back untouched changes nothing. '
+               + 'That file never adds anybody \u2014 a name the register does not have is reported back, not created.'}
+            </Body>
+            <View style={{
+              marginTop: SPACE.lg, padding: SPACE.lg, borderRadius: RADIUS.md,
+              backgroundColor: theme.surface2, borderWidth: 1, borderColor: theme.line,
+            }}>
+              {STATUS_IMPORT_HELP.map(h => (
+                <View key={`d-${h.column}`} style={{ flexDirection: 'row', gap: SPACE.md, marginBottom: 5 }}>
+                  <Text style={{ width: 108, fontSize: 11.5, fontWeight: '800', color: theme.fgStrong }}>
+                    {h.column}
+                  </Text>
+                  <Text style={{ flex: 1, fontSize: 11.5, color: theme.muted }}>{h.means}</Text>
+                </View>
+              ))}
+            </View>
             <View style={{
               marginTop: SPACE.lg, padding: SPACE.lg, borderRadius: RADIUS.md,
               backgroundColor: theme.surface2, borderWidth: 1, borderColor: theme.line,
@@ -463,6 +676,11 @@ const OUTCOME: Record<string, { tone: keyof typeof STATUS; word: string; icon: s
   'no-course': { tone: 'cancelled', word: 'No course', icon: 'school' },
   invalid:     { tone: 'absent',    word: 'Failed',    icon: 'block' },
   failed:      { tone: 'absent',    word: 'Failed',    icon: 'block' },
+  // The REPORT's own two. `unknown` is the boundary between the button's two
+  // files and is drawn as its own outcome rather than as a failure: the file
+  // is not wrong, that member is simply not on the register yet.
+  unknown:     { tone: 'cancelled', word: 'Not on the register', icon: 'person_add' },
+  ambiguous:   { tone: 'absent',    word: 'Failed',    icon: 'block' },
 };
 
 function ReportRow({ row, name, status, reason, dark }:
@@ -489,6 +707,46 @@ function ReportRow({ row, name, status, reason, dark }:
         {/* the word, never the colour alone (guardrail 3) */}
         <Text style={{ fontSize: 11.5, color: c, fontWeight: '800', marginTop: 2 }}>{`${word} · row ${row}`}</Text>
         <Text style={{ fontSize: 11.5, color: theme.muted, marginTop: 2 }}>{reason}</Text>
+      </View>
+    </View>
+  );
+}
+
+/**
+ * One member whose dates moved, and WHAT moved on them -- field, old value,
+ * new value. The arrow is the whole content: a list of names would say the
+ * import worked, and this says what it did.
+ */
+function MovedRow({ row, name, changes, dark }:
+  { row: number; name: string; changes: StatusChange[]; dark: boolean }) {
+  const { theme } = useTheme();
+  const c = ink('present', dark);
+  const said = changes.map(ch => `${ch.field} ${ch.from} to ${ch.to}`).join(', ');
+  return (
+    <View accessible accessibilityLabel={`Row ${row}, ${name}, updated. ${said}`}
+      style={{
+        flexDirection: 'row', gap: SPACE.md, padding: SPACE.md, borderRadius: RADIUS.md,
+        backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
+      }}>
+      <View style={{
+        width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center',
+        backgroundColor: statusSurface(c).bg, borderWidth: 1, borderColor: statusSurface(c).border,
+      }}>
+        <Icon name="check_circle" size={17} color={c} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '700', color: theme.fgStrong }}>
+          {name || `Row ${row}`}
+        </Text>
+        {/* the word, never the colour alone (guardrail 3) */}
+        <Text style={{ fontSize: 11.5, color: c, fontWeight: '800', marginTop: 2 }}>
+          {`Updated \u00b7 row ${row}`}
+        </Text>
+        {changes.map(ch => (
+          <Text key={ch.field} style={{ fontSize: 11.5, color: theme.muted, marginTop: 2 }}>
+            {`${ch.field} \u00b7 ${ch.from} \u2192 ${ch.to}`}
+          </Text>
+        ))}
       </View>
     </View>
   );

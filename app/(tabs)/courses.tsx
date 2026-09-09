@@ -186,9 +186,12 @@ export default function Courses() {
        THE SCREEN'S ACTIONS, together in its header. Add Course, Add Member
        and Bulk Import are the three ways a person comes here to put
        something on the register, so they sit as one group beside the
-       title. Add Member and Bulk Import used to be a row of their own
-       between the search box and the list; the requester asked for them
-       next to Add Course (2026-09-06).
+       title. Bulk Import is ONE button taking two files -- the member
+       template adds people, the members report changes their dates -- by
+       the requester's instruction of 09-Sep-2026, which withdrew the second
+       button built the day before. Add Member and Bulk Import used to be a row of
+       their own between the search box and the list; the requester asked
+       for them next to Add Course (2026-09-06).
        On a phone the three do not fit beside a two-line title, so the
        group drops under it as a full-width row that wraps: buttons grow
        to share the line, and whichever does not fit takes the next one.

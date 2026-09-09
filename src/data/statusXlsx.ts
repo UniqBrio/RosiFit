@@ -22,6 +22,7 @@ import {
   type StatusImportRow,
 } from './statusImport';
 import { MEMBER_IMPORT_MAX_ROWS } from './memberImport';
+import { importKindOf, type ImportKind, type SheetShape } from './importKind';
 
 /**
  * The workbook into rows. Throws only for a file that is not this file at all
@@ -30,6 +31,43 @@ import { MEMBER_IMPORT_MAX_ROWS } from './memberImport';
  * never an exception here: that is memberXlsx's rule and there is no reason
  * for this reader to have a different one.
  */
+/**
+ * WHICH IMPORTER THIS FILE IS FOR -- the workbook half of importKind.ts, and
+ * the first thing Bulk Import does with a chosen file.
+ *
+ * It opens the workbook, reads the header-ish cells off the top of every
+ * visible sheet, and hands that to the pure decision. Then the caller runs the
+ * parser that answer names -- `parseMemberXlsx` for 'members',
+ * `parseStatusXlsx` for 'dates' -- and that parser owns every refusal from
+ * there. The file is loaded twice for a file that is a report, which for a
+ * workbook of at most 500 rows costs nothing worth the alternative: threading
+ * a loaded workbook through both parsers would mean editing the create path,
+ * and the create path is the one thing this change must not disturb.
+ *
+ * A workbook that will not open at all is 'members' too, NOT a throw. The
+ * create path's own "that file is not an Excel workbook" is the sentence
+ * people have been getting for a week, and it is a better sentence than
+ * anything this function could invent about a file it could not read.
+ */
+export async function detectImportKind(bytes: ArrayBuffer): Promise<ImportKind> {
+  const wb = new (await excel()).Workbook();
+  try {
+    await wb.xlsx.load(bytes);
+  } catch {
+    return 'members';
+  }
+  const sheets: SheetShape[] = wb.worksheets
+    .filter(s => s.state === 'visible')
+    .map(s => {
+      const headers: string[] = [];
+      for (let r = 1; r <= Math.min(s.rowCount, 20); r++) {
+        s.getRow(r).eachCell(cell => headers.push(cellText(cell)));
+      }
+      return { name: s.name, headers };
+    });
+  return importKindOf(sheets);
+}
+
 export async function parseStatusXlsx(bytes: ArrayBuffer): Promise<StatusImportRow[]> {
   const wb = new (await excel()).Workbook();
   try {

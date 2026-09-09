@@ -79,8 +79,18 @@ export type ResetPreview = {
 export type ResetOutcome = {
   /** attendance rows cleared */
   cleared: number;
-  /** members deleted outright */
-  deleted: number;
+  /**
+   * What the day still holds afterwards.
+   *
+   * A reset used to clear the whole day, so the day was always awaiting a
+   * file when it finished and the toast could say so unconditionally. Since
+   * 0057 a reset acts on the members who were SELECTED, and resetting three
+   * of eight leaves a register that is still a register -- so this is the
+   * number that decides whether the day went back to awaiting a file or
+   * simply lost some of its marks. Counted by the database after the delete,
+   * never assumed.
+   */
+  marksLeft: number;
 };
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -239,18 +249,21 @@ export function deleteWarning(ticked: ResetTarget[]): string | null {
 /** What happened, for the toast. Tone is never the only signal (guardrail 3). */
 export function resetOutcome(outcome: ResetOutcome, dayWords: string):
   { message: string; tone: 'ok' | 'warn' } {
-  if (outcome.cleared === 0 && outcome.deleted === 0) {
+  if (outcome.cleared === 0) {
     return { message: `Nothing was recorded for ${dayWords}, so nothing changed.`, tone: 'warn' };
   }
   const cleared = outcome.cleared === 1
     ? '1 mark cleared' : `${outcome.cleared} marks cleared`;
-  const deleted = outcome.deleted === 0 ? ''
-    : outcome.deleted === 1 ? ', 1 member deleted'
-    : `, ${outcome.deleted} members deleted`;
-  return {
-    message: `${dayWords}: ${cleared}${deleted}. The day is awaiting a file again.`,
-    tone: 'ok',
-  };
+  // THE HALF A PARTIAL RESET MADE NEWLY DELICATE. "The day is awaiting a file
+  // again" was true of every reset until 0057, because every reset emptied
+  // the day. It is now true only when nothing is left on it -- saying it over
+  // a day that still holds five marks would invite a re-upload on top of them.
+  const after = outcome.marksLeft === 0
+    ? 'The day is awaiting a file again.'
+    : outcome.marksLeft === 1
+      ? '1 mark still stands on that day, so it is not awaiting a file.'
+      : `${outcome.marksLeft} marks still stand on that day, so it is not awaiting a file.`;
+  return { message: `${dayWords}: ${cleared}. ${after}`, tone: 'ok' };
 }
 
 /** The reset did not run. Says so, and says nothing was written. */

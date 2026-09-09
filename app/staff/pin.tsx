@@ -33,7 +33,7 @@ function StaffPinBody() {
   // to carry it.
   const rawPin = (issued?.pin ?? params.pin ?? '').replace(/\D/g, '');
   const pin = rawPin.slice(0, 4);
-  const name = issued?.name ?? params.name ?? 'She';
+  const name = issued?.name ?? params.name ?? 'This person';
   const phone = issued?.phone ?? params.phone ?? '';
   const role = issued?.role ?? params.role ?? '';
 

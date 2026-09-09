@@ -91,6 +91,34 @@
 -- Stated to the requester at the gate, with the counts above, before this file
 -- was applied.
 
+-- ---------------------------------------------------------------------------
+-- BEFORE-SNAPSHOT for the verification block at the foot of this file.
+--
+-- ASSERTION-ONLY FIX, 09-Sep-2026. Nothing this migration DOES has changed --
+-- no schema statement, no delete, no grant. What changed is a self-check that
+-- was wrong.
+--
+-- Section 3 below asserts that the purge did not reach the academy's own
+-- records, and it did so by requiring `sessions`, `courses`, `offerings`,
+-- `csv_imports`, `email_batches` and `app_users` each to be non-empty
+-- afterwards. On PRODUCTION, where all six held rows, that reads correctly. On
+-- a FRESH DATABASE they are all empty before this file runs and all empty
+-- after, so the check raised on a purge that had destroyed nothing -- and the
+-- file could not be replayed from scratch at all.
+--
+-- That went unnoticed because db/harness/reset.sh reported success even when a
+-- migration failed (`cmd && echo ok` is exempt from bash's errexit). Both are
+-- fixed together: the runner now stops, and this check now compares against
+-- what was actually here beforehand, so it still catches a real destruction
+-- and no longer fires on an empty database.
+create temporary table if not exists _0055_before on commit preserve rows as
+select exists (select 1 from public.sessions)          as had_sessions,
+       exists (select 1 from public.courses)           as had_courses,
+       exists (select 1 from public.course_offerings)  as had_offerings,
+       exists (select 1 from public.csv_imports)       as had_imports,
+       exists (select 1 from public.email_batches)     as had_batches,
+       exists (select 1 from public.app_users)         as had_users;
+
 do $$
 declare
   v_member     record;
@@ -213,22 +241,22 @@ begin
   --    asserted in a comment: a purge that reached the classes, the uploads or
   --    the sends would be a different and much worse event than the one asked
   --    for, and it would show up here and nowhere else.
-  if not exists (select 1 from public.sessions) then
+  if (select had_sessions from _0055_before) and not exists (select 1 from public.sessions) then
     raise exception '0055: the sessions are gone -- the purge reached the academy''s classes';
   end if;
-  if not exists (select 1 from public.courses) then
+  if (select had_courses from _0055_before) and not exists (select 1 from public.courses) then
     raise exception '0055: the courses are gone -- the purge reached past the register';
   end if;
-  if not exists (select 1 from public.course_offerings) then
+  if (select had_offerings from _0055_before) and not exists (select 1 from public.course_offerings) then
     raise exception '0055: the offerings are gone -- the purge reached past the register';
   end if;
-  if not exists (select 1 from public.csv_imports) then
+  if (select had_imports from _0055_before) and not exists (select 1 from public.csv_imports) then
     raise exception '0055: the imports are gone -- they are the academy''s record, not the members''';
   end if;
-  if not exists (select 1 from public.email_batches) then
+  if (select had_batches from _0055_before) and not exists (select 1 from public.email_batches) then
     raise exception '0055: the send batches are gone -- a send happened whether or not its recipients remain';
   end if;
-  if not exists (select 1 from public.app_users) then
+  if (select had_users from _0055_before) and not exists (select 1 from public.app_users) then
     raise exception '0055: the app users are gone -- nobody could sign in again';
   end if;
 end $$;

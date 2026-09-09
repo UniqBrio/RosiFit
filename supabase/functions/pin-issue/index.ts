@@ -181,7 +181,7 @@ Deno.serve(async (req) => {
     const name = String(body.name ?? '').trim();
     const e164 = toE164India(String(body.phone ?? ''));
     const roleLabel = String(body.role_label ?? '').trim();
-    if (name.length < 2 || name.length > 80) throw new HttpError(400, 'Enter her name.');
+    if (name.length < 2 || name.length > 80) throw new HttpError(400, 'Enter a name.');
     if (!e164) throw new HttpError(400, 'Enter a valid 10-digit mobile number.');
     if (!roleLabel) throw new HttpError(400, 'Choose a role.');
 

@@ -63,8 +63,10 @@ test('nothing is deleted without the question being asked', () => {
   // assertions that quoted the old ones are restated rather than dropped: what
   // they were guarding (the question names her; the busy label is distinct from
   // the idle one) is unchanged and still asserted here.
-  assert.match(src, /title=\{`Delete \$\{member\.name\} and her records\?`\}/,
-    'the question must name who is being deleted, and say that her records go with her');
+  // RE-POINTED AGAIN 09-Sep-2026, de-gendering: "and her records?" becomes
+  // "and every record?". Same claim, same exact-string lock, new string.
+  assert.match(src, /title=\{`Delete \$\{member\.name\} and every record\?`\}/,
+    'the question must name who is being deleted, and say that the records go too');
   assert.match(src, /confirmLabel=\{removing \? 'Deleting…' : 'Yes'\}/,
     'a second tap while the write is in flight must not read as a fresh one');
   assert.match(src, /disabled=\{removing\}/,

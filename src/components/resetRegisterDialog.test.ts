@@ -68,10 +68,26 @@ test('the selection bar is the LAST thing before the member cards', () => {
     'the selection bar must sit below the search box and above the first card');
 });
 
-test('the button is drawn only for a day that has something to undo', () => {
+/**
+ * SUPERSEDED BY THE REQUESTER (09-Sep-2026), and rewritten rather than deleted.
+ *
+ * This pinned the button as HIDDEN on a day with no marks. It is now drawn and
+ * disabled, with the reason on it for a screen reader — a button that vanishes
+ * tells nobody where it went, and the state it vanishes in is the one somebody
+ * goes looking for it in. And the gate itself moved: "The reset of attendance
+ * should happend only when user selects the members using select option", so an
+ * empty selection is a dead button, not a whole-day reset.
+ */
+test('the button is dead unless marks exist AND members are ticked', () => {
   const src = read(SCREEN);
-  assert.match(src, /\{dayMarks > 0 \? \(\s*<Pressable testID="course-day-reset"/,
-    'the reset button must be gated on the day actually holding marks');
+  assert.match(src, /const nothingToReset = noMarks \|\| noneTicked;/,
+    'a reset with nobody selected must not be offered');
+});
+
+test('an empty selection is one of the two reasons, and says which', () => {
+  const src = read(SCREEN);
+  assert.match(src, /tick the members whose marks to clear first/,
+    'a dead button must say why it is dead, not merely be grey');
 });
 
 test('the marks it is gated on are the rows the strip itself drew', () => {
@@ -83,7 +99,9 @@ test('the marks it is gated on are the rows the strip itself drew', () => {
 test('the button carries its word, not the colour alone', () => {
   const src = read(SCREEN);
   const at = src.indexOf('testID="course-day-reset"');
-  assert.match(src.slice(at, at + 1200), />\s*Reset\s*</,
+  // 1800, not 1200: the label grew a third branch when the selection gate
+  // arrived. The claim is unchanged — the word is inside this control.
+  assert.match(src.slice(at, at + 1800), />\s*Reset\s*</,
     'guardrail 3: the control must say what it is, never signal it by colour');
 });
 
@@ -126,15 +144,35 @@ test('leaving selection mode clears the ticks', () => {
     'a selection that survives its own mode is an invisible one');
 });
 
-test('the roster selection is carried into the dialog, not acted on from the roster', () => {
+/**
+ * SUPERSEDED BY THE REQUESTER (09-Sep-2026), and rewritten rather than deleted.
+ *
+ * These two pinned the old shape: the roster handed its ticks to the dialog as
+ * `initialTicked`, and the dialog drew a checkbox per addressless member so one
+ * press could clear the day AND delete whoever was ticked.
+ *
+ * The requester split that in two — "enable multi selection for no email
+ * section and enable delete option i.e bulk delete ask for confirmation before
+ * delete" — so the selection now says whose MARKS to clear, and deleting is its
+ * own control with its own confirmation. The dialog confirms one reversible
+ * act and carries no ticks at all.
+ */
+test('the selection is what the reset acts on', () => {
   const src = read(SCREEN);
-  assert.match(src, /initialTicked=\{\[\.\.\.selected\]\}/,
-    'the roster must hand its selection to the dialog, which is what states the cost');
+  assert.match(src, /resetDayAttendance\(course\.id, chosen\.iso, \[\.\.\.selected\]\)/,
+    'the reset must clear the ticked members, and only those');
 });
 
-test('the dialog is what carries the checkboxes', () => {
-  assert.match(read(DIALOG), /accessibilityRole="checkbox"/,
-    'the select/deselect option is missing from the reset dialog');
+test('the dialog no longer carries checkboxes — it confirms one act', () => {
+  assert.doesNotMatch(read(DIALOG), /accessibilityRole="checkbox"/,
+    'deleting left this dialog; a tick here would be a control that does nothing');
+});
+
+test('the reset never hands member ids to a delete', () => {
+  const src = read(SCREEN);
+  assert.doesNotMatch(src, /p_delete_member_ids|initialTicked/,
+    '0057 drops the argument that meant "delete these"; a stale caller would '
+    + 'reset the members it meant to remove');
 });
 
 test('the component name cannot trip the ADR-030 write-path guard', () => {
@@ -147,37 +185,27 @@ test('the component name cannot trip the ADR-030 write-path guard', () => {
 
 /* --------------------------------------------------------------- the ticks */
 
-test('the dialog opens on the roster’s selection and nothing else', () => {
-  const dialog = read(DIALOG);
-  assert.match(dialog, /setTicked\(new Set\(initialTicked\.filter\(id => offered\.has\(id\)\)\)\);/,
-    'the dialog must start from the roster selection, narrowed to who is actually deletable');
-});
-
-test('a selected member who has an address is never a delete target', () => {
-  const dialog = read(DIALOG);
-  assert.match(dialog, /const offered = new Set\(\(preview\?\.deletable \?\? \[\]\)\.map\(t => t\.member_id\)\);/,
-    'the roster can select anyone; only the addressless may be deleted');
-});
-
-test('select all is offered, and toggles back to deselect all', () => {
-  const dialog = read(DIALOG);
-  assert.match(dialog, /\{allTicked \? 'Deselect all' : 'Select all'\}/,
-    'the requester asked for select AND deselect');
-});
-
-test('the confirm hands over the TICKED members, not the offered ones', () => {
-  const dialog = read(DIALOG);
-  assert.match(dialog, /onPress=\{\(\) => onConfirm\(chosen\)\}/,
-    'the confirm must send `chosen` -- sending `deletable` would ignore every deselect');
-});
-
-test('each tick names the days its deletion would also reach', () => {
-  const dialog = read(DIALOG);
-  assert.match(dialog, /other_days === 0 \? 'this day only'/,
-    'a hard delete reaches every day of hers, and the row has to say so');
-});
-
 /* ------------------------------------------- the day goes back by derivation */
+
+/**
+ * WITHDRAWN 09-Sep-2026, not skipped — the behaviour they pinned no longer
+ * exists to pin.
+ *
+ * Five assertions lived here about the reset dialog's delete-ticking: that it
+ * opened on the roster's selection, dropped anyone with an address, offered
+ * select-all, handed the ticked members to the confirm, and named each one's
+ * other days. All five described one half of the dialog that the requester
+ * moved out of it — "enable multi selection for no email section and enable
+ * delete option i.e bulk delete ask for confirmation before delete".
+ *
+ * They are deleted rather than left as `.skip`, deliberately. A skipped test
+ * reads as a pause: something to come back to. Nothing is coming back — the
+ * dialog has no ticks, and a suite that carries five sleeping assertions about
+ * a control that was removed is a suite nobody can read the intent of. What
+ * replaced them is asserted above (the dialog carries no checkbox, the reset
+ * acts on the selection) and in bulkDeleteNoEmail.test.ts, which specs the
+ * control that took the behaviour over.
+ */
 
 test('the screen writes no day status of its own', () => {
   const src = read(SCREEN);
@@ -189,8 +217,8 @@ test('the screen writes no day status of its own', () => {
 
 test('the reset asks the server what it would clear before offering it', () => {
   const src = read(SCREEN);
-  assert.match(src, /await attendanceResetPreview\(course\.id, chosen\.iso\)/,
-    'the dialog must state quantities from the database, not from the roster alone');
+  assert.match(src, /await attendanceResetPreview\(course\.id, chosen\.iso, picked\)/,
+    'the preview must count the same rows the reset will clear — the selection');
 });
 
 test('a failed reset keeps the dialog open, carrying the reason', () => {

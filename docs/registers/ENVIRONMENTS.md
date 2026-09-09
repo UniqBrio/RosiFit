@@ -105,6 +105,114 @@ set with `supabase secrets set` and appear in no tracked file.
 
 ---
 
+## Production change applied 09-Sep-2026 (third) — ✅ VERIFIED
+
+**`0061_the_last_gendered_refusals` APPLIED.** Eleven strings across four functions:
+`create_member` (4), `update_member` (4), `merge_member_into` (2), `bulk_import_members` (1).
+
+- **Found by reading the DATABASE, not the repo.** The repo holds superseded copies of these
+  functions; the live definition is the one that talks to people. Every quoted literal in every
+  live function was read, and only these eleven were text a user is actually shown.
+- **It rewrites in place rather than restating the functions.** These four bodies are 28KB of the
+  most load-bearing code in the schema. Restating them to change 11 short strings would mean
+  re-typing 28KB by hand, where one slip is a silent behaviour change in a core write path that
+  no reviewer would reliably catch. Instead `pg_get_functiondef` reconstructs each definition, the
+  named substitutions are applied to that text, and the result is executed — so the function
+  differs by exactly those strings, by construction rather than by inspection.
+- **It cannot silently no-op.** Every substitution is checked before it is applied; a string the
+  migration expects and does not find raises and rolls back. Proved by injecting a wrong
+  expectation, which failed exactly as intended.
+- **✅ Verified afterwards:** `0` functions in `public` now contain a gendered pronoun in any
+  `raise exception` message, and the old Bulk Import reason string is gone.
+
+---
+
+## ⚠️ Production drift found 09-Sep-2026 — `set_attendance` IS NOT IN PRODUCTION
+
+Found while sweeping the live schema for gendered text: the harness has
+`public.set_attendance`, and **production has no function of that name at all**.
+
+`src/data/repository.ts:3535` calls `supabase.rpc('set_attendance', …)`, so **marking attendance
+by hand is broken in the live app** and has been since the feature shipped. The code already
+suspects it — the error branch there reads *"0035 may not be applied yet"* — which is exactly
+what happened: `0035_set_attendance.sql` was never applied.
+
+Not fixed here, because it is nobody's ask in this session and applying an unreviewed migration
+to production is a decision, not a cleanup. It is the largest single thing outstanding on this
+project and should be taken deliberately.
+
+Related, and the same root cause — migrations in the repo that production never received:
+`0035_set_attendance`, `0044_override_scoped_by_meeting_instance`, `0045_import_change_counts`,
+`0046_attendance_backdates_membership`. There is no automated check that the repo's migration
+list and the applied list agree; there should be.
+
+---
+
+## Production change applied 09-Sep-2026 (second) — ✅ VERIFIED, with a known window
+
+Project `lhpzhkzbnquwjljmbylo` ("Rosifit"). **`0057_reset_only_the_selected_members` APPLIED.**
+
+- **Rehearsed first.** `npm run test:db` replayed every migration from scratch; the new
+  `supabase/tests/43` passes 13/13, and the ten failures elsewhere in the suite are pre-existing
+  and unrelated.
+- **`reset_day_attendance` now takes `p_member_ids`** — the members whose marks to CLEAR. The
+  0056 function taking `p_delete_member_ids` (members to DELETE) is **dropped**, not overloaded.
+  Verified: one definition only, `(p_course_id uuid, p_session_date date, p_member_ids uuid[])`,
+  `EXECUTE` to `authenticated` and `service_role`.
+- **A KNOWN WINDOW WAS ACCEPTED, deliberately, and this is the record of it.** The application
+  code that calls the new signature is on `claude/pull-latest-main-7azgnr` (PR #8) and was NOT
+  merged when this was applied. Until that deploys, pressing Reset in the live app fails with
+  *"The register could not be reset"* and clears nothing. The decision was the repo owner's,
+  taken with the trade-off stated; the failure is loud, writes nothing, risks no data, and
+  touches one occasional admin control and nothing else.
+- **Why zero-downtime was not available.** Postgres identifies a function by name and argument
+  TYPES, not parameter names, so `(uuid, date, uuid[])` cannot exist twice — the old and new
+  versions could not coexist for a phased cutover. The only alternative was renaming the
+  function, which was judged more churn than the window is worth.
+- **The old 2-argument `attendance_reset_preview` SURVIVES**, because 0057 adds the 3-argument
+  form rather than replacing it. That is why the window is narrower than it first appears: the
+  live app can still OPEN the reset dialog and see its numbers, and only the confirm fails.
+- **Follow-up owed:** once PR #8 is deployed, nothing calls the 2-argument preview. It should be
+  dropped — it is also one of the twelve functions still carrying gendered text, so the drop and
+  that sweep are the same piece of work.
+
+---
+
+## Production change applied 09-Sep-2026 — ✅ VERIFIED against the live project
+
+Project `lhpzhkzbnquwjljmbylo` ("Rosifit", ap-southeast-1). Two migrations, applied **one at a
+time and in order**, each verified by reading `pg_proc` back before the next was started.
+
+- **`0059_import_refusal_names_the_other_button` APPLIED.** Replaces
+  `bulk_set_member_dates`. An unknown name is now refused with *"not on the register — add them
+  with Bulk Import first, this file only changes dates"* — the exact sentence
+  `src/data/statusImport.ts` refuses the same row with, so the two halves of one import cannot
+  tell different stories. The string it replaced named no button and said "hers".
+  **Verified:** the new refusal is in the live source and `prosrc` matches no gendered pronoun.
+- **`0060_refusals_stop_saying_she` APPLIED.** Replaces `set_member_status` (0045) and
+  `set_member_active_from` (0057) with their six refusals written about *the member*.
+  **Verified:** all eight `raise exception` messages across the two functions read back in the
+  new wording, and neither `prosrc` matches a gendered pronoun.
+- **✅ REHEARSED ON THE HARNESS FIRST — the step 06-Sep could not take.** This machine has
+  Postgres 16, so `npm run test:db` replayed every migration from scratch: specs 41 and 42
+  together **44/44**, re-run after the last edit to either file. The ten failures elsewhere in
+  the suite are pre-existing and in unrelated specs; they were present before these migrations
+  and are unchanged by them.
+- **No signature, grant or behaviour changed.** All four import-path functions
+  (`bulk_import_members`, `bulk_set_member_dates`, `set_member_status`,
+  `set_member_active_from`) were re-read afterwards: same identity arguments, still
+  `SECURITY DEFINER`, still `EXECUTE` to `authenticated` and `service_role` only. Both
+  migrations replace a function body; neither builds an index nor adds a constraint over
+  existing rows, so there was no data-compatibility question for the harness to leave open.
+- **Still unapplied, and deliberately untouched:** `0044_override_scoped_by_meeting_instance`,
+  `0045_import_change_counts`, `0046_attendance_backdates_membership`,
+  `0057_reset_only_the_selected_members`. `0046` deserves attention on its own —
+  `set_member_active_from`'s third refusal is that invariant read forward, and the trigger it
+  reads forward from is not in this project. Note also that two different migrations in the repo
+  claim the number `0057`.
+
+---
+
 ## Production change applied 06-Sep-2026 — ✅ VERIFIED against the live project
 
 Project `lhpzhkzbnquwjljmbylo` ("Rosifit", ap-southeast-1), confirmed as the target by matching

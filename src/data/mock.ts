@@ -955,12 +955,43 @@ export function markFixtureAttendance(
 export const RESET_DAYS = new Set<string>();
 
 /** Clear one course's day offline, the way reset_day_attendance (0054) does. */
-export function resetFixtureDay(courseId: string, date: string): void {
-  RESET_DAYS.add(`${courseId}|${date}`);
+/**
+ * The members whose marks were cleared on one day, when the reset named a
+ * SELECTION rather than the whole register (0057). Keyed
+ * `courseId|date|memberId`, beside RESET_DAYS' `courseId|date`.
+ *
+ * Two sets rather than one, because they answer different questions and the
+ * cheap one is asked far more often: a day nobody selected out of is still
+ * one lookup, and only a partially-reset day pays for the per-member check.
+ */
+export const RESET_MEMBER_DAYS = new Set<string>();
+
+/**
+ * Clear a day's marks in the fixture store -- all of them, or only the
+ * members named.
+ *
+ * `memberIds` empty means the whole day, which is what the RPC means by an
+ * empty `p_member_ids` (0057) and what 0056 always did. The offline store has
+ * to read a blank the same way the database does, or the app tells a
+ * different story with no backend than with one.
+ */
+export function resetFixtureDay(
+  courseId: string, date: string, memberIds: string[] = [],
+): void {
+  if (memberIds.length === 0) {
+    RESET_DAYS.add(`${courseId}|${date}`);
+  } else {
+    for (const id of memberIds) RESET_MEMBER_DAYS.add(`${courseId}|${date}|${id}`);
+  }
   // A hand-made mark is a row like any other and goes with the rest, or the
   // overlay below would put it straight back on a day that was just cleared.
   for (const key of [...MANUAL_MARKS.keys()]) {
-    if (key.endsWith(`|${date}`)) MANUAL_MARKS.delete(key);
+    if (!key.endsWith(`|${date}`)) continue;
+    // Narrowed to the selection for a partial reset: a mark made by hand for
+    // a member nobody ticked is not part of what was cleared.
+    if (memberIds.length === 0 || memberIds.some(id => key.startsWith(`${id}|`))) {
+      MANUAL_MARKS.delete(key);
+    }
   }
 }
 
@@ -1021,8 +1052,11 @@ export function attendanceFixture(from: string, to: string): AttendanceRow[] {
   // A DAY THAT WAS RESET HOLDS NOTHING, and that is applied last so it covers
   // the overlay above as well as the generated rows -- a reset clears the
   // register, not merely the part of it a seed invented.
-  const live = RESET_DAYS.size === 0 ? rows
+  const cleared = RESET_DAYS.size === 0 ? rows
     : rows.filter(r => !RESET_DAYS.has(`${r.course_id}|${r.date}`));
+  // ...then the members cleared out of a day that still holds other marks.
+  const live = RESET_MEMBER_DAYS.size === 0 ? cleared
+    : cleared.filter(r => !RESET_MEMBER_DAYS.has(`${r.course_id}|${r.date}|${r.member_id}`));
 
   return live.sort((a, b) => (a.date === b.date ? a.member.localeCompare(b.member) : b.date.localeCompare(a.date)));
 }
