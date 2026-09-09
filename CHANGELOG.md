@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased — Reset clears the members you picked, and you can delete the ones with no email
+
+**Reset now acts on the members you tick, not on the whole day.** Pick the members whose marks are
+wrong, press Reset, and only those marks are cleared. Everybody else's attendance for that day is
+left exactly as it was.
+
+Reset is unavailable until you have ticked somebody — pressing it with nothing selected used to
+clear the entire register for that day, which is a much bigger thing than it looked. If you do want
+the whole day, *Select all* is one tap and then Reset does exactly that, on purpose rather than by
+default.
+
+**The day only goes back to *awaiting a file* when the reset empties it.** Clearing three of eight
+members leaves five marks standing, so that day is still a register and is no longer advertised as
+ready for an upload — which would have invited a second file on top of the marks that survived.
+
+**Deleting is now its own button, with its own question.** Tick members in the *no email* list and a
+Delete button appears beside the count; it asks before anything happens, and names who is being
+removed and what else goes with them. It only ever offers the members with no email address on
+file — anybody the academy can still write to is never removed by a bulk control.
+
+Deleting used to be folded into the reset: a list of tick boxes inside the reset dialog, and one
+press that both cleared the day and deleted whoever was ticked. One button carrying a reversible
+act and an irreversible one meant the whole dialog had to be read at the size of its worst half,
+every time. They are two separate decisions now, and each says plainly what it does.
+
 ## Unreleased — Bulk Import now also sets joining and leaving dates
 
 **Bulk Import takes a second kind of file, and works out for itself which one you chose.**

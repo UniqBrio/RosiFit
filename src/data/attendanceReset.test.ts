@@ -113,32 +113,36 @@ test('the reset states the with-email half FIRST, and by name', () => {
   // the requester. A total of four members cannot say which of them merely
   // lose a mark and which are about to be deleted, so the two are separate
   // sentences and this is the first of them.
+  // COPY-LOCK RE-POINTED 09-Sep-2026 (0057): a reset now acts on the members
+  // who were SELECTED, so the sentence leads with what is being cleared and
+  // names the selection, and the day only "goes back to awaiting" when the
+  // reset actually empties it. Same claim, same exact-string lock.
   assert.equal(
     resetWarning({ marks: 4, members: 4, keeping: 1, deletable: [] }, 'Tue 8 Sept'),
-    'Attendance will be reset for 1 member with an email — they stay on the course '
-    + 'and read Yet to mark. This clears 4 marks on Tue 8 Sept, and the day goes back '
-    + 'to awaiting a file so it can be uploaded again.');
+    'This clears 4 marks on Tue 8 Sept — 4 selected members. 1 of them has an email '
+    + 'and stays on the course, reading Yet to mark. Nothing else is recorded that day, '
+    + 'so it goes back to awaiting a file and can be uploaded again.');
 });
 
 test('plurals read as plurals', () => {
   assert.equal(
     resetWarning({ marks: 3, members: 3, keeping: 2, deletable: [] }, 'Mon 7 Sept'),
-    'Attendance will be reset for 2 members with an email — they stay on the course '
-    + 'and read Yet to mark. This clears 3 marks on Mon 7 Sept, and the day goes back '
-    + 'to awaiting a file so it can be uploaded again.');
+    'This clears 3 marks on Mon 7 Sept — 3 selected members. 2 of them have an email '
+    + 'and stay on the course, reading Yet to mark. Nothing else is recorded that day, '
+    + 'so it goes back to awaiting a file and can be uploaded again.');
 });
 
 test('a day whose whole register is addressless does not claim a with-email half', () => {
   assert.equal(
     resetWarning({ marks: 3, members: 3, keeping: 0, deletable: [] }, 'Mon 7 Sept'),
-    'No member on this day has an email on file. This clears 3 marks on Mon 7 Sept, '
-    + 'and the day goes back to awaiting a file so it can be uploaded again.');
+    'This clears 3 marks on Mon 7 Sept — 3 selected members. Nothing else is recorded '
+    + 'that day, so it goes back to awaiting a file and can be uploaded again.');
 });
 
 test('a day with nothing recorded says so rather than offering a reset of nothing', () => {
   assert.equal(
     resetWarning({ marks: 0, members: 0, keeping: 0, deletable: [] }, 'Wed 9 Sept'),
-    'Nothing is recorded for Wed 9 Sept, so there is nothing to reset.');
+    'Nothing is selected on Wed 9 Sept, so there is nothing to reset.');
 });
 
 /* ------------------------------------------------- the permanent half */
@@ -178,19 +182,22 @@ test('several ticked with nothing elsewhere do not borrow a singular', () => {
 /* --------------------------------------------------------- what happened */
 
 test('the outcome says what moved and that the day is awaiting again', () => {
-  assert.deepEqual(resetOutcome({ cleared: 4, deleted: 3 }, 'Tue 8 Sept'),
-    { message: 'Tue 8 Sept: 4 marks cleared, 3 members deleted. The day is awaiting a file again.',
+  // RE-POINTED 09-Sep-2026 (0057): deleting is no longer part of a reset --
+  // it is its own control with its own confirmation -- so the outcome counts
+  // what a reset can actually move, and what the day is left holding.
+  assert.deepEqual(resetOutcome({ cleared: 4, marksLeft: 3 }, 'Tue 8 Sept'),
+    { message: 'Tue 8 Sept: 4 marks cleared. 3 marks still stand on that day, so it is not awaiting a file.',
       tone: 'ok' });
 });
 
 test('clearing without deleting says only what it did', () => {
-  assert.deepEqual(resetOutcome({ cleared: 1, deleted: 0 }, 'Tue 8 Sept'),
+  assert.deepEqual(resetOutcome({ cleared: 1, marksLeft: 0 }, 'Tue 8 Sept'),
     { message: 'Tue 8 Sept: 1 mark cleared. The day is awaiting a file again.', tone: 'ok' });
 });
 
 test('a reset that moved nothing reads as warn, and says so in words', () => {
   // Guardrail 3: the tone is never the only signal.
-  const outcome = resetOutcome({ cleared: 0, deleted: 0 }, 'Wed 9 Sept');
+  const outcome = resetOutcome({ cleared: 0, marksLeft: 0 }, 'Wed 9 Sept');
   assert.equal(outcome.tone, 'warn');
   assert.equal(outcome.message, 'Nothing was recorded for Wed 9 Sept, so nothing changed.');
 });

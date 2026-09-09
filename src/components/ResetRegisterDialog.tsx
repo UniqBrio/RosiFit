@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { View, Text, Pressable, Modal, ScrollView, ActivityIndicator, Platform } from 'react-native';
 import { useTheme } from '../theme/ThemeProvider';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../theme/tokens';
 import { Icon } from './Icon';
 import { blurOpener } from './openingFocus';
 import {
-  resetWarning, deleteWarning, type ResetPreview, type ResetTarget,
+  resetWarning, type ResetPreview, type ResetTarget,
 } from '../data/attendanceReset';
 
 /**
@@ -46,26 +46,11 @@ import {
  */
 export function ResetRegisterDialog({
   open, onClose, dayWords, preview, loading, error, busy, onConfirm,
-  initialTicked = [],
 }: {
   open: boolean;
   onClose: () => void;
   /** "Tue 8 Sept" — the day this is about, in the roster's own words */
   dayWords: string;
-  /**
-   * Members already selected on the roster behind this dialog.
-   *
-   * The requester asked for the ticks in BOTH places — "enable select and
-   * deselect option in members screen where we upload attendnace" — and two
-   * selections that disagree would be worse than one. So the roster's
-   * selection ARRIVES here as the starting ticks and can still be changed;
-   * this dialog stays the last word, because it is the surface that states
-   * what the deletion actually costs.
-   *
-   * Only ids that are genuinely deletable survive: the roster can select a
-   * member with an address, and she is never a delete target.
-   */
-  initialTicked?: string[];
   /** what the reset would move. Null while it is still being counted. */
   preview: ResetPreview | null;
   loading: boolean;
@@ -76,25 +61,11 @@ export function ResetRegisterDialog({
   onConfirm: (ticked: ResetTarget[]) => void;
 }) {
   const { theme } = useTheme();
-  const [ticked, setTicked] = useState<Set<string>>(new Set());
 
-  // Every opening starts from what the ROSTER had selected, and from nothing
-  // else. Without the reset, a dialog closed with three ticked and reopened on
-  // a DIFFERENT day would carry those ticks onto members that day never named.
-  //
-  // `deletableKey` is in the dependencies, not `preview`: the object is rebuilt
-  // on every fetch, so depending on it would re-run this on the server's reply
-  // and silently discard ticks made in the moments before it landed.
-  const deletableKey = (preview?.deletable ?? []).map(t => t.member_id).join(',');
-  useEffect(() => {
-    if (!open) return;
-    const offered = new Set((preview?.deletable ?? []).map(t => t.member_id));
-    // A member the roster selected who turns out to have an address is not a
-    // delete target, and is dropped rather than silently deleted.
-    setTicked(new Set(initialTicked.filter(id => offered.has(id))));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, dayWords, deletableKey, initialTicked.join(',')]);
-
+  // NO TICK STATE LEFT. This dialog held a Set of members to delete and the
+  // effect that seeded it from the roster's selection; both went with the
+  // delete half in 0057. What it confirms now is a single reversible act, so
+  // there is nothing to remember between openings.
   useEffect(() => {
     if (Platform.OS !== 'web') return;
     blurOpener(open, null);
@@ -103,20 +74,9 @@ export function ResetRegisterDialog({
   if (!open) return null;
 
   const dangerInk = theme.isDark ? STATUS.absent.fgDark : STATUS.absent.fgLight;
-  const deletable = preview?.deletable ?? [];
-  const chosen = deletable.filter(t => ticked.has(t.member_id));
-  const allTicked = deletable.length > 0 && chosen.length === deletable.length;
-  // A day with nothing on it has nothing to reset, and the button says so
-  // rather than being drawn and doing nothing.
+  // A day with nothing SELECTED on it has nothing to reset, and the button
+  // says so rather than being drawn and doing nothing.
   const nothingToDo = !loading && !error && (preview?.marks ?? 0) === 0;
-
-  const toggle = (id: string) => setTicked(prev => {
-    const next = new Set(prev);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    return next;
-  });
-
-  const deleteLine = deleteWarning(chosen);
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
@@ -160,110 +120,23 @@ export function ResetRegisterDialog({
                   {resetWarning(preview ?? { marks: 0, members: 0, keeping: 0, deletable: [] }, dayWords)}
                 </Text>
 
-                {/* ---------------------------------------- the permanent half */}
-                {deletable.length > 0 ? (
-                  <View style={{ marginTop: SPACE.lg }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                      <Icon name="mail_off" size={16} color={dangerInk} />
-                      {/* the word, never the colour alone (guardrail 3) */}
-                      {/* PUT AS A QUESTION, in the requester's own terms:
-                          "also ask do you want to delete the member without
-                          email imported". A heading that merely labels the
-                          group would leave the ticks looking like a filter
-                          rather than a decision. */}
-                      <Text style={{ flex: 1, fontSize: 12.5, fontWeight: '800', color: dangerInk }}>
-                        {deletable.length === 1
-                          ? 'Do you want to delete the member with no email?'
-                          : `Do you want to delete the ${deletable.length} members with no email?`}
-                      </Text>
-                      <Pressable testID="reset-select-all"
-                        onPress={() => setTicked(allTicked
-                          ? new Set()
-                          : new Set(deletable.map(t => t.member_id)))}
-                        accessibilityRole="button"
-                        accessibilityLabel={allTicked
-                          ? 'Deselect every member' : 'Select every member'}
-                        style={({ pressed }) => ({
-                          minHeight: 30, paddingHorizontal: 10, borderRadius: RADIUS.sm,
-                          justifyContent: 'center',
-                          backgroundColor: theme.surface2,
-                          borderWidth: 1, borderColor: theme.lineStrong,
-                          opacity: pressed ? 0.7 : 1,
-                        })}>
-                        <Text style={{ fontSize: 11, fontWeight: '800', color: theme.fg }}>
-                          {allTicked ? 'Deselect all' : 'Select all'}
-                        </Text>
-                      </Pressable>
-                    </View>
+                {/* THE PERMANENT HALF LEFT THIS DIALOG (0057).
+                    It used to live here: a list of the day's addressless
+                    members with a tick beside each, and one press that both
+                    cleared the day and deleted whoever was ticked.
 
-                    <Text style={{ fontSize: 11.5, color: theme.muted, lineHeight: 17, marginTop: 6 }}>
-                      They were imported by an upload and have no address on file. Tick the ones to
-                      delete; leave one unticked to keep them — clearing the day does not remove them
-                      by itself. Nothing here is deleted unless you tick it.
-                    </Text>
+                    The requester separated the two -- "enable multi selection
+                    for no email section and enable delete option i.e bulk
+                    delete ask for confirmation before delete" -- and the
+                    separation is right on its own terms. One press carrying
+                    both a reversible act and an irreversible one means the
+                    dialog has to be read at the size of its worst half every
+                    time, including the ordinary times when nothing is ticked.
+                    Bulk delete is now its own control on the roster's no-email
+                    section, with its own confirmation naming who goes.
 
-                    <View style={{ gap: 6, marginTop: 9 }}>
-                      {deletable.map(t => {
-                        const on = ticked.has(t.member_id);
-                        return (
-                          <Pressable key={t.member_id} testID={`reset-tick-${t.member_id}`}
-                            onPress={() => toggle(t.member_id)}
-                            accessibilityRole="checkbox"
-                            accessibilityState={{ checked: on }}
-                            accessibilityLabel={`Delete ${t.name}${
-                              t.other_days > 0
-                                ? `, who has attendance on ${t.other_days} other ${
-                                    t.other_days === 1 ? 'day' : 'days'}`
-                                : ', who has attendance on no other day'}`}
-                            style={({ pressed }) => ({
-                              flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
-                              minHeight: TAP_MIN, paddingHorizontal: 11, paddingVertical: 8,
-                              borderRadius: RADIUS.md,
-                              backgroundColor: on ? statusSurface(dangerInk).bg : theme.surface2,
-                              borderWidth: 1,
-                              borderColor: on ? statusSurface(dangerInk).border : theme.line,
-                              opacity: pressed ? 0.75 : 1,
-                            })}>
-                            {/* The box is a SECOND encoding of the state, never
-                                the only one: the row is a checkbox to a screen
-                                reader and carries its checked state there. */}
-                            <View style={{
-                              width: 19, height: 19, borderRadius: 5,
-                              alignItems: 'center', justifyContent: 'center',
-                              backgroundColor: on ? dangerInk : 'transparent',
-                              borderWidth: on ? 0 : 1.5, borderColor: theme.lineStrong,
-                            }}>
-                              {on ? <Icon name="check" size={13} color={theme.onAccent} /> : null}
-                            </View>
-                            <Text numberOfLines={1} style={{
-                              flex: 1, fontSize: 13, fontWeight: '700', color: theme.fgStrong,
-                            }}>{t.name}</Text>
-                            {/* The number the delete owes her: it reaches every
-                                one of those days, not just this one. */}
-                            <Text style={{ fontSize: 11, color: theme.muted, fontVariant: ['tabular-nums'] }}>
-                              {t.other_days === 0 ? 'this day only'
-                                : `+${t.other_days} other ${t.other_days === 1 ? 'day' : 'days'}`}
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-
-                    {deleteLine ? (
-                      <View testID="reset-delete-warning" style={{
-                        flexDirection: 'row', gap: SPACE.sm, marginTop: 10, padding: 13,
-                        borderRadius: RADIUS.md,
-                        backgroundColor: statusSurface(dangerInk).bg,
-                        borderWidth: 1, borderColor: statusSurface(dangerInk).border,
-                      }}>
-                        <Icon name="warning" size={18} color={dangerInk} />
-                        <Text style={{ flex: 1, fontSize: 12.5, lineHeight: 19, color: theme.fg }}>
-                          {deleteLine}
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-                ) : null}
+                    So this dialog does one thing, and its button can say
+                    exactly what that is. */}
               </>
             )}
           </ScrollView>
@@ -280,25 +153,27 @@ export function ResetRegisterDialog({
               <Text style={{ fontSize: 14, fontWeight: '700', color: theme.fgStrong }}>Keep it</Text>
             </Pressable>
 
-            {/* The label names the WHOLE write, deletions included, because
-                the two halves are answered by one press. */}
+            {/* ONE ACT, so the label can name it exactly. It used to have to
+                cover a reset and a variable number of deletions in one
+                string; since 0057 it clears the marks of the members who were
+                selected and does nothing else, and it says how many. */}
             <Pressable testID="reset-confirm"
-              onPress={() => onConfirm(chosen)}
+              onPress={() => onConfirm([])}
               disabled={busy || loading || !!error || nothingToDo}
               accessibilityRole="button"
               style={({ pressed }) => ({
                 flex: 1.3, minHeight: TAP_MIN + 6, borderRadius: RADIUS.md,
                 alignItems: 'center', justifyContent: 'center',
                 paddingHorizontal: 8,
-                backgroundColor: chosen.length > 0 ? dangerInk : theme.accent,
+                backgroundColor: theme.accent,
                 opacity: (busy || loading || !!error || nothingToDo) ? 0.5 : pressed ? 0.85 : 1,
               })}>
               <Text numberOfLines={1} style={{ fontSize: 13.5, fontWeight: '800', color: theme.onAccent }}>
                 {busy ? 'Resetting…'
                   : nothingToDo ? 'Nothing to reset'
-                  : chosen.length > 0
-                    ? `Reset and delete ${chosen.length}`
-                    : 'Reset the day'}
+                  : (preview?.members ?? 0) === 1
+                    ? 'Reset 1 member'
+                    : `Reset ${preview?.members ?? 0} members`}
               </Text>
             </Pressable>
           </View>

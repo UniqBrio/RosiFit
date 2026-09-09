@@ -1,3 +1,34 @@
+## FAIL-FIRST — reset acts on the selection; bulk delete on the no-email list (09-Sep-2026)
+
+FAIL-FIRST: supabase/tests/43_reset_only_the_selected_members.sql — NEW, and it
+found a defect in its own first run: written asserting raw row counts, it failed
+"the mark beside it survives" (got 2, want 1) because reset_day_attendance
+SOFT-deletes. The function was right and the spec was wrong; the spec now reads
+live rows and additionally pins that both rows survive as soft-deleted, which is
+the thing about this function a reader would otherwise get wrong. 13/13.
+
+FAIL-FIRST: reset_day_attendance had NO DB spec at all before this — not for
+0056 and not for 0057. Found while rehearsing. It is the most destructive
+control on the course screen and nothing asserted what it cleared.
+
+COPY-LOCKS RE-POINTED, attendanceReset.test.ts: four resetWarning strings and
+three resetOutcome shapes. `deleted` left ResetOutcome entirely because deleting
+left the reset; the day now only reads "awaiting a file again" when the reset
+actually empties it. One string / one shape per assertion, none removed, none
+loosened, no skip.
+
+WITHDRAWN, not skipped — resetRegisterDialog.test.ts: five assertions about the
+dialog's delete-ticking (opens on the roster's selection, drops addressed
+members, select-all, hands over the ticked, names other days). The requester
+moved that half out of the dialog, so the behaviour they pinned no longer
+exists. They are deleted with a note saying so, and what replaced them is
+asserted in bulkDeleteNoEmail.test.ts. `.skip` was tried first and reverted: a
+skipped test reads as a pause, and nothing is coming back.
+
+SUPERSEDED AND REWRITTEN — resetRegisterDialog.test.ts: the reset button was
+pinned as HIDDEN on an empty day; it is drawn-and-disabled, and its gate moved
+to the selection. Re-pointed to the new rule rather than dropped.
+
 ## FAIL-FIRST — the one-button Bulk Import (09-Sep-2026)
 
 FAIL-FIRST: src/data/importKind.test.ts — defect injected: the fallback that
@@ -424,6 +455,66 @@ exit 1
 - **G9 Automation addressability** - PASS
 - **G10 Backward compatibility (fixtures)** - PASS
 - **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-09 - VERDICT: FAIL
+
+Steps: 5 pass, 5 fail, 1 blocked.
+Time: 17.8s total - slowest G7 Unit + pure specs (11.6s).
+
+- **G1 Theme artifacts in sync** - FAIL (46ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (40ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (40ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (62ms)
+- **G5 Types** - PASS (5.6s)
+- **G6 Lint** - BLOCKED (-) - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - FAIL (11.6s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: a form asked for a record answers a failed read
+ok 150 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 151 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 164 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+  name: 'AssertionError'
+  expected: true
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+ok 281 - a ring is never a colour alone, and nothing expected is a dash
+# Subtest: a failed reset keeps the dialog open, carrying the reason
+ok 318 - a failed reset keeps the dialog open, carrying the reason
+```
+
+- **G8 Functional / integration** - FAIL (115ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (51ms)
+- **G10 Backward compatibility (fixtures)** - PASS (106ms)
+- **G11 Wide tables are configurable** - PASS (50ms)
 
 _Merge blocked. Every FAIL above must resolve. No partial merges._
 

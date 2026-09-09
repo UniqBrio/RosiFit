@@ -16,12 +16,12 @@ import { useCourses, useFollowUp, useAttendance } from '../../src/data/hooks';
 import { weekStart, iso, label as periodLabel } from '../../src/data/period';
 import {
   setMemberStatus, mergeMemberInto, deleteMember, memberDeletionPreview, dataSource,
-  attendanceResetPreview, resetDayAttendance,
+  attendanceResetPreview, resetDayAttendance, bulkDeleteMembers,
 } from '../../src/data/repository';
 import { ResetRegisterDialog } from '../../src/components/ResetRegisterDialog';
 import {
   resetPreview, resetOutcome, resetFailure,
-  type ResetPreview, type ResetTarget,
+  type ResetPreview, type ResetTarget, deleteWarning,
 } from '../../src/data/attendanceReset';
 import {
   removalOutcome, removalFailure, deletionWarning, type PreviewState,
@@ -464,6 +464,13 @@ function CourseDetailBody() {
    */
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  /* THE TICKED MEMBERS WITH NO ADDRESS -- the only ones bulk delete may ever
+     touch. Derived rather than kept as a second set (guardrail 1): one
+     selection, and this is a reading of it. */
+  const selectedNoEmail = useMemo(
+    () => withoutEmail.filter(m => selected.has(m.id)), [withoutEmail, selected]);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const toggleSelected = (id: string) => setSelected(prev => {
     const next = new Set(prev);
@@ -502,9 +509,15 @@ function CourseDetailBody() {
     // is the authority on WHO has an address -- a member the register marks
     // while enrolled in no course is not on this screen's roster at all, and
     // she is exactly who the delete offer exists for.
-    setResetPreviewData(resetPreview(attendance.data ?? [], scoped, course.id, chosen.iso));
+    // NARROWED TO THE SELECTION (0057). The reset acts on the members who
+    // were ticked, so the preview has to count the same rows -- a preview of
+    // the whole day over a reset of three members is a number describing a
+    // write that is not going to happen.
+    const picked = [...selected];
+    setResetPreviewData(
+      resetPreview(attendance.data ?? [], scoped, course.id, chosen.iso, picked));
     try {
-      setResetPreviewData(await attendanceResetPreview(course.id, chosen.iso));
+      setResetPreviewData(await attendanceResetPreview(course.id, chosen.iso, picked));
     } catch (err) {
       setResetError(err instanceof Error ? err.message
         : 'What this reset would clear could not be counted. Nothing has been changed.');
@@ -513,12 +526,48 @@ function CourseDetailBody() {
     }
   };
 
-  const runReset = async (ticked: ResetTarget[]) => {
+  /**
+   * BULK DELETE. One `delete_member` call per member through the repository,
+   * which is the audited hard-delete path the member card already uses --
+   * never a bulk RPC of its own, or there would be two definitions of
+   * "delete a member" free to drift apart.
+   *
+   * Only the ticked members WITH NO ADDRESS, which is what the control is
+   * drawn over: `selectedNoEmail`, not `selected`. A member the academy can
+   * still email is never removed by a bulk control.
+   */
+  const runBulkDelete = async () => {
+    if (selectedNoEmail.length === 0) return;
+    setBulkDeleting(true);
+    try {
+      const { deleted, failed } = await bulkDeleteMembers(selectedNoEmail.map(m => m.id));
+      setConfirmBulkDelete(false);
+      setSelected(new Set());
+      setSelectMode(false);
+      // BOTH numbers when some did not go. "3 deleted" over a selection of
+      // five is the toast that makes somebody think the other two are gone.
+      flash(
+        failed.length === 0
+          ? `${deleted} ${deleted === 1 ? 'member' : 'members'} deleted.`
+          : `${deleted} deleted, ${failed.length} could not be — ${failed[0].reason}`,
+        failed.length === 0 ? 'ok' : 'warn');
+    } catch (err) {
+      setConfirmBulkDelete(false);
+      flash(err instanceof Error ? err.message
+        : 'Those members could not be deleted. Nothing has been removed.', 'warn');
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
+  const runReset = async () => {
     if (!course || !chosen) return;
     setResetBusy(true);
     try {
-      const outcome = await resetDayAttendance(course.id, chosen.iso,
-        ticked.map(t => t.member_id));
+      // The SELECTION, which is what the reset is now about. Nothing is
+      // deleted here at all -- that is its own control below, with its own
+      // confirmation, because the requester asked for the two apart.
+      const outcome = await resetDayAttendance(course.id, chosen.iso, [...selected]);
       const words = resetOutcome(outcome, dayLabel(chosen.iso));
       setResetOpen(false);
       // The members those ticks pointed at may not exist any more, so the
@@ -1154,7 +1203,26 @@ function CourseDetailBody() {
                     subject, one above the other, with nothing between them to
                     misread. */}
                 {(() => {
-                  const nothingToReset = dayMarks === 0;
+                  /* GATED ON THE SELECTION, which is the requester's whole
+                     instruction: "The reset of attendance should happend only
+                     when user selects the members using select option and when
+                     they select members and click on reset only those members
+                     attendance should be reset."
+
+                     So an empty selection is a dead button, not a whole-day
+                     reset. Nothing is lost: Select all is one tap, and the
+                     day-wide reset 0056 was built for is still reachable that
+                     way -- but it now has to be ASKED FOR rather than being
+                     what happens when nobody chose anything.
+
+                     Still drawn rather than hidden, and the reason is the one
+                     already on this control: a button that vanishes tells
+                     nobody where it went, and the state it vanishes in is
+                     exactly the state somebody goes looking for it in. The
+                     label says which of the two reasons it is dead. */
+                  const noMarks = dayMarks === 0;
+                  const noneTicked = selected.size === 0;
+                  const nothingToReset = noMarks || noneTicked;
                   const ink = nothingToReset ? theme.dim : dangerInk;
                   return (
                     <Pressable testID="course-day-reset"
@@ -1162,9 +1230,11 @@ function CourseDetailBody() {
                       disabled={nothingToReset}
                       accessibilityRole="button"
                       accessibilityState={{ disabled: nothingToReset }}
-                      accessibilityLabel={nothingToReset
+                      accessibilityLabel={noMarks
                         ? `Nothing to reset for ${dayInWords(chosen.iso)} — no attendance is recorded on that day`
-                        : `Reset the register for ${dayInWords(chosen.iso)}`}
+                        : noneTicked
+                          ? `Nothing to reset for ${dayInWords(chosen.iso)} — tick the members whose marks to clear first`
+                          : `Reset the marks of ${selected.size} selected ${selected.size === 1 ? 'member' : 'members'} for ${dayInWords(chosen.iso)}`}
                       style={({ pressed }) => ({
                         flexDirection: 'row', alignItems: 'center', gap: 5,
                         minHeight: 30, paddingHorizontal: 10, borderRadius: RADIUS.sm,
@@ -1249,9 +1319,39 @@ function CourseDetailBody() {
                   color: theme.fg, fontVariant: ['tabular-nums'],
                 }}>
                   {selected.size === 0
-                    ? 'Nobody selected — tick the members to delete on reset'
+                    ? 'Nobody selected — tick the members whose marks to reset'
                     : `${selected.size} of ${shown.length} selected`}
                 </Text>
+                {/* BULK DELETE, and only ever over the members with NO email.
+                    The requester asked for it on that section -- "enable multi
+                    selection for no email section and enable delete option i.e
+                    bulk delete ask for confirmation before delete" -- and the
+                    restriction is the same one the reset dialog has always
+                    enforced: a member with an address is somebody the academy
+                    can still reach, and no bulk control deletes them. Drawn
+                    only when the ticks actually include such a member, so it
+                    never appears as a dead control over a selection it cannot
+                    act on. */}
+                {selectedNoEmail.length > 0 ? (
+                  <Pressable testID="course-selection-delete"
+                    onPress={() => setConfirmBulkDelete(true)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Delete ${selectedNoEmail.length} selected members with no email`}
+                    style={({ pressed }) => ({
+                      minHeight: 28, paddingHorizontal: 10, borderRadius: RADIUS.sm,
+                      flexDirection: 'row', alignItems: 'center', gap: 5,
+                      justifyContent: 'center',
+                      backgroundColor: statusSurface(dangerInk).bg,
+                      borderWidth: 1, borderColor: statusSurface(dangerInk).border,
+                      opacity: pressed ? 0.7 : 1,
+                    })}>
+                    <Icon name="delete" size={13} color={dangerInk} />
+                    {/* the WORD, never the colour alone (guardrail 3) */}
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: dangerInk }}>
+                      {`Delete ${selectedNoEmail.length}`}
+                    </Text>
+                  </Pressable>
+                ) : null}
                 <Pressable testID="course-select-all"
                   onPress={() => setSelected(selected.size === shown.length
                     ? new Set()
@@ -1397,11 +1497,27 @@ function CourseDetailBody() {
         loading={resetLoading}
         error={resetError}
         busy={resetBusy}
-        // What the roster had ticked arrives as the dialog's starting
-        // selection; the dialog drops anyone who turns out to have an address,
-        // and stays the last word on what is actually deleted.
-        initialTicked={[...selected]}
-        onConfirm={ticked => void runReset(ticked)} />
+        onConfirm={() => void runReset()} />
+
+      {/* BULK DELETE'S OWN CONFIRMATION, which is the half the requester
+          asked for by name. It is a separate dialog from the reset because it
+          is a separate act: the reset un-marks and can be re-uploaded, this
+          removes people and cannot be undone at all. deleteWarning names who
+          goes and what else goes with them (0051 is a hard delete), and the
+          emphasis sits on the answer that keeps them. */}
+      <ConfirmDialog
+        open={confirmBulkDelete}
+        onClose={() => setConfirmBulkDelete(false)}
+        title={selectedNoEmail.length === 1
+          ? `Delete ${selectedNoEmail[0].name}?`
+          : `Delete ${selectedNoEmail.length} members?`}
+        body={deleteWarning(selectedNoEmail.map(m => ({
+          member_id: m.id, name: m.name, has_email: false, other_days: 0,
+        }))) ?? ''}
+        emphasis="cancel"
+        cancelLabel="No"
+        confirmLabel={bulkDeleting ? 'Deleting…' : 'Yes'}
+        onConfirm={() => { void runBulkDelete(); }} />
     </>
   );
 }

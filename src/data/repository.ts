@@ -3273,14 +3273,19 @@ function missingReset(error: { code?: string } | null): boolean {
 }
 
 export async function attendanceResetPreview(
-  courseId: string, dayIso: string,
+  courseId: string, dayIso: string, memberIds: string[] = [],
 ): Promise<ResetPreviewResult> {
   if (!isConfigured) {
     // Offline the fixture IS the store, and the same derivation the screen
     // uses answers here -- a second rule in this file is how the offline mode
     // starts telling a different story from the live one.
+    // NARROWED TO THE SELECTION, exactly as the RPC narrows it: empty means
+    // the whole day (0057). The offline store answering a wider question than
+    // the database would make the preview lie about its own reset.
+    const pick = new Set(memberIds);
     const rows = attendanceFixture(dayIso, dayIso)
-      .filter(r => r.course_id === courseId && r.date === dayIso);
+      .filter(r => r.course_id === courseId && r.date === dayIso)
+      .filter(r => pick.size === 0 || pick.has(r.member_id));
     const seen = new Map<string, ResetDeletable>();
     for (const r of rows) {
       if (seen.has(r.member_id)) continue;
@@ -3305,7 +3310,7 @@ export async function attendanceResetPreview(
   }
 
   const { data, error } = await supabase.rpc('attendance_reset_preview', {
-    p_course_id: courseId, p_session_date: dayIso,
+    p_course_id: courseId, p_session_date: dayIso, p_member_ids: memberIds,
   });
   if (error) {
     console.error('attendanceResetPreview:', error.message);
@@ -3339,29 +3344,44 @@ export async function attendanceResetPreview(
  * one; the intersection is what stops this being a delete-any-member endpoint
  * if anything else ever calls it.
  */
+/**
+ * THE ARGUMENT CHANGED MEANING IN 0057, which is the whole reason this
+ * function is worth reading twice.
+ *
+ * `p_delete_member_ids` (0056) named the members to DELETE. `p_member_ids`
+ * (0057) names the members to RESET. Same type, same position, opposite
+ * instruction -- so the migration DROPS the old function rather than leaving
+ * it as an overload, and this caller was rewritten in the same change. A
+ * version of this file that still sent delete-ids to the new function would
+ * not error: it would clear the marks of the members it meant to remove and
+ * remove nobody, silently. That is why the two ship together.
+ *
+ * DELETING IS NO LONGER PART OF A RESET. The requester asked for it as its
+ * own control with its own confirmation -- see `bulkDeleteMembers` below.
+ */
 export async function resetDayAttendance(
-  courseId: string, dayIso: string, deleteMemberIds: string[] = [],
-): Promise<{ cleared: number; deleted: number }> {
+  courseId: string, dayIso: string, memberIds: string[] = [],
+): Promise<{ cleared: number; marksLeft: number }> {
   if (!isConfigured) {
+    const pick = new Set(memberIds);
     const before = attendanceFixture(dayIso, dayIso)
+      .filter(r => r.course_id === courseId && r.date === dayIso)
+      .filter(r => pick.size === 0 || pick.has(r.member_id)).length;
+    resetFixtureDay(courseId, dayIso, memberIds);
+    // What the day still holds afterwards -- the number that decides whether
+    // it goes back to awaiting a file, and the offline store has to be able
+    // to answer it or the toast says something the register does not show.
+    const marksLeft = attendanceFixture(dayIso, dayIso)
       .filter(r => r.course_id === courseId && r.date === dayIso).length;
-    resetFixtureDay(courseId, dayIso);
-    let deleted = 0;
-    for (const id of deleteMemberIds) {
-      const at = MEMBERS.findIndex(m => m.id === id);
-      if (at < 0) continue;
-      MEMBERS.splice(at, 1);
-      deleted += 1;
-    }
     attendanceChanged();
     membersChanged();
-    return { cleared: before, deleted };
+    return { cleared: before, marksLeft };
   }
 
   const { data, error } = await supabase.rpc('reset_day_attendance', {
     p_course_id: courseId,
     p_session_date: dayIso,
-    p_delete_member_ids: deleteMemberIds,
+    p_member_ids: memberIds,
   });
   if (error) {
     console.error('resetDayAttendance:', error.message);
@@ -3383,7 +3403,52 @@ export async function resetDayAttendance(
   membersChanged();
 
   const r = (data ?? {}) as Record<string, unknown>;
-  return { cleared: Number(r.cleared ?? 0), deleted: Number(r.deleted ?? 0) };
+  // `marks_left` is what decides the wording: a partial reset leaves a day
+  // that is still a register, and saying it "went back to awaiting a file"
+  // when five marks stand on it is the one sentence this feature must not
+  // produce (0057).
+  return { cleared: Number(r.cleared ?? 0), marksLeft: Number(r.marks_left ?? 0) };
+}
+
+/**
+ * BULK DELETE, its own act with its own confirmation.
+ *
+ * The requester asked for it beside the no-email list -- "enable multi
+ * selection for no email section and enable delete option i.e bulk delete ask
+ * for confirmation before delete" -- and asked for it SEPARATELY from the
+ * reset, which is what 0057 acted on: deleting a member is not a variety of
+ * clearing a mark, and folding the two into one button made one control carry
+ * two very different sizes of consequence.
+ *
+ * One `delete_member` call per member, never a bulk RPC of its own. That
+ * function (0051) is the audited hard-delete path -- it takes the member's
+ * attendance on every day, enrolments, addresses, aliases and the mail the
+ * academy sent -- and routing forty of them through a new function would mean
+ * a second definition of "delete a member" that could drift from the one the
+ * member card uses.
+ *
+ * Row by row, and a failure does not stop the rest: the ones that went are
+ * gone whatever happens to the twelfth, so the caller is told both numbers
+ * rather than an exception that hides the eleven.
+ */
+export async function bulkDeleteMembers(
+  ids: string[],
+): Promise<{ deleted: number; failed: { id: string; reason: string }[] }> {
+  const failed: { id: string; reason: string }[] = [];
+  let deleted = 0;
+  for (const id of ids) {
+    try {
+      await deleteMember(id);
+      deleted += 1;
+    } catch (err) {
+      failed.push({ id, reason: err instanceof Error ? err.message : 'could not be deleted' });
+    }
+  }
+  // Once, after the loop, not once per member: forty writes are one act to
+  // every screen reading the register.
+  membersChanged();
+  attendanceChanged();
+  return { deleted, failed };
 }
 
 /* ------------------------------------------------ marking attendance by hand
