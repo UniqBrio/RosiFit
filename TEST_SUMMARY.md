@@ -1,3 +1,28 @@
+## FAIL-FIRST — deleting a course takes its members (0064, 09-Sep-2026)
+
+FAIL-FIRST: supabase/tests/14_delete_course.sql failed the moment 0064 was
+rehearsed — "her stats are recomputed" got NULL, want 0 — because the member it
+asserted about is now removed with the course. That assertion pinned the
+promise 0047 made and the requester has now withdrawn, so it is amended to pin
+the new contract (her stats row goes with her), exactly as the same file was
+amended for 0047. The file documents both amendments in place.
+
+FAIL-FIRST: supabase/tests/46 — NEW, 11/11, written to defend the line I drew
+rather than the instruction as literally worded. Two of its assertions caught
+my own fixture errors first: member_enrollments carries an exclusion constraint
+on (member_id, daterange) so a member cannot hold two live enrolments, and
+purge_member audits as `member.hard_deleted` with the note under
+metadata->>'note', not as `member.purged`.
+
+FAIL-FIRST: courseDeletion.test.ts — restoring the old sentence ("N members are
+enrolled." and nothing about what happens to them) fails five assertions: the
+two re-pointed copy-locks and the three new branch tests. 9 pass, 5 fail.
+Restored: 14 pass.
+
+COPY-LOCKS RE-POINTED: two in courseDeletion.test.ts. The dialog now has to say
+what happens TO the members because the deletion now removes them; changing
+that copy is the intent of the work. Exact-string locks kept, strings changed.
+
 ## FAIL-FIRST — "7 failed" on an upload that edited 4 (09-Sep-2026)
 
 Reported with the file and two screenshots: 3 updated, 786 already correct,
@@ -555,6 +580,66 @@ exit 1
 - **G9 Automation addressability** - PASS
 - **G10 Backward compatibility (fixtures)** - PASS
 - **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-09 - VERDICT: FAIL
+
+Steps: 5 pass, 5 fail, 1 blocked.
+Time: 18.9s total - slowest G7 Unit + pure specs (12.1s).
+
+- **G1 Theme artifacts in sync** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (52ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (46ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (63ms)
+- **G5 Types** - PASS (6.3s)
+- **G6 Lint** - BLOCKED (-) - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - FAIL (12.1s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: a form asked for a record answers a failed read
+ok 164 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 165 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 178 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+  name: 'AssertionError'
+  expected: true
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+ok 295 - a ring is never a colour alone, and nothing expected is a dash
+# Subtest: a failed reset keeps the dialog open, carrying the reason
+ok 332 - a failed reset keeps the dialog open, carrying the reason
+```
+
+- **G8 Functional / integration** - FAIL (119ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (53ms)
+- **G10 Backward compatibility (fixtures)** - PASS (108ms)
+- **G11 Wide tables are configurable** - PASS (50ms)
 
 _Merge blocked. Every FAIL above must resolve. No partial merges._
 

@@ -22,6 +22,9 @@ export type DeletionPreview = {
   offerings: number;
   /** distinct people with an ACTIVE enrolment -- the "N members are enrolled" of the old dialog */
   membersEnrolled: number;
+  /** of those, the ones this course is the WHOLE of. Deleting it removes them
+   *  outright (0064); a member with another course is not counted here. */
+  membersRemoved: number;
   sessions: number;
   sessionsCompleted: number;
   attendanceRecords: number;
@@ -54,9 +57,18 @@ export function deletionWarning(state: PreviewState): string {
   }
 
   const p = state.preview;
+  /* WHO GOES WITH IT (0064). "12 members are enrolled" said nothing about
+     what happens to them, and since the deletion now REMOVES the ones this
+     course is the whole of, the number that matters is that one. Both are
+     given when they differ, because "9 of 12" is the fact a person needs and
+     neither number carries it alone. */
   const enrolled = p.membersEnrolled === 0
     ? 'Nobody is enrolled.'
-    : `${plural(p.membersEnrolled, 'member is', 'members are')} enrolled.`;
+    : p.membersRemoved === 0
+      ? `${plural(p.membersEnrolled, 'member is', 'members are')} enrolled, and every one of them is in another course too, so none are removed.`
+      : p.membersRemoved === p.membersEnrolled
+        ? `${plural(p.membersEnrolled, 'member is', 'members are')} enrolled, and this course is the whole of their membership — they are deleted with it, permanently.`
+        : `${plural(p.membersEnrolled, 'member is', 'members are')} enrolled. ${p.membersRemoved} of them are in no other course and are deleted with it, permanently; the rest keep their other course.`;
 
   const offerings = plural(p.offerings, 'offering', 'offerings');
 

@@ -132,9 +132,19 @@ select t.eq((select count(*)::int from public.member_enrollments
               where member_id = (select id from public.members where member_code='RF-000900')), 0,
   'her enrolment is DELETED rather than ended -- there is no history left for it to protect');
 
-select t.eq((select sessions_attended from public.member_stats
+-- AMENDED AGAIN 09-Sep-2026 (0064), the same way and for the same kind of
+-- reason as the four above. This asserted that her stats row survived the
+-- deletion, recomputed to zero -- which was true while the member survived it.
+-- The requester withdrew that on 09-Sep: "on deleting course make sure all its
+-- related members are deleted because it may cause unnecessary chaos when i
+-- wanted to bring same person under another course after deleting whole
+-- course". This course was the whole of her membership, so she goes with it,
+-- and her stats row goes with her. The assertion now pins that instead of its
+-- opposite. 46_delete_course_takes_its_members.sql carries the full contract,
+-- including the member of a SECOND course, who survives.
+select t.eq((select count(*)::int from public.member_stats
               where member_id = (select id from public.members where member_code='RF-000900')), 0,
-  'and her stats are recomputed, so the follow-up list does not count sessions that no longer exist');
+  'her stats row goes with her -- this course was the whole of her membership');
 
 select t.ok((select deleted_at from public.members where member_code='RF-000900') is null,
   'the MEMBER is not deleted -- she was enrolled, not owned');
