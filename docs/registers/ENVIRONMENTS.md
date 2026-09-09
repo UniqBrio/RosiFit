@@ -377,11 +377,45 @@ its audit row would fail and be logged — the function treats the log as
 best-effort on purpose. No link exists to click yet, so this window is
 theoretical.
 
+### ✅ 09-Sep-2026, later: secrets set, send path live, both migrations applied
+
+The owner set `SES_SNS_TOPIC_ARN`, `SES_FEEDBACK_SECRET` and
+`UNSUBSCRIBE_SECRET`. Supabase shows only a hashed preview of a secret, never
+the value, so **none of the three was read back** — the first SNS notification
+and the first link click are what will prove them.
+
+Order was corrected before anything was applied, and the correction matters:
+`renderTemplate` leaves an unknown token LITERAL (`vars[k] ?? '{{'+k+'}}'`), so
+applying `0066` while `send-followups` was still v14 — whose variable map has
+no `unsubscribe_url` — would have mailed members the raw text
+`{{unsubscribe_url}}` where the link belongs. On a change whose whole purpose
+is showing AWS a working unsubscribe, that is the worst artefact available.
+So: **deploy first, migrate second.**
+
+1. **`send-followups` → v18**, `verify_jwt: true` preserved. ✅ Verified by
+   reading the deployed source back in full: all 7 files present and complete,
+   none truncated, the `Headers` block and `buildUnsubscribeUrl` call both
+   intact. A deploy is not typechecked, so a truncated file would have
+   deployed cleanly and failed only on the first send — which is why this was
+   checked rather than assumed.
+2. **`0065` applied.** ✅ `audit_log_anon` exists, `security definer`, and
+   `EXECUTE` is held by **`service_role` only** — not `anon`, not
+   `authenticated`, not `public`. No test audit row was written: `audit_logs`
+   is append-only, so a fabricated `communication.unsubscribed` entry would sit
+   in the academy's audit screen for ever.
+3. **`0066` applied.** ✅ Verified by query: the one stored template carries
+   **exactly one** `{{unsubscribe_url}}` (counted, not eyeballed — the
+   re-runnability guard is what makes that count meaningful), and the wording
+   reads as intended.
+
 ### ◻ NOT verified — what a statement to AWS must not claim
 - **The SESv2 `Headers` field has never been exercised against live SES.** The
   `List-Unsubscribe` pair is set through `Content.Simple.Headers` rather than
-  raw MIME. If ap-south-1 refuses the field, sends fail with a 400 — so the
-  first test send after deploy is a gate, not a formality.
+  raw MIME. If ap-south-1 refuses the field, EVERY send fails with a 400 — the
+  failure is loud and per-message (`email_messages.failure_reason`), not
+  silent, but it is a live regression until the first send proves otherwise.
+  **The first test send is a gate, not a formality**, and it is now the single
+  largest unknown in this change.
 - No SNS notification has been received; no bounce, complaint or unsubscribe
   has been observed end to end. `email_events` holds 0 rows and 0 addresses are
   suppressed, both re-checked after deploying.
