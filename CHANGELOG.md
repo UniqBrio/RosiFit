@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased — Select and delete members with no email, from that section itself
+
+**The No email section now has its own bar, right above its cards.** It counts what you have
+ticked, offers **Select all** / **Deselect all** across just that list, and shows a **Delete**
+button as soon as anything is ticked. Deleting asks first and names who is going.
+
+Those cards can be ticked straight away — you no longer have to find and press *Select* at the top
+of the screen first. That was the real problem: the selection and the bulk delete already existed,
+but they lived at the top of the roster, so from the No email section there was nothing to see.
+
+The delete has also moved off the roster-wide bar, where it read as a delete over everything
+selected while only ever acting on the members with no address. There is one of it now, beside the
+list it acts on.
+
+Only members with no email on file are ever counted or removed here. Anybody the academy can still
+write to is not on this list and cannot be swept up by it.
+
 ## Unreleased — Deleting a course now removes the members it was the whole of
 
 **A deleted course used to leave its members behind on the register, enrolled in nothing.** They

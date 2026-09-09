@@ -469,6 +469,8 @@ function CourseDetailBody() {
      selection, and this is a reading of it. */
   const selectedNoEmail = useMemo(
     () => withoutEmail.filter(m => selected.has(m.id)), [withoutEmail, selected]);
+  /** the same list, under the name the No email section's own bar reads it by */
+  const noEmailSelected = selectedNoEmail;
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
@@ -1322,36 +1324,13 @@ function CourseDetailBody() {
                     ? 'Nobody selected — tick the members whose marks to reset'
                     : `${selected.size} of ${shown.length} selected`}
                 </Text>
-                {/* BULK DELETE, and only ever over the members with NO email.
-                    The requester asked for it on that section -- "enable multi
-                    selection for no email section and enable delete option i.e
-                    bulk delete ask for confirmation before delete" -- and the
-                    restriction is the same one the reset dialog has always
-                    enforced: a member with an address is somebody the academy
-                    can still reach, and no bulk control deletes them. Drawn
-                    only when the ticks actually include such a member, so it
-                    never appears as a dead control over a selection it cannot
-                    act on. */}
-                {selectedNoEmail.length > 0 ? (
-                  <Pressable testID="course-selection-delete"
-                    onPress={() => setConfirmBulkDelete(true)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Delete ${selectedNoEmail.length} selected members with no email`}
-                    style={({ pressed }) => ({
-                      minHeight: 28, paddingHorizontal: 10, borderRadius: RADIUS.sm,
-                      flexDirection: 'row', alignItems: 'center', gap: 5,
-                      justifyContent: 'center',
-                      backgroundColor: statusSurface(dangerInk).bg,
-                      borderWidth: 1, borderColor: statusSurface(dangerInk).border,
-                      opacity: pressed ? 0.7 : 1,
-                    })}>
-                    <Icon name="delete" size={13} color={dangerInk} />
-                    {/* the WORD, never the colour alone (guardrail 3) */}
-                    <Text style={{ fontSize: 11, fontWeight: '800', color: dangerInk }}>
-                      {`Delete ${selectedNoEmail.length}`}
-                    </Text>
-                  </Pressable>
-                ) : null}
+                {/* BULK DELETE MOVED to the No email section's own bar
+                    (09-Sep-2026). It was here, on the roster-wide selection
+                    bar, where it read as a delete over "3 of 5 selected" while
+                    only ever acting on the addressless ones -- a scoping
+                    nobody could see. The requester asked for it beside the
+                    list it acts on, and that is also where it stops being
+                    surprising. */}
                 <Pressable testID="course-select-all"
                   onPress={() => setSelected(selected.size === shown.length
                     ? new Set()
@@ -1458,13 +1437,97 @@ function CourseDetailBody() {
                       follow-up: there is no address to send to. Add an email and they join the rule.
                     </Muted>
                   </View>
+                  {/* SELECT AND DELETE, ON THIS SECTION AND ABOVE ITS CARDS.
+                      The requester asked for it here by name -- "for no email
+                      member give select and deselect right above that section
+                      so that they can select in bulk".
+
+                      It is drawn WITHOUT the header's Select toggle having
+                      been pressed, which is the part that had actually gone
+                      wrong: selection existed, but behind a control at the top
+                      of the screen, so from down here the feature simply was
+                      not there. A section that offers a bulk delete has to
+                      offer the ticking that feeds it, in the same place.
+
+                      Only these members are ever counted or deleted here --
+                      `withoutEmail`, never the whole roster. A member the
+                      academy can still email is not on this list and cannot be
+                      swept up by it. */}
+                  <View testID="course-noemail-bar" style={{
+                    flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
+                    marginTop: 10, paddingHorizontal: 11, paddingVertical: 8,
+                    borderRadius: RADIUS.md,
+                    backgroundColor: theme.surface2,
+                    borderWidth: 1, borderColor: theme.line,
+                  }}>
+                    <Text style={{
+                      flex: 1, minWidth: 0, fontSize: 11.5, fontWeight: '700',
+                      color: theme.fg, fontVariant: ['tabular-nums'],
+                    }}>
+                      {noEmailSelected.length === 0
+                        ? 'Tick the ones to delete'
+                        : `${noEmailSelected.length} of ${withoutEmail.length} selected`}
+                    </Text>
+
+                    <Pressable testID="course-noemail-select-all"
+                      onPress={() => setSelected(prev => {
+                        const next = new Set(prev);
+                        if (noEmailSelected.length === withoutEmail.length) {
+                          for (const m of withoutEmail) next.delete(m.id);
+                        } else {
+                          for (const m of withoutEmail) next.add(m.id);
+                        }
+                        return next;
+                      })}
+                      accessibilityRole="button"
+                      accessibilityLabel={noEmailSelected.length === withoutEmail.length
+                        ? 'Deselect every member with no email'
+                        : 'Select every member with no email'}
+                      style={({ pressed }) => ({
+                        minHeight: 28, paddingHorizontal: 10, borderRadius: RADIUS.sm,
+                        justifyContent: 'center', backgroundColor: theme.surface,
+                        borderWidth: 1, borderColor: theme.lineStrong,
+                        opacity: pressed ? 0.7 : 1,
+                      })}>
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: theme.fg }}>
+                        {noEmailSelected.length === withoutEmail.length ? 'Deselect all' : 'Select all'}
+                      </Text>
+                    </Pressable>
+
+                    {/* Drawn only once something is ticked: a delete button
+                        over an empty selection is a control that lies. */}
+                    {noEmailSelected.length > 0 ? (
+                      <Pressable testID="course-noemail-delete"
+                        onPress={() => setConfirmBulkDelete(true)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Delete ${noEmailSelected.length} selected members with no email`}
+                        style={({ pressed }) => ({
+                          minHeight: 28, paddingHorizontal: 10, borderRadius: RADIUS.sm,
+                          flexDirection: 'row', alignItems: 'center', gap: 5,
+                          justifyContent: 'center',
+                          backgroundColor: statusSurface(dangerInk).bg,
+                          borderWidth: 1, borderColor: statusSurface(dangerInk).border,
+                          opacity: pressed ? 0.7 : 1,
+                        })}>
+                        <Icon name="delete" size={13} color={dangerInk} />
+                        {/* the WORD, never the colour alone (guardrail 3) */}
+                        <Text style={{ fontSize: 11, fontWeight: '800', color: dangerInk }}>
+                          {`Delete ${noEmailSelected.length}`}
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+
                   <View style={{ gap: SPACE.sm, marginTop: 10 }}>
                     {withoutEmail.map((m, i) => (
                       <MemberCard key={m.id} member={m} tint={AVATAR_TINTS[i % AVATAR_TINTS.length]}
                         weekLabel={week.label} noEmail allMembers={members}
                         dayIso={chosen?.iso ?? null} weekdays={scopeWeekdays}
                         rows={attendance.data ?? []} attendanceState={attendance.state}
-                        selectable={selectMode} selected={selected.has(m.id)}
+                        /* Always tickable, toggle or no toggle: the bar above
+                           offers a delete over these cards, so the cards have
+                           to be selectable from here. */
+                        selectable selected={selected.has(m.id)}
                         onToggleSelect={() => toggleSelected(m.id)} />
                     ))}
                   </View>

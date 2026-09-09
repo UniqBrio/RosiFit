@@ -45,15 +45,18 @@ test('that list is derived from the no-email roster, not from a second set', () 
     'one selection, read two ways — never two sets free to disagree (guardrail 1)');
 });
 
+// MOVED 09-Sep-2026: the control left the roster-wide selection bar for the
+// No email section's own bar, at the requester's asking -- "for no email member
+// give select and deselect right above that section". Same claim, new testID.
 test('the control is not drawn when the ticks include nobody it may delete', () => {
-  assert.match(screen, /\{selectedNoEmail\.length > 0 \? \(\s*<Pressable testID="course-selection-delete"/,
+  assert.match(screen, /\{noEmailSelected\.length > 0 \? \(\s*<Pressable testID="course-noemail-delete"/,
     'a dead delete button over a selection it cannot act on is a control that lies');
 });
 
 /* --------------------------------------------------- it asks, every time */
 
 test('pressing it opens the confirmation and writes nothing', () => {
-  const at = screen.indexOf('testID="course-selection-delete"');
+  const at = screen.indexOf('testID="course-noemail-delete"');
   assert.match(screen.slice(at, at + 200), /onPress=\{\(\) => setConfirmBulkDelete\(true\)\}/,
     'the press must ask, never delete');
 });
@@ -75,8 +78,8 @@ test('the answers are Yes and No, as the requester asked', () => {
 });
 
 test('the button carries its word, never the colour alone (guardrail 3)', () => {
-  const at = screen.indexOf('testID="course-selection-delete"');
-  assert.match(screen.slice(at, at + 1200), /\{`Delete \$\{selectedNoEmail\.length\}`\}/);
+  const at = screen.indexOf('testID="course-noemail-delete"');
+  assert.match(screen.slice(at, at + 1200), /\{`Delete \$\{noEmailSelected\.length\}`\}/);
 });
 
 /* ------------------------------------------ the write path it goes through */
@@ -101,4 +104,47 @@ test('the toast names both numbers when some did not go', () => {
 test('the selection cannot survive the write that removed its members', () => {
   const at = screen.indexOf('const runBulkDelete');
   assert.match(screen.slice(at, at + 1400), /setSelected\(new Set\(\)\)/);
+});
+
+/* ------------------------------------------------------------------------
+ * WHERE THE CONTROLS LIVE (09-Sep-2026)
+ *
+ * "For no email member give select and deselect right above that section so
+ *  that they can select in bulk and delete option should be there on delete
+ *  bulk delete should happen" -- the requester, looking at a screen where
+ *  none of it appeared.
+ *
+ * It existed, and that was the problem: ticking was behind a "Select" toggle
+ * in the screen header, and the bar that carried the delete sat above the
+ * WITH-email cards. From the No email section there was nothing to see, so
+ * the feature may as well not have shipped. These pin the placement, because
+ * placement is the whole of what was wrong.
+ * --------------------------------------------------------------------- */
+
+test('the No email section has its own bar', () => {
+  assert.match(screen, /testID="course-noemail-bar"/);
+});
+
+test('and it sits ABOVE the cards it acts on', () => {
+  const bar = screen.indexOf('testID="course-noemail-bar"');
+  const cards = screen.indexOf('withoutEmail.map(');
+  assert.ok(bar !== -1 && bar < cards,
+    'a bar below its own list is a bar nobody scrolls back up to find');
+});
+
+test('select all is offered there, scoped to that list', () => {
+  const at = screen.indexOf('testID="course-noemail-select-all"');
+  assert.match(screen.slice(at, at + 400), /for \(const m of withoutEmail\)/,
+    'select all here must tick the addressless members and nobody else');
+});
+
+test('those cards are tickable without hunting for the header toggle', () => {
+  const at = screen.indexOf('withoutEmail.map(');
+  assert.match(screen.slice(at, at + 700), /selectable selected=\{selected\.has\(m\.id\)\}/,
+    'gating them on selectMode is what made the feature invisible');
+});
+
+test('the delete is gone from the roster-wide bar, so there is one of it', () => {
+  assert.doesNotMatch(screen, /testID="course-selection-delete"/,
+    'two controls doing one job, one of them surprisingly scoped');
 });
