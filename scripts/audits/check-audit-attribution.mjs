@@ -44,9 +44,18 @@ const NO_SESSION_YET = {
     + 'subject of the entry (p_entity_id) is the only identity in the call. The admin who '
     + 'answers it IS attributed, by pin-reset / pin-issue, which log auth.pin_reset and '
     + 'auth.pin_issued with p_actor when they resolve the request.',
+  unsubscribe:
+    'the person clicking is a MEMBER, and members are not app_users - there is no row to '
+    + 'name and there never will be. It uses audit_log_anon (0065), which files the entry '
+    + "as actor_kind 'anon' rather than 'system': the member's own decision, not the "
+    + "academy's automation acting on the member.",
 };
 
-const CALL = /\brpc\(\s*['"]audit_log['"]/g;
+// audit_log_anon (0065) is counted here TOO. It writes actor_kind 'anon' with no actor by
+// design, which is right for a member with no account and would otherwise be a way to log
+// anonymously from a function that has a caller in hand - the exact hole this file exists to
+// close. Listing it means a new unattributed call gets caught whichever of the two it uses.
+const CALL = /\brpc\(\s*['"]audit_log(?:_anon)?['"]/g;
 
 function walk(dir) {
   const out = [];

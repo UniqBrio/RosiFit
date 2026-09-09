@@ -131,6 +131,12 @@ const ACTION_TITLE: Record<string, string> = {
   // people already here. Two importers, two sentences.
   'member.dates_imported': 'Member dates set from a file',
   'communication.batch_sent': 'Follow-up emails sent',
+  // Written by the `unsubscribe` Edge Function, which is the only audit
+  // writer with no account behind it -- a member is not an app_user. It is
+  // filed as actor_kind 'anon' (0065), so the screen shows it with no name
+  // against it, and the wording has to carry what the actor column cannot:
+  // that the member did this, not the academy.
+  'communication.unsubscribed': 'Member unsubscribed from follow-ups',
   'csv_import.completed': 'Attendance file uploaded',
   'csv_import.member_created': 'Member added from the upload',
   'csv_import.matched_existing': 'Upload row matched to a member',

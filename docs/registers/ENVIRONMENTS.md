@@ -281,3 +281,103 @@ the ref against `EXPO_PUBLIC_SUPABASE_URL` in `.env` before anything was run.
 
 These marks are ◻ because they were read from `SETUP.md` during this documentation pass. Nothing
 in this pass connected to the live project, by design.
+
+---
+
+## 09-Sep-2026 — SES feedback and unsubscribe: what is written, what is proved
+
+Written for AWS support case 178876518600723 (production-access review). The
+distinction between **written**, **rehearsed** and **verified in production**
+is the whole point of this entry — it is the source for a statement to AWS
+Trust & Safety, and a claim that outruns its evidence there is worse than a
+gap admitted.
+
+### New Edge Functions — both MUST be `verify_jwt=false`
+- **`ses-feedback`** — SNS-delivered bounce and complaint notifications, written
+  onto `member_emails.status`. SNS cannot send a Supabase auth header, so JWT
+  verification on means every notification 401s and the subscription never
+  confirms, silently. Its own door: shared secret in `?s=` (constant-time) AND
+  `TopicArn` equal to `SES_SNS_TOPIC_ARN`. **Missing either secret refuses
+  everything** rather than accepting everything — this is a deliberate
+  departure from the supplied reference, which skipped the ARN check when the
+  variable was unset.
+- **`unsubscribe`** — opt-out from a signed link, no login. `?e=<member_email_id>`
+  `&t=<HMAC-SHA256 under UNSUBSCRIBE_SECRET>`, constant-time. GET returns a
+  confirmation page; POST with any body is RFC 8058 one-click and returns 200
+  empty. Idempotent, and an invalid token gets the same page as an id that
+  does not exist.
+
+### Secrets this adds
+`SES_SNS_TOPIC_ARN`, `SES_FEEDBACK_SECRET`, `UNSUBSCRIBE_SECRET`. All three are
+read through `unquoteSecret` — a value set through PowerShell keeps its quote
+characters, which on this project has already broken `SES_FROM_ADDRESS` once
+and here would silently 403 every real notification.
+
+**`UNSUBSCRIBE_SECRET` MUST BE SET BEFORE `send-followups` IS REDEPLOYED.**
+The new version refuses the whole send with a 503 naming the fix when it is
+absent, on the same "refuse rather than pretend" grounds as the AWS secrets
+(RC-017): a message advertising an unsubscribe link that cannot be verified is
+worse than a message not sent.
+
+### Migrations
+- **`0065_audit_log_anon.sql`** — a third audit writer, for a member with no
+  account. `audit_log()` derives `'system'` on the service-role client and
+  `audit_log_as()` demands an `app_users` row; a member has neither. It writes
+  `actor_kind 'anon'` with a null actor and takes **neither as an argument**,
+  so it cannot be used to forge attribution. `service_role` only, redaction
+  kept. Neither existing write path is touched and `audit_logs` stays
+  append-only.
+- **`0066_every_follow_up_email_says_how_to_stop_it.sql`** — the unsubscribe
+  line and the `{{unsubscribe_url}}` placeholder, into every stored template.
+  Re-runnable: guarded on the placeholder's absence.
+
+### ✅ Rehearsed on the harness — the first full run this project has had
+`bash db/harness/test.sh` on PostgreSQL 16, every migration replayed from
+scratch. `supabase/tests/47_unsubscribe_and_ses_feedback.sql`: **17 of 17
+assertions pass.**
+
+**16 OTHER TEST FILES FAIL, AND THEY FAILED BEFORE THIS CHANGE.** Proved, not
+assumed: the two new migrations were moved out of the tree and all sixteen were
+re-run, failing identically (`09_grants`, `11_holiday_delete`,
+`12_offering_schedule`, `19_trigger_function_grants`, `22_bulk_import_members`,
+`23_course_threshold`, `25_merge_member`, `27_set_attendance`,
+`30_delete_member`, `34_member_inactive_from`, `34_reimport_feedback`,
+`35_attendance_backdates_membership`, `36_hard_delete_course`,
+`37_audit_remarks_on_an_entry`, `39_staff_are_not_restricted`,
+`40_hard_delete_member`). This is the backlog `SETUP.md` has recorded as owed
+since `0026` — the suite had never actually been run — now measured rather
+than owed. **It is not this change's, and it is not fixed by this change.**
+
+`npm run gate` says **FAIL**, and says it identically on the commit before
+this one — same 11 steps, same 5 pass / 5 fail / 1 blocked, run side by side
+to check rather than assumed. G1–G3 want `design/tokens.json`, which is not in
+the repository at all; G6 wants a local eslint; G7/G8 are the six unit failures
+above. What DOES pass and is this change's to claim: `check:contrast`
+2842/2842 pairs, `check:icons` 75/75, `audit:all` clean with no new violations,
+`tsc --noEmit` clean, and **1441 of 1448 unit tests pass, 6 fail, 1 skipped** —
+the six failures being exactly the six the base commit already had, by name.
+
+### ◻ NOT verified — what a statement to AWS must not claim
+- **The SESv2 `Headers` field has never been exercised against live SES.** The
+  `List-Unsubscribe` pair is set through `Content.Simple.Headers` rather than
+  raw MIME. If ap-south-1 refuses the field, sends fail with a 400 — so the
+  first test send after deploy is a gate, not a formality.
+- No SNS notification has been received; no bounce, complaint or unsubscribe
+  has been observed end to end. `email_events` held 0 rows at the time of
+  writing.
+
+### Still open, by design
+A template created through Settings **after** `0066` carries no visible
+unsubscribe line unless whoever writes it includes `{{unsubscribe_url}}`;
+nothing in the schema requires it. What holds regardless is the
+`List-Unsubscribe` / `List-Unsubscribe-Post` pair, which `send-followups` sets
+on **every** message from the recipient's own signed link. Making the visible
+line unskippable is a change to the template form, not to a migration.
+
+### Noticed in passing, NOT changed
+`pin-reset-request` is deployed with **`verify_jwt: true`** while its own source
+says it must be public — the person calling it is there BECAUSE they cannot
+sign in, so there is no session to verify. That is the
+exact failure mode this entry warns about for the two new functions, already
+live on a third. Out of scope here; recorded so it is not found by a staff
+member locked out.

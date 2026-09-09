@@ -7,7 +7,14 @@ import { json, errorJson, HttpError } from '../_shared/response.ts';
 import { adminClient } from '../_shared/db.ts';
 import { requireCaller } from '../_shared/authz.ts';
 import { resolveEmailProvider } from './email.ts';
-import { chooseFromAddress } from '../_shared/from-address.ts';
+import { chooseFromAddress, unquoteSecret } from '../_shared/from-address.ts';
+import { buildUnsubscribeUrl } from '../_shared/unsubscribe-token.ts';
+
+/** The mailbox a mail client offers when it cannot use the URL. Named here
+ *  rather than derived from the sender, because the sender now varies per
+ *  course and List-Unsubscribe must point at one place the academy actually
+ *  reads. */
+const UNSUBSCRIBE_MAILTO = 'unsubscribe@getfit.rosifit.com';
 
 function renderTemplate(tpl: string, vars: Record<string, string>): string {
   return tpl.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] ?? `{{${k}}}`);
@@ -70,6 +77,25 @@ Deno.serve(async (req) => {
         + 'Fix the Edge Function secrets and try again — no message was recorded.');
     }
 
+    // The unsubscribe key is refused on the SAME terms and in the same place,
+    // before the batch row exists. Without it every link in every message
+    // would be unsigned, which means `unsubscribe` refuses all of them: the
+    // member reads "you can stop them here", clicks, and is told the link did
+    // not work. Sending mail nobody can opt out of is exactly what the
+    // List-Unsubscribe header promises we do not do, so this is the same
+    // "refuse rather than pretend" call the AWS secrets already get.
+    const unsubscribeSecretRaw = Deno.env.get('UNSUBSCRIBE_SECRET');
+    const unsubscribeSecret = unsubscribeSecretRaw ? unquoteSecret(unsubscribeSecretRaw) : '';
+    if (!unsubscribeSecret) {
+      throw new HttpError(503,
+        'UNSUBSCRIBE_SECRET is not set, so nothing was sent — every message would '
+        + 'have carried an unsubscribe link that cannot be honoured. '
+        + 'Set it in the Edge Function secrets and try again — no message was recorded.');
+    }
+    // ${SUPABASE_URL}/functions/v1 -- the runtime injects SUPABASE_URL, so
+    // the address of the unsubscribe endpoint is derived, not configured.
+    const functionsBase = `${Deno.env.get('SUPABASE_URL') ?? ''}/functions/v1`;
+
     const { data: template, error: tplErr } = await admin.from('email_templates')
       .select('id, name, subject, body_text, is_active').eq('id', templateId).maybeSingle();
     if (tplErr || !template) throw new HttpError(404, 'Template not found.');
@@ -117,8 +143,13 @@ Deno.serve(async (req) => {
     if (ccErr) throw new HttpError(500, "Could not load the courses' sender addresses, so nothing was sent.");
     const fromByCourse = new Map((courseComms ?? []).map(c => [c.course_id as string, c.from_email as string]));
 
+    // `id` is selected for the unsubscribe link, which is signed per ADDRESS
+    // -- member_emails.id is what the token commits to, and what `unsubscribe`
+    // looks up. email_messages.member_email_id is not used for this: it is
+    // frequently null, and a link built from a null is a link that cannot be
+    // honoured.
     const { data: emails } = await admin.from('member_emails')
-      .select('member_id, email, status').eq('is_primary', true).in('member_id', memberIds).is('deleted_at', null);
+      .select('id, member_id, email, status').eq('is_primary', true).in('member_id', memberIds).is('deleted_at', null);
     const emailByMember = new Map((emails ?? []).map(e => [e.member_id as string, e]));
 
     const { data: stats } = await admin.from('member_stats').select('*').in('member_id', memberIds);
@@ -193,6 +224,15 @@ Deno.serve(async (req) => {
       else if (emailRow.status === 'unsubscribed') exclusionReason = 'Unsubscribed';
       else if (emailRow.status === 'complained') exclusionReason = 'Marked as spam previously';
 
+      // Signed per ADDRESS, so it is built per recipient and never once for
+      // the batch -- a link shared between members would opt out whichever of
+      // them clicked last. Em dash when there is no address to sign: that
+      // member is excluded a few lines below and this text is never
+      // delivered, and it is how every other absent value here is written.
+      const unsubscribeUrl = emailRow
+        ? await buildUnsubscribeUrl(emailRow.id as string, unsubscribeSecret, functionsBase)
+        : '—';
+
       const vars: Record<string, string> = {
         first_name: member.full_name.split(' ')[0], member_name: member.full_name,
         course_name: courseName, branch_name: branchName,
@@ -220,6 +260,10 @@ Deno.serve(async (req) => {
            trusted to be the one the rule actually fired at. */
         follow_up_trigger: triggerOf(
           offering ? configSnapshot[offering.course_id as string] : null),
+        /* {{unsubscribe_url}} -- the member's own signed opt-out link (0066
+           puts it in the stored template). It is a variable and not a fixed
+           address because the token commits to THIS member_emails row. */
+        unsubscribe_url: unsubscribeUrl,
       };
       const subject = renderTemplate(template.subject, vars);
       const text = renderTemplate(template.body_text, vars);
@@ -244,7 +288,20 @@ Deno.serve(async (req) => {
       }).select('id').single();
 
       const result = await provider.send({
-        to: emailRow!.email as string, subject, text, from: fromAddress });
+        to: emailRow!.email as string, subject, text, from: fromAddress,
+        // RFC 8058. The mailto is the fallback for a client that will not use
+        // the URL; the URL is this member's own signed link, the same one the
+        // body carries.
+        //
+        // List-Unsubscribe-Post is advertised ONLY because the POST branch of
+        // the `unsubscribe` function honours it -- a one-click header on an
+        // endpoint that ignores POST is worse than no header at all: the mail
+        // client reports success to the member and nothing has changed.
+        headers: [
+          { name: 'List-Unsubscribe', value: `<mailto:${UNSUBSCRIBE_MAILTO}>, <${unsubscribeUrl}>` },
+          { name: 'List-Unsubscribe-Post', value: 'List-Unsubscribe=One-Click' },
+        ],
+      });
 
       if (result.ok) {
         await admin.from('email_messages').update({

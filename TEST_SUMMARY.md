@@ -1,3 +1,74 @@
+## FAIL-FIRST — SES feedback and unsubscribe (09-Sep-2026)
+
+Requested: close the two code-side gaps AWS asked about for production access
+(support case 178876518600723) — nothing wrote `bounced`/`complained`, and no
+email carried a way to opt out.
+
+`src/data/unsubscribeToken.test.ts` is new, 9 assertions. It was run against
+three injected defects, each reverted afterwards and the file confirmed
+unchanged by `git diff`. The whole point of the spec is that a member_emails
+id ALONE must never opt anybody out, so the first defect is the one that
+matters:
+
+FAIL-FIRST: `unsubscribeTokenValid` reduced to `return Boolean(memberEmailId)`
+— the signature not checked at all, which is a working attack: walk UUIDs and
+opt out any of 687 live addresses. 4 of 9 failed —
+  · a token minted for one id does not verify against another
+  · a tampered token is refused
+  · a token minted under a different secret is refused
+  · a missing token, id or secret is refused rather than waved through
+The other 5 passed, which is the honest shape of it: a broken check still
+validates a correct token. Only the negatives can catch this.
+
+FAIL-FIRST: `base64url()` reduced to plain `btoa()`. 1 of 9 failed — "the token
+is base64url: no +, / or = to be mangled in a query string". This is the defect
+that would have shipped links that work in a test and break in a mail client.
+
+FAIL-FIRST: `constantTimeEquals` reduced to comparing the first character. 1 of
+9 failed — "constantTimeEquals answers the same as === for equal and unequal
+strings". Timing is not observable from a unit test, so the spec pins the
+answer rather than the timing, and this is what that buys.
+
+Restored: 9 of 9 pass.
+
+`src/data/message.test.ts` gained 4 assertions (appended, nothing rewritten).
+
+FAIL-FIRST: `unsubscribe_url` removed from `variables()` in `src/data/message.ts`
+— the state the tree was actually in before this change, so this is a revert
+rather than an injection. 3 of the 4 failed —
+  · {{unsubscribe_url}} is a token the sender fills, not a stray
+  · the preview resolves it rather than leaving braces in the wording
+  · the template 0066 writes previews clean, line and all
+The consequence on screen: an academy adding the unsubscribe line to a course's
+own wording is warned it is a token the sender cannot fill, while the sender
+fills it perfectly well. Restored: all 4 pass.
+
+`supabase/tests/47_unsubscribe_and_ses_feedback.sql` is new, 17 assertions, run
+on the harness against PostgreSQL 16 with every migration replayed from
+scratch. Its fail-first is structural rather than injected, and was run: with
+`0065` and `0066` moved out of the tree and the database rebuilt, the spec
+stops at its first assertion with
+
+    ERROR: function public.audit_log_anon(unknown, unknown, unknown, jsonb,
+    jsonb) does not exist
+
+The harness runs psql with `ON_ERROR_STOP=1`, so that is literally all that is
+observed — the run halts there and the remaining 16 assertions are never
+reached. Stated that way deliberately: "the other assertions would also have
+failed" is a reasonable belief and is not an observation, and 8 of them name a
+function that does not exist while the template assertions read a placeholder
+`0066` had not yet written.
+
+NOT OBSERVED FAILING: the two Edge Functions themselves have no local test
+harness — there is no Deno on this machine and `tsconfig.json` excludes
+`supabase/`, so `ses-feedback` and `unsubscribe` are covered only by the pure
+helper above and by the SQL spec. Their request handling has never been
+executed. That is the honest gap, and it is why the deploy checklist treats the
+first real SNS notification and the first real link click as the verification,
+not as a formality.
+
+---
+
 ## FAIL-FIRST — dd-mmm-yyyy is the one date format (09-Sep-2026)
 
 Requested: "we shall go with dd-mmm-yyyy format as its easier to understand
@@ -677,6 +748,162 @@ exit 1
 - **G9 Automation addressability** - PASS
 - **G10 Backward compatibility (fixtures)** - PASS
 - **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-09 - VERDICT: FAIL
+
+Steps: 5 pass, 5 fail, 1 blocked.
+Time: 19.6s total - slowest G7 Unit + pure specs (12.9s).
+
+- **G1 Theme artifacts in sync** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (52ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (70ms)
+- **G5 Types** - PASS (6.1s)
+- **G6 Lint** - BLOCKED (-) - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - FAIL (12.9s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: a form asked for a record answers a failed read
+ok 169 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 170 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 183 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+  name: 'AssertionError'
+  expected: true
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+ok 300 - a ring is never a colour alone, and nothing expected is a dash
+# Subtest: a failed reset keeps the dialog open, carrying the reason
+ok 337 - a failed reset keeps the dialog open, carrying the reason
+```
+
+- **G8 Functional / integration** - FAIL (124ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (54ms)
+- **G10 Backward compatibility (fixtures)** - PASS (118ms)
+- **G11 Wide tables are configurable** - PASS (55ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-09 - VERDICT: FAIL
+
+Steps: 5 pass, 5 fail, 1 blocked.
+Time: 19.2s total - slowest G7 Unit + pure specs (12.8s).
+
+- **G1 Theme artifacts in sync** - FAIL (50ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (52ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (51ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (74ms)
+- **G5 Types** - PASS (5.8s)
+- **G6 Lint** - BLOCKED (-) - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - FAIL (12.8s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: a form asked for a record answers a failed read
+ok 169 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 170 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 183 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+  name: 'AssertionError'
+  expected: true
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+ok 300 - a ring is never a colour alone, and nothing expected is a dash
+# Subtest: a failed reset keeps the dialog open, carrying the reason
+ok 337 - a failed reset keeps the dialog open, carrying the reason
+```
+
+- **G8 Functional / integration** - FAIL (128ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (58ms)
+- **G10 Backward compatibility (fixtures)** - PASS (119ms)
+- **G11 Wide tables are configurable** - PASS (53ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-09 - VERDICT: FAIL
+
+Steps: 4 pass, 3 fail, 4 blocked.
+Time: 468ms total - slowest G10 Backward compatibility (fixtures) (116ms).
+
+- **G1 Theme artifacts in sync** - FAIL (58ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (52ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (52ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (69ms)
+- **G5 Types** - BLOCKED (-) - no local "tsc" - not fetched from the registry on purpose. Run `npm install` (provides typescript), or state why this class is unverified.
+- **G6 Lint** - BLOCKED (-) - prerequisite G5 did not pass
+- **G7 Unit + pure specs** - BLOCKED (-) - prerequisite G5 did not pass
+- **G8 Functional / integration** - BLOCKED (-) - prerequisite G5 did not pass
+- **G9 Automation addressability** - PASS (63ms)
+- **G10 Backward compatibility (fixtures)** - PASS (116ms)
+- **G11 Wide tables are configurable** - PASS (55ms)
 
 _Merge blocked. Every FAIL above must resolve. No partial merges._
 
