@@ -1,33 +1,42 @@
 # Changelog
 
-## Unreleased — Set joining and leaving dates for a whole file of members at once
+## Unreleased — Bulk Import now also sets joining and leaving dates
 
-**There is a second import button on the Attendance screen: *Bulk Import Inactive*.** Until now
-the only way to record that a member had joined earlier than the register says, or had stopped
-coming, was to open that member's record and change the two dates by hand — once per member.
+**Bulk Import takes a second kind of file, and works out for itself which one you chose.**
+It is the same button in the same place; nothing about adding members has changed.
 
-The file it takes is one you already have. Download the members report from **Reports → Export**,
-type the dates into the **Active from** and **Inactive from** columns of the *Member details*
-sheet, and upload the same file back. Nothing else needs filling in.
+*To add members*, as always: download the template, fill in the Member Data sheet, upload it.
+Members already on the register are skipped, never overwritten — exactly as before.
 
-**A blank cell is left alone.** That is the rule the whole thing turns on: almost every cell in a
-report you send back is untouched, so a blank means *as you were*, never *clear this*. Uploading
-an export you have not typed into changes nothing at all, and says so — *Already correct*, for
-every row. An **Inactive from** date with no status beside it is read the only way it can be:
-inactive from that day.
+*To change dates on members already here*: download the members report from **Reports → Export**,
+type into the **Active from** and **Inactive from** columns of the *Member details* sheet, and
+upload that same file back. There is no template for this one and nothing to re-key: the file is
+the report you already have.
 
-**It never adds anybody.** *Bulk Import* puts members on the register; this one only moves the
-dates of members already on it. A name it does not recognise is reported back with what to do
-about it — add them with Bulk Import first — and nothing is written for that row. The two buttons
-have one job each, which is what makes either safe to press.
+**A blank cell is left alone.** That is the rule the whole thing turns on. Almost every cell of a
+report you send back is untouched, so a blank means *as you were*, never *clear this* — where no
+Active from is typed, the joining date already on record stands. Uploading an export you have not
+edited changes nothing at all, and says so: *Already correct*, for every row. An **Inactive from**
+date with no status beside it is read the only way it can be — inactive from that day.
 
-When it finishes it tells you what it did, member by member: which dates moved and what they
-moved from, which rows were already correct, and which were not changed and why. Every date is
-checked the same way the member form checks it, so a file cannot record something the form would
-have refused — a joining date in the future, a joining date after the member left, or one later
-than a session they are already marked present at.
+**The dates file never adds anybody**, and the template never changes anyone's dates. One button,
+still two jobs, and each file gets only the one it came for. A name the report mentions that is
+not on the register is reported back with what to do about it, and nothing is written for that row.
 
-Bulk Import itself is untouched.
+When it finishes it says what it did, member by member: which dates moved and what they moved
+from, which rows were already correct, and which were not changed and why. Every date is checked
+the same way the member form checks it, so a file cannot record something the form would have
+refused — a joining date in the future, one after the member left, or one later than a session
+they are already marked present at.
+
+## Unreleased — The app no longer says "she"
+
+**Every message the app shows is now written about *the member*.** The academy is a women's
+academy; the software is not, and a licensee running a mixed academy was being shown copy that
+did not fit. Nothing changed about what any of these messages mean or when they appear — the
+delete confirmation, the status pill and its confirmation, the send screen's refusals, the
+member-import notes and the database's own refusals about joining and leaving dates all say the
+same things about the same records, in wording that reads correctly for anybody.
 
 ## Unreleased — The app updates itself when a new version is deployed
 

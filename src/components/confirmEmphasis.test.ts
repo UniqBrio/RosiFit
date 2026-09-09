@@ -85,13 +85,17 @@ test('both member cards ask the same question, and both highlight No', () => {
   for (const screen of [MEMBERS, ROSTER]) {
     const src = read(screen);
     assert.match(src, /emphasis="cancel"/,
-      `${screen}: the member deletion must put its weight behind the answer that keeps her`);
+      `${screen}: the member deletion must put its weight behind the answer that keeps the member`);
     assert.match(src, /cancelLabel="No"/, `${screen}: the requested wording is Yes / No`);
     assert.match(src, /confirmLabel=\{removing \? 'Deleting…' : 'Yes'\}/,
       `${screen}: the confirm says Yes, and says something else while its own write is in flight`);
     // Not anchored to the closing brace: the Members tab's title is a ternary
     // (the dialog outlives its own member for one render), the roster's is not.
-    assert.match(src, /and her records\?`/,
+    // COPY-LOCK RE-POINTED 09-Sep-2026, de-gendering: "and her records?" ->
+    // "and every record?" (requester: "no where her should be used"). Still
+    // one exact string, still the same claim -- the title says the records go
+    // too, not just the member.
+    assert.match(src, /and every record\?`/,
       `${screen}: the title must state that the records go too, not just the member`);
   }
 });

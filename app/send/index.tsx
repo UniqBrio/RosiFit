@@ -271,8 +271,8 @@ function SendDraftBody() {
         <EmptyState
           title="There is no wording to send"
           body={onlyMember
-            ? `${onlyMember.name} is not on a course that has follow-up wording, so nothing can be sent to her from here. Put her on a course and the send is available again.`
-            : 'That member is not on the register. She may have been removed since this link was opened.'} />
+            ? `${onlyMember.name} is not on a course that has follow-up wording, so nothing can be sent from here. Add this member to a course and the send is available again.`
+            : 'That member is not on the register, and may have been removed since this link was opened.'} />
       </FormDialog>
     );
   }

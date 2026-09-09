@@ -1645,7 +1645,7 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
         dataSource === 'live' ? 'ok' : 'warn');
     } catch (err) {
       flash(err instanceof Error ? err.message
-        : 'Her status could not be changed. Nothing has been saved.', 'warn');
+        : 'The status could not be changed. Nothing has been saved.', 'warn');
     } finally {
       setSaving(false);
     }
@@ -1799,10 +1799,10 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
           accessibilityLabel={[
             readingIsHistoric && dayIso
               ? `${member.name} ${wasOrWillBe} ${inactive ? 'inactive' : 'active'} on ${dayInWords(dayIso)}.`
-                + ` She is ${inactiveToday ? 'inactive' : 'active'} today.`
+                + ` Today: ${inactiveToday ? 'inactive' : 'active'}.`
               : `${member.name} is ${inactive ? 'inactive' : 'active'}.`,
-            pending ? `She is due to become inactive on ${dateInWords(pending)}.` : '',
-            inactiveToday ? 'Mark her active.' : 'Mark her inactive from today.',
+            pending ? `Due to become inactive on ${dateInWords(pending)}.` : '',
+            inactiveToday ? 'Mark active.' : 'Mark inactive from today.',
           ].filter(Boolean).join(' ')}
           hitSlop={6}
           style={({ pressed }) => ({
@@ -1970,7 +1970,7 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
             onPress={() => router.push({
               pathname: '/member/edit', params: { id: member.id } })}
             accessibilityRole="button"
-            accessibilityLabel={`Add ${member.name} as a new member — her details, with the email the follow-up rule needs`}
+            accessibilityLabel={`Add ${member.name} as a new member — full details, with the email the follow-up rule needs`}
             style={({ pressed }) => ({
               flex: 1, minHeight: 34, borderRadius: RADIUS.sm,
               flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
@@ -2044,7 +2044,7 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
            cannot be undone by tapping something else. */
         confirmNote={chosen =>
           `“${member.name}” becomes a display name for ${chosen.label}, and every class `
-          + `${member.name} was marked present at moves across to her. `
+          + `${member.name} was marked present at moves across to that record. `
           + `${member.name} is then retired — the same person is not on the register twice.`}
         onSelect={memberId => {
           const chosen = allMembers.find(m => m.id === memberId);
@@ -2072,7 +2072,7 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
             }
           })();
         }}
-        emptyNote="No member matches that. Add her as a new member instead — course and branch come from this course." />
+        emptyNote="No member matches that. Add a new member instead — course and branch come from this course." />
 
       {/* What the mark DOES, in both directions, because "inactive" on its own
           could mean deleted, paused or unenrolled -- and which of those it is
@@ -2088,8 +2088,8 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
         title={inactiveToday ? `Mark ${member.name} active?` : `Mark ${member.name} inactive?`}
         body={[
           readingIsHistoric && dayIso
-            ? `The pill is showing ${dayInWords(dayIso)}, when she ${wasOrWillBe} `
-              + `${inactive ? 'inactive' : 'active'}. Today she is `
+            ? `The pill is showing ${dayInWords(dayIso)}, when ${member.name} ${wasOrWillBe} `
+              + `${inactive ? 'inactive' : 'active'}. Today: `
               + `${inactiveToday ? 'inactive' : 'active'}, and this changes that.`
             : '',
           /* A date already set is what this tap would OVERWRITE, and the one
@@ -2097,13 +2097,13 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
              Naming it is what makes the tap recoverable: whoever set the
              30th finds out here, not next month. */
           pending && !inactiveToday
-            ? `She is already due to become inactive on ${dateInWords(pending)}. `
-              + 'Marking her inactive now brings that forward to today; use Edit to change '
+            ? `${member.name} is already due to become inactive on ${dateInWords(pending)}. `
+              + 'Marking inactive now brings that forward to today; use Edit to change '
               + 'the date instead.'
             : '',
           inactiveToday
-            ? 'She goes back into the follow-up rule from now on, and is listed and written to again when she misses sessions. Any inactive date on her record is cleared. Her enrolment and her attendance history are unchanged — they never went anywhere.'
-            : 'She stays on the roster and her attendance goes on being recorded, but she is left out of the follow-up rule from today: she will not be listed for follow-up and nothing will be sent to her. Her enrolment and her history are untouched, and marking her active again puts her straight back. Recorded in the audit log.',
+            ? 'This member goes back into the follow-up rule from now on, and is listed and written to again after a missed session. Any inactive date on the record is cleared. The enrolment and the attendance history are unchanged — they never went anywhere.'
+            : 'This member stays on the roster and attendance goes on being recorded, but is left out of the follow-up rule from today: not listed for follow-up, and nothing is sent. The enrolment and the history are untouched, and marking active again puts everything straight back. Recorded in the audit log.',
         ].filter(Boolean).join(' ')}
         cancelLabel="Cancel"
         confirmLabel={saving ? 'Saving…' : inactiveToday ? 'Mark active' : 'Mark inactive'}
@@ -2117,7 +2117,7 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
       <ConfirmDialog
         open={confirmRemove}
         onClose={() => setConfirmRemove(false)}
-        title={`Delete ${member.name} and her records?`}
+        title={`Delete ${member.name} and every record?`}
         body={deletionWarning(previewState)}
         cancelLabel="No"
         confirmLabel={removing ? 'Deleting…' : 'Yes'}

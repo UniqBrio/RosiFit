@@ -1,3 +1,37 @@
+## FAIL-FIRST — the one-button Bulk Import (09-Sep-2026)
+
+FAIL-FIRST: src/data/importKind.test.ts — defect injected: the fallback that
+sends every unrecognisable workbook to the CREATE path changed from
+`return 'members'` to `return 'dates'`. Three assertions fire, and they are the
+three that guard the requester's named risk ("it should not break the existing
+bulk import members feature"): "an empty workbook falls to the create path,
+not to dates", "a workbook of nothing recognisable falls to the create path",
+"a sheet named Member details with no date column is not the dates file" —
+11 pass, 3 fail. Reverted, 14 pass.
+
+FAIL-FIRST: src/components/bulkImportOneButton.test.ts — defect injected: a
+second bulk import button added back to the workspace header. Assertion 1,
+"there is exactly one bulk import button on the workspace", fails — 19 pass,
+1 fail. Reverted, 20 pass.
+
+FAIL-FIRST: src/components/bulkImportOneButton.test.ts — defect injected: the
+`if (which === 'dates')` guard removed, so every chosen file goes down the
+dates path and the template stops creating members. Assertion 8, "the dates
+branch is the only thing that can divert a file from it", fails — 19 pass,
+1 fail. Reverted, 20 pass.
+
+NOT OBSERVED FAILING: supabase/migrations/0060 — no spec is edited by it and
+none needed re-pointing: supabase/tests/41 matches these refusals on the
+fragments 'future', 'inactive' and 'register', all of which survive the
+rewrite. Spec 41 passes before and after, which is the point — the refusals
+still fire on the same rows, in de-gendered words.
+
+COPY-LOCKS RE-POINTED: confirmEmphasis.test.ts and
+courseRosterRemoveMember.test.ts pinned the delete-confirm title "…and her
+records?"; de-gendering that title is the intent of the work, so both are
+re-pointed at "…and every record?". The diff is one string literal in each —
+no assertion removed, none loosened, no skip.
+
 ## FAIL-FIRST — src/components/bulkImportInactive.test.ts
 
 FAIL-FIRST: src/components/bulkImportInactive.test.ts — run against the
@@ -390,6 +424,66 @@ exit 1
 - **G9 Automation addressability** - PASS
 - **G10 Backward compatibility (fixtures)** - PASS
 - **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-09 - VERDICT: FAIL
+
+Steps: 5 pass, 5 fail, 1 blocked.
+Time: 19.5s total - slowest G7 Unit + pure specs (12.5s).
+
+- **G1 Theme artifacts in sync** - FAIL (59ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (54ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (52ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (66ms)
+- **G5 Types** - PASS (6.4s)
+- **G6 Lint** - BLOCKED (-) - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - FAIL (12.5s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: a form asked for a record answers a failed read
+ok 138 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 139 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 152 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+  name: 'AssertionError'
+  expected: true
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+ok 269 - a ring is never a colour alone, and nothing expected is a dash
+  error: 'the reset button must be gated on the day actually holding marks'
+  name: 'AssertionError'
+```
+
+- **G8 Functional / integration** - FAIL (124ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (57ms)
+- **G10 Backward compatibility (fixtures)** - PASS (115ms)
+- **G11 Wide tables are configurable** - PASS (53ms)
 
 _Merge blocked. Every FAIL above must resolve. No partial merges._
 

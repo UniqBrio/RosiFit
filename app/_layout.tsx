@@ -107,12 +107,6 @@ function Nav() {
             replaced that list while you imported into it. Same three halves
             as every dialog here — change any one and it stops being one. */}
         <Stack.Screen name="member/import" options={DIALOG_SCREEN} />
-        {/* BULK IMPORT INACTIVE, the second importer (0058). A separate
-            route because it is a separate button, by the requester's
-            decision: `member/import` only ever CREATES, this one only ever
-            moves the two dates and never adds anybody. Same DIALOG_SCREEN,
-            for the same reason as above. */}
-        <Stack.Screen name="member/import-inactive" options={DIALOG_SCREEN} />
         {/* EVERY FORM IS A DIALOG. A form is a decision taken OVER a screen,
             not a place you travel to: pushed as a page it wears the stack's
             header, so the only way out is in the chrome and the save sits
