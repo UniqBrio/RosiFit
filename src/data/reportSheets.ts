@@ -24,6 +24,7 @@
 import { DAY_NAMES, hasEmail, type Member, type FollowUpRule } from './mock';
 import { ruleSentence } from './followup';
 import { statusOn } from './inactiveFrom';
+import { formatDate } from './memberDate';
 import {
   reportGroups, courseForGroup, courseBranchNames, courseDayNames,
   NO_COURSE_LABEL, NO_BRANCH_LABEL,
@@ -123,19 +124,32 @@ export function memberDetailSheet(
         m.name,
         m.code,
         active ? 'Active' : 'Inactive',
-        // ISO, not "1 October 2026" (0057). This sheet stopped being only a
-        // read-out the day Bulk Import Inactive started READING it back: a
-        // prose date cannot round-trip, and the person filling the column in
-        // copies the format of the cells already in it. It is the same
-        // argument the joining date below has always carried -- a month, or a
-        // month name, cannot be sorted or compared in a spreadsheet -- now
-        // owed by both ends of the window.
-        m.inactiveFrom ?? '',
+        // 10-Oct-2026 -- the format the requester chose on 09-Sep-2026, "as
+        // its easier to understand month".
+        //
+        // This sheet stopped being only a read-out the day Bulk Import
+        // Inactive started READING it back, so whatever it writes has to
+        // round-trip: the person filling the column in copies the format of
+        // the cells already in it, and what they copy is what the reader gets
+        // handed back. dd-mmm-yyyy round-trips exactly (memberDate.test.ts
+        // holds that on every month), which is what the ISO this cell used to
+        // carry was chosen for -- the reason has not changed, only the shape
+        // that satisfies it.
+        //
+        // WHAT IT COSTS, said plainly: this is a text cell, so a spreadsheet
+        // sorts it as text and 01-Dec-2026 files before 02-Jan-2026. ISO
+        // sorted correctly and could not be read at a glance; the requester
+        // was asked which mattered more and chose reading. A real Excel date
+        // cell would give both, and would mean widening `Sheet` past
+        // `string[][]` -- worth doing, and not on this change.
+        formatDate(m.inactiveFrom),
         named(m.course, NO_COURSE_LABEL),
         named(m.branch, NO_BRANCH_LABEL),
-        // The stored day, not the "Mar 2026" label: a month cannot be sorted
-        // or compared in a spreadsheet, and the label is on the screen anyway.
-        m.joinedOn ?? 'Not on record',
+        // The stored DAY, not the "Mar 2026" label the card shows: a month is
+        // not a date, and this column is typed back in. Same shape as the
+        // leaving date above -- one window, one format, or the person filling
+        // it in has to remember which end wants which.
+        formatDate(m.joinedOn) || 'Not on record',
         own,
         // No usable address is a stated fact with its consequence, never a
         // blank cell that reads as "not filled in yet" (C-76).

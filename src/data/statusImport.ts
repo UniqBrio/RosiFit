@@ -34,6 +34,7 @@ import type { MemberStatus } from './mock';
 import { normalizeForMatch, MemberImportError } from './memberImport';
 import { activeFromProblem } from './joined';
 import { inactiveFromProblem } from './inactiveFrom';
+import { readDate, formatDate, DATE_FORMAT_EXAMPLE } from './memberDate';
 
 /**
  * The columns this reader looks for, by the names the Reports export writes
@@ -244,14 +245,18 @@ function changesFor(row: StatusImportRow, m: StatusMember): StatusChange[] {
   const wanted = wantedPair(row, m);
   const active = cellValue(row.activeFrom);
   const changes: StatusChange[] = [];
+  // Compared as ISO -- the row reaching here has already been through
+  // `readDate`, so both sides of every `!==` are the stored shape -- and SHOWN
+  // as 10-Oct-2026, because this list is read by the person who just typed the
+  // dates in and they should recognise what they typed.
   if (active && active !== (m.joinedOn ?? '')) {
-    changes.push({ field: 'Active from', from: m.joinedOn ?? 'Not on record', to: active });
+    changes.push({ field: 'Active from', from: formatDate(m.joinedOn) || 'Not on record', to: formatDate(active) });
   }
   if ((wanted.inactiveFrom ?? '') !== (m.inactiveFrom ?? '')) {
     changes.push({
       field: 'Inactive from',
-      from: m.inactiveFrom ?? 'Not on record',
-      to: wanted.inactiveFrom ?? 'Not on record',
+      from: formatDate(m.inactiveFrom) || 'Not on record',
+      to: formatDate(wanted.inactiveFrom) || 'Not on record',
     });
   }
   if (wanted.status !== m.status) {
@@ -310,6 +315,44 @@ export function validateStatusRows(
       };
     }
 
+    // ------------------------------------------------- the date, as typed
+    //
+    // EVERY SHAPE WHOSE MEANING IS NOT IN QUESTION, RESOLVED TO ONE -- the
+    // requester's ask on 09-Sep-2026, in their words: "if they enter date in
+    // any format convert that to dd-mmm-yyyy". So 10-Oct-2026, 10 Oct 2026,
+    // 10 October 2026, Oct 10 2026 and the ISO every export written before
+    // that day carries all arrive here as the same day.
+    //
+    // AND ONE SHAPE STILL REFUSED, which is the point of doing this in a
+    // module rather than with a looser regex: an all-numeric date that is not
+    // ISO. 01/09/2026 is 1 September to the academy and 9 January to Postgres
+    // under this project's DateStyle, and no reader can tell which the person
+    // meant -- so it is handed back with the fix in it rather than guessed at.
+    // That is 0029's lesson and it survives this change intact.
+    //
+    // Read BEFORE anything is compared, because everything below -- the
+    // "does this row ask for anything" test, the two window refusals, the
+    // change list -- measures the row against ISO columns on the record.
+    const activeRead = readDate(cellValue(row.activeFrom));
+    if (activeRead && 'problem' in activeRead) {
+      return { state: 'blocked', row, kind: 'invalid', reason: activeRead.problem };
+    }
+    const inactiveRead = readDate(cellValue(row.inactiveFrom));
+    if (inactiveRead && 'problem' in inactiveRead) {
+      return { state: 'blocked', row, kind: 'invalid', reason: inactiveRead.problem };
+    }
+    // THE ROW EVERY VERDICT BELOW CARRIES, dates in the stored shape. The
+    // verdict is what the screen sends to `bulk_set_member_dates`, and that
+    // function takes ISO like every other date the app writes -- so the
+    // conversion has to be IN the verdict, not applied again by the caller.
+    // Nothing else about the row is touched: the name, the status word and the
+    // row number are what the sheet said.
+    const dated: StatusImportRow = {
+      ...row,
+      activeFrom: activeRead ? activeRead.iso : '',
+      inactiveFrom: inactiveRead ? inactiveRead.iso : '',
+    };
+
     // DOES THIS ROW ASK FOR ANYTHING? True when SOME candidate already matches
     // it exactly -- and "some", not "every", is the whole subtlety.
     //
@@ -329,21 +372,21 @@ export function validateStatusRows(
     // has, touched or not. Refusing them all reported SEVEN failures against
     // an upload that edited four members -- six of them rows nobody had
     // touched, burying the one that mattered (reported 09-Sep-2026).
-    const asksNothing = found.some(m => changesFor(row, m).length === 0);
+    const asksNothing = found.some(m => changesFor(dated, m).length === 0);
 
     if (found.length > 1) {
-      if (asksNothing) return { state: 'unchanged', row, memberId: found[0].id };
+      if (asksNothing) return { state: 'unchanged', row: dated, memberId: found[0].id };
       return {
-        state: 'blocked', row, kind: 'ambiguous',
+        state: 'blocked', row: dated, kind: 'ambiguous',
         reason: `more than one member is called “${name}” — change their dates on their own records`,
       };
     }
     if (seen.has(key)) {
       // The same member twice in one sheet, with two different answers. The
       // last row would silently win.
-      if (asksNothing) return { state: 'unchanged', row, memberId: found[0].id };
+      if (asksNothing) return { state: 'unchanged', row: dated, memberId: found[0].id };
       return {
-        state: 'blocked', row, kind: 'invalid',
+        state: 'blocked', row: dated, kind: 'invalid',
         reason: `“${name}” is on two rows of this file — leave one of them`,
       };
     }
@@ -352,30 +395,30 @@ export function validateStatusRows(
     if (!asksNothing) seen.add(key);
 
     const m = found[0];
-    const wanted = wantedPair(row, m);
-    const active = cellValue(row.activeFrom);
+    const wanted = wantedPair(dated, m);
+    const active = dated.activeFrom;
 
     // The two refusals the app can answer for itself, measured against the
-    // pair this row would WRITE rather than against what her record holds --
+    // pair this row would WRITE rather than against what the record holds --
     // a row that moves both ends is legal even when each end is illegal
     // beside the other's old value.
     if (active) {
       const why = activeFromProblem(active, wanted.inactiveFrom, ctx.todayIso);
-      if (why) return { state: 'blocked', row, kind: 'invalid', reason: why };
+      if (why) return { state: 'blocked', row: dated, kind: 'invalid', reason: why };
     }
     if (wanted.inactiveFrom) {
       const why = inactiveFromProblem(wanted.inactiveFrom, active || m.joinedOn);
-      if (why) return { state: 'blocked', row, kind: 'invalid', reason: why };
+      if (why) return { state: 'blocked', row: dated, kind: 'invalid', reason: why };
     }
 
-    const changes = changesFor(row, m);
+    const changes = changesFor(dated, m);
 
     // THE RE-UPLOAD, and it is the COMMON case: the same export sent twice.
     // Not a failure and not a write -- the file agreeing with the register.
     // 0045 learned this lesson on the attendance import; this is the same
     // lesson, so the screen can say "nothing to update" and mean it.
-    if (changes.length === 0) return { state: 'unchanged', row, memberId: m.id };
-    return { state: 'ready', row, memberId: m.id, changes };
+    if (changes.length === 0) return { state: 'unchanged', row: dated, memberId: m.id };
+    return { state: 'ready', row: dated, memberId: m.id, changes };
   });
 }
 
@@ -419,7 +462,7 @@ export function tallyStatusImport(
 /** What each column is for, shown in the screen's help. */
 export const STATUS_IMPORT_HELP: { column: string; means: string }[] = [
   { column: 'Member', means: 'Who the row is about. Matched by name against the register — this file never adds anybody.' },
-  { column: 'Active from', means: 'The first day they are on the register, YYYY-MM-DD. Blank leaves it alone.' },
-  { column: 'Inactive from', means: 'The first day they are off it, YYYY-MM-DD. Blank leaves it alone.' },
+  { column: 'Active from', means: `The first day they are on the register, written as ${DATE_FORMAT_EXAMPLE}. Blank leaves it alone.` },
+  { column: 'Inactive from', means: `The first day they are off it, written as ${DATE_FORMAT_EXAMPLE}. Blank leaves it alone.` },
   { column: 'Status', means: 'Active or Inactive. Blank leaves it alone — a date with no status beside it means inactive from that day.' },
 ];

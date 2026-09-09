@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased — Dates read the same way everywhere: 10-Oct-2026
+
+**Every date the academy reads or types is now written the same way — 10-Oct-2026.** The month is
+a name, so there is nothing to work out: the members report writes it that way, the date fields on
+a member's form show it that way, and the format is stated beside those fields and in the Bulk
+Import help.
+
+**Typing a date into the report is more forgiving, not less.** Filling the Active from or Inactive
+from column in, you can write `10-Oct-2026`, `10 Oct 2026`, `10 October 2026`, `Oct 10, 2026`, or
+the `2026-10-10` that older exports carry — all of them are understood, and all of them are stored
+as the same day.
+
+**One shape is handed back rather than guessed at: a date written in numbers only.** `01/09/2026`
+is the 1st of September to you and the 9th of January to the database, and nothing in the file
+says which was meant. Rather than pick one and be right about half the time — on the column that
+decides which sessions a member was expected at — the upload names the cell and asks for the month
+as a name. Four keystrokes, and there is nothing left to get wrong.
+
+**Reports downloaded before today still upload correctly.** They carry `2026-10-10`, and that is
+one of the shapes the upload reads.
+
+One thing this costs, said plainly: the two date columns in the members report are text, so a
+spreadsheet sorts them as text — `01-Dec-2026` files above `02-Jan-2026`. The old format sorted
+correctly and could not be read at a glance. Ask if you would rather have the sorting back; it can
+be had properly, by writing real date cells, and that is a slightly larger change than this one.
+
+**Nothing changed about the member template.** It has never asked for a joining date — every
+member it imports joins on the day the file is imported — so there is no date in it to reformat.
+
+
 ## Unreleased — Select and delete members with no email, from that section itself
 
 **The No email section now has its own bar, right above its cards.** It counts what you have

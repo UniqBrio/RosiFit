@@ -46,6 +46,7 @@ import {
   type StatusVerdict, type StatusChange, type StatusImportResult,
 } from '../../src/data/statusImport';
 import { parseStatusXlsx, detectImportKind } from '../../src/data/statusXlsx';
+import { DATE_FORMAT_EXAMPLE } from '../../src/data/memberDate';
 import { bulkSetMemberDates } from '../../src/data/repository';
 import { iso } from '../../src/data/period';
 import type { ImportKind } from '../../src/data/importKind';
@@ -620,8 +621,20 @@ function MemberImportBody() {
                 download for it: it is the report they already have. */}
             <Body style={{ marginTop: SPACE.lg }}>
               {`To CHANGE DATES on members already here: the members report from Reports \u2192 Export, its \u201c${STATUS_IMPORT_SHEET}\u201d sheet, `
-               + 'with Active from and Inactive from typed in. A blank cell is left alone, so a report sent back untouched changes nothing. '
+               + `with Active from and Inactive from typed in as ${DATE_FORMAT_EXAMPLE}. A blank cell is left alone, so a report sent back untouched changes nothing. `
                + 'That file never adds anybody \u2014 a name the register does not have is reported back, not created.'}
+            </Body>
+            {/* THE ONE THING THE FORMAT SENTENCE ABOVE CANNOT LEAVE UNSAID.
+                A person who types 01/09/2026 has not made a typo -- they have
+                written a perfectly ordinary date that this app cannot read
+                back, because 01/09 is the 1st of September to them and the 9th
+                of January to the database. Saying so HERE, before they upload,
+                is worth more than the refusal they would otherwise meet on
+                seven rows afterwards. */}
+            <Body style={{ marginTop: SPACE.md }}>
+              {`Any clear date is understood \u2014 ${DATE_FORMAT_EXAMPLE}, 10 Oct 2026, 10 October 2026 \u2014 and stored the same way. `
+               + 'A date written in numbers only, like 01/09/2026, is handed back instead of guessed at: it could be the 1st of September or the 9th of January, '
+               + 'and nothing in the file says which. Write the month as a name and there is nothing left to get wrong.'}
             </Body>
             <View style={{
               marginTop: SPACE.lg, padding: SPACE.lg, borderRadius: RADIUS.md,

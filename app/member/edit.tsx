@@ -20,6 +20,11 @@ import { createMember, updateMember, setMemberStatus, setMemberActiveFrom } from
 import { namesADisplayName } from '../../src/data/refusalCase';
 import { inactiveFromProblem, dateInWords, dayBefore } from '../../src/data/inactiveFrom';
 import { activeFromProblem } from '../../src/data/joined';
+import { DATE_FORMAT_EXAMPLE } from '../../src/data/memberDate';
+
+/** The format note that sits under a date field on this form. One string, so
+ *  the two ends of the membership window cannot come to word it differently. */
+const DATE_NOTE = `Dates read as ${DATE_FORMAT_EXAMPLE}.`;
 
 const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -734,7 +739,16 @@ export default function MemberEdit() {
             -- a joining day after a leaving day is what
             members_inactive_from_after_joined refuses outright, and the
             calendar greys it out rather than letting somebody pick it and
-            read a refusal afterwards. */}
+            read a refusal afterwards.
+
+            AND THE FORMAT IS SAID BESIDE IT -- the requester's own ask on
+            09-Sep-2026: "give same as info beside date field as that". This
+            same date is written into the Reports export and typed back in
+            through Bulk Import, and somebody who has only ever seen it in this
+            picker has no other way of knowing which shape that file wants.
+            Named on the Add form too, where the hint would otherwise be empty:
+            the format is not a detail of editing, it is what dates look like
+            here. */}
         <DateField label="Active from" value={joined} onChange={setJoined}
           placeholder={editing ? 'Not on record' : 'When they started'}
           max={wantedInactiveFrom && wantedInactiveFrom < iso(new Date())
@@ -742,9 +756,9 @@ export default function MemberEdit() {
           error={activeFromError ?? undefined}
           hint={activeFromError ? undefined
             : editing
-              ? 'The first day they are on the register — sessions are counted from it,'
-                + ' and the enrolment moves with it.'
-              : undefined}
+              ? 'The first day they are on the register — sessions are counted'
+                + ` from it, and the enrolment moves with it. ${DATE_NOTE}`
+              : DATE_NOTE}
           testID="member-joined-on" />
       </View>
 
@@ -846,7 +860,11 @@ export default function MemberEdit() {
                     ? `In the follow-up rule up to ${dateInWords(dayBefore(inactiveFrom.trim()))}`
                       + ` and left out from ${dateInWords(inactiveFrom.trim())}.`
                       + ' Enrolment, sessions and attendance are unchanged on both sides of it.'
-                    : 'No date on record — left out of the follow-up rule on every day.'}
+                    // The format, beside the OTHER end of the same window --
+                    // only where there is no date yet, because the sentence
+                    // above already spells the month out in full and does not
+                    // need telling how it is written.
+                    : `No date on record — left out of the follow-up rule on every day. ${DATE_NOTE}`}
                 testID="member-inactive-from" />
             </View>
           ) : null}
