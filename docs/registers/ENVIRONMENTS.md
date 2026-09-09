@@ -357,14 +357,41 @@ above. What DOES pass and is this change's to claim: `check:contrast`
 `tsc --noEmit` clean, and **1441 of 1448 unit tests pass, 6 fail, 1 skipped** —
 the six failures being exactly the six the base commit already had, by name.
 
+### ✅ Deployed to production, 09-Sep-2026
+`ses-feedback` **v1** and `unsubscribe` **v1**, both `verify_jwt: false`,
+confirmed by reading the deployed record back rather than by trusting the
+deploy call. The deployed source of `ses-feedback` was also read back in full
+and matches what was sent, including its two `_shared` modules.
+
+**`send-followups` was deliberately NOT redeployed.** It stays at **v14**, the
+version without the List-Unsubscribe headers, because the new version needs
+`UNSUBSCRIBE_SECRET` set and `0066` applied first, and because it is the one
+file in this change that could break sending outright if SES refuses the
+`Headers` field. Production therefore still sends exactly what it sent
+yesterday.
+
+Neither migration is applied: `audit_log_anon` does not exist on the project
+and 0 of 1 templates carry the placeholder, both checked by query. Until `0065`
+lands, an opt-out through the deployed `unsubscribe` would still be SAVED and
+its audit row would fail and be logged — the function treats the log as
+best-effort on purpose. No link exists to click yet, so this window is
+theoretical.
+
 ### ◻ NOT verified — what a statement to AWS must not claim
 - **The SESv2 `Headers` field has never been exercised against live SES.** The
   `List-Unsubscribe` pair is set through `Content.Simple.Headers` rather than
   raw MIME. If ap-south-1 refuses the field, sends fail with a 400 — so the
   first test send after deploy is a gate, not a formality.
 - No SNS notification has been received; no bounce, complaint or unsubscribe
-  has been observed end to end. `email_events` held 0 rows at the time of
-  writing.
+  has been observed end to end. `email_events` holds 0 rows and 0 addresses are
+  suppressed, both re-checked after deploying.
+- **Neither deployed function has ever been executed.** The session that
+  deployed them cannot reach `*.supabase.co` — its egress proxy answers 403 for
+  that host — so not even a boot check ("does it return 405 to a GET") was
+  performed. `pg_net` and `http` are both absent from the project, so there was
+  no in-database route either, and enabling an extension in production to run a
+  test was not a trade worth making. The functions are proved to BUILD (the
+  platform accepted and bundled them) and are not proved to RUN.
 
 ### Still open, by design
 A template created through Settings **after** `0066` carries no visible
