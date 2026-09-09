@@ -556,6 +556,9 @@ export type CourseDeletionPreview = {
   offerings: number;
   /** distinct PEOPLE, not enrolment rows -- one member at two branches is one member */
   membersEnrolled: number;
+  /** of those, the ones this course is the WHOLE of -- deleting it removes
+   *  them outright (0064). A member of another course is not among them. */
+  membersRemoved: number;
   sessions: number;
   sessionsCompleted: number;
   attendanceRecords: number;
@@ -570,12 +573,15 @@ export async function courseDeletionPreview(id: string): Promise<CourseDeletionP
     // zero -- that IS what deleting from this device destroys.
     const course = COURSE_LIST.find(c => c.id === id);
     if (!course) {
-      return { name: null, offerings: 0, membersEnrolled: 0, sessions: 0,
+      return { name: null, offerings: 0, membersEnrolled: 0, membersRemoved: 0, sessions: 0,
                sessionsCompleted: 0, attendanceRecords: 0, imports: 0, alreadyDeleted: true };
     }
     return {
       name: course.name, offerings: course.offerings.length,
       membersEnrolled: enrolledIn(MEMBERS, course).length,
+      // Offline every enrolled member belongs to this course alone: the
+      // fixture has no second-course history to spare anybody.
+      membersRemoved: enrolledIn(MEMBERS, course).length,
       sessions: 0, sessionsCompleted: 0, attendanceRecords: 0, imports: 0,
       alreadyDeleted: false,
     };
@@ -590,6 +596,7 @@ export async function courseDeletionPreview(id: string): Promise<CourseDeletionP
     name: (r.name as string | null) ?? null,
     offerings: Number(r.offerings ?? 0),
     membersEnrolled: Number(r.members_enrolled ?? 0),
+    membersRemoved: Number(r.members_removed ?? 0),
     sessions: Number(r.sessions ?? 0),
     sessionsCompleted: Number(r.sessions_completed ?? 0),
     attendanceRecords: Number(r.attendance_records ?? 0),

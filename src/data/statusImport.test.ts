@@ -368,3 +368,85 @@ test('Status Inactive with no date still marks them inactive, dateless', () => {
   const r = row({ name: 'Sam', inactiveFrom: '', status: 'Inactive' });
   assert.deepEqual(wantedPair(r, exported()), { status: 'inactive', inactiveFrom: null });
 });
+
+/* ------------------------------------------------------------------------
+ * A REFUSAL ABOUT A ROW NOBODY EDITED (reported 09-Sep-2026)
+ *
+ * A 796-row export with four members edited came back "7 failed". Six of the
+ * seven were rows nobody had touched: the register has three members called
+ * Anitha and two called vishnu priya, and every duplicate row was refused on
+ * every upload whether or not it asked for anything.
+ *
+ * The file IS the whole register, so it carries every duplicate name the
+ * academy has, every time. A refusal about a row you did not edit is noise,
+ * and six of them hid the one that mattered.
+ * --------------------------------------------------------------------- */
+
+const twin = (id: string, joinedOn: string): StatusMember =>
+  ({ id, name: 'Anitha', status: 'active', joinedOn, inactiveFrom: null });
+
+test('an untouched duplicate row is left alone, not reported as a failure', () => {
+  // Two members share a name. This row is one of them, exported and sent back
+  // untouched, so it matches that one exactly and asks for nothing.
+  const members = [twin('a-1', '2026-01-01'), twin('a-2', '2026-02-02')];
+  const v = validateStatusRows(
+    [row({ name: 'Anitha', activeFrom: '2026-01-01', status: 'Active' })],
+    { members, todayIso: '2026-09-09' })[0];
+  assert.equal(v.state, 'unchanged');
+});
+
+test('every untouched duplicate is quiet, not just the first', () => {
+  const members = [twin('a-1', '2026-01-01'), twin('a-2', '2026-02-02')];
+  const v = validateStatusRows([
+    row({ name: 'Anitha', activeFrom: '2026-01-01', status: 'Active' }),
+    row({ name: 'Anitha', activeFrom: '2026-02-02', status: 'Active' }),
+  ], { members, todayIso: '2026-09-09' });
+  assert.deepEqual(v.map(x => x.state), ['unchanged', 'unchanged']);
+});
+
+test('but an EDITED duplicate row is still refused — the guess is never made', () => {
+  const members = [twin('a-1', '2026-01-01'), twin('a-2', '2026-02-02')];
+  const v = validateStatusRows(
+    [row({ name: 'Anitha', activeFrom: '2026-01-01', inactiveFrom: '2026-10-10', status: 'Active' })],
+    { members, todayIso: '2026-09-09' })[0];
+  assert.equal(v.state, 'blocked');
+});
+
+test('and it is refused as ambiguous, with both members named as the fix', () => {
+  const members = [twin('a-1', '2026-01-01'), twin('a-2', '2026-02-02')];
+  const v = validateStatusRows(
+    [row({ name: 'Anitha', activeFrom: '2026-01-01', inactiveFrom: '2026-10-10', status: 'Active' })],
+    { members, todayIso: '2026-09-09' })[0];
+  assert.equal(v.state === 'blocked' ? v.kind : null, 'ambiguous');
+});
+
+test('the quiet ones do not count against the file', () => {
+  // Three duplicates untouched, one of them edited: ONE failure, not four.
+  const members = [twin('a-1', '2026-01-01'), twin('a-2', '2026-02-02'), twin('a-3', '2026-03-03')];
+  const v = validateStatusRows([
+    row({ name: 'Anitha', activeFrom: '2026-01-01', status: 'Active' }),
+    row({ name: 'Anitha', activeFrom: '2026-02-02', status: 'Active' }),
+    row({ name: 'Anitha', activeFrom: '2026-03-03', inactiveFrom: '2026-10-10', status: 'Active' }),
+  ], { members, todayIso: '2026-09-09' });
+  assert.equal(v.filter(x => x.state === 'blocked').length, 1);
+});
+
+test('a bad status is still reported, even on a row that asks for nothing else', () => {
+  // The one thing that must NOT go quiet: a typo in a cell somebody typed in.
+  const members = [twin('a-1', '2026-01-01'), twin('a-2', '2026-02-02')];
+  const v = validateStatusRows(
+    [row({ name: 'Anitha', activeFrom: '2026-01-01', status: 'Actve' })],
+    { members, todayIso: '2026-09-09' })[0];
+  assert.equal(v.state, 'blocked');
+});
+
+test('an untouched row does not make a later real edit look like a duplicate', () => {
+  // One member, named twice in the file. The first row is untouched, so it
+  // must not claim the name and turn the second into "on two rows".
+  const m: StatusMember = { id: 'm-1', name: 'Sam', status: 'active', joinedOn: '2026-01-01', inactiveFrom: null };
+  const v = validateStatusRows([
+    row({ name: 'Sam', activeFrom: '2026-01-01', status: 'Active' }),
+    row({ name: 'Sam', activeFrom: '2026-01-01', inactiveFrom: '2026-10-10', status: 'Active' }),
+  ], { members: [m], todayIso: '2026-09-09' });
+  assert.deepEqual(v.map(x => x.state), ['unchanged', 'ready']);
+});

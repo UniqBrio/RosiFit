@@ -1,5 +1,37 @@
 # Changelog
 
+## Unreleased — Deleting a course now removes the members it was the whole of
+
+**A deleted course used to leave its members behind on the register, enrolled in nothing.** They
+showed in the Members list but in no course, and worse, they were in the way: adding the same
+person to another course ran into the name already sitting there. Four members were in that state.
+
+Deleting a course now removes the members whose only course it was. Their attendance, addresses
+and aliases go with them, and each removal is recorded in the audit log on its own.
+
+**A member who is in another course is not removed.** They keep that course and everything on it.
+This is the one place the rule stops: deleting one course must never destroy somebody's record of
+a different one.
+
+The confirmation now says which it will be before you press it — *"12 members are enrolled. 9 of
+them are in no other course and are deleted with it, permanently; the rest keep their other
+course."* Where nobody is removed, it says that too.
+
+## Unreleased — Bulk Import stops reporting failures for rows you did not touch
+
+**Uploading the members report used to report a failure for every member whose name is shared
+with another**, whether or not you had touched their row. On a register with three members called
+*Anitha* and two called *John*, an upload that edited four members came back with **seven
+failures** — six of them rows nobody had edited, and among them the one that actually needed
+attention.
+
+Rows are matched to members by name, so when two members share one, RosiFit still refuses to
+guess. But it now only says so for a row you **changed**. A row that already matches the register
+is left alone and counted as *Already correct*, exactly like every other untouched row.
+
+That same upload now reports **3 updated, 792 already correct, 1 failed** — and the one failure is
+the row that genuinely cannot be resolved.
+
 ## Unreleased — A branch that runs courses can now be removed
 
 **Removing a branch no longer stops at a padlock.** Until now, a branch with any course on it
