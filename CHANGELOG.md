@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased — A branch that runs courses can now be removed
+
+**Removing a branch no longer stops at a padlock.** Until now, a branch with any course on it
+could not be removed at all — the button was locked and said *"move them first"*, which was advice
+with nothing behind it: there was no way to move them.
+
+Pressing remove on such a branch now asks **where its courses should go**, and moves them there.
+The courses carry on at the new branch with everything intact — their registers, their sessions,
+every member and every attendance record. **Nothing is deleted.**
+
+If a course already runs at the branch you pick, that one cannot move there — the two registers
+would end up on top of each other — so RosiFit says which course it is and changes nothing. Move
+or remove that one first.
+
+A branch with nothing on it is removed as before, behind the same plain confirmation.
+
+**To actually delete a course, delete the course.** Removing a location does not destroy a
+register, and there is a separate control on each course for when you mean that.
+
+Adding and removing branches is still the academy admin's, unchanged.
+
 ## Unreleased — A leaving date typed into the report now actually takes
 
 Two fixes to Bulk Import, both found from one real upload: a 794-member report with an

@@ -105,6 +105,30 @@ set with `supabase secrets set` and appear in no tracked file.
 
 ---
 
+## Production change applied 09-Sep-2026 (fourth and fifth) — ✅ VERIFIED
+
+**`0062_a_typed_leaving_date_is_an_instruction` APPLIED.** Reported with a real 794-member export:
+a leaving date typed against two members, uploaded, and nothing happened. `bulk_set_member_dates`
+read "an inactive date with NO STATUS beside it means inactive from that day", and the report
+writes a Status on every row — so the exported "Active" always won and the typed date was
+discarded. Now reads WHICH CELL WAS EDITED against the record. **Verified:** the new rule is in
+the live source and the old line is gone. Rehearsed first; new spec 44 8/8.
+
+**`0063_remove_a_branch_by_moving_its_courses` APPLIED.** Adds `remove_branch(uuid, uuid)`, which
+moves a branch's live offerings and scoped holidays to another branch before removing it, so a
+branch that runs courses can be removed without destroying anything. **Verified:** present,
+SECURITY DEFINER, EXECUTE to authenticated and service_role only.
+
+- **PURELY ADDITIVE, so no deployment window** — unlike 0057. It creates a function that did not
+  exist and drops nothing; the live app still removes a branch with its own direct UPDATE and is
+  untouched until the new code deploys. Rehearsed first; new spec 45 13/13, which caught two of
+  my own errors before production saw them (a column that does not exist on `holidays`, and an
+  `updated_by` on `branches` and `course_offerings` that neither table has).
+- **It does not reopen branches to staff.** 0050 records that the owner was asked about branches
+  on 08-Sep-2026 and chose to keep them super-admin; the gate is restated in the function.
+
+---
+
 ## Production change applied 09-Sep-2026 (third) — ✅ VERIFIED
 
 **`0061_the_last_gendered_refusals` APPLIED.** Eleven strings across four functions:

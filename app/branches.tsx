@@ -6,6 +6,7 @@ import { ScreenHeader, ShellScreen } from '../src/components/AppShell';
 import { Field } from '../src/components/Field';
 import { Icon } from '../src/components/Icon';
 import { ConfirmDialog } from '../src/components/Sheet';
+import { FormDialog } from '../src/components/FormDialog';
 import { useTheme } from '../src/theme/ThemeProvider';
 import { useToast } from '../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS } from '../src/theme/tokens';
@@ -44,6 +45,10 @@ function BranchesBody() {
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<BranchUsage | null>(null);
+  /* WHERE THE COURSES GO when the branch being removed still runs some
+     (0063). Null while nothing is chosen, which is also what keeps the
+     confirm disabled: a move has to name its destination. */
+  const [moveTo, setMoveTo] = useState<string | null>(null);
 
   const list = branches.data ?? [];
   const name = draft.trim();
@@ -79,13 +84,17 @@ function BranchesBody() {
   };
 
   const remove = async (branch: BranchUsage) => {
+    const target = branch.courses > 0 ? moveTo : null;
     setConfirmRemove(null);
+    setMoveTo(null);
     setFailure(null);
     try {
-      await removeBranch(branch.id, branch.name);
-      flash(dataSource === 'live'
-        ? `${branch.name} removed`
-        : `${branch.name} removed on this device only — the academy database is not configured`,
+      const out = await removeBranch(branch.id, branch.name, target);
+      flash(dataSource !== 'live'
+        ? `${branch.name} removed on this device only — the academy database is not configured`
+        : out.movedTo
+          ? `${branch.name} removed · ${out.offeringsMoved} ${out.offeringsMoved === 1 ? 'course' : 'courses'} moved to ${out.movedTo}`
+          : `${branch.name} removed`,
         dataSource === 'live' ? 'ok' : 'warn');
     } catch (err) {
       setFailure(err instanceof Error ? err.message : 'The branch could not be removed. Nothing has been changed.');
@@ -180,16 +189,17 @@ function BranchesBody() {
 
                 {identity?.isSuperAdmin ? (
                   <Pressable testID={`branch-remove-${b.id}`}
-                    onPress={() => (inUse
-                      ? flash(`${b.name} has ${b.courses} ${b.courses === 1 ? 'course' : 'courses'} — move them first`, 'warn')
-                      : setConfirmRemove(b))}
+                    onPress={() => { setMoveTo(null); setConfirmRemove(b); }}
                     accessibilityRole="button"
                     // The label says WHY it will refuse, because the visual
                     // difference between the two states is colour alone.
+                    // It no longer refuses: an occupied branch opens a dialog
+                    // that asks where its courses go (0063). The label says
+                    // which of the two it will be, because the dialog that
+                    // follows is different in kind.
                     accessibilityLabel={inUse
-                      ? `Remove ${b.name}. Not available — ${b.courses} ${b.courses === 1 ? 'course runs' : 'courses run'} here`
+                      ? `Remove ${b.name} and move its ${b.courses} ${b.courses === 1 ? 'course' : 'courses'} to another branch`
                       : `Remove ${b.name}, which runs no courses`}
-                    accessibilityState={{ disabled: inUse }}
                     style={({ pressed }) => ({
                       width: 38, height: 38, borderRadius: 11,
                       alignItems: 'center', justifyContent: 'center',
@@ -197,8 +207,7 @@ function BranchesBody() {
                       borderWidth: 1, borderColor: theme.line,
                       opacity: pressed ? 0.7 : 1,
                     })}>
-                    <Icon name={inUse ? 'lock' : 'delete'} size={18}
-                      color={inUse ? theme.dim : dangerInk} />
+                    <Icon name="delete" size={18} color={dangerInk} />
                   </Pressable>
                 ) : null}
               </View>
@@ -215,15 +224,99 @@ function BranchesBody() {
         <Icon name="info" size={19} color={warnInk} />
         <Muted style={{ flex: 1 }}>
           A branch appears in the Overview filter and in every course form as soon as you add it.
-          A branch with courses cannot be removed, and neither can one a holiday is scoped to.
+          Removing one that runs courses moves them to a branch you pick — the courses, their
+          registers and their members all carry on there. Nothing is deleted.
         </Muted>
       </View>
+
+      {/* AN OCCUPIED BRANCH gets a different dialog, because it is a
+          different act: the courses have to go somewhere, and the dialog is
+          where that is decided. It cannot be a ConfirmDialog -- that takes a
+          sentence, and this needs a choice.
+
+          Nothing here deletes a course. The offerings move, and their
+          registers, sessions and members move with them, which is why the
+          body can promise that and mean it (0063). */}
+      {confirmRemove && confirmRemove.courses > 0 ? (
+        <FormDialog
+          title={`Remove ${confirmRemove.name}?`}
+          subtitle={`${confirmRemove.courses} ${confirmRemove.courses === 1 ? 'course runs' : 'courses run'} here`}
+          onClose={() => { setConfirmRemove(null); setMoveTo(null); }}
+          closeTestID="branch-move-close"
+          footer={
+            <View style={{
+              flexDirection: 'row', gap: SPACE.md, padding: SPACE.lg,
+              borderTopWidth: 1, borderTopColor: theme.line, backgroundColor: theme.shell,
+            }}>
+              <Button testID="branch-move-cancel" label="Keep it" variant="secondary"
+                style={{ flex: 1 }}
+                onPress={() => { setConfirmRemove(null); setMoveTo(null); }} />
+              <Button testID="branch-move-confirm"
+                label={moveTo ? 'Move and remove' : 'Pick a branch first'}
+                style={{ flex: 1.3 }}
+                disabled={!moveTo}
+                onPress={() => { if (confirmRemove) void remove(confirmRemove); }} />
+            </View>
+          }>
+          <Muted>
+            {`Everything ${confirmRemove.name} runs moves to the branch you pick — the `
+             + `${confirmRemove.courses === 1 ? 'course' : 'courses'}, `
+             + `${confirmRemove.members} ${confirmRemove.members === 1 ? 'member' : 'members'}, `
+             + 'every register and every attendance record. Nothing is deleted. '
+             + 'To delete a course instead, do that on the course itself, then come back.'}
+          </Muted>
+
+          <Label style={{ marginTop: SPACE.xl }}>Move them to</Label>
+          {list.filter(o => o.id !== confirmRemove.id).length === 0 ? (
+            <Muted style={{ marginTop: SPACE.sm }}>
+              There is nowhere to move them: this is the only branch. Add another branch first, or
+              delete the courses on their own screens.
+            </Muted>
+          ) : (
+            <View style={{ gap: 7, marginTop: SPACE.sm }}>
+              {list.filter(o => o.id !== confirmRemove.id).map(o => {
+                const on = moveTo === o.id;
+                return (
+                  <Pressable key={o.id} testID={`branch-move-to-${o.id}`}
+                    onPress={() => setMoveTo(o.id)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: on }}
+                    accessibilityLabel={`Move the courses to ${o.name}`}
+                    style={({ pressed }) => ({
+                      flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
+                      minHeight: TAP_MIN, paddingHorizontal: 12, paddingVertical: 9,
+                      borderRadius: RADIUS.md,
+                      backgroundColor: on ? theme.control : theme.surface2,
+                      borderWidth: 1, borderColor: on ? theme.accentInk : theme.line,
+                      opacity: pressed ? 0.75 : 1,
+                    })}>
+                    <Icon name={on ? 'check_circle' : 'apartment'} size={18}
+                      color={on ? theme.accentInk : theme.muted} />
+                    <Text style={{ flex: 1, fontSize: 14, fontWeight: '700', color: theme.fgStrong }}>
+                      {o.name}
+                    </Text>
+                    <Text style={{ fontSize: 11.5, color: theme.muted }}>
+                      {`${o.courses} ${o.courses === 1 ? 'course' : 'courses'}`}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+          {/* The one refusal the server will still make, said before the press
+              rather than after it. */}
+          <Muted style={{ marginTop: SPACE.md }}>
+            A course that already runs at the branch you pick cannot move there — the two
+            registers would collide. RosiFit will say which one, and nothing will be changed.
+          </Muted>
+        </FormDialog>
+      ) : null}
 
       {/* Removing a branch hides it from every filter in the app, so the
           dialog states that consequence rather than asking "are you sure?"
           about a name. */}
       <ConfirmDialog
-        open={confirmRemove !== null}
+        open={confirmRemove !== null && confirmRemove.courses === 0}
         onClose={() => setConfirmRemove(null)}
         title={confirmRemove ? `Remove ${confirmRemove.name}?` : ''}
         body={confirmRemove
