@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased — Bulk Import stops reporting failures for rows you did not touch
+
+**Uploading the members report used to report a failure for every member whose name is shared
+with another**, whether or not you had touched their row. On a register with three members called
+*Anitha* and two called *John*, an upload that edited four members came back with **seven
+failures** — six of them rows nobody had edited, and among them the one that actually needed
+attention.
+
+Rows are matched to members by name, so when two members share one, RosiFit still refuses to
+guess. But it now only says so for a row you **changed**. A row that already matches the register
+is left alone and counted as *Already correct*, exactly like every other untouched row.
+
+That same upload now reports **3 updated, 792 already correct, 1 failed** — and the one failure is
+the row that genuinely cannot be resolved.
+
 ## Unreleased — A branch that runs courses can now be removed
 
 **Removing a branch no longer stops at a padlock.** Until now, a branch with any course on it

@@ -1,3 +1,40 @@
+## FAIL-FIRST — "7 failed" on an upload that edited 4 (09-Sep-2026)
+
+Reported with the file and two screenshots: 3 updated, 786 already correct,
+7 FAILED, on an export where four members had been edited. Six of the seven
+were rows nobody had touched.
+
+Root cause: validateStatusRows refused an ambiguous name BEFORE asking whether
+the row wanted anything. The file is the whole register, so it carries every
+duplicate name the academy has on every upload — three Anithas, two Johns, two
+vishnu priyas = exactly the seven. The one refusal that mattered (row 291,
+John, genuinely un-resolvable) was buried among six that did not.
+
+FAIL-FIRST (A), the reported behaviour: `asksNothing = false` restored, so every
+duplicate row is refused. Four of the seven new assertions fail — "an untouched
+duplicate row is left alone", "every untouched duplicate is quiet", "the quiet
+ones do not count against the file", "an untouched row does not make a later
+real edit look like a duplicate". 32 pass, 4 fail.
+
+FAIL-FIRST (B), MY OWN FIRST FIX, which was wrong and is worth recording: I
+first wrote `found.every(...)`, requiring all candidates to agree. Verified
+against the real 796-row file it still reported 7 failures — because an
+untouched row carries the values of the member it came from and matches THAT
+one only: three Anithas have three different joining dates, so Anitha #1's row
+is a change measured against #2. Corrected to `found.some(...)`: matching one
+candidate exactly is enough, because it means the register already agrees with
+what the file says. With `every` restored, three assertions fail. 33 pass,
+3 fail.
+
+Restored: 36 pass. Against the reported file: {unchanged: 792, ready: 3,
+blocked: 1} — Ashish, Rahul Verma and Sam updated, and the single failure is
+row 291 John, which is the only row that genuinely cannot be resolved.
+
+NO MIGRATION NEEDED. bulk_set_member_dates keeps its own ambiguity refusal and
+is right to: only rows the client marked `ready` are ever sent, so every row
+the server sees is asking for a change, and refusing an ambiguous one of those
+is correct.
+
 ## FAIL-FIRST — the reported 794-member upload (09-Sep-2026)
 
 Reported with the real file: a 794-member members report, an Inactive from date
@@ -518,6 +555,66 @@ exit 1
 - **G9 Automation addressability** - PASS
 - **G10 Backward compatibility (fixtures)** - PASS
 - **G11 Wide tables are configurable** - PASS
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-09 - VERDICT: FAIL
+
+Steps: 5 pass, 5 fail, 1 blocked.
+Time: 19.1s total - slowest G7 Unit + pure specs (12.1s).
+
+- **G1 Theme artifacts in sync** - FAIL (47ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (44ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (47ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (61ms)
+- **G5 Types** - PASS (6.4s)
+- **G6 Lint** - BLOCKED (-) - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - FAIL (12.1s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: a form asked for a record answers a failed read
+ok 164 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 165 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 178 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+  name: 'AssertionError'
+  expected: true
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+ok 295 - a ring is never a colour alone, and nothing expected is a dash
+# Subtest: a failed reset keeps the dialog open, carrying the reason
+ok 332 - a failed reset keeps the dialog open, carrying the reason
+```
+
+- **G8 Functional / integration** - FAIL (125ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (51ms)
+- **G10 Backward compatibility (fixtures)** - PASS (109ms)
+- **G11 Wide tables are configurable** - PASS (49ms)
 
 _Merge blocked. Every FAIL above must resolve. No partial merges._
 

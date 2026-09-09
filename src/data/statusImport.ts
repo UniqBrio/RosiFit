@@ -233,6 +233,34 @@ const WORD: Record<MemberStatus, string> = {
 };
 
 /**
+ * WHAT THIS ROW WOULD CHANGE about one member -- nothing more.
+ *
+ * Lifted out of `validateStatusRows` so the ambiguity checks can ask it
+ * FIRST. A row that changes nothing needs no write, and a row that needs no
+ * write cannot be harmed by not knowing which of two same-named members it
+ * meant: whichever it is, the answer is the same and it is "nothing".
+ */
+function changesFor(row: StatusImportRow, m: StatusMember): StatusChange[] {
+  const wanted = wantedPair(row, m);
+  const active = cellValue(row.activeFrom);
+  const changes: StatusChange[] = [];
+  if (active && active !== (m.joinedOn ?? '')) {
+    changes.push({ field: 'Active from', from: m.joinedOn ?? 'Not on record', to: active });
+  }
+  if ((wanted.inactiveFrom ?? '') !== (m.inactiveFrom ?? '')) {
+    changes.push({
+      field: 'Inactive from',
+      from: m.inactiveFrom ?? 'Not on record',
+      to: wanted.inactiveFrom ?? 'Not on record',
+    });
+  }
+  if (wanted.status !== m.status) {
+    changes.push({ field: 'Status', from: WORD[m.status], to: WORD[wanted.status] });
+  }
+  return changes;
+}
+
+/**
  * Every row, judged BEFORE anything is written -- the same posture
  * `validateMemberRows` takes, and for the same reason: a blocked row carries
  * its reason in the row rather than in a summary count, because "3 rows
@@ -272,7 +300,39 @@ export function validateStatusRows(
         reason: 'not on the register — add them with Bulk Import first, this file only changes dates',
       };
     }
+    // A status nobody can read is worth reporting even on a row that asks for
+    // nothing else: it is a typo in a cell somebody typed in, and staying
+    // quiet about it would be reading past the one thing they got wrong.
+    if (readStatus(row.status) === 'bad') {
+      return {
+        state: 'blocked', row, kind: 'invalid',
+        reason: `“${row.status.trim()}” is not a status — write Active or Inactive`,
+      };
+    }
+
+    // DOES THIS ROW ASK FOR ANYTHING? True when SOME candidate already matches
+    // it exactly -- and "some", not "every", is the whole subtlety.
+    //
+    // An untouched row carries the values of the member it was exported from,
+    // so it matches THAT member exactly and no other: three members called
+    // Anitha have three different joining dates, and Anitha #1's row is a
+    // change when measured against #2. Requiring every candidate to agree
+    // therefore called every duplicate row an edit, which is how this went
+    // wrong the first time I fixed it.
+    //
+    // Matching one candidate exactly is enough, because it means the file is
+    // describing a member the register already agrees with -- so there is
+    // nothing to write, whichever of the two the person had in mind.
+    //
+    // Asked FIRST, before the ambiguity refusal, because the file IS the whole
+    // register: a 796-row export contains every duplicate name the academy
+    // has, touched or not. Refusing them all reported SEVEN failures against
+    // an upload that edited four members -- six of them rows nobody had
+    // touched, burying the one that mattered (reported 09-Sep-2026).
+    const asksNothing = found.some(m => changesFor(row, m).length === 0);
+
     if (found.length > 1) {
+      if (asksNothing) return { state: 'unchanged', row, memberId: found[0].id };
       return {
         state: 'blocked', row, kind: 'ambiguous',
         reason: `more than one member is called “${name}” — change their dates on their own records`,
@@ -281,23 +341,19 @@ export function validateStatusRows(
     if (seen.has(key)) {
       // The same member twice in one sheet, with two different answers. The
       // last row would silently win.
+      if (asksNothing) return { state: 'unchanged', row, memberId: found[0].id };
       return {
         state: 'blocked', row, kind: 'invalid',
         reason: `“${name}” is on two rows of this file — leave one of them`,
       };
     }
-    seen.add(key);
+    // Only a row that actually writes claims the name: an untouched row must
+    // not make a real edit further down the file look like the duplicate.
+    if (!asksNothing) seen.add(key);
 
     const m = found[0];
     const wanted = wantedPair(row, m);
     const active = cellValue(row.activeFrom);
-
-    if (readStatus(row.status) === 'bad') {
-      return {
-        state: 'blocked', row, kind: 'invalid',
-        reason: `“${row.status.trim()}” is not a status — write Active or Inactive`,
-      };
-    }
 
     // The two refusals the app can answer for itself, measured against the
     // pair this row would WRITE rather than against what her record holds --
@@ -312,20 +368,7 @@ export function validateStatusRows(
       if (why) return { state: 'blocked', row, kind: 'invalid', reason: why };
     }
 
-    const changes: StatusChange[] = [];
-    if (active && active !== (m.joinedOn ?? '')) {
-      changes.push({ field: 'Active from', from: m.joinedOn ?? 'Not on record', to: active });
-    }
-    if ((wanted.inactiveFrom ?? '') !== (m.inactiveFrom ?? '')) {
-      changes.push({
-        field: 'Inactive from',
-        from: m.inactiveFrom ?? 'Not on record',
-        to: wanted.inactiveFrom ?? 'Not on record',
-      });
-    }
-    if (wanted.status !== m.status) {
-      changes.push({ field: 'Status', from: WORD[m.status], to: WORD[wanted.status] });
-    }
+    const changes = changesFor(row, m);
 
     // THE RE-UPLOAD, and it is the COMMON case: the same export sent twice.
     // Not a failure and not a write -- the file agreeing with the register.
