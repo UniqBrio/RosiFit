@@ -105,6 +105,41 @@ set with `supabase secrets set` and appear in no tracked file.
 
 ---
 
+## Production change applied 09-Sep-2026 — ✅ VERIFIED against the live project
+
+Project `lhpzhkzbnquwjljmbylo` ("Rosifit", ap-southeast-1). Two migrations, applied **one at a
+time and in order**, each verified by reading `pg_proc` back before the next was started.
+
+- **`0059_import_refusal_names_the_other_button` APPLIED.** Replaces
+  `bulk_set_member_dates`. An unknown name is now refused with *"not on the register — add them
+  with Bulk Import first, this file only changes dates"* — the exact sentence
+  `src/data/statusImport.ts` refuses the same row with, so the two halves of one import cannot
+  tell different stories. The string it replaced named no button and said "hers".
+  **Verified:** the new refusal is in the live source and `prosrc` matches no gendered pronoun.
+- **`0060_refusals_stop_saying_she` APPLIED.** Replaces `set_member_status` (0045) and
+  `set_member_active_from` (0057) with their six refusals written about *the member*.
+  **Verified:** all eight `raise exception` messages across the two functions read back in the
+  new wording, and neither `prosrc` matches a gendered pronoun.
+- **✅ REHEARSED ON THE HARNESS FIRST — the step 06-Sep could not take.** This machine has
+  Postgres 16, so `npm run test:db` replayed every migration from scratch: specs 41 and 42
+  together **44/44**, re-run after the last edit to either file. The ten failures elsewhere in
+  the suite are pre-existing and in unrelated specs; they were present before these migrations
+  and are unchanged by them.
+- **No signature, grant or behaviour changed.** All four import-path functions
+  (`bulk_import_members`, `bulk_set_member_dates`, `set_member_status`,
+  `set_member_active_from`) were re-read afterwards: same identity arguments, still
+  `SECURITY DEFINER`, still `EXECUTE` to `authenticated` and `service_role` only. Both
+  migrations replace a function body; neither builds an index nor adds a constraint over
+  existing rows, so there was no data-compatibility question for the harness to leave open.
+- **Still unapplied, and deliberately untouched:** `0044_override_scoped_by_meeting_instance`,
+  `0045_import_change_counts`, `0046_attendance_backdates_membership`,
+  `0057_reset_only_the_selected_members`. `0046` deserves attention on its own —
+  `set_member_active_from`'s third refusal is that invariant read forward, and the trigger it
+  reads forward from is not in this project. Note also that two different migrations in the repo
+  claim the number `0057`.
+
+---
+
 ## Production change applied 06-Sep-2026 — ✅ VERIFIED against the live project
 
 Project `lhpzhkzbnquwjljmbylo` ("Rosifit", ap-southeast-1), confirmed as the target by matching

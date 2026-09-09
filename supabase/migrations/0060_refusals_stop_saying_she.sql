@@ -39,8 +39,8 @@ create or replace function public.set_member_status(
   /** one of the three values members_status_check allows */
   p_status    text,
   /**
-   * The first day the status applies. NULL means no date on record -- she is
-   * inactive from now on and her past reads the same way, which is what the
+   * The first day the status applies. NULL means no date on record -- the
+   * member is inactive from now on and the past reads the same way, as the
    * one-tap roster pill has always meant.
    *
    * Ignored, and cleared, when p_status is 'active': coming back on has no
@@ -83,7 +83,7 @@ begin
       using errcode = 'P0002';
   end if;
 
-  -- Marking her active is not a dated act, so it takes the date OFF rather
+  -- Marking active is not a dated act, so it takes the date OFF rather
   -- than leaving one behind for the next reader to interpret.
   v_from := case when p_status = 'active' then null else p_inactive_from end;
 
@@ -99,7 +99,7 @@ begin
   -- Idempotent on the PAIR, not on the status alone: re-sending the same
   -- status with a different date is a real change and must move
   -- status_changed_at, while a double tap on a slow connection -- same
-  -- status, same date -- must not rewrite when she came off.
+  -- status, same date -- must not rewrite when the member came off.
   if v_member.status = p_status and v_member.inactive_from is not distinct from v_from then
     return jsonb_build_object(
       'member_id', p_member_id, 'full_name', v_member.full_name,
@@ -123,7 +123,7 @@ revoke all on function public.set_member_status(uuid, text, date) from public, a
 grant execute on function public.set_member_status(uuid, text, date) to authenticated, service_role;
 
 comment on function public.set_member_status(uuid, text, date) is
-  'The ONLY write path for members.status and members.inactive_from -- the columns follow_up_candidates() filters on. Stamps status_changed_at and updated_by from the signed-in actor, so the audit row names who took her off the register. The date says FROM WHEN the status applies: omit it and the status applies on every day, which is what every pre-0044 row means. Touches no enrolment, session, expectation or attendance record. Idempotent on the pair.';
+  'The ONLY write path for members.status and members.inactive_from -- the columns follow_up_candidates() filters on. Stamps status_changed_at and updated_by from the signed-in actor, so the audit row names who took the member off the register. The date says FROM WHEN the status applies: omit it and the status applies on every day, which is what every pre-0044 row means. Touches no enrolment, session, expectation or attendance record. Idempotent on the pair.';
 
 
 -- ---------------------------------------------------------------------------
@@ -132,7 +132,7 @@ comment on function public.set_member_status(uuid, text, date) is
 create or replace function public.set_member_active_from(
   p_member_id   uuid,
   /**
-   * The first day she is on the register. NOT NULL: clearing a joining date
+   * The first day the member is on the register. NOT NULL: clearing a date
    * is un-recording a fact, which is a different act from correcting one, and
    * no screen asks for it.
    */
@@ -199,12 +199,12 @@ begin
 
   -- ------------------------------------------------------------ refusal 3
   -- 0046's invariant, read forward. That trigger exists because a register
-  -- naming her IS evidence she was there, and it moves her joining date back
-  -- to meet the evidence. Moving the date FORWARD past a session she is
-  -- recorded at would recreate exactly the contradiction 0046 was written to
-  -- remove -- an attendance row for a day the roster says she was not a member
-  -- -- and it would do it on purpose, from a form. So it is refused, and the
-  -- refusal names the day that blocks it.
+  -- naming a member IS evidence they were there, and it moves the joining
+  -- date back to meet the evidence. Moving the date FORWARD past a session
+  -- they are recorded at would recreate exactly the contradiction 0046 was
+  -- written to remove -- an attendance row for a day the roster says they
+  -- were not a member -- and it would do it on purpose, from a form. So it
+  -- is refused, and the refusal names the day that blocks it.
   select min(s.session_date) into v_first_att
     from public.attendance_records a
     join public.sessions s on s.id = a.session_id
@@ -222,12 +222,12 @@ begin
          updated_by = v_actor
    where id = p_member_id;
 
-  -- ------------------------------------------------------- her enrolment
-  -- 0049's whole point: the record and the enrolment state ONE day. Her
-  -- joining date moving and her enrolment staying put is the same two-answers
+  -- ---------------------------------------------------- the enrolment
+  -- 0049's whole point: the record and the enrolment state ONE day. The
+  -- joining date moving and the enrolment staying put is the same two-answers
   -- defect with a different pair of rows, so the EARLIEST enrolment follows.
   --
-  -- Only the earliest, and only that one: it is the one her membership opens
+  -- Only the earliest, and only that one: it is the one membership opens
   -- at, and it is the only row that can be moved without the exclusion
   -- constraint `member_enrollments (member_id, daterange(...) with &&)` having
   -- an opinion -- nothing precedes it, so widening it backwards can overlap
@@ -268,5 +268,5 @@ revoke all on function public.set_member_active_from(uuid, date) from public, an
 grant execute on function public.set_member_active_from(uuid, date) to authenticated, service_role;
 
 comment on function public.set_member_active_from(uuid, date) is
-  'The ONLY write path for members.joined_on after create_member -- "Active from" in the UI (0057). Moves her earliest enrolment''s effective_from to the same day, so the record and the enrolment never state two joining dates (0049). Refuses a future date, a date after her inactive_from, and a date after the earliest session she is recorded at (0046 read forward). Idempotent. Touches no session, expectation or attendance record.';
+  'The ONLY write path for members.joined_on after create_member -- "Active from" in the UI (0057). Moves the earliest enrolment''s effective_from to the same day, so the record and the enrolment never state two joining dates (0049). Refuses a future date, a date after the member''s inactive_from, and a date after the earliest session they are recorded at (0046 read forward). Idempotent. Touches no session, expectation or attendance record.';
 

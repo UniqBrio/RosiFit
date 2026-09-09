@@ -109,7 +109,7 @@ begin
       continue;
     end if;
 
-    -- ------------------------------------------------------- who she is
+    -- ---------------------------------------------------- who this is
     -- By NORMALISED NAME, the same key bulk_import_members matches on, so the
     -- two files agree about who is already on the register. Never by an id
     -- from the file: an exported id that has been edited in a spreadsheet is
@@ -144,7 +144,7 @@ begin
     -- THE SHAPE BEFORE THE CAST (0029). '01/09/2026' does not raise --
     -- Postgres reads it under DateStyle, which on this project is MDY -- so a
     -- British or Indian date becomes 9 January, silently, on the column that
-    -- decides every session she was ever expected at.
+    -- decides every session that member was ever expected at.
     if v_raw_act is not null and v_raw_act !~ '^\d{4}-\d{2}-\d{2}$' then
       v_failed := v_failed + 1;
       v_verdicts := v_verdicts || jsonb_build_object('row', v_rownum, 'full_name', v_name,
@@ -186,10 +186,10 @@ begin
     --
     --   the status cell     -> what it says
     --   blank, with a date  -> 'inactive'; an inactive date is what the date IS
-    --   blank, no date      -> what her record already says
+    --   blank, no date      -> what the record already says
     v_status := coalesce(v_raw_stat,
                          case when v_inactive is not null then 'inactive' else v_member.status end);
-    -- Her stored date is the default, so a row that only moves the JOINING
+    -- The stored date is the default, so a row that only moves the JOINING
     -- date cannot wipe the leaving one on its way past.
     v_inactive := coalesce(v_inactive, v_member.inactive_from);
     -- Active takes the date OFF, exactly as set_member_status does with it --
