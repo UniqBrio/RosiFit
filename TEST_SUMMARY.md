@@ -59,6 +59,90 @@ The remaining unverified step is the round trip in a browser, which needs a depl
 
 ---
 
+## Gate baseline for 10-Sep-2026 — read the run below against THIS
+
+The gate run recorded below is FAIL, and **every one of its failures is also a failure on
+`main` with this change stashed**. Both verdicts were taken on the same tree, minutes apart,
+and they are step-for-step identical. Stating that here rather than leaving the reader to
+infer it, because "the gate went red on the change that landed" is exactly the wrong
+conclusion to draw from an unqualified FAIL.
+
+| Step | Why it fails | Mine? |
+|---|---|---|
+| G1 · G2 · G3 | The runner calls `scripts/check-contrast.mjs`, a framework-seed script that reads `design/tokens.json`. This app has no such file — its tokens are TypeScript, and its real contrast gate is `scripts/check-contrast.ts`, which passes **2,842/2,842 pairs** including every pair this change draws. A seed script the app never adopted, blocking on a file the app never had. | No |
+| G6 | BLOCKED — no local `eslint`. Unchanged. | No |
+| G7 · G8 | Six specs: one on the course-list filter shape (`formDropdownMenu.test.ts`) and five on the message token map. Pre-existing, and in areas this change does not touch. The same six fail on `main`. | No |
+
+What this change contributes to the suite: **+34 passing specs, 0 new failures** (1,441 → 1,468
+passing, 6 → 6 failing). `npm run audit:all` is green with no new violations in any of its nine
+sweeps.
+
+The six red specs and the seed-script mismatch are real debt and are somebody's next piece of
+work. They are not this one, and pretending otherwise by quietly re-baselining them would hide
+them.
+
+---
+
+## Gate run - 2026-09-10 - VERDICT: FAIL
+
+Steps: 5 pass, 5 fail, 1 blocked.
+Time: 19.5s total - slowest G7 Unit + pure specs (12.9s).
+
+- **G1 Theme artifacts in sync** - FAIL (49ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (49ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (47ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (68ms)
+- **G5 Types** - PASS (6.0s)
+- **G6 Lint** - BLOCKED (-) - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - FAIL (12.9s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: a form asked for a record answers a failed read
+ok 169 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 170 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 183 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+  name: 'AssertionError'
+  expected: true
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+ok 300 - a ring is never a colour alone, and nothing expected is a dash
+# Subtest: a failed reset keeps the dialog open, carrying the reason
+ok 337 - a failed reset keeps the dialog open, carrying the reason
+```
+
+- **G8 Functional / integration** - FAIL (133ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (58ms)
+- **G10 Backward compatibility (fixtures)** - PASS (112ms)
+- **G11 Wide tables are configurable** - PASS (53ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
 ## FAIL-FIRST — SES feedback and unsubscribe (09-Sep-2026)
 
 Requested: close the two code-side gaps AWS asked about for production access
@@ -127,30 +211,6 @@ helper above and by the SQL spec. Their request handling has never been
 executed. That is the honest gap, and it is why the deploy checklist treats the
 first real SNS notification and the first real link click as the verification,
 not as a formality.
-
----
-
-## Gate baseline for 10-Sep-2026 — read the run below against THIS
-
-The gate run recorded below is FAIL, and **every one of its failures is also a failure on
-`main` with this change stashed**. Both verdicts were taken on the same tree, minutes apart,
-and they are step-for-step identical. Stating that here rather than leaving the reader to
-infer it, because "the gate went red on the change that landed" is exactly the wrong
-conclusion to draw from an unqualified FAIL.
-
-| Step | Why it fails | Mine? |
-|---|---|---|
-| G1 · G2 · G3 | The runner calls `scripts/check-contrast.mjs`, a framework-seed script that reads `design/tokens.json`. This app has no such file — its tokens are TypeScript, and its real contrast gate is `scripts/check-contrast.ts`, which passes **2,842/2,842 pairs** including every pair this change draws. A seed script the app never adopted, blocking on a file the app never had. | No |
-| G6 | BLOCKED — no local `eslint`. Unchanged. | No |
-| G7 · G8 | Six specs: one on the course-list filter shape (`formDropdownMenu.test.ts`) and five on the message token map. Pre-existing, and in areas this change does not touch. The same six fail on `main`. | No |
-
-What this change contributes to the suite: **+34 passing specs, 0 new failures** (1,441 → 1,468
-passing, 6 → 6 failing). `npm run audit:all` is green with no new violations in any of its nine
-sweeps.
-
-The six red specs and the seed-script mismatch are real debt and are somebody's next piece of
-work. They are not this one, and pretending otherwise by quietly re-baselining them would hide
-them.
 
 ---
 
