@@ -1,0 +1,83 @@
+FAIL-FIRST — RC-039 / RC-040, 10-Sep-2026
+Recorded by reconstructing each defect on the fixed tree and running the spec.
+
+================================================================
+1. src/data/pagedReads.test.ts — the rung over the call sites
+================================================================
+
+-- 1a. attendance_records read reverted to its unpaged form ------
+ok 1 - the spec is looking at a real tree
+not ok 2 - every read of a growing table is paged, or listed as bounded with its reason
+    src/data/repository.ts:2184 reads attendance_records without pageAll(). That table grows with the academy, and PostgREST answers a too-large read with 1000 rows, 200 and no error — so this returns SILENTLY SHORT once the academy passes the cap (RC-039). Page it, or add it to BOUNDED here with the bound that makes it safe.
+ok 3 - every paged read carries its own .range( and .order(
+ok 4 - the pager states which ceiling it exists to clear
+
+-- 1b. the same read paged, but with its .order() removed -------
+ok 1 - the spec is looking at a real tree
+ok 2 - every read of a growing table is paged, or listed as bounded with its reason
+not ok 3 - every paged read carries its own .range( and .order(
+  error: 'src/data/repository.ts:2184: a paged read must .order( by something unique. A range() into an unordered result is an OFFSET into nothing: two pages can return the same row and never return another.'
+ok 4 - the pager states which ceiling it exists to clear
+--- restored, and green again ---
+# pass 4
+# fail 0
+
+================================================================
+2. src/data/pageAll.test.ts — the pager itself
+================================================================
+
+The defect reconstructed: pageAll reduced to ONE request, which is
+exactly what fetchAttendance did before the fix.
+
+ok 1 - the page size is the ceiling the API actually enforces
+ok 2 - a table smaller than one page is ONE request
+ok 3 - an EMPTY table is one request and an empty answer, not an error
+not ok 4 - a table LARGER than one page comes back whole
+not ok 5 - the ranges are inclusive, contiguous and never overlap
+not ok 6 - a table that is an EXACT multiple of the page still asks once more
+not ok 7 - a page that FAILS is returned as a failure, never as a short answer
+not ok 8 - a query with no unique order pages forever, and is stopped and NAMED
+ok 9 - the runaway cap is far above any real read
+# pass 4
+# fail 5
+--- restored, and green again ---
+# pass 9
+# fail 0
+
+================================================================
+3. src/components/shellTabSelected.test.ts — the tab row
+================================================================
+
+Run against the PRE-FIX tree, exported from HEAD~1, via the spec's
+own SHELL_TAB_SPEC_ROOT override. No injection: this is the code
+that shipped.
+
+ok 1 - the spec is looking at a real tree
+not ok 2 - the row asks the shared rule and holds no copy of its own
+not ok 3 - the pushed screens of the workspace belong to the Attendance tab
+ok 4 - the selected tab is never colour alone
+not ok 5 - a screen reader is told which tab is current
+not ok 6 - a long label truncates inside its own half of the row
+ok 7 - the underline does not change height with the state
+# pass 3
+# fail 4
+--- against the fixed tree ---
+# pass 7
+# fail 0
+
+-- 3b. re-run after tightening: the fail-first above showed claim 4
+   passing on the pre-fix tree, because a whole-file search found the
+   string on NavPill. Scoped to the row, the pre-fix tree now reads: --
+
+ok 1 - the spec is looking at a real tree
+not ok 2 - the row asks the shared rule and holds no copy of its own
+not ok 3 - the pushed screens of the workspace belong to the Attendance tab
+not ok 4 - the selected tab is never colour alone
+not ok 5 - a screen reader is told which tab is current
+not ok 6 - a long label truncates inside its own half of the row
+ok 7 - the underline does not change height with the state
+# pass 2
+# fail 5
+--- against the fixed tree ---
+# pass 7
+# fail 0

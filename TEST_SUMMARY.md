@@ -1,3 +1,64 @@
+## FAIL-FIRST — the week's attendance, and the tab you are on (10-Sep-2026)
+
+Requested twice: attendance uploaded for four days read **Awaiting upload** on the course
+screen while the Overview showed 24% for the same course and week — *"I just have tested the
+same and the bug still open"*; and, separately, *"the Attendance tab is selected, but the
+selected state is not visually clear to the end user."*
+
+Full transcript of every run below: `.evidence/attendance-week-row-cap-fail-first.txt`.
+
+FAIL-FIRST: `src/data/pagedReads.test.ts` is new, 4 assertions, and it was run twice against
+a reconstructed defect. Reverting the `attendance_records` read to the single unpaged request
+that shipped → 1 of 4 failed, naming the file, the line and the table: *"src/data/repository.ts:2184
+reads attendance_records without pageAll()."* Restoring the paging but deleting its `.order('id')`
+→ a different 1 of 4 failed: *"a range() into an unordered result is an OFFSET into nothing."*
+Both green again on restore. This is the rung that stops the class returning, so it mattered
+that each half of it can fail on its own.
+
+FAIL-FIRST: `src/data/pageAll.test.ts` is new, 9 assertions. `pageAll` reduced to a single
+request — which is precisely what `fetchAttendance` did before the fix — failed 5 of 9,
+including "a table LARGER than one page comes back whole" and "a page that FAILS is returned
+as a failure, never as a short answer". The 4 that still passed are the small-table and
+constant cases, which the defect never touched.
+
+FAIL-FIRST: `src/components/shellTabSelected.test.ts` is new, 7 assertions, and this one was
+run against **the code that actually shipped** rather than an injected defect — `HEAD~1`
+exported to a temporary root and read through the spec's own `SHELL_TAB_SPEC_ROOT` override.
+5 of 7 failed.
+
+**And the first run of it found a hole in the spec itself, which is the reason for running
+these at all.** Claim 4, "the selected tab is never colour alone", PASSED against the pre-fix
+tree — a tree that had no filled ground on the tab at all. It passed because the assertion
+searched the whole of `AppShell.tsx` and found the string on `NavPill`, a different control
+two hundred lines below that has always had it. A whole-file search is a claim about the file;
+every claim in that spec is about one row of it. The spec now slices the header row out first
+(`tabRow()`), and against the pre-fix tree claim 4 fails with the other four. The negative
+assertion — that the old inline clause has not come back — is deliberately still asked of the
+whole file, because a copy of it hoisted into a helper one line above the row is the same
+defect.
+
+Claim 7, "the underline does not change height with the state", passes on both trees. It was
+already true and is a guard against a regression, not evidence of one. Said here rather than
+quietly counted among the five.
+
+FAILFIRST-NA: `src/data/access.test.ts` gained 7 assertions rather than being a new file, so
+the guard does not ask for evidence — but they were run against the pre-fix rule anyway, since
+`tabActive` is where the defect actually lived. "a COURSE DETAIL lights Attendance and
+Attendance ALONE" and "exactly ONE tab is ever lit" are the two the shipped expression could
+not satisfy: it answered `true` for every tab on `/course/...` and `false` for every tab on
+`/member/...`.
+
+NOT OBSERVED FAILING: the fix itself was not exercised against the live project. The defect
+needs more than 1,000 attendance records in one week to appear, and this session has read
+access to production but does not write to it (CLAUDE.md: the live project is never an
+automated target). What WAS taken from production, and is what the diagnosis rests on: the
+edge logs, where every `GET /rest/v1/attendance_records` answers
+`Content-Range: 0-999/*`; the row counts, 2,220 in the week against a 1,000-row reply; and the
+primary key of every table this change now orders by, checked so the paging order is total.
+The remaining unverified step is the round trip in a browser, which needs a deploy.
+
+---
+
 ## FAIL-FIRST — SES feedback and unsubscribe (09-Sep-2026)
 
 Requested: close the two code-side gaps AWS asked about for production access
