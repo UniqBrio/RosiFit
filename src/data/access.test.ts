@@ -12,6 +12,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ADMIN_HOME, STAFF_HOME, homeHref, homeMatch, tabVisible, isAdminOnlyPath,
+  tabActive, type ShellTab,
 } from './access';
 
 test('home is the dashboard for the super admin and Attendance for staff', () => {
@@ -59,4 +60,74 @@ test('the screens staff DO get are not withheld', () => {
                    '/help', '/course/c1', '/member/m1']) {
     assert.equal(isAdminOnlyPath(p), false, `${p} must stay open to staff`);
   }
+});
+
+/* ------------------------------------------------------------- which tab is lit
+ *
+ * The header row is two tabs and its whole job is to say which one you are on.
+ * It said "both" on every course detail and "neither" on every member detail,
+ * because the prefix clause was evaluated per tab and mentioned no tab. These
+ * are the shapes that were wrong, and the boundary that keeps the fix honest.
+ */
+
+// The two tabs exactly as src/components/AppShell.tsx declares them.
+const OVERVIEW: ShellTab = { match: '/', also: [] };
+const ATTENDANCE: ShellTab = {
+  match: '/courses', also: ['/members', '/weekly', '/attendance'],
+  under: ['/course', '/member'],
+};
+
+test('a tab is lit on its own landing screen', () => {
+  assert.equal(tabActive(OVERVIEW, '/'), true);
+  assert.equal(tabActive(ATTENDANCE, '/courses'), true);
+});
+
+test('the other screens of the workspace light Attendance', () => {
+  for (const p of ['/members', '/weekly', '/attendance']) {
+    assert.equal(tabActive(ATTENDANCE, p), true, `${p} is the Attendance workspace`);
+  }
+});
+
+test('a COURSE DETAIL lights Attendance and Attendance ALONE', () => {
+  // The defect itself. `path.startsWith('/course/')` sat outside the tab it
+  // described, so both words went accent-ink and both carried the bar, and the
+  // row that exists to say where you are said "both".
+  assert.equal(tabActive(ATTENDANCE, '/course/daadccd0-5b37-44e4-be54-2feae1a370c3'), true);
+  assert.equal(tabActive(OVERVIEW, '/course/daadccd0-5b37-44e4-be54-2feae1a370c3'), false);
+});
+
+test('a MEMBER DETAIL lights Attendance too, where nothing used to be lit', () => {
+  // The same clause under-answered as well: '/member/m1' is in no `also` and
+  // matched no prefix, so the row went blank in the middle of the workspace.
+  assert.equal(tabActive(ATTENDANCE, '/member/m1'), true);
+  assert.equal(tabActive(OVERVIEW, '/member/m1'), false);
+});
+
+test('exactly ONE tab is ever lit, on every screen the shell draws', () => {
+  // The claim the row actually has to keep, asserted over the set rather than
+  // one path at a time -- a per-path test passes happily while some other path
+  // lights two.
+  for (const p of ['/', '/courses', '/members', '/weekly', '/attendance',
+                   '/course/c1', '/member/m1', '/course/c1/edit']) {
+    const lit = [OVERVIEW, ATTENDANCE].filter(t => tabActive(t, p));
+    assert.equal(lit.length, 1, `${p} lights ${lit.length} tabs; a tab row must light exactly one`);
+  }
+});
+
+test('a prefix claims the screens UNDER it, never a longer word', () => {
+  // '/members' is the member LIST -- an Attendance screen by its own `also`,
+  // not a detail screen swept up by a '/member' prefix. Without the boundary
+  // the two are indistinguishable, and the next route named '/coursework'
+  // would be swallowed whole.
+  assert.equal(tabActive({ match: '/x', also: [], under: ['/member'] }, '/members'), false);
+  assert.equal(tabActive({ match: '/x', also: [], under: ['/course'] }, '/coursework'), false);
+  assert.equal(tabActive({ match: '/x', also: [], under: ['/course'] }, '/course'), true);
+  assert.equal(tabActive({ match: '/x', also: [], under: ['/course'] }, '/course/c1'), true);
+});
+
+test('a tab with no `under` is not broken by its absence', () => {
+  // Overview declares none, and an optional field read without a default is
+  // how a rule that works for one tab throws for the other.
+  assert.equal(tabActive(OVERVIEW, '/course/c1'), false);
+  assert.equal(tabActive(OVERVIEW, '/'), true);
 });

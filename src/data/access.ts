@@ -50,6 +50,48 @@ export function tabVisible(route: string, isSuperAdmin: boolean): boolean {
 }
 
 /**
+ * WHICH TAB IS LIT, for the academy header's underline row.
+ *
+ * The row had this rule inline, and it read:
+ *
+ *     path === t.match || t.also.includes(path) || path.startsWith('/course/')
+ *
+ * The last clause is not about a tab. It is evaluated once PER TAB and has no
+ * `t` in it, so on any course detail it answered true for EVERY tab -- both
+ * words in the accent ink, both carrying the accent bar, and a row whose whole
+ * job is to say where you are saying "both". A tab strip that cannot name the
+ * current tab is the one thing a tab strip has to do.
+ *
+ * It also under-answered. A member detail is `/member/<id>`, which is in no
+ * tab's `also` and matches no prefix, so that screen lit NOTHING: the row went
+ * blank in the middle of the Attendance workspace.
+ *
+ * So the prefixes belong TO A TAB, as `under`. Attendance is a SECTION -- the
+ * course list, a course's detail, the member list, a member's detail, the
+ * weekly review and the register are one workspace -- and `under` is how a tab
+ * claims the screens pushed beneath it. `also` stays for exact pathnames.
+ *
+ * The boundary matters: `/members` must not be claimed by a `/member` prefix
+ * as though it were a detail screen, and it is not, because a prefix only
+ * matches the path itself or the path plus a `/`. That is the same boundary
+ * `isAdminOnlyPath` draws, for the same reason.
+ */
+export type ShellTab = {
+  /** the exact pathname this tab lands on */
+  match: string;
+  /** other exact pathnames that ARE this tab */
+  also: string[];
+  /** path prefixes pushed beneath this tab -- `/course` claims `/course/c1` */
+  under?: string[];
+};
+
+export function tabActive(tab: ShellTab, path: string): boolean {
+  if (path === tab.match) return true;
+  if (tab.also.includes(path)) return true;
+  return (tab.under ?? []).some(p => path === p || path.startsWith(`${p}/`));
+}
+
+/**
  * Screens a staff account may not open, whatever the navigation offers.
  *
  * These are the two the RLS policies already refuse -- `app_users_read` and
