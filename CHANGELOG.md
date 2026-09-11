@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased — The greyed-out Reset says what would make it work
+
+**Reset was grey and silent.** On a day whose attendance file has not arrived, the Reset button
+beside the date is greyed out, and until now that was all it said. Nothing told you whether it was
+broken, whether it was not yours to use, or whether something simply had to happen first. It is
+always the third.
+
+**Hover it, or tap it, and it tells you.** A small note appears under the button: *"Reset becomes
+available once an attendance file has been uploaded for Mon, 7 Sept."* On a day whose file HAS
+arrived but where nobody is ticked, it says that instead, because that is the real reason on most
+days and blaming the upload would have been wrong.
+
+**It works on a phone, not just a mouse.** Tap the dead button and the note stays up long enough
+to read, then withdraws on its own. Tapping anywhere else dismisses it. This mattered enough to
+build properly: a note that only appears on hover is a note nobody using the app in a studio would
+ever see.
+
+**Nothing about Reset itself has changed.** It still needs a file and ticked members, it still acts
+only on the members you ticked, and it still asks before it clears anything. The only thing that is
+new is that it now explains itself.
+
 ## Unreleased — A course's week shows the attendance that was uploaded
 
 **Attendance that had been uploaded read "Awaiting upload" on the course screen.** Open General

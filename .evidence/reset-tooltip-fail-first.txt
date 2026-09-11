@@ -1,0 +1,49 @@
+FAIL-FIRST — the Reset tooltip (11-Sep-2026)
+
+================================================================
+1. src/components/resetTooltip.test.ts against the PRE-FIX tree
+================================================================
+HEAD (the merge of PR #13) exported to a temp root and read through the
+spec's own RESET_TOOLTIP_SPEC_ROOT override. The code that shipped, not
+an injected defect. Tooltip.tsx does not exist there, so the spec must
+say so rather than throw.
+
+not ok 1 - the spec is looking at a real tree
+not ok 2 - the dead button names the ACT that would make it live
+ok 3 - the other reason is still there, so the button never says the wrong one
+not ok 4 - the bubble and the screen-reader label are ONE expression
+ok 5 - `why` is null exactly when the button works
+not ok 6 - the tooltip WRAPS the reset button
+not ok 7 - the wrapper listens for pointers, because the button cannot
+not ok 8 - a tap is handled, not only a hover
+not ok 9 - the bubble never swallows a press meant for the control
+not ok 10 - the bubble is hidden from screen readers, which already have the label
+not ok 11 - a control with nothing to explain carries no wrapper at all
+not ok 12 - the bubble uses a colour pair the contrast gate already measures
+# pass 2
+# fail 10
+--- against the fixed tree ---
+# pass 12
+# fail 0
+
+-- 1b. re-run after tightening. The fail-first above showed claim 5
+   passing on a tree with no `why` expression at all: asked of the whole
+   file, its regex matched an unrelated ternary. Scoped to the expression: --
+
+not ok 1 - the spec is looking at a real tree
+not ok 2 - the dead button names the ACT that would make it live
+ok 3 - the other reason is still there, so the button never says the wrong one
+not ok 4 - the bubble and the screen-reader label are ONE expression
+not ok 5 - `why` is null exactly when the button works
+not ok 6 - the tooltip WRAPS the reset button
+not ok 7 - the wrapper listens for pointers, because the button cannot
+not ok 8 - a tap is handled, not only a hover
+not ok 9 - the bubble never swallows a press meant for the control
+not ok 10 - the bubble is hidden from screen readers, which already have the label
+not ok 11 - a control with nothing to explain carries no wrapper at all
+not ok 12 - the bubble uses a colour pair the contrast gate already measures
+# pass 1
+# fail 11
+--- against the fixed tree ---
+# pass 12
+# fail 0

@@ -19,6 +19,7 @@ import {
   attendanceResetPreview, resetDayAttendance, bulkDeleteMembers,
 } from '../../src/data/repository';
 import { ResetRegisterDialog } from '../../src/components/ResetRegisterDialog';
+import { Tooltip } from '../../src/components/Tooltip';
 import {
   resetPreview, resetOutcome, resetFailure,
   type ResetPreview, type ResetTarget, deleteWarning,
@@ -1226,17 +1227,43 @@ function CourseDetailBody() {
                   const noneTicked = selected.size === 0;
                   const nothingToReset = noMarks || noneTicked;
                   const ink = nothingToReset ? theme.dim : dangerInk;
+
+                  /* WHY IT IS DEAD, WRITTEN ONCE AND SAID TWICE.
+                     `null` when the button works, which is also how the
+                     tooltip knows it has nothing to explain.
+
+                     It reaches a sighted person as the bubble and a screen
+                     reader as this control's own label, and those two must be
+                     the same sentence: two wordings of one reason is how the
+                     screen and the reader come to disagree about why somebody
+                     cannot do what they are trying to do.
+
+                     The first branch is the requester's, 11-Sep-2026: *"add a
+                     tooltip as this will be enable only after first upload of
+                     attendance file"*. It names the ACT that would change the
+                     answer -- uploading a file for this day -- rather than
+                     describing the state, because "no attendance is recorded"
+                     told somebody what was wrong and not what to do. */
+                  const why = noMarks
+                    ? `Reset becomes available once an attendance file has been uploaded for ${dayInWords(chosen.iso)}`
+                    : noneTicked
+                      ? `Nothing to reset for ${dayInWords(chosen.iso)} — tick the members whose marks to clear first`
+                      : null;
+                  const label = why
+                    ?? `Reset the marks of ${selected.size} selected ${selected.size === 1 ? 'member' : 'members'} for ${dayInWords(chosen.iso)}`;
                   return (
+                    /* The tooltip WRAPS the button rather than sitting on it.
+                       A disabled Pressable on this platform receives no
+                       pointer events, no hover and no focus, so nothing hung
+                       on the button itself could ever be triggered -- see
+                       src/components/Tooltip.tsx and KL-006. */
+                    <Tooltip text={why} testID="course-day-reset-why">
                     <Pressable testID="course-day-reset"
                       onPress={() => void openReset()}
                       disabled={nothingToReset}
                       accessibilityRole="button"
                       accessibilityState={{ disabled: nothingToReset }}
-                      accessibilityLabel={noMarks
-                        ? `Nothing to reset for ${dayInWords(chosen.iso)} — no attendance is recorded on that day`
-                        : noneTicked
-                          ? `Nothing to reset for ${dayInWords(chosen.iso)} — tick the members whose marks to clear first`
-                          : `Reset the marks of ${selected.size} selected ${selected.size === 1 ? 'member' : 'members'} for ${dayInWords(chosen.iso)}`}
+                      accessibilityLabel={label}
                       style={({ pressed }) => ({
                         flexDirection: 'row', alignItems: 'center', gap: 5,
                         minHeight: 30, paddingHorizontal: 10, borderRadius: RADIUS.sm,
@@ -1254,6 +1281,7 @@ function CourseDetailBody() {
                         Reset
                       </Text>
                     </Pressable>
+                    </Tooltip>
                   );
                 })()}
               </View>
