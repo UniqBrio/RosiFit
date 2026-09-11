@@ -1,3 +1,164 @@
+## FAIL-FIRST — the week's attendance, and the tab you are on (10-Sep-2026)
+
+Requested twice: attendance uploaded for four days read **Awaiting upload** on the course
+screen while the Overview showed 24% for the same course and week — *"I just have tested the
+same and the bug still open"*; and, separately, *"the Attendance tab is selected, but the
+selected state is not visually clear to the end user."*
+
+Full transcript of every run below: `.evidence/attendance-week-row-cap-fail-first.txt`.
+
+FAIL-FIRST: `src/data/pagedReads.test.ts` is new, 4 assertions, and it was run twice against
+a reconstructed defect. Reverting the `attendance_records` read to the single unpaged request
+that shipped → 1 of 4 failed, naming the file, the line and the table: *"src/data/repository.ts:2184
+reads attendance_records without pageAll()."* Restoring the paging but deleting its `.order('id')`
+→ a different 1 of 4 failed: *"a range() into an unordered result is an OFFSET into nothing."*
+Both green again on restore. This is the rung that stops the class returning, so it mattered
+that each half of it can fail on its own.
+
+FAIL-FIRST: `src/data/pageAll.test.ts` is new, 9 assertions. `pageAll` reduced to a single
+request — which is precisely what `fetchAttendance` did before the fix — failed 5 of 9,
+including "a table LARGER than one page comes back whole" and "a page that FAILS is returned
+as a failure, never as a short answer". The 4 that still passed are the small-table and
+constant cases, which the defect never touched.
+
+FAIL-FIRST: `src/components/shellTabSelected.test.ts` is new, 7 assertions, and this one was
+run against **the code that actually shipped** rather than an injected defect — `HEAD~1`
+exported to a temporary root and read through the spec's own `SHELL_TAB_SPEC_ROOT` override.
+5 of 7 failed.
+
+**And the first run of it found a hole in the spec itself, which is the reason for running
+these at all.** Claim 4, "the selected tab is never colour alone", PASSED against the pre-fix
+tree — a tree that had no filled ground on the tab at all. It passed because the assertion
+searched the whole of `AppShell.tsx` and found the string on `NavPill`, a different control
+two hundred lines below that has always had it. A whole-file search is a claim about the file;
+every claim in that spec is about one row of it. The spec now slices the header row out first
+(`tabRow()`), and against the pre-fix tree claim 4 fails with the other four. The negative
+assertion — that the old inline clause has not come back — is deliberately still asked of the
+whole file, because a copy of it hoisted into a helper one line above the row is the same
+defect.
+
+Claim 7, "the underline does not change height with the state", passes on both trees. It was
+already true and is a guard against a regression, not evidence of one. Said here rather than
+quietly counted among the five.
+
+FAILFIRST-NA: `src/data/access.test.ts` gained 7 assertions rather than being a new file, so
+the guard does not ask for evidence — but they were run against the pre-fix rule anyway, since
+`tabActive` is where the defect actually lived. "a COURSE DETAIL lights Attendance and
+Attendance ALONE" and "exactly ONE tab is ever lit" are the two the shipped expression could
+not satisfy: it answered `true` for every tab on `/course/...` and `false` for every tab on
+`/member/...`.
+
+VERIFIED AGAINST PRODUCTION'S OWN ROWS, 11-Sep-2026, read-only. The three requests the fixed
+`fetchAttendance` now makes were replayed as SQL over the nine session ids of that week
+(`order by id limit 1000 offset 0 / 1000 / 2000`):
+
+| | |
+|---|---|
+| Rows returned by the three pages | 2,220 |
+| Distinct among them | 2,220 — no page repeats a row |
+| Rows that exist | 2,220 — no page skips a row |
+| Size of page 3 | 220 — short, so the loop ends there and asks no fourth |
+| General's rows recovered | 881, which is 61 + 259 + 276 + 285 |
+
+881 is Monday through Thursday, the four days that read "Awaiting upload". The unique
+`.order()` is doing exactly the job it is there for: with it the three pages partition the
+week exactly, and without it the same three offsets over an unordered scan have no such
+guarantee. This is the claim the fix rests on and it is now measured rather than argued.
+
+NOT OBSERVED: the round trip in a browser. The partition is proved; the client loop and the
+rendered day strip are not. The Vercel preview for the pull request built and is Ready, but
+the app is behind mobile + PIN sign-in, and `docs/registers/TEST_ACCOUNTS.md` records that the
+only account in existence is a real person's real credential on the only live project there
+is, never to be used as a test account. So that last step belongs to a human holding that
+credential: open General for 7–13 Sep 2026 and read the four days. Said here rather than
+counted as done.
+
+---
+
+## Gate baseline for 10-Sep-2026 — read the run below against THIS
+
+The gate run recorded below is FAIL, and **every one of its failures is also a failure on
+`main` with this change stashed**. Both verdicts were taken on the same tree, minutes apart,
+and they are step-for-step identical. Stating that here rather than leaving the reader to
+infer it, because "the gate went red on the change that landed" is exactly the wrong
+conclusion to draw from an unqualified FAIL.
+
+| Step | Why it fails | Mine? |
+|---|---|---|
+| G1 · G2 · G3 | The runner calls `scripts/check-contrast.mjs`, a framework-seed script that reads `design/tokens.json`. This app has no such file — its tokens are TypeScript, and its real contrast gate is `scripts/check-contrast.ts`, which passes **2,842/2,842 pairs** including every pair this change draws. A seed script the app never adopted, blocking on a file the app never had. | No |
+| G6 | BLOCKED — no local `eslint`. Unchanged. | No |
+| G7 · G8 | Six specs: one on the course-list filter shape (`formDropdownMenu.test.ts`) and five on the message token map. Pre-existing, and in areas this change does not touch. The same six fail on `main`. | No |
+
+What this change contributes to the suite: **+34 passing specs, 0 new failures** (1,441 → 1,468
+passing, 6 → 6 failing). `npm run audit:all` is green with no new violations in any of its nine
+sweeps.
+
+The six red specs and the seed-script mismatch are real debt and are somebody's next piece of
+work. They are not this one, and pretending otherwise by quietly re-baselining them would hide
+them.
+
+---
+
+## Gate run - 2026-09-10 - VERDICT: FAIL
+
+Steps: 5 pass, 5 fail, 1 blocked.
+Time: 19.5s total - slowest G7 Unit + pure specs (12.9s).
+
+- **G1 Theme artifacts in sync** - FAIL (49ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (49ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (47ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (68ms)
+- **G5 Types** - PASS (6.0s)
+- **G6 Lint** - BLOCKED (-) - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - FAIL (12.9s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: a form asked for a record answers a failed read
+ok 169 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 170 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 183 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+  name: 'AssertionError'
+  expected: true
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+ok 300 - a ring is never a colour alone, and nothing expected is a dash
+# Subtest: a failed reset keeps the dialog open, carrying the reason
+ok 337 - a failed reset keeps the dialog open, carrying the reason
+```
+
+- **G8 Functional / integration** - FAIL (133ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (58ms)
+- **G10 Backward compatibility (fixtures)** - PASS (112ms)
+- **G11 Wide tables are configurable** - PASS (53ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
 ## FAIL-FIRST — SES feedback and unsubscribe (09-Sep-2026)
 
 Requested: close the two code-side gaps AWS asked about for production access
@@ -66,6 +227,126 @@ helper above and by the SQL spec. Their request handling has never been
 executed. That is the honest gap, and it is why the deploy checklist treats the
 first real SNS notification and the first real link click as the verification,
 not as a formality.
+
+---
+
+## Gate run - 2026-09-10 - VERDICT: FAIL
+
+Steps: 5 pass, 5 fail, 1 blocked.
+Time: 19.5s total - slowest G7 Unit + pure specs (13.0s).
+
+- **G1 Theme artifacts in sync** - FAIL (50ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (47ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (50ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (64ms)
+- **G5 Types** - PASS (5.9s)
+- **G6 Lint** - BLOCKED (-) - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - FAIL (13.0s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: a form asked for a record answers a failed read
+ok 169 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 170 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 183 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+  name: 'AssertionError'
+  expected: true
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+ok 300 - a ring is never a colour alone, and nothing expected is a dash
+# Subtest: a failed reset keeps the dialog open, carrying the reason
+ok 337 - a failed reset keeps the dialog open, carrying the reason
+```
+
+- **G8 Functional / integration** - FAIL (122ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (47ms)
+- **G10 Backward compatibility (fixtures)** - PASS (109ms)
+- **G11 Wide tables are configurable** - PASS (54ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-10 - VERDICT: FAIL
+
+Steps: 5 pass, 5 fail, 1 blocked.
+Time: 18.2s total - slowest G7 Unit + pure specs (12.3s).
+
+- **G1 Theme artifacts in sync** - FAIL (47ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (41ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (41ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (63ms)
+- **G5 Types** - PASS (5.4s)
+- **G6 Lint** - BLOCKED (-) - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - FAIL (12.3s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: a form asked for a record answers a failed read
+ok 169 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 170 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 183 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+  name: 'AssertionError'
+  expected: true
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+ok 300 - a ring is never a colour alone, and nothing expected is a dash
+# Subtest: a failed reset keeps the dialog open, carrying the reason
+ok 337 - a failed reset keeps the dialog open, carrying the reason
+```
+
+- **G8 Functional / integration** - FAIL (121ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (46ms)
+- **G10 Backward compatibility (fixtures)** - PASS (106ms)
+- **G11 Wide tables are configurable** - PASS (51ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

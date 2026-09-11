@@ -1,5 +1,48 @@
 # Changelog
 
+## Unreleased — A course's week shows the attendance that was uploaded
+
+**Attendance that had been uploaded read "Awaiting upload" on the course screen.** Open General
+for the week of 7 September and Monday through Thursday each said *Awaiting upload*, and every
+member on the roster said *Yet to mark* — while the Overview, for the same course and the same
+week, said 24% present. The Overview was right. The course screen was reading a reply that had
+been cut short.
+
+**Why it was cut short.** The screen asked the database for the whole week's attendance in one
+request. The database will only ever send a thousand rows to one request, and — this is the part
+that made it hard to see — it does not call that an error. It answers normally, with a thousand
+rows, and says nothing about the rest. That week held 2,220. The rows that did not fit were not
+missing from the database; they were missing from the answer, and which ones were left out was
+arbitrary. General's four uploaded days happened to be among them.
+
+**The screen now reads the whole week, a thousand rows at a time, until there are no more.** The
+same is true of the member list, the addresses, the alternate names, the enrolments and the
+figures behind them — five lists that were each within a hundred rows of the same ceiling and
+would have started losing members within weeks. Nothing about how attendance is uploaded, stored
+or counted has changed; what changed is that the screen now receives all of it.
+
+**One thing this does not fix, said plainly.** Any attendance already uploaded is intact and will
+now appear — nothing was lost and nothing needs re-uploading. But a week that is very large will
+take a moment longer to draw than it used to, because reading all of it means more than one
+request. That is the correct trade: a slower true answer beats an instant wrong one.
+
+## Unreleased — The tab you are on is the tab that looks selected
+
+**On a course screen, both tabs looked selected at once.** Overview and Attendance were both
+drawn in the accent colour, both carrying the bar beneath — so the row whose whole job is to say
+where you are was saying "both", and there was nothing to read in it. On a member's screen the
+opposite happened and neither tab was lit.
+
+**Now exactly one tab is selected, and it is the right one.** A course and a member both belong to
+the Attendance workspace, so Attendance is what lights on them.
+
+**And the selected tab is harder to miss.** It carries four signals rather than two: the heavier
+word, the accent ink, a filled ground behind the label and the bar underneath. Three of those four
+survive a greyscale screen, a colour-blind reader and daylight on a phone. The row keeps its shape
+when you tap — nothing moves — and a long label shortens inside its own half rather than pushing
+the other tab off a narrow screen. Screen readers are now told which tab is current, which they
+were not.
+
 ## Unreleased — Dates read the same way everywhere: 10-Oct-2026
 
 **Every date the academy reads or types is now written the same way — 10-Oct-2026.** The month is

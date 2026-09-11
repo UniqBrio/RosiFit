@@ -59,6 +59,152 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-040 — the header tab row lit EVERY tab on a course detail, and none on a member's
+**Date:** 10-Sep-2026  ·  **Severity:** S3  ·  **Modules:** `src/components/AppShell.tsx`, `src/data/access.ts`
+
+**Symptom** — reported from the deployed app, on a course screen: *"the Attendance tab
+is selected, but the selected state is not visually clear to the end user."* It was not
+clear because it was not true. Both words were drawn selected at once, so the row that
+exists to say where you are said "both" — and there is nothing to read in that.
+
+**Root cause** — the rule was written inline in the row's `.map(...)`:
+
+```
+path === t.match || t.also.includes(path) || path.startsWith('/course/')
+```
+
+The third clause contains no `t`. It is a statement about the SCREEN, evaluated once per
+TAB, so on any `/course/...` path it answered true for every tab in the list. The same
+clause under-answered as well: a member detail is `/member/<id>`, which is in no tab's
+`also` and matches no prefix, so that screen lit nothing at all. One expression, both
+failure directions, and neither visible until a second tab existed to disagree with the
+first.
+
+**Fix** — the prefixes belong to a tab, not to the row. `tabActive(tab, path)` in
+`src/data/access.ts` takes the tab and answers for it; a tab declares the screens pushed
+beneath it as `under: ['/course', '/member']`, matched on the path itself or the path plus
+a `/` so `/members` is not swallowed as though it were a detail screen. The row calls the
+rule instead of holding a copy, which is what `access.ts` already exists for — it holds
+the four other chrome rules for exactly this reason.
+
+Separately, and because the report asked for it: the selected tab now carries FOUR
+signals rather than two — its weight, its ink, a filled `control` ground (the same
+"selected" language the floating nav pill already speaks) and the accent bar beneath. The
+bar's height no longer changes with the state, so the row cannot reflow on a tap, and the
+ground is capped at `maxWidth: '100%'` around a `numberOfLines={1}` label so a long label
+truncates inside its own half instead of pushing its neighbour off a narrow screen. The
+row also emits `aria-selected` now: `accessibilityState` reaches the DOM as nothing on
+this platform, which `TabStrip` had already found and had already named this row as the
+place that still had the gap.
+
+**Files** — `src/data/access.ts` (`tabActive`, `ShellTab`), `src/components/AppShell.tsx`
+(`TABS`, the header tab row).
+
+**How to verify** — open a course detail and a member detail. Exactly one tab is drawn
+selected on each, and it is Attendance. In specs: `src/data/access.test.ts` →
+"exactly ONE tab is ever lit, on every screen the shell draws", which asserts over the set
+of paths rather than one path at a time; a per-path assertion passes happily while some
+other path lights two.
+
+**Recurrence risk** — the class is *a per-item predicate with a clause that does not
+mention the item*. Searched `src/` and `app/` for `startsWith(` inside a `.map(` body:
+this was the only one. The two nav pills were checked directly and both ask
+`path === n.match || n.also?.includes(path)`, which mentions `n` in every clause — they
+under-answer on pushed screens rather than over-answer, and that is the existing
+behaviour, not this defect.
+
+**Prevention** — `rung: src/components/shellTabSelected.test.ts` (the row asks the shared
+rule and holds no copy of its own) and `rung: src/data/access.test.ts` (exactly one tab is
+ever lit). Both fail on the previous code.
+
+**Process check** — would a correct process have caught this? Yes. `access.ts` was created
+precisely so the chrome's rules would live in one tested place, and its own header lists
+the five sites that ask it — but "which tab is lit" was never moved there, so it stayed
+inline and untested while its neighbours were covered. A module created to hold a class of
+rule must be given the WHOLE class; a rule left behind in the code the module was extracted
+from is the one nobody notices is uncovered.
+
+---
+
+## RC-039 — a week of attendance stopped at the API's 1000-row cap, so an uploaded course read "Awaiting upload"
+**Date:** 10-Sep-2026  ·  **Severity:** S2  ·  **Modules:** `src/data/repository.ts`, `src/data/pageAll.ts`
+
+**Symptom** — reported twice, the second time as *"I just have tested the same and the bug
+still open"*: the course screen for General showed **Awaiting upload** on Mon, Tue, Wed and
+Thu of 7–13 Sep 2026, and every member on the roster read *Yet to mark* — while the
+Overview, two taps away, showed **24% present** for the same course, the same branches and
+the same week. Four days of files had been uploaded and the screen with the upload button
+on it said they had not.
+
+**Root cause** — `fetchAttendance` read the week's `attendance_records` in ONE request.
+PostgREST wraps every request in `LIMIT <max-rows> OFFSET 0`, and on this project
+`max-rows` is 1000 — confirmed from the project's own edge logs, where every single
+`GET /rest/v1/attendance_records` answers `200` with `Content-Range: 0-999/*`. **A request
+that hits that ceiling is not an error.** supabase-js reports `error: null`, and nothing in
+the client can tell that reply apart from a table that genuinely holds 1000 rows. The week
+of 7 Sep held **2,220** records across three courses, so 1,220 of them silently were not
+there. Which 1,220 is not even stable: the query carries no `ORDER BY`, so Postgres returns
+whatever the scan reaches first. General's four uploaded days fell outside the cut, the
+strip derived `awaiting` from zero rows exactly as it is written to, and the roster derived
+*Yet to mark* from the same absence. The Overview disagreed because it never ships rows at
+all — `member_period_metrics` aggregates inside Postgres and returns one row per member.
+
+The truncation had been happening for some time and was invisible while the academy was
+smaller. It became a visible defect on the day the week's records passed 1000.
+
+**Fix** — `src/data/pageAll.ts`: a read of an unbounded set keeps asking, `.range(from, to)`
+at a time, until a page comes back SHORT — the one signal that means "that was the end"
+rather than "that was as much as I will send". A bigger `.limit()` is the same defect with a
+later birthday and cannot exceed `max-rows` anyway; PostgREST takes the smaller of the two.
+Every paged query carries a UNIQUE `.order(...)`, because `range()` is `OFFSET`, and an
+OFFSET into an unordered result can hand back the same row twice and never hand back
+another. A failed page is returned as a failure and paging stops: half a table with
+`error: null` is the defect, not a degraded success.
+
+Applied to the reported read and to the other reads that are unbounded BY CONSTRUCTION.
+Those are not speculative: `member_stats` (925 rows), `members` (924), `member_enrollments`
+(901), `member_aliases` (727) and `member_emails` (703) are all read whole by
+`fetchMembers`, which feeds every screen in the app, and all five were within 10% of the
+same cliff on the day this was fixed.
+
+**Files** — `src/data/pageAll.ts` (new), `src/data/repository.ts` (`fetchAttendance`,
+`fetchMembers`, `fetchBranchUsage`).
+
+**How to verify** — with more than 1000 attendance records in one week across the academy,
+open a course whose records fall in the second thousand; its uploaded days must read
+Present/Absent, not Awaiting upload. From the outside: no `GET /rest/v1/attendance_records`
+in the project's edge logs should answer `Content-Range: 0-999/*` any more — a full page is
+now always followed by a request for the next one. In specs:
+`src/data/pageAll.test.ts` → "a table LARGER than one page comes back whole".
+
+**Recurrence risk** — the class is *an unbounded read whose truncation is reported as
+success*, and it can occur at every `supabase.from(...).select(...)` in the app with no
+`.limit()` and no bounding `.in(...)`. Searched `src/data/repository.ts` for
+`supabase.from('<table>')` across the seven tables that grow with the academy: 14 sites,
+of which 9 are now paged and 4 are bounded by an id list that comes from a query carrying
+its own `.limit(...)` (the audit log twice, the notification tray, one member's own week)
+and 1 is an insert. `courses`, `branches` and `course_offerings` are deliberately excluded:
+they are counted in tens and are set by the academy rather than by its intake.
+
+**Prevention** — `rung: src/data/pagedReads.test.ts`. It reads `repository.ts` and fails
+the build if any of the seven growing tables is read without `pageAll(`, or if a paged read
+is missing its `.range(` or its `.order(`. The four bounded exemptions are listed IN that
+spec with the bound that makes each one safe, so an exemption that stops being true has
+somewhere to be found. Verified to fail first: reverting the `attendance_records` read to
+its unpaged form reproduces the failure, naming the file, the line and the table.
+
+**Process check** — would a correct process have caught this? Yes, and the gap is nameable.
+Every gate this project runs — typecheck, the unit suite, the contrast and icon sweeps, the
+local DB harness — proves things about code and about a database with fixture-sized data in
+it. **None of them has ever been run against a data volume the platform's own limits react
+to**, and this defect exists only above a threshold: identical code, identical schema, 999
+rows passes and 1001 rows lies. The harness cannot find it, because the harness has no data
+(the framework says so itself, about migrations). What was missing is the question "what
+does this read do when the table is ten times bigger than the fixture", asked at the point
+a read is written rather than at the point a user reports the answer.
+
+---
+
 ## RC-038 — a report re-uploaded untouched marks a future-dated leaver ACTIVE and clears their date
 **Date:** 09-Sep-2026  ·  **Severity:** S3  ·  **Modules:** `src/data/statusImport.ts`, `src/data/reportSheets.ts`
 

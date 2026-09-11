@@ -44,6 +44,10 @@ import {
   type AttendanceRow, type AttendanceStatus, type Holiday, type MemberSession,
 } from './mock';
 import { memberWeek, NO_SESSIONS_ROW, type MemberWeekSession } from './memberWeek';
+// Every read below that is unbounded BY CONSTRUCTION -- a whole table, or an
+// id list of member scale -- goes through this. PostgREST stops at 1000 rows
+// and calls it success; see src/data/pageAll.ts and RC-039.
+import { pageAll } from './pageAll';
 
 export const dataSource: 'live' | 'fixtures' = isConfigured ? 'live' : 'fixtures';
 
@@ -134,17 +138,23 @@ export async function fetchMembers(period: Period): Promise<Member[]> {
   // a new array is a new identity for every memo that depends on one.
   if (!isConfigured) return [...MEMBERS];
 
+  // SIX WHOLE-TABLE READS, every one of them at member scale, so every one of
+  // them is paged: at 1000 rows PostgREST stops and reports success, and a
+  // member list that quietly loses its tail takes the roster, the counts and
+  // the follow-up list with it (RC-039). `full_name` is not unique -- two
+  // members may share a name -- so the key is appended to make the order
+  // total; without a total order two pages can return the same row.
   const [membersRes, emailsRes, aliasesRes, statsRes, enrolRes, schedRes, metricsRes] = await Promise.all([
-    supabase.from('members').select('id, member_code, full_name, status, inactive_from, joined_on').is('deleted_at', null).order('full_name'),
-    supabase.from('member_emails').select('member_id, email, is_primary, status').is('deleted_at', null),
-    supabase.from('member_aliases').select('member_id, alias_display').eq('alias_type', 'name'),
+    pageAll((from, to) => supabase.from('members').select('id, member_code, full_name, status, inactive_from, joined_on').is('deleted_at', null).order('full_name').order('id').range(from, to)),
+    pageAll((from, to) => supabase.from('member_emails').select('member_id, email, is_primary, status').is('deleted_at', null).order('id').range(from, to)),
+    pageAll((from, to) => supabase.from('member_aliases').select('member_id, alias_display').eq('alias_type', 'name').order('id').range(from, to)),
     // last_present_date DATES the streak beside it. The run was printed bare
     // ("consecutive 6") beside a weekly miss count on a five-day course, which
     // is a number a reader can neither verify nor divide by anything on
     // screen; the day it counts back to is what makes it checkable.
-    supabase.from('member_stats').select('member_id, current_streak, last_present_date, last_emailed_at'),
-    supabase.from('member_enrollments').select('member_id, offering_id').eq('status', 'active'),
-    supabase.from('member_schedules').select('member_id, weekdays, effective_from, effective_to'),
+    pageAll((from, to) => supabase.from('member_stats').select('member_id, current_streak, last_present_date, last_emailed_at').order('member_id').range(from, to)),
+    pageAll((from, to) => supabase.from('member_enrollments').select('member_id, offering_id').eq('status', 'active').order('id').range(from, to)),
+    pageAll((from, to) => supabase.from('member_schedules').select('member_id, weekdays, effective_from, effective_to').order('id').range(from, to)),
     supabase.rpc('member_period_metrics', { p_from: period.from, p_to: period.to }),
   ]);
   if (membersRes.error) fail('Could not load members', membersRes.error);
@@ -765,7 +775,10 @@ export async function fetchBranchUsage(): Promise<BranchUsage[]> {
   const [branchesRes, offeringsRes, enrolRes] = await Promise.all([
     supabase.from('branches').select('id, name').is('deleted_at', null).order('name'),
     supabase.from('course_offerings').select('id, course_id, branch_id').is('deleted_at', null),
-    supabase.from('member_enrollments').select('member_id, offering_id').eq('status', 'active'),
+    // Whole table, member scale: paged, or a branch's member count is however
+    // many enrolments happened to fit in one reply (RC-039).
+    pageAll((from, to) => supabase.from('member_enrollments')
+      .select('member_id, offering_id').eq('status', 'active').order('id').range(from, to)),
   ]);
   if (branchesRes.error) fail('The branch list could not be loaded', branchesRes.error);
 
@@ -2158,9 +2171,21 @@ export async function fetchAttendance(period: Period): Promise<AttendanceRow[]> 
   const sessionIds = (sessions ?? []).map(s => s.id as string);
   if (sessionIds.length === 0) return [];
 
-  const { data: records, error: recordError } = await supabase.from('attendance_records')
-    .select('id, session_id, member_id, status, expected, minutes_in_call')
-    .in('session_id', sessionIds).is('deleted_at', null);
+  // THE READ RC-039 WAS ABOUT. A week of a busy academy is thousands of
+  // records -- 2,220 in the week of 7 Sep 2026 -- and PostgREST sends the
+  // first 1000 with `200 Content-Range: 0-999/*` and no error. Unpaged, the
+  // rows past the cut simply were not here, and because the query carries no
+  // order of its own it was arbitrary WHICH ones: an entire course's four
+  // uploaded days landed outside the reply, its week strip read "Awaiting
+  // upload", and its roster read "Yet to mark" for every member -- while the
+  // Overview, which aggregates in member_period_metrics and ships no rows,
+  // printed the true figure two taps away. `id` is the primary key, so the
+  // order is total and the pages cannot repeat or skip a row.
+  const { data: records, error: recordError } = await pageAll((from, to) =>
+    supabase.from('attendance_records')
+      .select('id, session_id, member_id, status, expected, minutes_in_call')
+      .in('session_id', sessionIds).is('deleted_at', null)
+      .order('id').range(from, to));
   if (recordError) fail('Could not load attendance', recordError);
   if (!records || records.length === 0) return [];
 
@@ -2170,7 +2195,10 @@ export async function fetchAttendance(period: Period): Promise<AttendanceRow[]> 
   const memberIds = [...new Set(records.map(r => r.member_id as string))];
   const offeringIds = [...new Set((sessions ?? []).map(s => s.offering_id as string))];
   const [membersRes, offeringsRes] = await Promise.all([
-    supabase.from('members').select('id, full_name').in('id', memberIds),
+    // The id list is every member who attended anything this week, so it is
+    // member-scale and paged for the same reason the records above are.
+    pageAll((from, to) => supabase.from('members').select('id, full_name')
+      .in('id', memberIds).order('id').range(from, to)),
     supabase.from('course_offerings').select('id, course_id, branch_id').in('id', offeringIds),
   ]);
   const courseIds = [...new Set((offeringsRes.data ?? []).map(o => o.course_id as string))];

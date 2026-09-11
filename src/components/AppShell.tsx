@@ -11,7 +11,7 @@ import { useTheme } from '../theme/ThemeProvider';
 import { RADIUS, SPACE, TAP_MIN } from '../theme/tokens';
 import { useNotifications } from '../data/hooks';
 import { useIdentity } from '../data/session';
-import { homeHref, homeMatch, tabVisible } from '../data/access';
+import { homeHref, homeMatch, tabVisible, tabActive, type ShellTab } from '../data/access';
 import { NotificationBell, NotificationsSheet } from './Notifications';
 
 /**
@@ -52,10 +52,14 @@ import { NotificationBell, NotificationsSheet } from './Notifications';
  * the row on its own, which is the correct shape for one tab rather than a
  * half-width tab beside a gap.
  */
-const TABS: { route: string; match: string; label: string; also: string[] }[] = [
+const TABS: (ShellTab & { route: string; label: string })[] = [
   { route: 'index', match: '/', label: 'Overview', also: [] },
   { route: 'courses', match: '/courses', label: 'Attendance',
-    also: ['/members', '/weekly', '/attendance'] },
+    also: ['/members', '/weekly', '/attendance'],
+    // The pushed screens of this workspace. They belong to THIS tab, which is
+    // the whole point: the prefix used to be tested outside the loop and so
+    // lit every tab at once. See tabActive in src/data/access.ts.
+    under: ['/course', '/member'] },
 ];
 
 type NavItem = { href: Href; match: string; icon: string; label: string; also?: string[] };
@@ -171,7 +175,11 @@ export function AcademyHeader({ navigation }: { navigation?: TabNavigation }) {
             one resolves the role again. Holding it does neither. */}
         {roleLoading ? <View style={{ flex: 1 }} /> : null}
         {TABS.filter(t => tabVisible(t.route, isSuperAdmin)).map(t => {
-          const on = path === t.match || t.also.includes(path) || path.startsWith('/course/');
+          // ONE rule, asked once per tab, and it takes the tab. See tabActive
+          // in src/data/access.ts for the two ways the inline version was
+          // wrong: it lit every tab on a course detail and lit none on a
+          // member's.
+          const on = tabActive(t, path);
           return (
             <Pressable key={t.label}
               /* The NAVIGATOR's navigate, not router.push or router.navigate.
@@ -193,20 +201,53 @@ export function AcademyHeader({ navigation }: { navigation?: TabNavigation }) {
                 : router.replace(t.route === 'index' ? '/(tabs)' : '/(tabs)/courses'))}
               testID={`nav-tab-${t.label.toLowerCase()}`}
               accessibilityRole="tab" accessibilityState={{ selected: on }}
+              /* AND the attribute itself, for the reason TabStrip spells out:
+                 `accessibilityState` reaches the DOM as nothing on this
+                 platform, so a screen reader was given a row of tabs with no
+                 current one. TabStrip's comment named this row as the
+                 remaining gap; this closes it. */
+              {...({ 'aria-selected': on } as object)}
               accessibilityLabel={t.label}
               style={({ pressed }) => ({
                 flex: 1, alignItems: 'center', gap: 9,
+                // the row is a control row, so it clears the 44pt target at
+                // every width rather than only where the label happens to be
+                minHeight: TAP_MIN, justifyContent: 'flex-end',
                 paddingTop: 6, opacity: pressed ? 0.7 : 1,
               })}>
-              <Text numberOfLines={1} style={{
-                fontSize: 15.5, letterSpacing: -0.15,
-                // the weight carries the state as well as the colour, so the
-                // active tab is not colour-only (guardrail 3)
-                fontWeight: on ? '800' : '600',
-                color: on ? theme.accentInk : theme.muted,
-              }}>{t.label}</Text>
+              {/* THE SELECTED TAB CARRIES FOUR SIGNALS, not one.
+                  The weight, the ink, a filled ground and the bar beneath --
+                  so the state survives greyscale, colour blindness, a washed
+                  out screen and a reader who is not comparing the two words
+                  side by side (guardrail 3). The ground is `control`, which
+                  is the same "this one is selected" language the floating nav
+                  pill already speaks, rather than a fifth thing to learn; its
+                  contrast against every accent ink is measured by
+                  scripts/check-contrast.ts like every other pair.
+
+                  It is a wrapper around the LABEL and not the whole tab, so it
+                  shrinks with the word instead of filling half the header, and
+                  `maxWidth: '100%'` with the label's `numberOfLines={1}` keeps
+                  a long label truncating inside its own half rather than
+                  pushing the other tab off the row on a narrow phone. */}
               <View style={{
-                width: '100%', height: 2.5, borderRadius: 2,
+                maxWidth: '100%',
+                paddingHorizontal: SPACE.md, paddingVertical: SPACE.xs,
+                borderRadius: RADIUS.pill,
+                backgroundColor: on ? theme.control : 'transparent',
+              }}>
+                <Text numberOfLines={1} style={{
+                  fontSize: 15.5, letterSpacing: -0.15,
+                  // the weight carries the state as well as the colour, so the
+                  // active tab is not colour-only (guardrail 3)
+                  fontWeight: on ? '800' : '600',
+                  color: on ? theme.accentInk : theme.muted,
+                }}>{t.label}</Text>
+              </View>
+              <View style={{
+                // the height does not change with the state, or the row
+                // shifts by half a pixel every time a tab is tapped
+                width: '100%', height: 3, borderRadius: 2,
                 backgroundColor: on ? theme.accent : 'transparent',
               }} />
             </Pressable>
