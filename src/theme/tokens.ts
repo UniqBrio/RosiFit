@@ -127,7 +127,7 @@ export const TAP_MIN = 44;
  */
 export type StatusKey =
   | 'present' | 'absent' | 'awaiting' | 'scheduled'
-  | 'cancelled' | 'holiday' | 'extra' | 'none';
+  | 'cancelled' | 'holiday' | 'extra' | 'none' | 'failed';
 
 export type StatusTone = {
   /** foreground / icon colour, per theme */
@@ -153,6 +153,21 @@ export const STATUS: Record<StatusKey, StatusTone> = {
   holiday:   { fgDark: '#B487EA', fgLight: '#6B3FA0', word: 'Holiday',         icon: 'celebration' },
   extra:     { fgDark: '#4FD1C5', fgLight: '#0B6E66', word: 'Extra attended',  icon: 'add' },
   none:      { fgDark: '#A78E9E', fgLight: '#6B5563', word: 'Not expected',    icon: 'remove' },
+  /*
+   * NOT A BUSINESS STATE. The other eight say what happened; this one says
+   * the app does not know, because the read failed. It exists because the
+   * absence of that distinction is what RC-039 actually cost: a truncated
+   * reply carried no rows for four uploaded days, the screen read "no rows"
+   * as "no file has arrived", and printed Awaiting upload over data that was
+   * sitting in the table.
+   *
+   * Its ink is a pink deliberately unlike every other status here: the yellow
+   * of `awaiting` is the one it must never be mistaken for, and the orange of
+   * `absent` is the other red-ish thing on the same strip. Measured against
+   * all five surfaces of both themes by scripts/check-contrast.ts, like the
+   * rest -- 5.57:1 at its worst.
+   */
+  failed:    { fgDark: '#E8739E', fgLight: '#A32F5B', word: 'Load failed',     icon: 'error' },
 };
 
 /**
