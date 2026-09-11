@@ -1,0 +1,29 @@
+MUTATION CHECK: src/data/courseWeekDays.test.ts
+11-Sep-2026
+
+8 cases over the TypeScript half of 0067 — the half the SQL suite cannot
+reach. Each defect the file names, put into the module one at a time.
+
+  NOTE, recorded rather than quietly fixed: case 2 passed on its first run
+  while never executing its own long-week branch — `week().slice(0, 8)` on
+  a 7-element array is a no-op. The case now builds a real eighth row.
+
+  MUTATION: the short-answer guard removed entirely
+    not ok 2 - A SHORT ANSWER IS A FAILED READ, never a small week
+    not ok 3 - and the failure says how many it got, so the next reader is not guessing
+
+  MUTATION: only a LONG answer refused, so five days slip through
+    not ok 2 - A SHORT ANSWER IS A FAILED READ, never a small week
+    not ok 3 - and the failure says how many it got, so the next reader is not guessing
+
+  MUTATION: uploaded derived from present > 0 instead of carried through
+    not ok 6 - uploaded is carried through untouched — it is the database's answer, not a count
+
+  MUTATION: counts passed through raw, so a null reaches a cell
+    not ok 4 - a null count reaches the cell as 0, never as NaN
+    not ok 5 - counts arriving as strings are numbers by the time a cell adds them up
+
+restored; clean run:
+    # tests 8
+    # pass 8
+    # fail 0

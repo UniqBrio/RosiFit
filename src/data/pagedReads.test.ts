@@ -89,6 +89,21 @@ const BOUNDED: { fragment: string; because: string }[] = [
     because: 'holidays are entered by hand, one per closure; 1 row in production' },
   { fragment: "from('email_batches')",
     because: 'batches are per send, and every read of them carries a limit or a single id' },
+  /*
+   * 0067's other half: the roster reads ONE course's ONE day. Each of these is
+   * bounded by a fact about the academy rather than by a number in the source,
+   * so each also sits behind checked() -- the backstop, which throws rather
+   * than returning a silently short list (RC-041).
+   */
+  { fragment: ".in('session_id', daySessions.map(s => s.id as string))",
+    because: "one course's roster on ONE date. 292 rows on the busiest day in production, "
+      + 'and behind checked() because the bound is the roster, not a literal' },
+  { fragment: ".in('offering_id', offeringIds).eq('session_date', dateIso)",
+    because: "one course's sessions on a single date -- at most one per offering, "
+      + '4 offerings in production. Behind checked()' },
+  { fragment: ".eq('course_id', courseId).is('deleted_at', null)",
+    because: 'the offerings of one course: 1 in production, counted in tens at worst, '
+      + 'and set by the academy rather than by its intake. Behind checked()' },
 ];
 
 test('the spec is looking at a real tree', () => {

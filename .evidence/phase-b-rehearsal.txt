@@ -1,0 +1,51 @@
+PHASE B REHEARSAL — the local harness, which is the whole of the pre-flight
+CLAUDE.md: "Rehearsal is the local harness only. Replay every migration from
+scratch against a fresh local Postgres 16 and run the full spec suite."
+11-Sep-2026, Postgres 16.15 on /tmp:5433.
+
+1. THE MIGRATION REPLAYS FROM SCRATCH
+   db/harness/reset.sh drops the database and replays 000_local_shim.sql plus
+   all 67 migrations in order, before EVERY test file. A migration that only
+   works against an already-migrated database fails there.
+
+     0067_course_week_day_status.sql             ok
+     database rebuilt.
+
+2. THE SUITE, BEFORE AND AFTER
+
+     BEFORE (no 0067, no test 48)     693 PASS   10 FAIL
+     AFTER  (0067 + test 48)          725 PASS   10 FAIL
+                                      ----------------------
+                                      +32 pass, THE SAME 10 failures
+
+   +32 is exactly the size of supabase/tests/48_course_week_day_status.sql.
+   The ten failures are byte-identical to the baseline and to what CI reports
+   on main at 5b30efe. None of them is touched by this change, which contains
+   no SQL other than the new function and its own test file:
+
+     authenticated holds exactly the table privileges 0002-0010 intended
+     a staff account cannot set a schedule
+     no trigger function is executable by anon or authenticated
+     nobody writes a run by hand -- there is no insert policy
+     the 17th now says PRESENT for the member she actually is
+     absent on a day she was not expected is refused, in words
+     every attendance record she had is still there, unedited
+     and the import does not claim to have updated the row it left alone
+     an annotated entry cannot be deleted, by privilege or by restrict
+     not one of the four functions still asks is_super_admin()
+
+   Full logs: .evidence/db-suite-baseline.log, .evidence/db-suite-after-0067.log
+
+3. THE NEW FILE'S OWN 32 ASSERTIONS, AND THAT THEY BITE
+   All 32 green on the first run, which is not evidence of anything, so each
+   of the five defects the file names was put INTO the migration and the suite
+   re-run. Every one caught, by name: .evidence/0067-mutation-check.txt
+
+4. WHAT THE HARNESS CANNOT PROVE, AND WHAT WAS DONE INSTEAD
+   CLAUDE.md is explicit: the harness holds no data, so it proves a migration
+   is well-formed BY RECONSTRUCTION and cannot prove it is compatible with the
+   rows production already has. 0067 creates no index and adds no constraint,
+   so nothing is validated over existing rows -- but the BEHAVIOUR still had to
+   be checked against real data, and was, read-only, before any apply: the
+   function's body was run as a plain SELECT against production. See
+   .evidence/0067-production-preview.txt.

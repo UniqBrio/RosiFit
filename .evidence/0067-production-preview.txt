@@ -1,0 +1,36 @@
+0067 AGAINST REAL DATA, READ-ONLY, BEFORE ANY APPLY
+11-Sep-2026. project lhpzhkzbnquwjljmbylo "Rosifit".
+
+The harness holds no data, so it proves 0067 is well-formed by reconstruction
+and nothing more. This is the other half: the function's BODY run as a plain
+SELECT against production, with General's course id and 2026-09-07 substituted
+for the parameters. Nothing was created, nothing was written.
+
+    day        uploaded  present  absent  expected  runs
+    2026-09-07   true       61       0       45     true
+    2026-09-08   true       42     217      259     true
+    2026-09-09   true       46     230      276     true
+    2026-09-10   true       71     214      285     true
+    2026-09-11   true       60     232      292     true
+    2026-09-12   false       0       0        0     false
+    2026-09-13   false       0       0        0     false
+
+280 present + 893 absent = 1,173, which is exactly General's week -- the same
+number the keyset replay recovered in Phase A
+(.evidence/keyset-replay-production.txt).
+
+AND THE FOUR DAYS THAT STARTED ALL OF THIS COME BACK `uploaded: true`. Monday
+to Thursday of 7-13 September are the days the course screen printed "Awaiting
+upload" over, with the files sitting in the table.
+
+TUESDAY IS THE CASE WORTH NAMING: 42 present against 217 absent. A `uploaded`
+computed as `present_count > 0` would be right there by luck and wrong on a day
+nobody attended at all. Uploaded is the EXISTENCE of records, and
+supabase/tests/48 asserts exactly that with an all-absent fixture day.
+
+WHY NO WRITE WAS NEEDED TO CHECK THIS. CLAUDE.md requires a specific
+production check for "a migration that builds an index or adds a constraint
+over existing rows". 0067 does neither: it creates one function, validates
+nothing over any row, takes no lock beyond the catalogue and rewrites nothing.
+What remained to check was its BEHAVIOUR against real rows, and a SELECT is
+enough for that -- ADR 007's rolled-back DO block was not needed.

@@ -50,6 +50,10 @@ import { memberWeek, NO_SESSIONS_ROW, type MemberWeekSession } from './memberWee
 import {
   pageAllByKey, guardUntruncated, PagedReadError, type QueryFactory,
 } from './pageAll';
+import {
+  mapCourseWeekDays, ShortWeekError, WEEK_DAYS,
+  type CourseDayRow, type CourseDayStatus,
+} from './courseWeekDays';
 
 export const dataSource: 'live' | 'fixtures' = isConfigured ? 'live' : 'fixtures';
 
@@ -2230,6 +2234,94 @@ export async function savePreferences(appUserId: string, prefs: Partial<Preferen
   );
 }
 
+// ------------------------------------------------ the course week, aggregated
+export type { CourseDayStatus, CourseDayRow } from './courseWeekDays';
+
+/**
+ * The seven day statuses for one course's week (0067).
+ *
+ * WHAT THIS REPLACES. The strip used to download every attendance record in
+ * the week, for EVERY course, and count them here — 3,110 rows and ~673 kB per
+ * screen open in production on 11-Sep-2026, and the same 673 kB whichever
+ * course was opened. This is seven rows and about 600 bytes.
+ *
+ * It is also the structural answer to RC-039 rather than the defensive one. A
+ * screen that DERIVES a status from a pile of rows can be wrong about the
+ * status by receiving the wrong pile; a screen that ASKS for the status
+ * cannot. Paging made the old read correct; it did not make it sensible.
+ *
+ * NOT `paged()`, and the distinction is the whole of Phase A: it asks for seven
+ * rows and gets seven rows, because `generate_series(0, 6)` is written into the
+ * function. "Could this exceed a thousand" has an answer in the SOURCE here,
+ * not a fact about production that might stop being true.
+ */
+export async function fetchCourseWeekDays(
+  courseId: string,
+  weekStart: string,
+  branchId: string | null,
+): Promise<CourseDayStatus[]> {
+  if (!isConfigured) return courseWeekDaysFixture(courseId, weekStart, branchId);
+
+  const { data, error } = await supabase.rpc('course_week_day_status', {
+    p_course_id: courseId,
+    p_week_start: weekStart,
+    p_branch_id: branchId,
+  });
+  if (error) fail('Could not load this week', error);
+
+  try {
+    return mapCourseWeekDays((data ?? []) as CourseDayRow[]);
+  } catch (err) {
+    // Translated into this file's one error convention (CP-003): the person
+    // gets a sentence and the console keeps the count.
+    if (err instanceof ShortWeekError) fail('Could not load this week', err);
+    throw err;
+  }
+}
+
+/**
+ * The same seven statuses, DERIVED FROM THE FIXTURE ROWS rather than invented.
+ *
+ * Two fixture sources for one screen is how the offline strip and the offline
+ * roster under it start telling different stories — the objection guardrail 1
+ * makes about the follow-up list. So this counts exactly what the live
+ * function counts, over the rows `attendanceFixture` already returns.
+ */
+function courseWeekDaysFixture(
+  courseId: string, weekStart: string, branchId: string | null,
+): CourseDayStatus[] {
+  const days = Array.from({ length: WEEK_DAYS }, (_, i) => {
+    const d = new Date(`${weekStart}T00:00:00`);
+    d.setDate(d.getDate() + i);
+    return iso(d);
+  });
+  const last = days[days.length - 1];
+  const rows = attendanceFixture(weekStart, last)
+    .filter(r => r.course_id === courseId && (branchId === null || r.branch === branchId));
+
+  const course = COURSE_LIST.find(c => c.id === courseId) ?? null;
+  const runsOn = new Set<number>();
+  for (const o of course?.offerings ?? []) {
+    if (branchId !== null && o.branch !== branchId) continue;
+    for (const w of o.weekdays) runsOn.add(w);
+  }
+
+  return days.map(day => {
+    const onDay = rows.filter(r => r.date === day);
+    const weekday = new Date(`${day}T00:00:00`).getDay();
+    return {
+      day,
+      // The existence of records, exactly as 0067 has it — never a count
+      // above zero. A day everybody missed is an uploaded day.
+      uploaded: onDay.length > 0,
+      present: onDay.filter(r => r.status === 'present' || r.status === 'extra').length,
+      absent: onDay.filter(r => r.status === 'absent').length,
+      expected: onDay.filter(r => r.expected).length,
+      runs: runsOn.has(weekday === 0 ? 7 : weekday),
+    };
+  });
+}
+
 // -------------------------------------------------------- attendance list
 /**
  * Every attendance fact in a period, one row per member per session.
@@ -2322,6 +2414,99 @@ export async function fetchAttendance(period: Period): Promise<AttendanceRow[]> 
       minutes: (r.minutes_in_call as number | null) ?? null,
     };
   }).sort((a, b) => (a.date === b.date ? a.member.localeCompare(b.member) : b.date.localeCompare(a.date)));
+}
+
+/**
+ * ONE COURSE, ONE DAY — the rows the roster under the strip actually lists.
+ *
+ * The other half of 0067. The strip stopped needing raw rows; the roster still
+ * does, because it genuinely lists individual records: who is present, who is
+ * absent, who is yet to be marked. What it never needed is the WEEK, or the
+ * other courses.
+ *
+ * In production on 11-Sep-2026 the screen fetched 3,110 rows (~673 kB) the
+ * moment it opened, the same 3,110 whichever course was opened. This fetches
+ * General's busiest single day — 292 rows, ~63 kB — and only once somebody
+ * taps a day.
+ *
+ * `checked()` rather than `paged()`, deliberately: the bound is one course's
+ * roster on one date, which is a fact about the academy rather than a number
+ * in this file, so it gets the backstop and not the pager (RC-041). A course
+ * with a thousand members on one day is not a course; it is a truncated read.
+ */
+export async function fetchCourseDayRows(
+  courseId: string, dateIso: string, branch: string | null,
+): Promise<AttendanceRow[]> {
+  if (!isConfigured) {
+    return attendanceFixture(dateIso, dateIso)
+      .filter(r => r.course_id === courseId && (branch === null || r.branch === branch));
+  }
+
+  // The offerings of THIS course, at the branches in scope. Everything below
+  // hangs off this list, so a course that runs nowhere in scope is an empty
+  // day rather than a query for every session in the academy.
+  const offerings = await supabase.from('course_offerings')
+    .select('id, course_id, branch_id').eq('course_id', courseId).is('deleted_at', null);
+  if (offerings.error) fail('Could not load this day', offerings.error);
+
+  const branchIds = [...new Set(checked('this day', offerings).map(o => o.branch_id as string))];
+  const [coursesRes, branchesRes] = await Promise.all([
+    supabase.from('courses').select('id, name').eq('id', courseId).maybeSingle(),
+    branchIds.length ? supabase.from('branches').select('id, name').in('id', branchIds)
+                     : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+  ]);
+  const branchName = new Map((branchesRes.data ?? []).map(b => [b.id as string, b.name as string]));
+
+  const offeringIds = checked('this day', offerings)
+    .filter(o => branch === null || branchName.get(o.branch_id as string) === branch)
+    .map(o => o.id as string);
+  if (offeringIds.length === 0) return [];
+
+  const sessions = await supabase.from('sessions')
+    .select('id, offering_id, session_date, start_time')
+    .in('offering_id', offeringIds).eq('session_date', dateIso).is('deleted_at', null);
+  if (sessions.error) fail('Could not load this day', sessions.error);
+  const daySessions = checked('this day', sessions);
+  if (daySessions.length === 0) return [];
+
+  const records = await supabase.from('attendance_records')
+    .select('id, session_id, member_id, status, expected, minutes_in_call')
+    .in('session_id', daySessions.map(s => s.id as string)).is('deleted_at', null);
+  if (records.error) fail('Could not load this day', records.error);
+  const dayRecords = checked('this day', records);
+  if (dayRecords.length === 0) return [];
+
+  // The names on this day only. Paged for the same reason the member list is:
+  // an `.in()` of member ids is member-scale, and member-scale is 937 of a
+  // 1,000-row ceiling in production today.
+  const memberIds = [...new Set(dayRecords.map(r => r.member_id as string))];
+  const members = await paged('the names on this day', () =>
+    supabase.from('members').select('id, full_name').in('id', memberIds), 'id');
+
+  const sessionById = new Map(daySessions.map(s => [s.id as string, s]));
+  const offeringById = new Map(checked('this day', offerings).map(o => [o.id as string, o]));
+  const memberById = new Map(members.map(m => [m.id as string, m]));
+  const name = (coursesRes.data?.name as string | undefined) ?? '—';
+
+  return dayRecords.map(r => {
+    const session = sessionById.get(r.session_id as string);
+    const offering = session ? offeringById.get(session.offering_id as string) : undefined;
+    const member = memberById.get(r.member_id as string);
+    return {
+      id: r.id as string,
+      member_id: r.member_id as string,
+      // '—' rather than '', so a row whose member RLS hid still reads as a row
+      member: (member?.full_name as string) ?? '—',
+      course: name,
+      course_id: (offering?.course_id as string | undefined) ?? null,
+      branch: offering ? (branchName.get(offering.branch_id as string) ?? '—') : '—',
+      date: (session?.session_date as string) ?? dateIso,
+      time: (session?.start_time as string | null)?.slice(0, 5) ?? '',
+      status: r.status as AttendanceStatus,
+      expected: Boolean(r.expected),
+      minutes: (r.minutes_in_call as number | null) ?? null,
+    };
+  }).sort((a, b) => a.member.localeCompare(b.member));
 }
 
 // ------------------------------------------------------------ her own week

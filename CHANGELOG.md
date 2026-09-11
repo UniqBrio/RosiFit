@@ -1,6 +1,31 @@
 # Changelog
 
-## Unreleased — A week that could not be loaded now says so
+## Unreleased — The course screen stops downloading the week to count it
+
+**It was fetching three thousand records to draw seven day cards.** Every time a course
+screen opened it pulled every attendance record in the week — for every course, not just the
+one being looked at — and counted them on the device. That is 3,110 records and about 673 kB
+in the academy's current data, and it was the same 673 kB whichever course you tapped.
+
+**Now it asks for the seven answers.** The database counts, and sends back one line per day:
+was anything uploaded, how many present, how many absent. Seven lines, about 600 bytes. The
+screen opens on roughly a thousandth of what it used to download.
+
+**The roster reads the day you actually tapped.** The names and chips under the strip do need
+real records — that is what they list — but they never needed the whole week, and they never
+needed the other courses. They now load one course, one date, and only once you pick a day.
+
+**This is also the end of the attendance bug rather than a guard against it.** A screen that
+works out a day's status from a pile of records can get the status wrong by being handed the
+wrong pile — which is exactly what happened. A screen that asks for the status cannot. The
+paging fix made the old approach correct; this removes the thing it was correcting.
+
+**Nothing about what you see has changed** — except one thing, found by looking at the
+rendered page rather than the code: when a week fails to load, *Load failed* now appears in
+the key above the strip. Every other state was named there and it was not, so its pink marker
+was a colour with nothing explaining it.
+
+## A week that could not be loaded now says so
 
 **The attendance bug had a second half, and this is it.** The one already fixed was the app asking
 for a week and being handed part of it without being told. The half still open was what the screen

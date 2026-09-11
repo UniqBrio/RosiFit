@@ -1,0 +1,30 @@
+FAIL-FIRST / MUTATION CHECK: supabase/tests/48_course_week_day_status.sql
+Local harness, Postgres 16 on /tmp:5433. 11-Sep-2026
+
+32 assertions, all green on the first run. A spec that has never been red
+is not evidence, so each of the five defects the file names was put INTO
+the migration, one at a time, and the suite re-run against it.
+
+  DEFECT 2 — uploaded computed as present_count > 0
+    ERROR:  FAIL  TUESDAY IS UPLOADED, and everybody was absent -- uploaded is the existence of records  got false want true
+
+  DEFECT 1 — an inner join, so a day with no records is ABSENT from the answer
+    ERROR:  FAIL  SEVEN ROWS, one per day, whatever the data does -- absence is never the answer  got 3 want 7
+    ERROR:  FAIL  and they are seven DIFFERENT days  got 3 want 7
+    ERROR:  FAIL  and the last is six days later  got 2026-09-02 want 2026-09-06
+    ERROR:  FAIL  Friday has no session at all, so nothing was uploaded for it  got NULL want false
+
+  DEFECT 3 — 'extra' stops counting as present
+    ERROR:  FAIL  EXTRA COUNTS AS PRESENT -- one expected, one who simply turned up  got 1 want 2
+    ERROR:  FAIL  SIX MARKS IN TOTAL -- the neighbour course ran the same Monday and is absent from this answer  got 5 want 6
+
+  DEFECT 4 — soft-deleted records counted, so a RESET day still reads uploaded
+    ERROR:  FAIL  THURSDAY WAS RESET: its records are soft-deleted, so the day is not uploaded  got true want false
+    ERROR:  FAIL  and none of the withdrawn marks is counted  got 2 want 0
+    ERROR:  FAIL  SIX MARKS IN TOTAL -- the neighbour course ran the same Monday and is absent from this answer  got 8 want 6
+
+  DEFECT 6 — SECURITY DEFINER instead of INVOKER
+    ERROR:  FAIL  SECURITY INVOKER -- it cannot return a row its caller could not read directly  got true want false
+
+restored; clean run:
+    32 assertions pass, 0 fail

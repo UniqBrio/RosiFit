@@ -1,3 +1,79 @@
+FAIL-FIRST: supabase/tests/48_course_week_day_status.sql - 32 assertions, each of the five defects it names put into the migration and caught by name.
+FAIL-FIRST: src/data/courseWeekDays.test.ts - four mutations, all caught; and case 2 was found passing while never running its own long-week branch.
+FAIL-FIRST: .harness/course-week-strip.mjs - 4 of 23 browser checks RED on the first run, against a screen every source assertion had passed.
+
+## FAIL-FIRST — Phase B, the course week aggregated in Postgres (11-Sep-2026)
+
+**The browser found what source could not.** `.harness/course-week-strip.mjs` opens the real
+export on fixtures and watches the strip. First run: **4 of 23 red** — zero day cells and no
+retry banner on a failed week, on a screen whose twelve source assertions were all green.
+
+The cause was not the strip. `?state=error` forces EVERY read on a screen, the course record
+included, so the screen's own `if (courses.state === 'error')` guard rendered instead and the
+strip was never reached. **Phase A's Task 3 had therefore never been visible to a reviewer
+either** — on fixtures or anywhere else. `useAsync` now accepts a targeted form,
+`?state=error:week`, which forces one named read and leaves the guards in front of it out of
+the way. After that: **23 of 23 green**, and the state is reviewable by a person for the first
+time.
+
+It also found a real defect in the finished work: the legend above the strip named four
+states and not the fifth, so a failed week showed a pink marker with nothing explaining it —
+colour alone, which guardrail 3 exists to stop. `Load failed` now joins the legend while it is
+on screen, and the browser check asserts it.
+
+```
+ok    SEVEN DAY CELLS ARE DRAWN — 7 cells
+ok    A FAILED WEEK STILL DRAWS ITS SEVEN DAYS — 7 cells
+ok    and EVERY ONE of them says Load failed — Mon 7 SEP, Load failed
+ok    none of them says "Awaiting upload" — the bug this whole change is about
+ok    THE LEGEND NAMES the failed state while the week is failed
+ok    IT SAYS EXACTLY WHAT WAS ASKED FOR — Couldn't load attendance. Tap to retry.
+ok    THE BANNER IS ACTUALLY PAINTED, not hidden behind the cards below it — sampled at 36,414
+ok    the banner is still fully on screen at 400px — x=16 w=368
+ALL PASS (c1)
+```
+
+**The SQL suite, rehearsed in the local harness** — which CLAUDE.md says is the whole of the
+pre-flight. `reset.sh` drops the database and replays all 67 migrations before every test file.
+
+```
+BEFORE (no 0067, no test 48)     693 PASS   10 FAIL
+AFTER  (0067 + test 48)          725 PASS   10 FAIL
+                                 +32 pass, THE SAME 10 failures
+```
+
+The ten are byte-identical to the baseline and to what CI reports on `main` at `5b30efe`. This
+change contains no SQL beyond the new function and its own test file.
+
+**The 32 new assertions were all green on their first run, which is not evidence.** Each of the
+five defects the file names was put INTO the migration and the suite re-run
+(`.evidence/0067-mutation-check.txt`):
+
+```
+DEFECT 2 — uploaded computed as present_count > 0
+  FAIL  TUESDAY IS UPLOADED, and everybody was absent  got false want true
+DEFECT 1 — an inner join, so a day with no records is ABSENT from the answer
+  FAIL  SEVEN ROWS, one per day, whatever the data does  got 3 want 7
+DEFECT 3 — 'extra' stops counting as present
+  FAIL  EXTRA COUNTS AS PRESENT  got 1 want 2
+DEFECT 4 — soft-deleted records counted, so a RESET day still reads uploaded
+  FAIL  THURSDAY WAS RESET: its records are soft-deleted  got true want false
+DEFECT 6 — SECURITY DEFINER instead of INVOKER
+  FAIL  SECURITY INVOKER  got true want false
+```
+
+**And against real data, read-only, before any apply.** The function's body run as a plain
+SELECT against production with General's id and `2026-09-07`: the four days that reported
+"Awaiting upload" come back `uploaded: true`, and 280 present + 893 absent = **1,173**, exactly
+General's week and exactly what the Phase A keyset replay recovered
+(`.evidence/0067-production-preview.txt`).
+
+**`src/data/courseWeekDays.test.ts`** — 8 cases over the TypeScript half, four mutations, all
+caught. One is recorded rather than quietly fixed: the long-week case passed on its first run
+**while never executing** — `week().slice(0, 8)` on a seven-element array is a no-op.
+
+---
+
 ## FAIL-FIRST — the truncation hardening (11-Sep-2026)
 
 FAIL-FIRST: src/data/dayLoad.test.ts - 8 of 8 red against the derivation as it stood before this change (four mutations, each caught by name).
@@ -98,6 +174,68 @@ $ node scripts/audits/check-data-layer-boundary.mjs
   125 files outside src/data/ scanned; 0 Supabase queries found there.
   exit status: 0
 ```
+
+---
+
+## Gate run - 2026-09-11 - VERDICT: FAIL
+
+Steps: 6 pass, 5 fail, 1 blocked.
+Time: 22.3s total - slowest G7 Unit + pure specs (15.0s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (55ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (58ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (56ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (78ms)
+- **G5 Types** - PASS (6.6s)
+- **G6 Lint** - BLOCKED (-) - no local "eslint" in . - not fetched from the registry on purpose. Run `npm install` in . (provides eslint), or state why this class is unverified. - **133 consecutive runs**: a verdict that never changes is not a signal; make this class runnable or accept it in writing
+- **G7 Unit + pure specs** - FAIL (15.0s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 180 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 181 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 194 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (151ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (64ms)
+- **G10 Backward compatibility (fixtures)** - PASS (130ms)
+- **G11 Wide tables are configurable** - PASS (62ms)
+- **G12 Installable as an application** - PASS (79ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

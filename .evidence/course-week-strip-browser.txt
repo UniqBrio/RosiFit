@@ -1,0 +1,26 @@
+ok    SEVEN DAY CELLS ARE DRAWN — 7 cells
+ok    their dates are seven distinct days, in order — 2026-09-07 2026-09-08 2026-09-09 2026-09-10 2026-09-11 2026-09-12 2026-09-13
+ok    every cell speaks its status to a screen reader, not just its colour — Mon 7 SEP, Present
+ok    no cell reads "Load failed" on a week that loaded
+ok    a week still in flight draws NO day cells — a skeleton stands in for the row — 0 cells
+ok    A FAILED WEEK STILL DRAWS ITS SEVEN DAYS — 7 cells
+ok    and EVERY ONE of them says Load failed — Mon 7 SEP, Load failed
+ok    none of them says "Awaiting upload" — the bug this whole change is about
+ok    a failed day offers no upload button
+ok    and no "upload again" either
+ok    the retry banner is on the screen
+      the banner says: "Couldn't load attendance. Tap to retry." / "Forced error state (?state=error:week). Nothing has been changed."
+ok    IT SAYS EXACTLY WHAT WAS ASKED FOR — Couldn't load attendance. Tap to retry.
+ok    with the technical reason under it, for whoever debugs it next — Forced error state (?state=error:week). Nothing has been changed.
+ok    it spans the width of the screen, so the target is not a 33pt day cell — w=1168
+ok    and it clears the 44pt minimum touch target — h=61
+ok    THE BANNER IS ACTUALLY PAINTED, not hidden behind the cards below it — sampled at 36,414
+ok    it is a real button to a screen reader
+ok    and its spoken label carries the sentence too — Couldn't load attendance. Tap to retry. Forced error state (?state=err
+ok    THE LEGEND NAMES the failed state while the week is failed
+ok    all seven cells survive at phone width
+ok    the banner is still fully on screen at 400px — x=16 w=368
+ok    and the page does not scroll sideways
+ok    the sentence is still readable, not clipped to one line of ellipsis — h=78
+
+ALL PASS (c1)

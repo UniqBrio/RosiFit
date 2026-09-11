@@ -12,7 +12,7 @@ import { useAutoFocus } from '../../src/components/openingFocus';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface, type StatusKey } from '../../src/theme/tokens';
 import { DAY_NAMES, ruleSentence, AVATAR_TINTS, initials, primaryEmail, type Member, type MemberStatus } from '../../src/data/mock';
-import { useCourses, useFollowUp, useAttendance } from '../../src/data/hooks';
+import { useCourses, useFollowUp, useCourseWeekDays, useCourseDay } from '../../src/data/hooks';
 import { weekStart, iso, label as periodLabel } from '../../src/data/period';
 import {
   setMemberStatus, mergeMemberInto, deleteMember, memberDeletionPreview, dataSource,
@@ -244,8 +244,6 @@ function CourseDetailBody() {
   // reads is how those two answers end up on different sides of midnight.
   const todayIso = iso(new Date());
 
-  const attendance = useAttendance(week, forced);
-
   const course = (courses.data ?? []).find(c => c.id === id);
   const members = followUp.data?.members ?? [];
   const rules = followUp.data?.rules;
@@ -255,6 +253,26 @@ function CourseDetailBody() {
   // Only the branches this course actually runs at. Offering one it has no
   // offering at would filter every member away and read as "nobody is
   // enrolled" rather than "it does not run there".
+  /*
+   * THE WEEK, AS SEVEN STATUSES RATHER THAN AS A PILE OF ROWS (0067).
+   *
+   * This used to be `useAttendance(week)`: every attendance record in the week
+   * for EVERY course, counted here. In production that is 3,110 rows and
+   * ~673 kB the moment the screen opens, identical whichever course is opened.
+   * It is seven rows and about 600 bytes now.
+   *
+   * It is also the structural end of RC-039 rather than the defensive one. A
+   * screen that DERIVES a status from a pile of rows can be wrong about the
+   * status by receiving the wrong pile; a screen that ASKS for the status
+   * cannot. Paging made the old read correct; it did not make it sensible.
+   *
+   * The name stays `attendance` because everything below reads its STATE, not
+   * its rows: the skeleton, the Load failed banner and its retry are about
+   * "did this week load", and that question has not changed.
+   */
+  const attendance = useCourseWeekDays(
+    course?.id ?? null, week.from, branch === ALL_BRANCHES ? null : branch, forced);
+
   const branchOptions = useMemo(() => {
     const own = [...new Set((course?.offerings ?? []).map(o => o.branch))].sort();
     return [ALL_BRANCHES, ...own];
@@ -306,47 +324,41 @@ function CourseDetailBody() {
   const failedInk = theme.isDark ? STATUS.failed.fgDark : STATUS.failed.fgLight;
 
   const days: DayCell[] = useMemo(() => {
-    // By course id: a deleted course's COMPLETED sessions are kept on
-    // purpose (0020), so its rows are still in the week's load under its old
-    // name, and a strip asking for rows "called this" would show them.
-    const rows = (attendance.data ?? []).filter(r => r.course_id === course?.id
-      && (branch === ALL_BRANCHES || r.branch === branch));
-    const byDate = new Map<string, typeof rows>();
-    for (const r of rows) {
-      const list = byDate.get(r.date) ?? [];
-      list.push(r);
-      byDate.set(r.date, list);
-    }
-
-    // The weekdays this course runs across the branches in scope. 1..7 with
-    // Monday = 1, which is what offering_schedules.weekdays stores.
-    const runsOn = new Set<number>();
-    for (const o of course?.offerings ?? []) {
-      if (branch !== ALL_BRANCHES && o.branch !== branch) continue;
-      for (const d of o.weekdays) runsOn.add(d);
-    }
-
+    /*
+     * SEVEN IN, SEVEN OUT. The counting, the schedule and "was anything
+     * uploaded" are all 0067's answers now -- there is nothing to group, no
+     * second reconstruction of the timetable, and no chance of this strip
+     * disagreeing with the database about a day because it received the
+     * wrong rows. What is left here is the calendar labels and the tone.
+     *
+     * A week that has not arrived is an EMPTY list, not seven blank cells:
+     * `dayLoad` is given the read's own state, so a day is only ever called
+     * "not uploaded" by a read that came back whole (RC-039, src/data/dayLoad).
+     */
     const start = new Date(`${week.from}T00:00:00`);
+    const status = attendance.data ?? [];
+
     return Array.from({ length: 7 }, (_, i) => {
       const date = new Date(start);
       date.setDate(date.getDate() + i);
       const dateIso = iso(date);
-      const dayRows = byDate.get(dateIso) ?? [];
       // JS puts Sunday at 0; offering weekdays put Monday at 1, Sunday at 7.
       const weekday = date.getDay() === 0 ? 7 : date.getDay();
+      const d = status.find(x => x.day === dateIso) ?? null;
 
-      const present = dayRows.filter(r => r.status === 'present' || r.status === 'extra').length;
-      const absent = dayRows.filter(r => r.status === 'absent').length;
-      const expected = dayRows.filter(r => r.expected).length;
+      const present = d?.present ?? 0;
+      const absent = d?.absent ?? 0;
+      const expected = d?.expected ?? 0;
 
       /*
-       * THE READ'S OWN OUTCOME FIRST, the rows second. `attendance.data` is
-       * null while a read is in flight AND null when one has failed, so
-       * `?? []` turns either into "no records anywhere" -- which is the exact
-       * shape of a week nobody has uploaded. That single collapse is RC-039.
+       * THE READ'S OWN OUTCOME FIRST, the day's answer second. `attendance.data`
+       * is null while a read is in flight AND null when one has failed, so
+       * `?? []` turns either into "nothing uploaded anywhere" -- which is the
+       * exact shape of a week nobody has uploaded. That single collapse is
+       * RC-039, and reading the STATE first is what keeps the three apart.
        */
-      const load: DayLoad = dayLoad(attendance.state, dayRows.length > 0);
-      const key: StatusKey = dayStatusKey(load, { present, absent, runsToday: runsOn.has(weekday) });
+      const load: DayLoad = dayLoad(attendance.state, d?.uploaded ?? false);
+      const key: StatusKey = dayStatusKey(load, { present, absent, runsToday: d?.runs ?? false });
 
       return {
         iso: dateIso,
@@ -358,7 +370,7 @@ function CourseDetailBody() {
         present, absent, expected,
       };
     });
-  }, [attendance.data, attendance.state, course, branch, week.from, todayIso]);
+  }, [attendance.data, attendance.state, week.from, todayIso]);
 
   /**
    * The weekdays this course runs across the branches in scope, hoisted out
@@ -382,6 +394,24 @@ function CourseDetailBody() {
   const chosen = days.find(d => d.iso === selectedDay)
     ?? days.find(d => d.iso === todayIso)
     ?? days[0];
+
+  /*
+   * THE ROSTER'S OWN READ: one course, one day (0067's other half).
+   *
+   * Everything below that wanted raw rows wanted THIS day's rows -- the chips,
+   * the reading filter, the reset preview. None of it ever read a second day,
+   * and none of it ever read another course. So the screen no longer fetches
+   * the week: General's busiest day is 292 rows against the 3,110 that used to
+   * arrive before anybody had tapped anything.
+   *
+   * `marks`, not `attendance`: the two reads answer different questions and
+   * fail independently. The strip's failure is the banner under the strip; a
+   * day's failure is stated on the cards themselves, which is where somebody
+   * is looking when it happens.
+   */
+  const marks = useCourseDay(
+    course?.id ?? null, chosen?.iso ?? null,
+    branch === ALL_BRANCHES ? null : branch, forced);
 
   /**
    * THE ROSTER IS ABOUT THE SELECTED DAY, so it holds the members who were
@@ -444,12 +474,12 @@ function CourseDetailBody() {
    * a card reading *Absent* can never appear under *Present*.
    */
   const rosterScope: RosterScope = useMemo(() => ({
-    rows: attendance.data ?? [],
+    rows: marks.data ?? [],
     dayIso: chosen?.iso ?? null,
     weekdays: scopeWeekdays,
     todayIso,
-    ready: attendance.state === 'ready',
-  }), [attendance.data, attendance.state, chosen?.iso, scopeWeekdays, todayIso]);
+    ready: marks.state === 'ready',
+  }), [marks.data, marks.state, chosen?.iso, scopeWeekdays, todayIso]);
 
   // Recomputed from the labels rather than held beside them: two pieces of
   // state for one choice is how a tick and the list it narrows drift apart.
@@ -468,7 +498,7 @@ function CourseDetailBody() {
   // rather than left to be noticed: this screen's own rule is that a count
   // which drops -- or keeps -- rows silently is the defect.
   const showPending = showKeys.some(k => k !== 'no-email')
-    && attendance.state !== 'ready';
+    && marks.state !== 'ready';
 
   const withEmail = shown.filter(m => m.emails.length > 0);
   const withoutEmail = shown.filter(m => m.emails.length === 0);
@@ -528,10 +558,10 @@ function CourseDetailBody() {
    * with nothing on it has nothing to undo, and a button that opens a dialog
    * saying "nothing to reset" is a button that should not have been there.
    */
-  const dayMarks = useMemo(() => (attendance.data ?? []).filter(
+  const dayMarks = useMemo(() => (marks.data ?? []).filter(
     r => r.course_id === course?.id && r.date === (chosen?.iso ?? '')
       && (branch === ALL_BRANCHES || r.branch === branch)).length,
-    [attendance.data, course?.id, chosen?.iso, branch]);
+    [marks.data, course?.id, chosen?.iso, branch]);
 
   const openReset = async () => {
     if (!course || !chosen) return;
@@ -549,7 +579,7 @@ function CourseDetailBody() {
     // write that is not going to happen.
     const picked = [...selected];
     setResetPreviewData(
-      resetPreview(attendance.data ?? [], scoped, course.id, chosen.iso, picked));
+      resetPreview(marks.data ?? [], scoped, course.id, chosen.iso, picked));
     try {
       setResetPreviewData(await attendanceResetPreview(course.id, chosen.iso, picked));
     } catch (err) {
@@ -815,7 +845,7 @@ function CourseDetailBody() {
               flex: compact ? undefined : 1, fontSize: 13, fontWeight: '700',
               color: theme.fg, fontVariant: ['tabular-nums'],
             }}>{weekOffset === 0 ? `${week.label} · this week` : week.label}</Text>
-            <DayLegend />
+            <DayLegend failed={attendance.state === 'error'} />
           </View>
 
           {/* -------------------------------------------------- week strip
@@ -1391,7 +1421,7 @@ function CourseDetailBody() {
                 letting the extra names read as matches. */}
             {showPending ? (
               <Text testID="course-show-note" style={{ fontSize: 11.5, color: theme.muted }}>
-                {attendance.state === 'error'
+                {marks.state === 'error'
                   ? `This week's register could not be loaded, so the roster is not narrowed to ${showPhrase}. Every member of the day is listed.`
                   : `This week's register is still loading, so the roster is not narrowed to ${showPhrase} yet.`}
               </Text>
@@ -1507,7 +1537,7 @@ function CourseDetailBody() {
                   <MemberCard key={m.id} member={m} tint={AVATAR_TINTS[(i + 3) % AVATAR_TINTS.length]}
                     weekLabel={week.label} noEmail={false} allMembers={members}
                     dayIso={chosen?.iso ?? null} weekdays={scopeWeekdays}
-                    rows={attendance.data ?? []} attendanceState={attendance.state}
+                    rows={marks.data ?? []} attendanceState={marks.state}
                     selectable={selectMode} selected={selected.has(m.id)}
                     onToggleSelect={() => toggleSelected(m.id)} />
                 ))}
@@ -1622,7 +1652,7 @@ function CourseDetailBody() {
                       <MemberCard key={m.id} member={m} tint={AVATAR_TINTS[i % AVATAR_TINTS.length]}
                         weekLabel={week.label} noEmail allMembers={members}
                         dayIso={chosen?.iso ?? null} weekdays={scopeWeekdays}
-                        rows={attendance.data ?? []} attendanceState={attendance.state}
+                        rows={marks.data ?? []} attendanceState={marks.state}
                         /* Always tickable, toggle or no toggle: the bar above
                            offers a delete over these cards, so the cards have
                            to be selectable from here. */
@@ -1746,13 +1776,23 @@ function StripArrow({ testID, icon, label, disabled, onPress }: {
 /**
  * What the icon on a date card means, in one wrapping row.
  *
- * The four states a WEEK of this course can be in -- and the four the strip
- * above draws, exactly. Every icon on a date card is named here, which is
- * what a legend is for.
+ * The states a WEEK of this course can be in -- and the ones the strip above
+ * draws, exactly. Every icon on a date card is named here, which is what a
+ * legend is for, and in this app it is also HOW the word reaches a sighted
+ * reader: a day cell is about 33pt wide on a phone and carries its icon alone,
+ * so the legend is the only place the word appears (guardrail 3).
+ *
+ * `failed` JOINS THEM ONLY WHEN IT IS ON SCREEN. A key for a state nobody is
+ * looking at is clutter on the other 99 weeks out of 100 -- but while the week
+ * has failed, a pink icon with nothing naming it is exactly the colour-alone
+ * signal this project does not ship. Found by looking at the rendered page;
+ * every source assertion passed straight through it (.harness/course-week-strip.mjs).
  */
-function DayLegend() {
+function DayLegend({ failed }: { failed: boolean }) {
   const { theme } = useTheme();
-  const keys: StatusKey[] = ['present', 'absent', 'awaiting', 'none'];
+  const keys: StatusKey[] = failed
+    ? ['failed', 'present', 'absent', 'awaiting', 'none']
+    : ['present', 'absent', 'awaiting', 'none'];
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.md }}>
       {keys.map(k => {
