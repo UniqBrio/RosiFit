@@ -14,6 +14,7 @@ import {
   wordingProblem, SUBJECT_MAX, BODY_MIN, courseNameProblem, COURSE_NAME_MAX,
   previewContext, SAMPLE_MEMBER, SAMPLE_ACADEMY, SAMPLE_UNSUBSCRIBE_URL,
 } from './message';
+import type { MessageContext } from './message';
 import type { Member } from './mock';
 import { TEMPLATES } from './mock';
 import { currentWeek } from './period';
@@ -25,9 +26,21 @@ const member = (over: Partial<Member> = {}): Member => ({
   weekdays: null,   status: 'active',
   expected: 6, attended: 3, missed: 3, streak: 2, last: '—', joinedOn: '2026-03-01', joined: 'Mar 2026', ...over,
 });
-const ctx = (over: Partial<Member> = {}) => ({
+const ctx = (over: Partial<Member> = {}): MessageContext => ({
   member: member(over), courseName: 'Prenatal Flow', branchName: 'Coimbatore',
   academyName: 'RosiFit', periodFrom: '18 Aug', periodTo: '24 Aug',
+  /* MessageContext gained a REQUIRED `followUpTrigger` when the course's own
+     trigger became a token (`{{follow_up_trigger}}`), and this fixture was
+     never given one -- so every call to `ctx()` below has been a type error
+     since, fifteen of them, and `npm run check` has been red on main ever
+     since too. Nothing was asserted about the trigger and nothing is asserted
+     about it here: this is the fixture being completed, not a spec being
+     changed. 4 is `SAMPLE_TRIGGER`, which is what `save_course` defaults
+     `p_threshold` to, so the fixture stands the value up as the value an
+     unstated trigger IS. The return type is now annotated, so the next
+     required field fails HERE, on one line, instead of at fifteen call
+     sites. */
+  followUpTrigger: 4,
 });
 
 test('every documented token resolves to something', () => {
@@ -77,6 +90,10 @@ test('a value containing a token is not substituted again', () => {
     member: member({ name: '{{branch_name}} Kumar' }),
     courseName: 'Prenatal Flow', branchName: 'Coimbatore',
     academyName: 'RosiFit', periodFrom: '18 Aug', periodTo: '24 Aug',
+    // the one context built inline rather than through `ctx()`, because this
+    // case needs a member whose NAME contains a token; same completion, same
+    // reason (see `ctx` above)
+    followUpTrigger: 4,
   });
   assert.equal(out, '{{branch_name}}');
 });

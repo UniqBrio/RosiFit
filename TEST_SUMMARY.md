@@ -1,3 +1,54 @@
+## CI became real, and the typecheck blocker is gone (11-Sep-2026)
+
+**GitHub Actions is getting runners again.** Every run since 09-Sep had failed in four seconds
+with `duration_ms: 0` and no logs. Run 84 on pull request 15 ran the gate job for **37 seconds**
+and produced a real log. That changes the standing verdict: the failures are now this
+repository's to fix, not an entitlement problem to report.
+
+**What it failed on, and it was never the tooltip.** `npm run check` stops at its first step:
+
+```
+src/data/message.test.ts(35,31): error TS2345
+  Property 'followUpTrigger' is missing in type '{ member; courseName; branchName;
+  academyName; periodFrom; periodTo; }' but required in type 'MessageContext'.
+```
+
+Fifteen of them, every one a call to the same `ctx()` fixture helper. `MessageContext` gained a
+required `followUpTrigger` when the course's trigger became a token, and the fixture was never
+given one. FIXED HERE, in one place: `ctx()` now supplies `followUpTrigger: 4` — `SAMPLE_TRIGGER`,
+the value `save_course` defaults `p_threshold` to — and its return type is annotated, so the next
+required field fails on one line instead of at fifteen call sites. One inline context in "a value
+containing a token is not substituted again" gets the same completion.
+
+**No spec was overwritten to do it.** Nothing is asserted about the trigger before or after; this
+is a fixture being completed so the file compiles against a type that changed under it. `typecheck`
+now reports **0 errors**, where main reports 15.
+
+### What still blocks `npm run check`, and why it is not mine to decide
+
+`test:unit` is the second step, and six specs fail there — the same six that fail on `main`. Five
+are one unfinished piece of work: a `follow_up_trigger` token was added to the message system and
+the specs that pin the token list, the chip labels and the everyday/More split were never updated
+with it.
+
+| Spec | What it says | The decision it needs |
+|---|---|---|
+| the token list IS the sender's variable map | the list and the map disagree by one entry | which side is right |
+| every token carries a short chip label | *"Follow-up trigger is too long to sit in a chip row"* — 17 characters against a 16 limit | what to call it in a chip |
+| the everyday seven are a SUBSET | `14 !== 13` | whether the trigger is an everyday token |
+| the six behind the More chip still fill | the same count, from the other side | the same decision |
+| every token the subject row hides is still reachable | the same count again | the same decision |
+
+The sixth is separate: `formDropdownMenu.test.ts` → *"a list screen's filter was flattened into a
+form's menu"* in `app/(tabs)/courses.tsx`.
+
+Every one of these is a product decision about someone else's feature — what a chip is called, and
+which row it sits in. Guessing at them inside a tooltip change would be widening this pull request
+into work nobody asked for, on copy nobody has approved. They are named here, with the exact
+assertion and the exact number, so whoever owns that feature can close them in minutes.
+
+---
+
 ## FAIL-FIRST — the Reset tooltip (11-Sep-2026)
 
 Requested: *"On reset button add a tooltip as this will be enable only after first upload of
@@ -55,6 +106,130 @@ satisfied by an element painted completely behind another one.
 
 NOT OBSERVED: the live project. The browser run is against fixtures, which is the right place for
 a layout claim and says nothing about production data. Nothing here reads or writes attendance.
+
+---
+
+## Gate run - 2026-09-11 - VERDICT: FAIL
+
+Steps: 6 pass, 5 fail, 1 blocked.
+Time: 21.1s total - slowest G7 Unit + pure specs (14.3s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (57ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (56ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (52ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (76ms)
+- **G5 Types** - PASS (6.1s)
+- **G6 Lint** - BLOCKED (-) - no local "eslint" in . - not fetched from the registry on purpose. Run `npm install` in . (provides eslint), or state why this class is unverified. - **131 consecutive runs**: a verdict that never changes is not a signal; make this class runnable or accept it in writing
+- **G7 Unit + pure specs** - FAIL (14.3s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: a form asked for a record answers a failed read
+ok 169 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 170 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 183 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+  name: 'AssertionError'
+  expected: true
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+ok 300 - a ring is never a colour alone, and nothing expected is a dash
+# Subtest: a failed reset keeps the dialog open, carrying the reason
+ok 337 - a failed reset keeps the dialog open, carrying the reason
+```
+
+- **G8 Functional / integration** - FAIL (153ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (57ms)
+- **G10 Backward compatibility (fixtures)** - PASS (130ms)
+- **G11 Wide tables are configurable** - PASS (62ms)
+- **G12 Installable as an application** - PASS (77ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-11 - VERDICT: FAIL
+
+Steps: 6 pass, 5 fail, 1 blocked.
+Time: 21.5s total - slowest G7 Unit + pure specs (14.2s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (61ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (56ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (58ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (77ms)
+- **G5 Types** - PASS (6.6s)
+- **G6 Lint** - BLOCKED (-) - no local "eslint" in . - not fetched from the registry on purpose. Run `npm install` in . (provides eslint), or state why this class is unverified. - **130 consecutive runs**: a verdict that never changes is not a signal; make this class runnable or accept it in writing
+- **G7 Unit + pure specs** - FAIL (14.2s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: a form asked for a record answers a failed read
+ok 169 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 170 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 183 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+  name: 'AssertionError'
+  expected: true
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+ok 300 - a ring is never a colour alone, and nothing expected is a dash
+# Subtest: a failed reset keeps the dialog open, carrying the reason
+ok 337 - a failed reset keeps the dialog open, carrying the reason
+```
+
+- **G8 Functional / integration** - FAIL (135ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (59ms)
+- **G10 Backward compatibility (fixtures)** - PASS (123ms)
+- **G11 Wide tables are configurable** - PASS (57ms)
+- **G12 Installable as an application** - PASS (76ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
