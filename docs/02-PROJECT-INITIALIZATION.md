@@ -61,11 +61,20 @@ Strict type checking, no implicit `any`, unchecked index access on. **Turning st
 later means paying for every unsound line written in between**; turning it on now costs nothing
 because there is no code yet.
 
-### 7. Install the guards
+### 7. Check the guards are wired — there is nothing to install
+`new-app.mjs` already wrote `.claude/settings.json`, whose `PreToolUse` hook fires the guards on
+every Bash call in every session. **Commit it** — settings that live on one machine enforce
+nothing on anyone else's.
+
 ```bash
-npm run guard:install     # the pre-commit hook
-npm run guard:test        # prove every guard can still fire
+git ls-files .claude/settings.json    # prints the path, or you have not committed it
 ```
+
+> `npm run guard:install` and `npm run guard:test` are **framework** scripts, run in the
+> framework repo against the framework's own guards. A scaffolded app has neither script nor a
+> local `scripts/hooks/` — in workspace mode the process is linked, not copied. This step said
+> to run them here for as long as it existed, which is a step nobody could follow; corrected in
+> v1.36.1 after a scaffolded app was checked rather than assumed.
 
 ### 8. Create the registers, empty
 Copy from `docs/registers/`. They are worth almost nothing on day one and a great deal by month
@@ -85,8 +94,10 @@ review agents, and the hook that runs the guards). Fill in the rules; the wiring
 See [21-AGENT-WIRING.md](./21-AGENT-WIRING.md).
 
 ### 10. Set up CI
-Copy `ci/github-actions-ci.yml`. It runs the same gate runner developers run locally — if CI
-and local run different checks, one of them is decoration.
+Copy `ci/github-actions-ci.yml`. It **calls** `npm run audit:all` and `npm run guard:test` —
+the same scripts developers run locally — rather than restating the checks inside them. If CI
+and local run different checks, one of them is decoration, and a CI file that lists the checks
+by name is a copy that will drift into being exactly that.
 
 ### 11. Prove the pipeline end to end with something trivial
 Ship a health-check endpoint through the **entire** process: plan, build, test gate, deploy,

@@ -12,6 +12,322 @@
 
 ---
 
+## 1.36.1 — 2026-09-11 — PATCH
+
+**A plain-English path through the framework - and two steps nobody could have followed, found by checking a real scaffolded app**
+
+Everything here was written for someone who already knows why it exists. 1_AppDevelopmentSteps.md is the same journey with the reasoning removed: create an app, build a change, upgrade, capture a lesson. It links to docs/02 and docs/01 rather than restating them, so there is one canonical version of each step and one short version that points at it. The part worth recording is not the document, it is what writing it found. Every command and path in it was checked by scaffolding a real app and running them, rather than by reading the docs that describe them - and two steps turned out to be unfollowable. docs/02 step 7 told app developers to run `npm run guard:install` and `npm run guard:test`: both are FRAMEWORK scripts, a scaffolded app has neither, and in workspace mode it has no local scripts/hooks/ either. An app's guards are wired by .claude/settings.json, which the scaffolder already writes, so the real instruction is 'check it is committed'. And step 8 says to create the registers by copying them - true, and easy to read as 'they are already there', which is how a first draft of the new guide told people to fill in a docs/registers/ENVIRONMENTS.md that does not exist yet. Both are the same shape as RC-013: prose that was never executed against the thing it describes.
+
+### Added
+- 1_AppDevelopmentSteps.md - set-up once (9 steps), the build loop (/request, gate, merge), upgrading between tasks, capturing a lesson, a command table split by WHICH FOLDER you run it in, and a short list of the ways this goes wrong. Registered in FRAMEWORK_MANIFEST.md and linked from the top of docs/00-OVERVIEW.md
+
+### Fixed
+- docs/02 step 7 no longer tells an app developer to run two scripts that do not exist in an app. It now says the guards are already wired by .claude/settings.json and gives the one command that proves it, with a note saying why the framework scripts are not the app's
+
+### Stated as honest debt, not papered over
+- The new guide restates commands that live in package.json and in the runbooks, so it is a second place that can drift. It is kept short and points at the canonical documents for exactly that reason, but nothing compares them - the same class as the ci/ template and its installed copy, recorded in v1.35.0 and still open. A check that a named command exists in package.json would cover both
+
+### App action required
+Nothing. No gate, script, baseline or seed file changes. If you onboard someone, 1_AppDevelopmentSteps.md is the file to hand them. If you followed docs/02 step 7 and wondered why `npm run guard:install` did not exist in your app, that was this - your guards were already on, via .claude/settings.json; confirm with `git ls-files .claude/settings.json`.
+
+---
+## 1.36.0 — 2026-09-11 — MINOR
+
+**Capture is automated; promotion is not - and the suite asserts the absence of the capability, not its presence**
+
+The expensive part of the promotion loop was never the edit. It was that a lesson found on a Tuesday, in an app, in a session that then ended, was gone by Thursday - so the same defect class got paid for twice, at full price, months apart. `npm run capture` makes recording it immediate. What it deliberately CANNOT do is the design: there is no code path in it that edits a rule, a checklist, a canonical pattern, a gate or a workflow. promote.md Filter 3 is the rule of three - a lesson becomes a framework rule on the SECOND sighting from a DIFFERENT app - and the screen checklist is capped at 20 items and declared FULL, so every rule admitted without evidence of generality spends a budget a later, better rule then cannot. A cron job that turned each bug into an SDLC edit would mint rules with no rung, no case and no version bump: precisely the 'rule that nothing executes' this framework exists to refuse, only at machine speed and wearing the authority of having been written by a script. So the cheap half is automated and the load-bearing half - the judgement - stays where it was.
+
+### Added
+- scripts/capture-candidate.mjs - parks a lesson in CANDIDATES.md at n=1, newest-first, renumbering nothing. Mechanises promote.md Filter 2 (the lexicon grep: a rule naming a business concept is app-specific by definition, refused with exit 2, with --allow-lexicon-word excusing that ONE check per CLAUDE.md rule 2) and REPORTS Filter 3 without acting on it. Filter 1, the path test, is deliberately NOT mechanised: it needs judgement about where a change came from, and a wrong automatic answer there is worse than none, because it looks like a verdict. Dry run by default. npm run capture
+- scripts/capture-candidate.test.sh - 14 assertions, wired into npm run guard:test (now 15 suites). Its central case is a NEGATIVE: given n=2 from a different app, seven governed files - the patterns register, the screen checklist, VERSION, UPGRADES, the candidates register and both promotion runbooks - must be byte-identical afterwards. A capability nothing asserts the absence of is one that arrives later, quietly, in a refactor
+- Cases FW-CAND-001..004; a --register override so the suite drives the real code against a scratch file rather than mutating the live register to prove it mutates registers correctly
+
+### Fixed
+- workflows/promote.md now names the command at both filters it touches, and says at Filter 3 why the promotion itself is not automated. The runbook is canonical; a tool the runbook does not mention is a tool nobody finds
+
+### Stated as honest debt, not papered over
+- Filter 1 (is this framework-origin behaviour at all?) stays human. Most candidates should die there, and an automatic wrong answer at that filter would park app-only lessons as framework candidates, which costs more than the capture saves
+- The lexicon grep reads PRODUCT_LEXICON.md with a line-shaped regex. An app whose lexicon is prose rather than a list or table yields no words, so Filter 2 passes silently for that app. It fails OPEN by design - refusing every capture because a lexicon could not be parsed would make the tool unusable - but that is a heuristic degrading quietly, and it is named here rather than implied
+
+### App action required
+Nothing. No gate, baseline, seed file or generated artifact changes. If you want the capture loop, it is `npm run capture -- --rule "<domain-free rule>" --app <name> --apply` from the framework, and a second sighting from a DIFFERENT app is `--sighting-of CAND-00N --app <that-app> --apply`, which marks the row ELIGIBLE and tells you to run /promote then /framework-update. It will not promote for you, and that is the feature.
+
+---
+## 1.35.0 — 2026-09-11 — MINOR
+
+**A decision recorded only in a comment, in a file nothing ran - and the CI that could not see the class it was written for**
+
+v1.33.0 decided deliberately that the starter declares RANGES and ships no lockfile: it is a shape to copy, not a pinned tree. That decision was written down in THREE places and enforced in none: a comment inside ci/github-actions-ci.yml (a file which had never been copied into .github/workflows/, so it had never executed anything), and twice in docs/02-PROJECT-INITIALIZATION.md - "the starter is a shape, not a lockfile", and "lockfile committed" in the app's own checklist, which is the correct opposite rule for an app. That is the finding, sharper than "it was undocumented": the prose was right, repeated and consistent, and it still changed nothing, because no prose is reachable from fs.readdirSync. Meanwhile new-app.mjs's SKIP set listed only build output, because a lockfile is not build output and nobody had asked whether it should be SEEDED. So a routine npm install in starter/ left a lockfile that nothing ignored and the scaffolder copied byte-for-byte into every new app - verified by running the scaffolder, not by reading it - and since an app commits its lockfile, every app born from that checkout would have carried one machine's dependency resolution from one afternoon, permanently. The intent existed, was correct, and was enforced by nothing: CLAUDE.md's first idea applied to a decision rather than a rule. The second half of this release is the reason the first half was found late. RC-012 was a defect class visible only where the shell's path namespace and the interpreter's disagree, and CI ran ubuntu only, where they agree - so twelve false accusations would have sat behind a green pipeline indefinitely. Full analysis: docs/registers/ROOT_CAUSE_REGISTER.md RC-013, and decision 003 for the CI shape.
+
+### Added
+- A second CI job, self-tests-windows: audit:all and guard:test on windows-latest with shell bash, because the suites are bash scripts and the runner's default is pwsh. Deliberately NOT a mirror of the gate job - no browsers, no application gate, since those exercise the app's toolchain and that is not where the class lives. Decision 003 records the four options rejected, including the obvious one (an OS matrix over the whole gate, which roughly doubles the bill to re-prove what ubuntu already proved)
+- RC-013 and decision 003; cases FW-SEED-001..002 and FW-CI-001
+
+### Fixed
+- .gitignore ignores /starter/package-lock.json, so it cannot enter the framework's history by reflex
+- scripts/new-app.mjs adds package-lock.json to SKIP, so a stray one cannot seed a scaffolded app. Two lines at the two places the file can escape - deleting the file would have fixed today and left both routes open
+- The installed .github/workflows/ copy was re-synced with the ci/ template; it was already one version behind within an hour of being installed
+
+### Stated as honest debt, not papered over
+- ci/github-actions-ci.yml and its installed copy under .github/workflows/ are two files that must stay in step, and nothing compares them. They drifted within an hour of the first install and this run re-synced them by hand. It is the same class as RC-013 - a rule enforced by remembering - and it is recorded rather than fixed because the cheapest honest fix is a check, and the rule budget says propose compaction as readily as growth. Named here so the next person does not discover it the way this one did
+- The Windows job has never actually run: it was authored and parsed, and its two commands were proven on this Windows machine, but the first real execution happens on the next push. If it fails it will be on the runner's environment, not on the commands
+
+### App action required
+Nothing, and one thing worth knowing. No gate, baseline or generated file changes, and an existing app is untouched - your own package-lock.json is yours and should stay committed; this release only stops the FRAMEWORK's starter from seeding one. The thing worth knowing is the shape of the mistake rather than the mistake: a decision that some script must honour belongs in that script's behaviour, with a rung, not in a comment beside it. If you scaffold a new app from this version it will generate its own lockfile on first npm install, as it should.
+
+---
+## 1.34.0 — 2026-09-11 — MINOR
+
+**Three suites were accusing correct code: a path crossing into JavaScript source is data, and nothing translates it**
+
+npm run guard:test reported 10/13 off POSIX. The ratchet suite failed 6 of 9 assertions, theme-build 3 of 11, pwa-baseline 3 of 13 - and every subject those assertions named was correct. A path used as ARGV is translated by the shell on the way out, so `node "$ROOT/x.mjs"` resolves everywhere; the same string interpolated into JavaScript SOURCE - an import specifier, a readFileSync argument - is data, nothing rewrites it, and Git Bash's /c/Explorations/... reached Node as C:\c\Explorations\.... Ten of the thirteen suites pass paths only as argv, which is exactly why the distinction stayed invisible until the three that do not were run off POSIX. Two things turned a portability bug into a diagnostic one: the failures were reported as defects in the SUBJECT rather than as a harness that could not run - the third verdict exists for precisely this, and a bash harness had no way to say it - and 2>/dev/null on the node -e calls discarded the ERR_MODULE_NOT_FOUND and ENOENT that named the cause outright. The sweep added here found a fourth site nobody was looking for: scripts/upgrade.test.sh had the same defect and was NOT failing, because a || sed fallback silently absorbed the broken require() and produced the right answer by a route nobody intended. Two of the four shapes this class takes do not announce themselves, which is the whole argument for a sweep rather than three fixes. Full analysis: docs/registers/ROOT_CAUSE_REGISTER.md RC-012.
+
+### Added
+- scripts/lib/shpath.sh - jspath for anything fs opens, jsurl for an ESM specifier. Two functions because it is two requirements: a bare C:/... is rejected as ERR_UNSUPPORTED_ESM_URL_SCHEME, the drive letter parsing as a URL scheme. Where cygpath is absent - every POSIX system - the path is already the form Node wants, so passthrough is the correct answer rather than a degraded one
+- scripts/shpath.test.sh - 7 assertions, wired into npm run guard:test (now 14 suites). Case 3 asserts the bare native path is STILL rejected, so the day jsurl becomes redundant that is reported rather than assumed. Case 4 sweeps every shell harness in the tree; case 4a fails if it read fewer than 8 files, because a sweep over zero files reports clean and means nothing; case 5 plants a violation and proves the sweep fires on it
+- CP-31 in the canonical patterns register - argv is translated, source is not - and cases FW-PATH-001..004
+
+### Fixed
+- scripts/ratchet.test.sh - 3/9 to 9/9. One line: the ESM import specifier now comes from jsurl
+- scripts/theme-build.test.sh - 8/11 to 11/11. Six readFileSync sites and two writeFileSync sites, converted once into ROOT_JS / TMP_JS / MF_JS rather than at each site
+- scripts/pwa-baseline.test.sh - 10/13 to 13/13. The three manifest mutations now go through a mutate() helper that ASSERTS the mutation happened: a node -e that dies leaves the fixture intact, and the case then fails as though the DETECTOR had missed something, which is the misread this whole entry is about
+- scripts/upgrade.test.sh - found by the sweep, not by a failure. Its require() of a manifest path was broken off POSIX and masked by a || sed fallback
+
+### Stated as honest debt, not papered over
+- The sweep requires a following / to fire, so it catches '$VAR/path' and not a whole path held in one variable, '$MF'. That shape is not distinguishable by syntax from a JSON key, '$field', and a check that flags correct code is switched off within a day - the narrow form that never lies is the one that survives. The residual shape is covered by the _js / _url naming convention and by review, and is stated in RC-012 rather than implied
+- guard:test is still only executed on whichever platform the person running it has. Nothing in CI runs it on Windows, so the class this entry closes was found by hand and the next one in the same family would be too
+
+### App action required
+Nothing. No application carries these shell harnesses, and no gate, baseline or generated file changes - the starter is untouched. The one thing worth knowing is the rule itself, CP-31, if you ever write a shell script that hands a path to node: convert at the boundary with $(jspath ...) for anything fs opens and $(jsurl ...) for an ESM specifier, and never send the interpreter's stderr to /dev/null. A harness that cannot say 'I could not run' says 'your code is broken' instead, and you will believe it.
+
+---
+## 1.33.0 — 2026-09-10 — MINOR
+
+**The starter declares its toolchain, and the gate is green for the first time**
+
+For thirty-one recorded runs the gate reported G5-G8 BLOCKED with the remediation 'run npm install', and every run - this framework's own included - accepted that as a fact about the environment. It was a claim, and nobody executed it. Running npm install in starter/ installed nothing, because starter/package.json declared no dependencies at all: 'a shape, not a lockfile' had been read as 'declare nothing' rather than 'pin nothing'. The registry was reachable the whole time. So the four application gates were structurally un-runnable everywhere, CI included, and everything they would have caught accumulated unseen for the reference implementation's whole life: 44 type errors under the starter's own strict settings, 7 lint findings and no lint configuration, a unit tier that booted the entire application and timed out, functional specs written against a route that served a 404, a configuration module whose PUBLIC_* values were undefined in every browser because it read process.env dynamically, a dialog whose class names no stylesheet defined, a tab row whose mount-time scrollIntoView made the first Tab skip the active tab, data assertions that raced one run in four, and two test projects on an engine the CI template never installs. Ten findings, one cause: a gate that cannot run finds nothing, and 'nothing found' is indistinguishable from 'nothing wrong' for exactly as long as it stays blocked. RC-009 made the block honest and RC-010 made the streak visible; this is what was behind it. The gate now reports 12 PASS, 0 FAIL, 0 BLOCKED - the first fully green run in the ledger.
+
+Full analysis: `docs/registers/ROOT_CAUSE_REGISTER.md` **RC-011 - a gate that cannot run finds nothing, and a stated reason for a block is a claim to be executed like any other.**.
+
+### Added
+- starter/package.json declares its toolchain as ranges - typescript, eslint, @playwright/test, next, react, dotenv - so npm install produces one. Every name was verified against the registry before being written. Still no lockfile: the shape is kept, the emptiness is not
+- The reference screen: src/app/page.tsx -> src/features/items/ (types, api, ItemsScreen, ItemForm), composing TabRow, ListControls, Dialog, ConfirmDialog and ToastHost and building none of them. Archive model (CP-26), edit parity (CP-25), a re-read after every write, and Save that hands control back at once with the draft restored on failure. Documented in starter/docs/modules/items.md
+- starter/eslint.config.js for gate G6, and starter/next.config.mjs to carry PUBLIC_* into the client bundle
+- Dialog, ConfirmDialog and the reference list have styles - semantic tokens only. They had rendered class names no stylesheet defined for as long as they existed
+- Cases FW-GATE-001..005; RC-011 in the root cause register
+
+### Fixed
+- 44 type errors across 20 starter files, fixed at the site and never baselined; tsc-baseline.txt written at zero
+- 7 lint findings, including a react-hooks suppression that stood in for a hook-ordering fix
+- The unit tier starts no dev server; 113 unit specs run in under three seconds in any environment
+- config.ts reads PUBLIC_* through a static table, because process.env[name] is never inlined by a bundler and every client component was throwing at import
+- ConfirmDialog renders confirm-accept, as its own comment and the reference spec require
+- TabRow scrolls the active tab into view only when it is actually out of view - Chromium moves the sequential focus starting point to a scrollIntoView target, so the mount-time scroll made the first Tab skip the active tab
+- Every data assertion in the functional specs polls for the write instead of reading it the instant a keypress resolves; the reference spec's habit 3 now says so
+- The tablet and mobile-ios projects run on Chromium, the engine the CI template installs; 36 of 108 functional runs had failed at browser launch in every environment
+- The functional server is configured in webServer.env; a sandbox that forbids browser downloads names its Chromium in PW_CHROMIUM_PATH
+- TEST_SUMMARY.md's header no longer states that the environment had no package registry; it says what was true, and that the claim went unexecuted for thirty-one runs
+
+### Stated as honest debt, not papered over
+- WebKit is exercised nowhere. The two iOS-device projects run on Chromium for viewport variety; real engine coverage is a CI decision (install webkit, drop the browserName override) and is named in the config rather than implied.
+- The starter's type baseline is at zero, which makes G5 a clean gate here. That is the starter's fact. An adopting app with a backlog gets the ratchet, unchanged.
+- The playwright config recognises the unit tier from the command line (tests/unit in argv), because Playwright hands a config no other signal before evaluation. It is the honest mechanism, and it is a string match.
+
+### App action required
+Nothing is required, and one thing is worth taking. NEW apps scaffold with the toolchain declared and a reference screen at / that every functional spec drives; npm install then npm run gate gives a real verdict on day one. EXISTING apps: the seed files that changed are offered through the usual upgrade path, and three deserve a look. (1) src/lib/config.ts now reads PUBLIC_* statically - if your app's client components import the API client, they were throwing at import in the browser until now, unless you had already worked around it; take this file, and add next.config.mjs, which inlines the framework's prefix. (2) ConfirmDialog's control id is confirm-accept, not confirm-ok; any test addressing the old id updates one string. (3) playwright.config.ts: the unit tier no longer starts a server, the functional server is configured in webServer.env so no .env is needed to run the suite, and the iOS-device projects run on Chromium - if you want WebKit coverage, install it in CI and drop the browserName override; that gap is now a decision you can see rather than a failure you could not explain. If your app carries a type-error backlog, keep your tsc-baseline.txt: the ratchet is unchanged, and the starter's own baseline sitting at zero is the starter's fact, not yours.
+
+---
+## 1.32.0 — 2026-09-10 — MINOR
+
+**A check that did not run is BLOCKED at every layer - and the framework pays its own recorded debt**
+
+Every item in this version was written down as honest debt in v1.30.0 or v1.31.0. Debt that is recorded and then left is the same as debt nobody recorded, one version later; this run reads the previous two entries and pays them. The sharpest one: a ratchet with no baseline exited 0 while printing 'this gate is INERT and is telling you so'. It told stderr, and the thing that decides reads the exit code - so the gate runner, which has three verdicts precisely so that 'did not run' is never mistaken for 'passed', recorded every baseline-less ratchet as PASS. Observed on a real scaffold with its service worker deleted and no PWA baseline: G12 PASS. Binding rule 3 said 'a missing baseline prints SKIPPED and passes' and binding rule 4 said 'a step that did not run is BLOCKED' one paragraph later; the code honoured the wrong one. Three more, same pass: nothing read TEST_SUMMARY.md for a trend, so RC-009's four steps sat there for 24 identical runs; VERSION and package.json disagreed by twenty-eight releases because the close-out rendered the story into three places and the number into none; and the fixture rung added for v1.31.0's upgrade-clobber turned out to pass under every ownership rule, because conformance aged its lineage the way adoption does rather than the way a scaffold does. A fixture walking the wrong path proves the wrong thing with the same green.
+
+Full analysis: `docs/registers/ROOT_CAUSE_REGISTER.md` **RC-010 - the message and the verdict disagreed, and the consumer reads the verdict; rule 3 amended so it agrees with rule 4.**.
+
+### Added
+- scripts/ratchet.test.sh - executes the engine, par.mjs and the gate's reading of exit 3: no baseline is BLOCKED (3), never 0 and never 2; par labels it BLKD and exits 3; a FAIL still outranks it; the two-sided contract is unchanged
+- The gate reads its own ledger: a step BLOCKED for a reason of its own for three or more consecutive runs carries the streak on its own report line. On this repository's real ledger the first run said 28 consecutive for G5-G8. Runs narrowed by --only neither extend nor break a streak
+- fixtures/diverged carries a manifest and a theme module generated from its own tokens, aged the way a scaffold records them; conformance now fails if an upgrade replaces either with the framework's copy - and was observed failing against the pre-v1.31.0 ownership rule
+
+### Fixed
+- ratchet.mjs: RATCHET_SKIP is 3. A missing baseline is BLOCKED, with 'no baseline at' kept verbatim for upgrade.mjs; the parsed-nothing branch, which always PRINTED BLOCKED and exited 2, now exits 3 too, so it is no longer rendered as 'your code is broken' about a tree nothing looked at
+- par.mjs reads exit 3 as BLKD, lists blocked tasks under their own heading, and exits 3 unless something genuinely FAILED
+- close-out.mjs --apply writes VERSION and package.json's version from the record, so the two files that state which version this is cannot drift again (they had: 1.31.0 against 1.3.0)
+- conformance.mjs ages the diverged fixture's generated artifacts as 'pristine' with the app's own hash - the scaffold path, which is the one that clobbered - instead of letting --init route them to review, where no rule could ever have failed the check
+- CLAUDE.md binding rule 3 and docs/17 section 4 no longer contradict rule 4: tooling gaps fail open in the commit guard; a missing baseline in a gate is BLOCKED
+
+### Stated as honest debt, not papered over
+- A workspace app that has never run framework:upgrade against a version that added a gate it lacks a baseline for will see BLOCKED where it saw PASS. That is the honest verdict and the remedy is one command, but it is a change in what CI reports for such an app, and it is stated here rather than hidden inside 'MINOR'. Why not MAJOR: no app whose baselines exist changes verdict (all three fixtures PASS), the verdict being replaced was never a valid PASS under the framework's own rule 4, and the migration runs automatically inside the upgrade every app already runs.
+- The streak is reported only at the gate. Ground, plan, build and verify are still narrator-reported (RC-008's debt), so a stage that never changes outside the gate is still invisible to any script.
+
+### App action required
+Nothing is required if your app was scaffolded from, or has run `npm run framework:upgrade` against, any version that introduced a gate it uses - upgrade.mjs has always baselined new ratchets on apply, and it probes for the phrase 'no baseline at', which this version keeps verbatim. (v1.31.0's note that G12 'arrives inert' was too pessimistic for exactly that reason; it is inert only in an app that never runs the upgrade.) One behaviour changes, and it is the true verdict replacing a false one: a ratchet with NO baseline now reports BLOCKED (exit 3) instead of PASS. In the gate that is the BLOCKED row; in `npm run audit:all` it is a BLKD label and exit 3, never FAIL; in CI it is a non-green run that names the audit. If that happens to you, the app has a gate it never baselined - a check that was silently not running - and the fix is one command: `npm run framework:upgrade` (which baselines it), or `node <framework>/scripts/audits/<audit>.mjs --write-baseline` directly. Nothing else in this version needs an action: the gate's streak line, the close-out writing VERSION, and the fixture are all framework-side.
+
+---
+## 1.31.0 — 2026-09-10 — MINOR
+
+**CP-30 - every generated application is installable, and none of it is configuration**
+
+The component library has listed Install as a BASELINE concern since it was written - one of the things every application needs - and carried it as a GAP row with the note 'an option in the customizer, never a silent default'. The owner has directed otherwise: every application generated through the SDLC is to be installable and launchable standalone, with no additional manual configuration. So the gap is closed and the row is flipped, and the caution behind the old wording is kept where it belongs - the app is installable, but nothing installs itself. The decisive design choice is that the web app manifest is GENERATED from design/tokens.json rather than hand-written: theme_color and background_color are colour decisions, and colour lives in exactly one file. Hand-written they are two more literals outside the token file, drifting the first time anybody rebrands - the app changes colour and the installed window around it does not. Generated, a rebrand still costs one edit, a hand-edited manifest is caught by gate G1 exactly like a hand-edited stylesheet, and a scaffold is installable the moment it exists because the same theme:build that compiles the theme writes the manifest, the offline page and the launcher icons.
+
+Full analysis: `docs/registers/ROOT_CAUSE_REGISTER.md` **CP-30 - installability, generated from the token file; DECISION 002 in docs/registers/DECISION_LOG.md records the reversal and the options rejected.**.
+
+### Added
+- CP-30 in CANONICAL_PATTERNS: the manifest is generated from the tokens; HTML is never cache-first; the data layer is never cached; an update is offered, never imposed
+- Generated installable artifacts - theme-build.mjs now renders public/manifest.webmanifest, public/offline.html and the maskable launcher icons from design/tokens.json alongside the stylesheet and the typed module, all covered by gate G1
+- scripts/lib/png.mjs - writes a valid PNG from Node's own zlib, so the launcher icons follow a rebrand instead of being two committed binaries that ignore it, and no rasteriser dependency lands in the path of every scaffold
+- starter/public/sw.js - network-first for HTML, stale-while-revalidate for content-addressed assets, and the data layer not cached at all. It never calls skipWaiting() on its own
+- starter/src/lib/pwa.ts + starter/src/components/PwaProvider.tsx - the install and update decisions as pure functions, and the component that owns the browser APIs and decides nothing itself
+- starter/src/app/layout.tsx - the root layout, shipped so the wiring is in the box: it links the manifest, sets a theme-color per colour scheme, points apple-touch-icon at the raster, and mounts ThemeProvider and PwaProvider. ThemeProvider had always assumed a meta theme-color existed and nothing had ever created one
+- Gate G12 and `npm run audit:pwa` - scripts/audits/check-pwa-baseline.mjs, ratcheted, plus scripts/pwa-baseline.test.sh which executes it against thirteen scratch applications
+- KL-002..004 in KNOWN_LIMITATIONS - iOS has no beforeinstallprompt, iOS will not take an SVG launcher icon, and a service worker needs a secure context. Each states what the app does instead
+
+### Fixed
+- An artifact generated from an app-owned source is now app-owned too. design/tokens.json was expected-divergent and the files rendered from it were not, so an upgrade classified them 'pristine, and the framework changed them' and applied the framework's defaults over them. Reproduced end to end: scaffolding acme-invoices and running ONE upgrade renamed the installed application back to 'Default Framework App' and reset a rebranded app's compiled stylesheet to the framework palette. Both silent; the manifest one visible only to somebody who had already installed it
+- theme-build's served artifacts default to the directory beside the TOKENS, not beside the working directory. One flag defaulting to a different application than the other two is a footgun with no safe way to hold it - building a scratch app's tokens wrote its manifest over the real starter's
+- docs/17-ENFORCEMENT-RATCHETS.md section 7 listed nine gates and the framework had thirteen. Four had been added to audit:all and never to the table, for the ordinary reason a second list drifts: nothing compared the two
+
+### Stated as honest debt, not papered over
+- G12 arrives INERT rather than baselined in an existing app - no baseline file means the ratchet skips loudly and passes. That is every ratchet's adoption path in this framework, and it is stated in the app action above rather than described as 'arriving baselined'.
+- The conformance fixtures still carry no src/theme/ and no public/, so no fixture exercises a generated artifact across the scaffold-then-rebuild-upgrade path. The regression that WOULD have shipped here was caught by an end-to-end scaffold in scripts/upgrade.test.sh instead, which is a rung but not a fixture. Carried forward from v1.30.0, now with a second incident behind it.
+
+### App action required
+Nothing is required, and nothing breaks. A NEW app scaffolded from this version is installable with no step at all: new-app writes the app's name into design/tokens.json and the scaffold's theme build renders the manifest, the offline page and the icons from it. An EXISTING app gains the capability but does not switch it on by itself, because three of the pieces live in application source and are yours: take starter/public/sw.js, starter/src/lib/pwa.ts, starter/src/components/PwaProvider.tsx and the wiring in starter/src/app/layout.tsx, add the `app` block from starter/design/tokens.json to your own tokens, and run `npm run theme:build`. Gate G12 (`npm run audit:pwa`) then tells you what is still missing, by name. Until you do, G12 is INERT in your app rather than baselined - you have no .baselines/pwa-baseline.txt, so the ratchet prints a loud SKIPPED on stderr and passes. That is deliberate, and it is stated here rather than dressed up: an absent baseline is an unenforced gate, not a clean one. Run `node scripts/audits/check-pwa-baseline.mjs --write-baseline` to freeze where you actually are and start ratcheting down.
+
+---
+## 1.30.0 — 2026-09-10 — MINOR
+
+**Three checkers were describing their own invocation, not the tree**
+
+A checker must describe its subject. Three in this repository described the circumstances of their own run instead, and each looked like an unrelated complaint. The theme builder baked a cwd-relative path into every generated file, so identical tokens produced different bytes from the framework root and from starter/ - and its own byte-comparison then reported DRIFT, "stale or hand-edited", on files nothing had edited. The gate runner never asked where, inside the subject, the application lives: G5-G8 ran tsc, eslint and the app's test scripts against the framework root, which deliberately has no tsconfig and no test scripts, so the gate recorded BLOCKED in 24 of the 27 runs in TEST_SUMMARY.md - always the same four steps, always telling the reader to install a toolchain into a package.json that would never carry it. And the runner wrote its tree fingerprint after any run, including a two-step --only run, so npm run guard:test stamped "this tree has been gated" on trees that had not been, and the next mandatory run announced itself avoidable. A fourth instance of the same family: the CI workflow enumerated the audits by name, making it a hand-maintained copy of audit:all that had already drifted - audit:fixtures and audit:deadweight could not fail a pull request, under a file header reading "if CI and local run different checks, one of them is decoration".
+
+Full analysis: `docs/registers/ROOT_CAUSE_REGISTER.md` **RC-009 - a checker must describe its subject, not its own invocation; and only a run that verified the thing may record that the thing was verified.**.
+
+### Added
+- scripts/theme-build.test.sh - 5 cases: identical tokens build byte-identically from any directory, --check agrees from both, the header path is followable, and a genuinely hand-edited file is still caught
+- scripts/gate-scope.test.sh - 12 cases: the application subtree in both layouts, the BLOCKED remediation naming it, and the fingerprint contract from both ends
+
+### Fixed
+- theme-build.mjs names the token source relative to the generated file's own directory, so the build is a function of its inputs alone - and yields the same string in both layouts, ending the phantom upgrade churn on the two generated theme files
+- gate-runner.mjs resolves the application subtree through appPath(), the helper every audit already uses; G5-G8 run there, resolve their local binaries from there, and the report states the directory. A BLOCKED step now names where to install
+- gate-runner.mjs writes the tree fingerprint only after a run narrowed by neither --only nor --skip, so the redundancy notice can no longer fire on a run that was mandatory
+- gate-runner.mjs gains --logdir, so a harness driving the real runner keeps its step logs out of the subject's .gate-logs/ instead of leaving logs describing a run nobody performed
+- ci/github-actions-ci.yml calls audit:all instead of restating it - two of the ten audits had been missing from CI, and the copy that could drift no longer exists
+- close-out.mjs takes its commit trailers from the record instead of hardcoding one, so a generated commit message can no longer carry two Co-Authored-By lines naming the same author differently
+- close-out.mjs wraps the App action line like every other field - it was the one line pushed unwrapped, and the suite's width assertion could not see it because the fixture's appAction was short enough never to overflow
+- close-out.mjs prints its "===== SECTION =====" banners only under --all. With one rendering selected the output is a single document the caller will redirect, and the banner became the commit's subject line - which this repository did once, to itself
+
+### Stated as honest debt, not papered over
+- The conformance fixtures still carry no src/theme/, so no fixture exercises a generated artifact across the scaffold-then-rebuild path. The two new suites test the builder and the runner directly, which closes the defect but not the fixture gap.
+- TEST_SUMMARY.md is append-only and read by no script. The gate wrote the same verdict on the same four steps for 24 consecutive runs and nothing noticed, because a signal that never changes is indistinguishable from no signal. A rule that nothing executes is not a rule; an output nobody reads is not a signal.
+
+### App action required
+Nothing required, and the upgrade is quieter than it used to be. The two new suites arrive green, so they cannot turn an existing app red. src/theme/tokens.generated.css and .ts arrive with a new first line - the token source is now named relative to the generated file itself (../../design/tokens.json), which reads the same in the framework and in your app. Take them; they are generated files and nothing else in them changed. That identical-in-both-layouts header is the point: your app rebuilds the theme at scaffold time, so until now every app differed from its own recorded seed and the upgrader auto-overwrote both files on EVERY upgrade, whether or not a token had moved. That churn stops here. If you run the gate from your app root, expect one new line in the report - "Application steps ran in ." - naming the directory the type, lint and test steps were aimed at.
+
+---
+## 1.29.0 — 2026-09-10 — MINOR
+
+**Six design directives, built once so no application builds them again**
+
+Six corrections arrived together, and five of them were the same shape: a rule the framework already stated in prose with nothing implementing it. Confirmation on destructive actions was written down and had a component; undo was written down beside it and had nothing at all — the bulk-action bar shipped a one-click delete over a selection built by shift-clicking. "Scope is the visible set" was a sentence in the bulk-selection pattern that no checkbox implemented, because there were no checkboxes. Tabs had a component, a scroll rule and a keyboard rule, and no styling whatsoever, so the selected tab was distinguished by nothing. A rule nothing executes is not a rule, and the cheapest place to execute these is the shared component every application already reaches for. So each directive lands as working code in the reference implementation with a rung under it, not as another paragraph.
+
+### Added
+- **A designed full-surface wait** — `src/lib/loading.ts` + `src/components/LoadingScreen.tsx`. It says what is being made for the user (configurable copy, defaulting to "We're working for you, making things for you."), draws the pipeline as a `currentColor` line diagram needing no per-theme asset, marks the active stage in words as well as colour, and past a threshold **stops pretending**: it reports that the wait has gone wrong and offers a route onward. Thresholds are settings; a misconfigured pair is repaired rather than left with the stalled state unreachable.
+- **One itemised price breakdown** — `src/lib/pricing.ts` + `src/components/PricingPanel.tsx`, CP-29. Items, adjustments, tax and the emphasised payable, in one order, on screen and in print. The rows shown add up to the total shown, because each row rounds once and the total is the sum of the rounded rows. Pass-through money is owed by the payer and kept out of revenue. An over-discount is reported, never clamped to zero behind the user. Currency formatting is the existing shared formatter, not a second one.
+- **Undo, actually implemented** — `src/lib/undo.ts` + `src/components/ToastHost.tsx`, CP-28. Undo is a **deferred commit**: the effect is held for the window and committed when it closes, so Undo is a local cancel that cannot fail — unlike the compensating write, which tells the user "Undone" about a change that is still there. The queue never drops a pending action: overflow commits early and unmount drains.
+- **Row and header selection** — `src/lib/selection.ts` + `src/components/SelectionColumn.tsx`, CP-18 amended. A checkbox on every row, a three-state header checkbox (`some` renders indeterminate), select-all scoped to the **visible** set, shift-select over the visible order, and a filter change that drops what left the view and says how many.
+- **DR-3, the selected tab** — every tab carries a visible border, and the selected one differs by fill, border and weight together, on the contrast-asserted `primarySurface` / `onPrimarySurface` pair. Styling hangs off `aria-selected`, so what is drawn and what is announced cannot disagree.
+- `src/components/components.css` — one token-only stylesheet for tabs, toasts, the wait, the price breakdown and row selection. No colour literal; every pair used is asserted by the contrast gate in both themes.
+
+### Fixed
+- **The bulk-action bar had a one-click delete.** The highest-consequence control in the starter, over a selection the user may not be able to see all of, with no confirmation at all. It now routes through `ConfirmDialog` with the count and the scope named in the message and the verb on the button. Archive stays one click — it is reversible, so its safety net is Undo, and confirming it too is how a user learns to click through the dialog that matters.
+- **The column-control audit counted `<th scope="row">` as a column.** A correct three-column table with a row header was reported as four and told to add a column control. That is worse than a miscount: the cheapest way to satisfy it was to demote the `<th>` to a `<td>` and lose the accessible row name — a gate pushing an accessibility regression to make itself green. Only column headers count now; an unmarked `<th>` still counts, so a genuinely wide table cannot slip past.
+- **`BulkBar` described the selection in its own words.** It now uses `selectionSummary` from the shared module, so the bar and the header checkbox cannot drift into two wordings for one selection.
+
+### Stated as honest debt, not papered over
+- TD-002 — the addressability audit reads an opening tag with a `[^>]` scan, so it stops at the first `>` (an arrow function's included) and cannot see attributes after one; it also matches a tag written inside a comment. Both are false positives. Fixing it needs a JSX parser; the convention (`data-testid` ahead of any arrow-function prop) costs nothing and is now recorded rather than folklore.
+- The two tab targets added to the render contrast spec are NOT OBSERVED FAILING: they need a browser and a running application, which this environment has neither of. The token pair they assert is verified by G2 in both themes.
+
+### App action required
+**Nothing is required.** Every change is additive: four new modules, four new components, one new stylesheet, and amendments to three patterns and one audit. No existing export changed shape and no rule became stricter about code you have already written.
+
+What you may want, and in what order:
+
+1. **`BulkBar` gained an optional `subject` prop** (`{ one, many }`) used in the delete confirmation, defaulting to `record` / `records`. If you use `BulkBar`, pass what your rows actually are — "Delete 3 records" is worse than "Delete 3 invoices", and the default is a placeholder, not an answer. **Note the behaviour change:** bulk delete now opens a confirmation instead of firing immediately. If your `onAction('delete', …)` handler had its own confirmation, remove one of the two.
+2. **If any list of yours supports multi-select**, adopt `SelectionColumn` + `lib/selection` rather than keeping a local implementation — the three-state header and the filter reconciliation are the parts that are easy to get subtly wrong.
+3. **If you show an amount payable anywhere**, adopt `PricingPanel` + `lib/pricing`. If your totals are computed in more than one place today, that is the defect CP-29 exists for.
+4. **If you have a full-surface loading state**, `LoadingScreen` replaces it and gives you the stalled case for free.
+5. **Tabs:** if you render `TabRow` and import `components.css` (the component imports it itself), your tabs pick up DR-3 styling. If you style tabs yourself, check them against DR-3 — border always, and the selected state differing by more than colour.
+6. **The column-control audit will now count one fewer column** on any table with a `<th scope="row">`. If such a table sits in your baseline, regenerate it (`node scripts/audits/check-column-control.mjs --write-baseline`) — a fixed-but-still-listed entry blocks.
+
+---
+## 1.28.0 — 08-Sep-2026 — MINOR
+
+**CP-27 - the audit trail, as a reusable component**
+
+Owner requirement: wherever RBAC is enabled, record it - a super admin creating an account, assigning a role, or customising which features a role can reach. An audit log is the record you reach for on the worst day, and it is worth exactly as much as its weakest row, so the four ways it goes quietly worthless are each closed by a rule with a spec behind it.
+
+### Added
+- **`starter/src/lib/audit.ts`** - the model and the rules. **An entry with no real actor is not an entry**: a background job is `System (<process>)` and names the process; a *user* action whose identity did not resolve is `Unknown (<id>)` and is never dressed up as System - RC-007 shipped exactly that, and a plausible wrong author is never discovered while an ugly one gets fixed. **A row never carries the secret it audits**: 'Password changed' is the record, the password is not. **A change that did not happen must not appear**: arrays compare as SETS, so re-serialising a role list in a different order is not a role change, and null / undefined / empty string are one absence. **Append-only**: the module exports no updater and no deleter, and a spec asserts that it never grows one.
+- **`starter/src/components/AuditLogTable.tsx`** - the seven columns asked for: what changed, screen/module, previous value, new value, modified by, modified at, remarks. Search, module filter, date presets and sorting come from **CP-23**; the column picker from **CP-21**, which seven columns require. The component is read-only by construction - no row menu, no edit, no delete, and nowhere to add one without editing the file. It also **counts unattributed entries on screen**, because an identity-resolution defect that shows as one 'Unknown' among hundreds never gets fixed.
+- **Three RBAC event builders** for the named cases: account created, roles changed, feature access changed - the last recording the whole enabled SET before and after, since 'granted Billing' alone cannot answer 'what could they reach in March'.
+- **CP-27**, two COMPONENT_LIBRARY rows flipped straight to READY (a baseline concern, contributed in this run), and cases FW-AUDIT-001..005.
+
+### Fixed
+- **A memo bug caught while composing, not after shipping.** `useListControls` memoises on its config BY IDENTITY, so the inline object literal every other caller would write is a new object each render - silently defeating the memo and re-filtering the whole log on every keystroke. Invisible at ten rows; the reason a search box feels heavy at ten thousand. The config is memoised, with the reason recorded at the call site.
+
+### Stated as honest debt, not papered over
+- **The component is built and registered; nothing mounts it.** Where the audit log appears, and which events an application records beyond the three RBAC builders, is the application's call - this repository holds no application.
+- **Persistence is the application's too.** The library produces entries; storing them append-only, and keeping them readable only by those who should see them, is a schema and policy decision per app.
+- **The 19 assertions ran against the esbuild-compiled lib** using a local harness, because this repository has no node_modules - the same route earlier component releases took. Two defects were injected (unresolved-actor-becomes-System, and positional array comparison) and both were observed failing before revert.
+
+### App action required
+None required. To adopt: render `AuditLogTable` wherever roles or access can be changed, and call the three builders from those flows. If your app already logs RBAC changes, check two things against CP-27 - that an unresolved actor is not being written as 'System', and that role lists are compared as sets rather than positionally.
+
+---
+## 1.27.0 — 08-Sep-2026 — MINOR
+
+**the request pre-sorter is withdrawn**
+
+Owner decision, one release after it shipped. It classified a SINGLE sentence, and a real chat carries several requests at once - so its input was ambiguous exactly where the stakes are highest, and a confident wrong route costs an entire track. Set against that, it never demonstrated a measured saving: the case for it rested on one run's ground stage which also contained a long design conversation. Removing an unproven mechanism that can be confidently wrong is the correct trade, and the framework's own rule-budget guidance says to propose compaction, not only growth.
+
+### Fixed
+- **Removed `scripts/classify.mjs` and `scripts/classify.test.sh`**, the `classify` npm script, and the `classify` suite from `guard:test` (ten suites back to nine). The manifest and the overview no longer list them. **Classification is a reading task again**, done at `workflows/request.md` R1, which never stopped being the authority on what the classes mean.
+- **`workflows/request.md` records the withdrawal rather than quietly reverting.** A step that appears and disappears with no trace invites the same idea to be re-proposed and re-built; the note says what was tried and why it was removed.
+
+### Stated as honest debt, not papered over
+- **Cases FW-CLASS-001..002 are RETIRED, not deleted**, and their IDs are not reused - the feature is gone, so the cases are marked rather than left describing a script that no longer exists.
+- **The routing question is open again, and honestly so.** Nothing measured was lost here. If it is revisited, the lesson is recorded: a router must take the SET of requests in a conversation, not one sentence, and it must still be allowed to answer UNSURE.
+
+### App action required
+None. If you scripted `npm run classify`, it is gone; use /request. Nothing else changed shape.
+
+---
+## 1.26.0 — 08-Sep-2026 — MINOR
+
+**delete is a declared contract; verification is per commit; requests are pre-sorted**
+
+Three things in one release, deliberately: the release itself demonstrates the middle one. Corrections that land in one commit share one verification pass, so batching them is not a shortcut - it is the correct unit.
+
+### Added
+- **CP-26 - deleting a record.** The reported defect was 'Supabase soft-deletes where the frontend expects a hard delete'. The backend was behaving exactly as the reference schema intends: status active|archived, a PARTIAL unique index, and no delete policy granted at all. **The defect is that the two layers disagree about what delete means, and each is self-consistent** - which is why a row returning on refresh, a re-add hitting a unique constraint and a stale id 404-ing present as three unrelated bugs. Every entity now declares ONE model in writing - ARCHIVE or REMOVE - and the assertion is a **round trip**, never the response to the delete call, which only proves the request was accepted.
+- **A3.3b-delete in `feature.md`** - the design pass asks the question before any delete control is drawn. Unasked, each layer picks an answer independently, and both are defensible.
+- **The gate names an avoidable run.** It verifies a TREE, not a change, so re-running it after each correction in one tree re-verifies the same tree N times - only the last run describes what ships. When the tree is byte-identical to the previous run the report says so. A NOTICE, never a block and never a cache: a gate that skipped work because it believed nothing had changed would be trusting a fingerprint over the code.
+- **`classify.mjs` - the request pre-sorter**, the first piece of the routing question. One command sorts the obvious requests into their track before any agent reads the nine-row table, and **answers UNSURE rather than guessing**. NEW vs NEW-APP it settles by looking for a source tree, because that is a fact about the repository and no amount of re-reading the sentence can answer it. `workflows/request.md` R1 remains the authority on what the classes mean.
+- Cases FW-DEL-001..002, FW-VERIFY-001, FW-CLASS-001..002. `classify.test.sh` (18 executed cases) joins `guard:test`, now ten suites.
+
+### Fixed
+- **The redundancy notice could never have fired, and its own test caught that.** The fingerprint counted TEST_SUMMARY.md and .gate-logs/ - which every gate run rewrites - so it differed from the previous run BY DEFINITION. The detector was reading its own output as evidence, the one thing a detector in this repository may never do. Observed failing exactly that way before the exclusion existed.
+
+### Stated as honest debt, not papered over
+- **`classify.mjs` decides the clear cases only, and that is the design.** 'improve X' and requests that read as both broken and preferred are refused with exit 3 and the one question to ask. A router that answers everything answers some of them wrongly, and a confident wrong route costs an entire track against the seconds this saves.
+- **The remaining routing decisions are still made by reading.** This release converts the first one. The measured case for doing more rests on a single run's ground stage (13 of 25 minutes) which also contained a long design conversation - an upper bound, not a clean reading. Two or three more runs before converting the next one.
+
+### App action required
+None mechanically. If your application grants a delete policy or offers a Delete control, declare its model against CP-26 - and check the control's wording, because a button labelled Delete that archives is a lie the user acts on.
+
+---
 ## 1.25.0 — 08-Sep-2026 — MINOR
 
 **four levers on execution time, aimed by measurement**

@@ -13,6 +13,108 @@ current; adopt a **MAJOR** within one quarter.
 
 ---
 
+## v1.36.1 — adopted 11-Sep-2026 (from: v1.25.0, via 1.26 · 1.27 · 1.28 · 1.29 · 1.30 · 1.31 · 1.32 · 1.33 · 1.34 · 1.35 · 1.36)
+
+### What kind of adoption this is
+
+**Half A (PROCESS) only, by hand** — the same method as every pass since v1.6.0: compare each
+upstream-changed process file against framework **v1.25.0**, replace only what is still
+**byte-identical**, never overwrite a file RosiFit has changed.
+
+**Scope held: nothing under `app/`, `src/`, `supabase/`, `assets/`, `db/`, `design/` or
+`.harness/` was touched.** Asserted mechanically from `git status`, not by inspection.
+
+### Auto-applied — pristine in RosiFit, changed upstream (27)
+
+`FRAMEWORK_MANIFEST.md` · `UPGRADES.md` · `VERSION` · `checklists/DESIGN_QUALITY_CHECKLIST.md` ·
+`checklists/SCREEN_CHECKLIST.md` · `docs/00` · `docs/02` · `docs/04` · `docs/17` · `docs/23` ·
+`docs/registers/COMPONENT_LIBRARY.md` (pristine since v1.11.0) · **`scripts/lib/ratchet.mjs`**
+(1.32.0 — see below) · `scripts/audits/check-column-control.mjs` (1.29.0: `<th scope="row">`
+is a row header, not a column) · **`scripts/gate-runner.mjs`** (1.30.0–1.32.0: application
+subtree via `appPath`, `--app`, `--logdir`, tree fingerprint, **G12**, blocked-trend notice) ·
+`scripts/par.mjs` (exit 3 reported as BLKD, never FAIL) · `scripts/theme-build.mjs` ·
+`scripts/close-out.mjs` + `.test.sh` · `scripts/conformance.mjs` · `scripts/gate-timing.test.sh` ·
+`scripts/lib/lineage.mjs` · `scripts/new-app.mjs` · `scripts/upgrade.test.sh` ·
+`tests/cases/FRAMEWORK_PROCESS_CASES.md` · `workflows/feature.md` · `workflows/promote.md` ·
+`workflows/request.md`
+
+### Added — new since v1.25.0 (11 files, 1 baseline)
+
+`1_AppDevelopmentSteps.md` (1.36.1, the plain-English path) ·
+`scripts/audits/check-pwa-baseline.mjs` + `scripts/pwa-baseline.test.sh` (1.31.0, gate G12) ·
+`scripts/capture-candidate.mjs` + `.test.sh` (1.36.0) · `scripts/gate-scope.test.sh` (1.30.0) ·
+`scripts/lib/png.mjs` · `scripts/lib/shpath.sh` + `scripts/shpath.test.sh` (1.34.0, CP-31) ·
+`scripts/ratchet.test.sh` (1.32.0) · `scripts/theme-build.test.sh` (1.30.0).
+
+**`.baselines/pwa-baseline.txt`** — G12 arrives baselined, the way every ratchet has here since
+v1.3.0: 2 entries (`offline.missing` — no `public/offline.html`; `sw.unregistered` — nothing in
+`src/` registers the worker). Both are honest facts about an Expo PWA whose install surface is
+`app.json`, not the framework's `public/` shape; recorded as known debt, so G12 blocks only
+*new* regressions.
+
+### The one behavioural change worth reading twice — 1.32.0
+
+`scripts/lib/ratchet.mjs`: **a ratchet with no baseline now exits 3 (BLOCKED), not 0.** It
+used to print "this gate is INERT" and pass — the exact false green RosiFit recorded as
+framework defect **F-3 / TD-007** at v1.3.0. That defect is now fixed upstream, and this pass
+carries the fix. Impact here, **checked before replacing the file**: every audit RosiFit's
+`audit:all` runs has a baseline (colours · testIDs · rules · columns · dead weight · fixture
+leak, both trees), `check-audit-attribution.mjs` does not use the ratchet library, and the
+commit guard invokes no ratchet audit. **Proven after**: all eleven audit invocations exit 0 —
+"none new" on every one. Nothing went red.
+
+### Skipped, with the reason
+
+| File(s) | Why |
+|---|---|
+| `.github/workflows/github-actions-ci.yml` | Upstream's *installed copy* of its CI template. RosiFit has its own `.github/workflows/ci.yml` (with the `db-harness` job, ADR 013) |
+| `ci/github-actions-ci.yml` | RosiFit's copy was adapted at v1.3.0 and differs; upstream's template rewrite (calls `audit:all` + `guard:test`, adds a Windows self-test job) is a merge for the owner |
+| `.gitignore` · `package.json` · `CHANGELOG.md` · `TEST_SUMMARY.md` · `CLAUDE.md` | RosiFit's own (CLAUDE.md: version reference only). Upstream ignores `starter/package-lock.json` — N/A here. Upstream adds `audit:pwa` and `capture` scripts and five suites to `guard:test` — see Known gaps |
+| `docs/registers/*` (7 files) | RosiFit's own. Upstream: **CP-26** delete contract · **CP-27** audit trail · **CP-28** undo · **CP-29** pricing · **CP-30** installability · **CP-31** shell→JS paths · CP-18 amended · **DR-3** selected tab · RC-008…RC-012 · RUN_LOG rows R-004…R-006. RosiFit numbers its own (ADR 002); CP-26 (Delete that archives is a lie the user acts on) is the one to read against `app/member/[id].tsx` and the archive migrations 0047–0052 |
+| `fixtures/` (3 files) | Framework self-test fixtures; RosiFit has none (conformance deferred since v1.3.0) |
+| `starter/` (68 files) | Half B seed; RosiFit has no `starter/` |
+
+### App action required — checked one by one
+
+Eleven releases, all MINOR except 1.36.1 PATCH. Every entry records "Nothing" / "None"
+mechanically. 1.32.0's condition ("if your app has a baseline for every gate it uses") holds —
+verified above. 1.33.0's three "worth a look" items concern starter seed files (`config.ts`,
+`next.config.mjs`, `eslint.config.js`) RosiFit does not have. 1.29.0's `BulkBar` behaviour
+change is a starter component RosiFit does not use.
+
+### Verification — executed here, not read
+
+| Suite | Result |
+|---|---|
+| eleven ratchet/audit invocations under the new `ratchet.mjs` | **all exit 0, none new** |
+| `guard-reachability.test.sh` (guard resolves the replaced `theme-build.mjs`) | **17 / 17** |
+| `ratchet.test.sh` | **9 / 9** |
+| `capture-candidate.test.sh` | **14 / 14** — registers untouched |
+| `close-out.test.sh` (re-run, file changed) | **30 / 30** |
+| `shpath.test.sh` | **6 / 7** — the one failure reads `starter/design/tokens.json`, absent here; `jsurl`, the sweep and the plant-and-catch cases pass |
+| `gate-scope.test.sh` | **12 / 17** — the five failures assert the framework layout (`starter/` as the application subtree, G1 green); the twelve behavioural cases (no-baseline → BLOCKED with a duration, `--logdir`, fingerprint, blocked-trend, `--only` never PASS) pass |
+| `gate-timing.test.sh` (re-run) | **6 / 8** — unchanged from v1.25.0: the two failures assert G1 passes (ADR 001) |
+| `pwa-baseline.test.sh` · `theme-build.test.sh` | **SKIPPED, audibly** — both need `starter/design/tokens.json` |
+| `gate-runner.mjs --only G4,G9,G11,G12 --summary <scratch> --logdir <scratch>` | runs in this layout: "Application steps ran in ."; G4 · G9 · G11 PASS; G12 BLOCKED before the baseline, **PASS after**; `TEST_SUMMARY.md` untouched (hash compared) |
+| `npm run check` | **not run** — `node_modules/` absent in the adopting session; nothing under `src/` or `app/` changed |
+
+### Known gaps in this adoption — owner edits, all in files this pass was told not to touch
+
+1. **`package.json`**: add `"audit:pwa": "node scripts/audits/check-pwa-baseline.mjs"` and
+   `&& npm run audit:pwa` to `audit:all`; the four `package.json` gaps from v1.20.0 and v1.25.0
+   still stand (`audit:fixtures`, `fanout`/`run-log`/`review-plan`/`close-out` suites in
+   `guard:test`). Suites worth adding now: `ratchet.test.sh`, `capture-candidate.test.sh`,
+   `shpath.test.sh`. **Not** `gate-scope`, `gate-timing`, `pwa-baseline`, `theme-build` — each
+   needs the starter, and a suite that always fails or always skips is one nobody reads.
+2. **`.gitignore`**: still needs `.run-log.json` and `.close-out-commit.txt` (from v1.25.0).
+3. **`ci/github-actions-ci.yml`**: upstream's template now calls `audit:all` and `guard:test`
+   instead of enumerating audits (RC-009). Worth porting into RosiFit's `.github/workflows/ci.yml`
+   by hand.
+
+Recorded here so each is a decision, not an oversight.
+
+---
+
 ## v1.25.0 — adopted 08-Sep-2026 (from: v1.20.0, via 1.21 · 1.22 · 1.23 · 1.24)
 
 ### What kind of adoption this is
