@@ -1,0 +1,74 @@
+THE FULL LOCAL GATE, BEFORE AND AFTER — verdict by verdict
+11-Sep-2026
+
+BEFORE = 5b30efe (origin/main, the merge of PR #15), in a clean git worktree.
+AFTER  = this branch. Both run with `node scripts/gate-runner.mjs`, summaries
+and logs redirected out of the tree so neither run pollutes TEST_SUMMARY.md.
+
+STEP                                   BEFORE                 AFTER
+----                                   ------                 -----
+G1 Theme artifacts in sync             FAIL                   FAIL
+G2 Contrast (all tokens, both themes)  FAIL                   FAIL
+G3 Theme assets present per theme      FAIL                   FAIL
+G4 No hard-coded colours               PASS                   PASS
+G5 Types                               PASS                   PASS
+G6 Lint                                BLOCKED                BLOCKED
+G7 Unit + pure specs                   FAIL                   FAIL
+G8 Functional / integration            FAIL                   FAIL
+G9 Automation addressability           PASS                   PASS
+G10 Backward compatibility (fixtures)  PASS                   PASS
+G11 Wide tables are configurable       PASS                   PASS
+G12 Installable as an application      PASS                   PASS
+
+BEFORE  Steps: 6 pass, 5 fail, 1 blocked.
+AFTER   Steps: 6 pass, 5 fail, 1 blocked.
+
+IDENTICAL, step for step. No step changed verdict in either direction.
+
+WHAT THE FIVE FAILURES AND THE ONE BLOCK ARE — all of them pre-existing:
+
+  G1/G2/G3  all three read design/tokens.json, which this repo does not have.
+            The theme lives in src/theme/tokens.ts instead, and npm run
+            check:contrast measures it (2852/2852 after, 2842/2842 before —
+            +10 is the new `failed` status across 5 surfaces x 2 themes).
+  G4        PASSES. It is a ratchet on colour LITERALS per file, and the new
+            status ink would have moved src/theme/tokens.ts from 97 to 99 and
+            blocked. The baseline was NOT regenerated: the line carries the
+            file's own existing exemption comment, the same one DARK.safeFill
+            and DARK.deepControl already carry three lines up, for the same
+            stated reason — this file IS the token source and the pair is
+            measured by check-contrast.ts.
+  G6        BLOCKED: no eslint binary. ESLint is not a dependency here and was
+            not installed (see eslint.config.mjs for why). Unchanged.
+  G7        FAIL on the 6 pre-existing specs. Counts below.
+  G8        FAIL: there is no `test:functional` script in package.json, so
+            npm exits 1. Unchanged.
+
+npm run test:unit — the counter block, verbatim from each tree:
+
+  BEFORE                          AFTER
+  # tests 1500                    # tests 1540
+  # pass  1493                    # pass  1534
+  # fail  6                       # fail  6
+  # skipped 1                     # skipped 0
+
+  +40 tests, +41 passes, THE SAME 6 FAILURES, none of them touched:
+    the list-screen filters are untouched
+    the token list IS the sender's variable map, name for name
+    every token carries a short chip label and a full meaning
+    the everyday seven are a SUBSET — no token was dropped
+    the six behind the More chip still fill — hidden is not unknown
+    every token the subject row hides is still reachable and still fills
+
+  The skipped one is 'the exported document carries the manifest and the
+  right tint', which skips itself when there is no dist/. The BEFORE tree is
+  a fresh worktree with no dist/; this one has one from an earlier export.
+  Environment, not a change — it PASSES here.
+
+npm run check (typecheck + unit + contrast + icons):
+  BEFORE  typecheck clean · 2842/2842 contrast · 75/75 icons
+  AFTER   typecheck clean · 2852/2852 contrast · 75/75 icons
+
+npm run audit:boundary:
+  BEFORE  the script did not exist
+  AFTER   125 files outside src/data/ scanned; 0 Supabase queries found there

@@ -167,7 +167,7 @@ export const STATUS: Record<StatusKey, StatusTone> = {
    * all five surfaces of both themes by scripts/check-contrast.ts, like the
    * rest -- 5.57:1 at its worst.
    */
-  failed:    { fgDark: '#E8739E', fgLight: '#A32F5B', word: 'Load failed',     icon: 'error' },
+  failed:    { fgDark: '#E8739E', fgLight: '#A32F5B', word: 'Load failed',     icon: 'error' }, // allow-literal-color: this file IS the token source, and the pair is measured in check-contrast.ts
 };
 
 /**
