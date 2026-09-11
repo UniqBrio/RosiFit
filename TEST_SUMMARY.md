@@ -48,14 +48,30 @@ Attendance ALONE" and "exactly ONE tab is ever lit" are the two the shipped expr
 not satisfy: it answered `true` for every tab on `/course/...` and `false` for every tab on
 `/member/...`.
 
-NOT OBSERVED FAILING: the fix itself was not exercised against the live project. The defect
-needs more than 1,000 attendance records in one week to appear, and this session has read
-access to production but does not write to it (CLAUDE.md: the live project is never an
-automated target). What WAS taken from production, and is what the diagnosis rests on: the
-edge logs, where every `GET /rest/v1/attendance_records` answers
-`Content-Range: 0-999/*`; the row counts, 2,220 in the week against a 1,000-row reply; and the
-primary key of every table this change now orders by, checked so the paging order is total.
-The remaining unverified step is the round trip in a browser, which needs a deploy.
+VERIFIED AGAINST PRODUCTION'S OWN ROWS, 11-Sep-2026, read-only. The three requests the fixed
+`fetchAttendance` now makes were replayed as SQL over the nine session ids of that week
+(`order by id limit 1000 offset 0 / 1000 / 2000`):
+
+| | |
+|---|---|
+| Rows returned by the three pages | 2,220 |
+| Distinct among them | 2,220 — no page repeats a row |
+| Rows that exist | 2,220 — no page skips a row |
+| Size of page 3 | 220 — short, so the loop ends there and asks no fourth |
+| General's rows recovered | 881, which is 61 + 259 + 276 + 285 |
+
+881 is Monday through Thursday, the four days that read "Awaiting upload". The unique
+`.order()` is doing exactly the job it is there for: with it the three pages partition the
+week exactly, and without it the same three offsets over an unordered scan have no such
+guarantee. This is the claim the fix rests on and it is now measured rather than argued.
+
+NOT OBSERVED: the round trip in a browser. The partition is proved; the client loop and the
+rendered day strip are not. The Vercel preview for the pull request built and is Ready, but
+the app is behind mobile + PIN sign-in, and `docs/registers/TEST_ACCOUNTS.md` records that the
+only account in existence is a real person's real credential on the only live project there
+is, never to be used as a test account. So that last step belongs to a human holding that
+credential: open General for 7–13 Sep 2026 and read the four days. Said here rather than
+counted as done.
 
 ---
 

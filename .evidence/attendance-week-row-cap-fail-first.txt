@@ -81,3 +81,32 @@ ok 7 - the underline does not change height with the state
 --- against the fixed tree ---
 # pass 7
 # fail 0
+
+================================================================
+4. THE FIX, AGAINST PRODUCTION'S OWN ROWS (11-Sep-2026)
+================================================================
+
+Read-only, on project lhpzhkzbnquwjljmbylo. The three pages the fixed
+fetchAttendance now asks for, replayed as SQL over the nine session ids
+of 7-13 Sep 2026 -- `order by id limit 1000 offset 0 / 1000 / 2000`:
+
+  rows returned by the three pages ....... 2220
+  distinct rows among them ............... 2220   (no page repeats a row)
+  rows that actually exist ............... 2220   (no page skips a row)
+  size of page 3 .........................  220   (short -> the loop ends
+                                                   here; there is no 4th
+                                                   request)
+  General's rows recovered ...............  881   (was 0 through the cap)
+
+881 is 61 + 259 + 276 + 285 -- Mon, Tue, Wed and Thu, the four days that
+read "Awaiting upload". Before the fix the single capped request returned
+1000 rows of which General's share was whatever the unordered scan
+happened to reach.
+
+WHAT THIS DOES NOT PROVE. It is the partition, not the round trip: the
+client loop and the rendered strip have not been exercised in a browser.
+The Vercel preview for PR #13 built and is Ready, but the app is behind
+mobile + PIN sign-in, and docs/registers/TEST_ACCOUNTS.md records that the
+only account that exists is a real person's real credential on the only
+live project there is, and is never to be used as a test account. So the
+browser check is left for a human with that credential, named in the PR.
