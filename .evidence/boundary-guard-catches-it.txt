@@ -1,0 +1,28 @@
+THE GUARD CATCHING A DELIBERATE VIOLATION — Task 4
+11-Sep-2026
+
+A Supabase read added to a SCREEN, app/course/[id].tsx, which is exactly
+the shape of the next RC-039: it goes to the network past every read
+shape in src/data/pageAll.ts.
+
+  const leak = supabase.from('attendance_records').select('id');
+
+$ node scripts/audits/check-data-layer-boundary.mjs
+  FAIL  app/course/[id].tsx:158  const leak = supabase.from('attendance_records').select('id');
+
+125 files outside src/data/ scanned; 1 Supabase query found there.
+
+A query written outside src/data/ goes to the network past every read shape in
+  src/data/pageAll.ts — so it can return 1,000 of 3,110 rows with 200 and no error,
+  which is RC-039 exactly. Move it into src/data/ and call it from here: page it with
+  pageAllByKey, bound it with readBounded, or read one row with .single()/.maybeSingle().
+  exit status: 1
+
+$ npx tsx --test src/data/dataLayerBoundary.test.ts   (the spec over the same rule)
+  [run after the violation is removed — see below]
+
+Violation removed. Clean tree:
+$ node scripts/audits/check-data-layer-boundary.mjs
+
+125 files outside src/data/ scanned; 0 Supabase queries found there.
+  exit status: 0
