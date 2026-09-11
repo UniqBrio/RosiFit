@@ -47,6 +47,11 @@ The `--type` is the classification below, so this line and the table share one v
 is evidence of what was asked, and a tidied restatement quietly loses the mismatch between ask
 and delivery that makes the row worth keeping. Scale can be declared later at `end`.
 
+> **A mechanical pre-sorter was tried here and withdrawn in v1.27.0.** It classified a single
+> sentence, and a real chat carries several requests at once — so its input was ambiguous
+> exactly when the stakes were highest, and a confident wrong route costs an entire track. It
+> never demonstrated a measured saving. **Classification stays a reading task**, done here.
+
 Read the rough description and pick exactly one:
 
 | The description says… | Classification | Then |

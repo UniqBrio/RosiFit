@@ -1,6 +1,10 @@
 # 00 — Overview
 
 > Read this first. It is the map.
+>
+> **In a hurry, or new?** [`1_AppDevelopmentSteps.md`](../1_AppDevelopmentSteps.md) is the same
+> journey in plain English, without the reasoning — set up an app, build a change, keep up with
+> the framework. Come back here for *why*.
 
 ---
 
@@ -97,6 +101,16 @@ session. See [21-AGENT-WIRING.md](./21-AGENT-WIRING.md). Without this the rest i
 `checklists/` — screen · design quality *(the Gate 3 judge)* · definition of done ·
 code review · security · accessibility · release readiness · business readiness · manual test
 
+### The reference implementation
+`starter/` — every file a worked example of a canonical pattern, verified by the same gates as
+everything else. The shared components: theme (tokens, toggle, per-theme images) · list and
+table controls (CP-23) with column control (CP-21) and row/header selection (CP-18) · dialogs
+and the reversibility pair — confirm for the irreversible, toast + undo for the reversible
+(CP-28) · the designed full-surface wait (CP-3) · the itemised price breakdown (CP-29) ·
+analytics (CP-24) · the audit trail (CP-27) · module customizer and access panel. Per-file roles
+are in [FRAMEWORK_MANIFEST.md](../FRAMEWORK_MANIFEST.md); reusable status per stack is in
+`docs/registers/COMPONENT_LIBRARY.md`.
+
 ### The living registers
 `docs/registers/` — root causes · canonical patterns · design rules · component library
 (stack-keyed reuse + the standard baseline) · known limitations ·
@@ -132,13 +146,25 @@ caught it, also [workflows/framework-update.md](../workflows/framework-update.md
 ---
 
 ### The executable parts
-`scripts/` — the gate (`gate-runner.mjs`, eleven steps, each **timed**: the report names the
-total and the slowest step, and `gate-timing.test.sh` proves it does) · the run log
+`scripts/` — the gate (`gate-runner.mjs`, twelve steps, each **timed**: the report names the
+total and the slowest step, and `gate-timing.test.sh` proves it does; it also names the
+directory its application steps ran in, and `gate-scope.test.sh` proves that directory is the
+application's and that a narrowed run never claims the whole tree was verified; it reads its own
+ledger, so a step BLOCKED for three runs running is named as a trend) · the ratchet engine
+(`lib/ratchet.mjs`, three-valued — `ratchet.test.sh` proves a missing baseline is BLOCKED, never a
+pass) · the starter's own toolchain (`starter/package.json` declares it as ranges, so `npm install`
+produces one and G5-G8 can run at all) · the run log
 (`run-log.mjs`, which reads the clock so no duration is ever recalled) · the concurrent check
 runner (`par.mjs`) · the executable review matrix (`review-plan.mjs`) · the close-out renderer
-(`close-out.mjs`) · the theme build and its checks ·
+(`close-out.mjs`) · the promotion parking lot's capture tool (`capture-candidate.mjs`, which
+parks a lesson at n=1 and is structurally unable to promote — `capture-candidate.test.sh` proves
+the framework does not move even at n=2) · the theme build and its checks (`theme-build.test.sh` proves the build is a
+function of its inputs, not of the directory it was invoked from) · the shell→interpreter path
+boundary (`lib/shpath.sh`, CP-31 — `shpath.test.sh` sweeps every harness for the raw-path form
+that made three suites accuse correct code, and plants a violation to prove the sweep fires) ·
 the audits (`check-hardcoded-colors` · `check-testid-coverage` · `check-rule-coverage` ·
-`check-column-control` · `check-fixture-leak` · `check-dead-weight` · `check-backward-compat`) · the commit guards
+`check-column-control` · `check-fixture-leak` · `check-dead-weight` · `check-backward-compat` ·
+`check-pwa-baseline`) · the commit guards
 under `hooks/` · and the evolution tooling (`lineage.mjs` · `upgrade.mjs` · `conformance.mjs`),
 with shared engines in `lib/` (`ratchet` · `color` · `layout` · `lineage`).
 
