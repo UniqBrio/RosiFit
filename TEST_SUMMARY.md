@@ -1,3 +1,106 @@
+## FAIL-FIRST — the truncation hardening (11-Sep-2026)
+
+FAIL-FIRST: src/data/dayLoad.test.ts - 8 of 8 red against the derivation as it stood before this change (four mutations, each caught by name).
+FAIL-FIRST: src/components/courseWeekLoadFailed.test.ts - 9 of 11 red against the pre-change screen at 5b30efe.
+FAIL-FIRST: src/data/dataLayerBoundary.test.ts - red before the guard, before the npm wiring, and again with the rule mutated.
+
+Three spec files are new in this change. A test never observed failing is not
+evidence that it can fail, so each was run against a tree in which the thing it
+asserts is not true. Full transcripts are in `.evidence/`.
+
+**FAIL-FIRST: src/data/dayLoad.test.ts** — 8 cases over the rule RC-039 broke:
+"not uploaded" is a claim only a completed read may make. The module is new, so
+there is no earlier tree to run it against; the proof is four mutations, each
+putting an older behaviour back.
+`.evidence/dayload-fail-first.txt`
+
+```
+MUTATION 1 — the derivation exactly as it stood before this change:
+    export function dayLoad(read, hasRows) { return hasRows ? 'uploaded' : 'not-uploaded'; }
+  not ok 1 - THE DEFECT: a FAILED read never reads as a day nobody uploaded
+  not ok 2 - a read still in flight is not a day nobody uploaded either
+
+MUTATION 2 — a failed day is DRAWN as an awaiting one (case 'failed' -> 'awaiting')
+  not ok 1 - THE DEFECT: a FAILED read never reads as a day nobody uploaded
+  not ok 6 - the four states are exhaustive, and no two of them draw the same
+  not ok 8 - THE UPLOAD BUTTON FALLS OUT OF THE MAPPING, with no clause of its own
+
+MUTATION 3 — a loading day is given a business word instead of a blank one
+  not ok 2 - a read still in flight is not a day nobody uploaded either
+  not ok 6 - the four states are exhaustive, and no two of them draw the same
+  not ok 8 - THE UPLOAD BUTTON FALLS OUT OF THE MAPPING, with no clause of its own
+
+MUTATION 4 — Load failed is given the awaiting colour, word and icon (guardrail 3)
+  not ok 7 - LOAD FAILED CARRIES ITS OWN WORD AND ITS OWN ICON (guardrail 3)
+```
+
+**FAIL-FIRST: src/components/courseWeekLoadFailed.test.ts** — 11 cases over what
+the course screen does with that rule. Run against the PRE-CHANGE screen
+(`5b30efe`) through `COURSE_WEEK_FAILED_SPEC_ROOT`: **9 of 11 red.**
+`.evidence/course-week-failed-fail-first.txt`
+
+```
+not ok 1  - THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok     2  - the strip still shows a skeleton while the week is in flight
+not ok 3  - the derivation is the specced one, not a second copy of it
+not ok 4  - the day status is read from that derivation too
+ok     5  - a day the app could not read is never offered an upload
+not ok 6  - THE RETRY SAYS EXACTLY WHAT WAS ASKED FOR
+not ok 7  - and the sentence is never retyped as a second literal
+not ok 8  - the whole banner is the press, and it retries the read
+not ok 9  - the banner wears the failed status, not a colour of its own
+not ok 10 - the technical reason is still on screen, under the sentence
+not ok 11 - the roster card states a failed week rather than guessing at it
+# pass 2  # fail 9
+```
+
+The two that already passed are honest passes, and are named rather than
+hidden: the skeleton branch was already correct, and the upload press was
+already gated on a status key a failed day does not wear — because a failed day
+had no key at all, the strip having rendered nothing at all on an error.
+
+**FAIL-FIRST: src/data/dataLayerBoundary.test.ts** — 6 cases over "a Supabase
+query may only be written in src/data/". Recorded live while it was built:
+before the guard script existed, 1–3 red; after the guard but before the npm
+wiring and `eslint.config.mjs`, 2 red. Then the rule itself was mutated, to show
+the spec tests the RULE and not the file's existence.
+`.evidence/boundary-fail-first.txt`
+
+```
+after the guard, before the wiring:
+  not ok 4 - the guard is wired into a command somebody actually runs
+  not ok 6 - the same rule is written for ESLint, for whenever it is installed here
+
+MUTATION — the pattern drops the receiver, so `.from(` matches Array.from too
+  not ok 1 - THE BOUNDARY HOLDS: no Supabase query is written outside src/data/
+  not ok 2 - the guard insists on the RECEIVER, because `.from(` is not a query
+```
+
+**The two MODIFIED spec files, for completeness.**
+`src/data/pagedReads.test.ts` against the pre-change tree: **8 of 9 red**
+(`.evidence/paged-reads-fail-first.txt`). `src/data/pageAll.test.ts`: its 12
+keyset cases were written before the helper existed and recorded 12/12 red
+(`.evidence/keyset-paging-fail-first.txt`); the 7 cases added for `readBounded`
+and `guardUntruncated` were written alongside their implementation, which is
+said plainly rather than dressed up, and are proved instead by four mutations,
+every one caught (`.evidence/pageall-mutation-check.txt`).
+
+**And the guard catching a real violation.** A Supabase read added to
+`app/course/[id].tsx` and then removed:
+`.evidence/boundary-guard-catches-it.txt`
+
+```
+$ node scripts/audits/check-data-layer-boundary.mjs
+  FAIL  app/course/[id].tsx:158  const leak = supabase.from('attendance_records').select('id');
+  125 files outside src/data/ scanned; 1 Supabase query found there.
+  exit status: 1
+... violation removed ...
+  125 files outside src/data/ scanned; 0 Supabase queries found there.
+  exit status: 0
+```
+
+---
+
 ## CI became real, and the typecheck blocker is gone (11-Sep-2026)
 
 **GitHub Actions is getting runners again.** Every run since 09-Sep had failed in four seconds
