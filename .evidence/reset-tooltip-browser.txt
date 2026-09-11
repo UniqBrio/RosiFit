@@ -1,0 +1,108 @@
+THE RESET TOOLTIP, IN A REAL BROWSER — 11-Sep-2026
+==================================================
+
+Run:  npm run export
+      node .harness/serve.mjs 8100 &
+      node .harness/reset-tooltip.mjs
+
+Chromium against the real web export, on FIXTURES: the export carries no
+EXPO_PUBLIC_SUPABASE_URL, so `isConfigured` is false and every read comes from
+src/data/mock.ts. No sign-in, no production data, no credential.
+
+WHY THIS EXISTS. src/components/resetTooltip.test.ts reads source and proves
+the wiring is present. It cannot see layout, and layout is where all three of
+this change's real defects were. Every one of them passed the source spec.
+
+--------------------------------------------------------------------
+DEFECT 1 — the bubble was 82px wide
+--------------------------------------------------------------------
+  ok    HOVERING THE DISABLED BUTTON SHOWS THE TOOLTIP
+        bubble says: "Nothing to reset for Friday, September 11 — tick the
+                      members whose marks to clear first"
+  ok    the bubble is inside the window — x=1102 w=82 vw=1200
+  FAIL  the bubble is wide enough to read a sentence in — w=82
+  FAIL  the bubble is not a tall thin column — h=178
+
+`maxWidth: 260` on an absolutely positioned box is measured against its
+CONTAINING BLOCK, which is the wrapper, which is as wide as the Reset button.
+The sentence wrapped into a thin column 178px tall. Fixed with an explicit
+`width: 240`, which grows leftwards out of the wrapper.
+
+  ok    the bubble is wide enough to read a sentence in — w=240
+  ok    the bubble is not a tall thin column — h=66
+
+--------------------------------------------------------------------
+DEFECT 2 — the bubble was painted behind the member cards
+--------------------------------------------------------------------
+Found by LOOKING at a screenshot, not by any check: the bubble was present,
+240px wide, inside the window, and entirely hidden behind the first member
+card. Every assertion above still passed.
+
+The check that can see it samples the same pixel with the bubble up and down:
+
+  FAIL  THE BUBBLE IS ACTUALLY PAINTED, not hidden behind the cards below it
+
+Three z-index changes were tried and every one was a no-op:
+  bubble  zIndex 20  -> still hidden
+  wrapper zIndex 30  -> still hidden
+  the row zIndex 5   -> still hidden
+
+The ancestry says why. React Native Web gives every View `position: relative`
+AND `z-index: 0`, so nearly every node is its own stacking context:
+
+  course-day-reset-why [z=20, absolute]
+  DIV                  [z=30, relative]     <- the Tooltip wrapper
+  DIV                  [z=5,  relative]     <- the day line
+  DIV                  [z=0,  relative]  x11
+  DIV                  [z=auto, static]
+
+The member card is a LATER sibling several levels up, at z=0. At equal
+z-index the later element wins, and nothing inside the row can reach past the
+ancestor that contains both. Fixed structurally instead: the bubble hangs
+ABOVE the control (`bottom: '100%'`), where document order works in its
+favour with no z-index at all. All three z-index changes were then removed.
+
+  ok    THE BUBBLE IS ACTUALLY PAINTED, not hidden behind the cards below it
+
+--------------------------------------------------------------------
+DEFECT 3 — in the check, not the app
+--------------------------------------------------------------------
+  FAIL  IT NAMES THE UPLOAD, WHICH IS WHAT WAS ASKED FOR
+        — "Nothing to reset for Monday, September 7 — tick the members..."
+
+The app was right and the check was wrong, twice over. It walked up from the
+"Awaiting upload" text and took the first day testID under any ancestor, which
+is whichever card comes first in the strip; and `course-day-add-<iso>` is not
+the awaiting button at all — it is the SECOND upload, offered on a day that
+already HAS marks, labelled "Upload again". Course c1 has no un-uploaded day
+in the fixture week, so the requested case could not be reached there. The
+check now hunts across courses for one.
+
+--------------------------------------------------------------------
+FINAL RUN — all pass
+--------------------------------------------------------------------
+  ok    the Reset button is on the screen
+  ok    the button is disabled to begin with — aria-disabled=true
+  ok    no bubble before anything is hovered
+  ok    HOVERING THE DISABLED BUTTON SHOWS THE TOOLTIP
+  ok    it gives one of the two real reasons
+  ok    the bubble is inside the window — x=944 w=240 vw=1200
+  ok    the bubble is wide enough to read a sentence in — w=240
+  ok    the bubble is not a tall thin column — h=66
+  ok    THE BUBBLE IS ACTUALLY PAINTED, not hidden behind the cards below it
+  ok    the bubble takes no pointer events
+  ok    the bubble is hidden from screen readers
+  ok    moving the pointer away hides it
+  ok    TAPPING THE DISABLED BUTTON SHOWS IT TOO
+  ok    a course with an un-uploaded day was found — c2 course-day-2026-09-08
+  ok    the tooltip shows on a day whose file has not arrived
+        "Reset becomes available once an attendance file has been uploaded
+         for Tuesday, September 8"
+  ok    IT NAMES THE UPLOAD, WHICH IS WHAT WAS ASKED FOR
+  ok    the tooltip still appears at phone width
+  ok    at 400px it is still fully on screen — x=144 w=240
+  ok    and it does not make the page scroll sideways
+
+Screenshots: .harness/reset-tooltip.png (desktop, ticking reason)
+             .harness/reset-tooltip-awaiting.png (the requested sentence)
+             .harness/reset-tooltip-phone.png (400px)
