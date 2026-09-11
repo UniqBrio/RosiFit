@@ -1,0 +1,27 @@
+FAIL-FIRST — keyset paging (Phase A, Task 1), 11-Sep-2026
+
+Specs written before the helper existed. 12 of 12 fail.
+
+not ok 1 - the cap constant is the ceiling the API actually enforces
+  error: |-
+  name: 'AssertionError'
+not ok 2 - DEFECT 1: a server cap BELOW the page size returns everything, not one page
+  error: '(0 , import_pageAll.pageAllByKey) is not a function'
+  name: 'TypeError'
+not ok 3 - a short page is never read as the end, even at the very first page
+  error: '(0 , import_pageAll.pageAllByKey) is not a function'
+  name: 'TypeError'
+not ok 4 - the read ends only on an EMPTY page, so a full last page costs one more request
+  error: '(0 , import_pageAll.pageAllByKey) is not a function'
+  name: 'TypeError'
+not ok 5 - DEFECT 2: a row INSERTED behind the cursor cannot skip a row that was already there
+  error: '(0 , import_pageAll.pageAllByKey) is not a function'
+  name: 'TypeError'
+not ok 6 - a row DELETED ahead of the cursor cannot duplicate another
+  error: '(0 , import_pageAll.pageAllByKey) is not a function'
+  name: 'TypeError'
+not ok 7 - the cursor is the LAST key seen, and the first request carries no key at all
+  error: '(0 , import_pageAll.pageAllByKey) is not a function'
+# tests 12
+# pass 0
+# fail 12
