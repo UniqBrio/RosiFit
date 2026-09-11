@@ -1,6 +1,40 @@
 # Changelog
 
-## Unreleased — The greyed-out Reset says what would make it work
+## Unreleased — A week that could not be loaded now says so
+
+**The attendance bug had a second half, and this is it.** The one already fixed was the app asking
+for a week and being handed part of it without being told. The half still open was what the screen
+then did: it read "no records for Monday" as "nobody has uploaded Monday" and printed *Awaiting
+upload* over four days of attendance that were sitting in the database. Those are not the same
+sentence, and until now the app could not tell them apart.
+
+**A day now says which of four things is true.** It is still loading. It has a register. Nothing
+has been uploaded for it. Or the app could not read it — which is its own state now, in its own
+colour, with its own word and its own icon, and never borrowed from any of the other three.
+
+**A failed week keeps its seven days.** It used to vanish entirely, which reads as a course with no
+week rather than a week that would not load, and it took the dates with it so you could not even
+tell which week had failed. The days stay, marked *Load failed*, and under them a band the full
+width of the screen: **"Couldn't load attendance. Tap to retry."** The whole band is the button —
+a retry hidden behind a second tap on a 33-pixel day card is a retry nobody finds. The technical
+reason stays underneath in small type for whoever has to diagnose it.
+
+**And the reading itself is rebuilt.** The first fix asked for a thousand rows at a time and
+stopped when a page came back short. Review found that a short page proves nothing — one setting
+change on the server and every list in the app would quietly go back to showing its first page and
+claiming to be whole — and that asking by POSITION means an upload landing mid-read can push a
+member off the end of one page and onto nobody's. Reads are now anchored to a value rather than a
+position, and they stop only when a page comes back genuinely empty.
+
+**None of that is visible, and that is the point.** The proof is in the numbers: replayed against
+the real week of 7–13 September, the new reading returns 3,110 records where the old one returned
+1,000 — every one of them, none twice — and recovers all 1,173 of General's.
+
+**The member list was 63 members from the same bug.** 937 rows against a ceiling of 1,000. Left
+alone it would have taken the roster, the follow-up list and every Overview count with it, on the
+day of an intake and with nothing on screen to say so.
+
+## The greyed-out Reset says what would make it work
 
 **Reset was grey and silent.** On a day whose attendance file has not arrived, the Reset button
 beside the date is greyed out, and until now that was all it said. Nothing told you whether it was

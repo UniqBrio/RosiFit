@@ -59,6 +59,122 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-041 — the fix for RC-039 could reintroduce RC-039, and a failed read still read as "Awaiting upload"
+**Date:** 11-Sep-2026  ·  **Severity:** S2  ·  **Modules:** `src/data/pageAll.ts`, `src/data/repository.ts`, `src/data/dayLoad.ts`, `app/course/[id].tsx`
+
+**FOUND BY REVIEW, NOT BY A USER.** Independent review of the merged RC-039 fix (PR 13,
+`969c90a`) found two defects in the pager and three structural gaps around it. Logged as its
+own entry rather than as an amendment to RC-039, because "the fix carried the bug it fixed"
+is the finding, and burying it inside the entry it corrects is how that lesson is lost.
+
+**Symptom** — none observed. Every defect below is latent, and that is the point: the class
+is *a read whose truncation is reported as success*, and it has no failure signal by
+construction. RC-039 itself ran undetected for as long as the academy was under a thousand
+records a week.
+
+**Root cause, 1 — SHORT-PAGE TERMINATION.** The pager stopped when a page returned fewer
+rows than it asked for. That is sound only if the server's ceiling is never below the page
+size — and `db-max-rows` is a Supabase project SETTING, not a constant. Lower it to 500, or
+restore this project with a different default, and every paged read in the app returns its
+first page and reports success. RC-039 exactly, reintroduced by the code that fixed it. A
+short page now means nothing at all; **only an empty page ends a read.**
+
+**Root cause, 2 — OFFSET PAGING IS NOT STABLE UNDER WRITES.** `.range(1000, 1999)` is
+`OFFSET 1000`, which is a POSITION rather than a place. An insert earlier in the ordering
+shifts every later page down and a row is skipped; a delete shifts them up and a row is read
+twice. A unique `ORDER BY` does not help — it makes the ordering total, not the offsets
+stable. Attendance is bulk-imported while people have the course screen open, so this is an
+ordinary Tuesday rather than a race nobody will hit. A keyset cursor is anchored to a VALUE,
+`where key > :lastSeen`, and no write before the cursor can move what comes after it.
+
+**Root cause, 3 — A LOAD FAILURE RENDERED AS A BUSINESS STATE.** The half of RC-039 that
+made it invisible, and which RC-039's fix did not touch. The course strip did
+
+```ts
+const rows = (attendance.data ?? []).filter(r => r.course_id === course?.id && …);
+```
+
+`data` is null while a read is in flight AND null when a read has failed, so `?? []` hands
+the strip an empty week — which is the exact shape of a week nobody has uploaded. **No data
+received was being read as no upload exists.** Nobody wrote that inference; it falls out of
+one `??`.
+
+**Root cause, 4 — nothing stopped a new unpaged read being written.** Three read shapes in
+`src/data/` are worth nothing the first time a screen writes `supabase.from('members')`
+itself: that read goes to the network past all of them.
+
+**Root cause, 5 — the course screen downloads thousands of raw rows to render seven day
+statuses.** Not fixed here. It is the root design problem and is prepared, unapplied, as a
+Postgres aggregate awaiting approval.
+
+**Fix** — `pageAllByKey`: order by a unique, indexed key; anchor each page with
+`key > <last key seen>`; terminate ONLY on an empty page; throw on any page error so a
+partial list never escapes; take a query FACTORY so each page gets a fresh builder carrying
+the caller's own filters. Three of the six original call sites paged by a key they did not
+`select` — the cursor would have been read from a column that was not in the payload — and
+`member_emails`, `member_aliases` and `member_enrollments` now select `id`.
+
+`readBounded(query, limit)` is the second sanctioned shape, for a list somebody scrolls: it
+asks for `limit + 1` and reports the extra as `hasMore`, and REFUSES a limit at or above the
+ceiling, where a full answer and a truncated one are the same bytes.
+
+`guardUntruncated` is the backstop for a read that is neither, wired in through `checked()`
+at the seven reads whose bound is a fact about production rather than a number in the source.
+It keys on the row count landing exactly on the ceiling, never on `Content-Range` — that ends
+in `/*` on every healthy response, so keying on it would flag every read in the app and the
+guard would be switched off within a week.
+
+`src/data/dayLoad.ts` holds root cause 3: a day carries what the app KNOWS —
+`loading` / `uploaded` / `not-uploaded` / `failed` — and "not uploaded" is a claim only a
+COMPLETED read may make. `failed` is a real status with its own word and its own icon
+(CP-010), and a failed week still draws its seven days, under a banner that is entirely the
+retry: *"Couldn't load attendance. Tap to retry."*
+
+**Composite keys** — the brief asked for a row-value cursor
+(`a > lastA OR (a = lastA AND b > lastB)`) for any table with a composite primary key.
+**Every primary key in this schema is single-column, all 34 of them** (`pg_constraint`,
+11-Sep-2026), so that branch has no table to be written for and is deliberately NOT built:
+an untested branch for a shape that does not exist would be specced against a fake and
+believed.
+
+**Files** — `src/data/pageAll.ts` (rewritten), `src/data/dayLoad.ts` (new),
+`src/data/repository.ts` (nine paged call sites, seven guarded), `src/theme/tokens.ts`
+(`STATUS.failed`), `app/course/[id].tsx`,
+`scripts/audits/check-data-layer-boundary.mjs` (new), `eslint.config.mjs` (new).
+
+**How to verify** — replay the keyset requests against production, read-only:
+`.evidence/keyset-replay-production.txt` records 1000 + 1000 + 1000 + 110 + 0 = 3,110 rows,
+3,110 distinct, against 3,110 that exist, with General's 1,173 recovered. **The fourth page
+is short, and that is the whole point** — it is exactly where the offset pager stopped. In
+specs: `src/data/pageAll.test.ts` → "DEFECT 1: a server cap BELOW the page size returns
+everything, not one page" (server cap 50, page size 1000, 2,220 rows, 45 full pages and one
+empty) and "DEFECT 2: a row INSERTED behind the cursor cannot skip a row that was already
+there".
+
+**Recurrence risk** — the reads are now in one place and enforced there, so the remaining
+risk is a read written somewhere else. `members` at **937 rows against a 1,000 ceiling** is
+the live measure of how little room there is: the next intake truncates the roster, the
+follow-up list derived from it and every Overview count, silently.
+
+**Prevention** — three rungs. `rung: src/data/pagedReads.test.ts` (every growing table is
+paged or bounded with a stated reason; no `.range(` survives; every paged read names a key
+AND selects it). `rung: src/data/dayLoad.test.ts` (the absence of rows may not be read as a
+business fact). `rung: scripts/audits/check-data-layer-boundary.mjs` + `npm run audit:all`
+(a Supabase query may only be WRITTEN in `src/data/`; zero violations today, no baseline,
+because the correct number is nought).
+
+**Process check** — would a correct process have caught this? RC-039's own Process check
+named the gap and did not close it: *"none of [the gates] has ever been run against a data
+volume the platform's own limits react to"*. That is still true, and both defects here are
+in that class — defect 1 needs a server cap below the page size, which no fixture has, and
+defect 2 needs a concurrent write during a page turn. What DID catch them was adversarial
+review of a merged fix, which is a process step and a cheap one. The rung that would have
+caught defect 1 mechanically now exists and is the first case in `pageAll.test.ts`: a fake
+client whose server cap is deliberately lower than the page size. **A pager should be
+specced against a hostile server, not a cooperative one.**
+
+---
+
 ## RC-040 — the header tab row lit EVERY tab on a course detail, and none on a member's
 **Date:** 10-Sep-2026  ·  **Severity:** S3  ·  **Modules:** `src/components/AppShell.tsx`, `src/data/access.ts`
 
