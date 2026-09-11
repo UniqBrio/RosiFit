@@ -1,3 +1,117 @@
+## FAIL-FIRST — the Reset tooltip (11-Sep-2026)
+
+Requested: *"On reset button add a tooltip as this will be enable only after first upload of
+attendance file."* Transcript: `.evidence/reset-tooltip-fail-first.txt`.
+
+FAIL-FIRST: `src/components/resetTooltip.test.ts` is new, 12 assertions, run against **the code
+that shipped** rather than an injected defect — the merge of pull request 13 exported to a
+temporary root and read through the spec's own `RESET_TOOLTIP_SPEC_ROOT` override. 11 of 12
+failed.
+
+**And the first run found a hole in the spec, exactly as the last one did.** Claim 5, "`why` is
+null exactly when the button works", PASSED against a tree that has no `why` expression at all:
+asked of the whole file, its regex `/:\s*null;/` matched some unrelated ternary hundreds of lines
+away. It now slices the `why` expression out first and asks only of that. Against the pre-fix tree
+it then fails with the other ten. Two runs, two false passes caught this way; the practice is
+earning its keep.
+
+The one assertion that passes on both trees is "the other reason is still there" — it guards the
+existing *tick the members whose marks to clear first* wording against being lost while the second
+reason was added. It is a guard, not evidence, and is counted as neither.
+
+FAIL-FIRST: `src/components/tooltipReveal.test.ts` is new, 10 assertions over the pure show/hide
+rule. The defect it pins cannot be seen on a desktop and is total on a phone: a touch fires
+`pointerenter` and `pointerleave` milliseconds apart, so a tooltip written as one boolean flickers
+and is gone before it can be read. Reducing the state machine to that single boolean — `hidden`
+and `hover` only, with `tap` folded into `hover` — fails 4 of 10, among them "A TAP SURVIVES THE
+POINTER LEAVING".
+
+CASES: +22 passing (1,468 → 1,490), 0 new failures. The same 6 specs fail as on `main`, in the
+course-list filter and the message token map, untouched by this change. Contrast 2,842/2,842,
+icons 75/75, `audit:all` green across all nine sweeps.
+
+NOT OBSERVED FAILING: nothing here was exercised in a browser. The bubble's trigger path is the
+one part that a source-reading spec cannot prove — `onPointerEnter` on a `View` reaching the DOM,
+and firing over a `box-none` child — and that claim rests on reading react-native-web 0.21's own
+source (recorded with line references as KL-006) rather than on watching it happen. Somebody with
+the sign-in credential should hover and tap the greyed Reset once after this deploys.
+
+---
+
+## Gate baseline for 11-Sep-2026 — read the run below against THIS
+
+FAIL, and step-for-step the same FAIL `main` already carries. Unchanged from the baseline recorded
+under 10-Sep, which explains each step: G1/G2/G3 call a framework-seed contrast script that reads
+`design/tokens.json`, a file this app has never had (its own gate, `scripts/check-contrast.ts`,
+passes 2,842/2,842 including every pair the tooltip bubble draws); G6 is BLOCKED for want of a
+local eslint; G7/G8 are the six specs already red on `main`, in the course-list filter and the
+message token map, neither of which this change touches.
+
+This change contributes **+22 passing specs and 0 new failures** (1,468 → 1,490 passing, 6 → 6
+failing), with `audit:all` green across all nine sweeps.
+
+---
+
+## Gate run - 2026-09-11 - VERDICT: FAIL
+
+Steps: 5 pass, 5 fail, 1 blocked.
+Time: 21.2s total - slowest G7 Unit + pure specs (14.1s).
+
+- **G1 Theme artifacts in sync** - FAIL (55ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (50ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (68ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (75ms)
+- **G5 Types** - PASS (6.5s)
+- **G6 Lint** - BLOCKED (-) - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - FAIL (14.1s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: a form asked for a record answers a failed read
+ok 169 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 170 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 183 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+  name: 'AssertionError'
+  expected: true
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+ok 300 - a ring is never a colour alone, and nothing expected is a dash
+# Subtest: a failed reset keeps the dialog open, carrying the reason
+ok 337 - a failed reset keeps the dialog open, carrying the reason
+```
+
+- **G8 Functional / integration** - FAIL (137ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (58ms)
+- **G10 Backward compatibility (fixtures)** - PASS (124ms)
+- **G11 Wide tables are configurable** - PASS (56ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
 ## FAIL-FIRST — the week's attendance, and the tab you are on (10-Sep-2026)
 
 Requested twice: attendance uploaded for four days read **Awaiting upload** on the course
