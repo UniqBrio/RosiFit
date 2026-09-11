@@ -30,11 +30,91 @@ CASES: +22 passing (1,468 → 1,490), 0 new failures. The same 6 specs fail as o
 course-list filter and the message token map, untouched by this change. Contrast 2,842/2,842,
 icons 75/75, `audit:all` green across all nine sweeps.
 
-NOT OBSERVED FAILING: nothing here was exercised in a browser. The bubble's trigger path is the
-one part that a source-reading spec cannot prove — `onPointerEnter` on a `View` reaching the DOM,
-and firing over a `box-none` child — and that claim rests on reading react-native-web 0.21's own
-source (recorded with line references as KL-006) rather than on watching it happen. Somebody with
-the sign-in credential should hover and tap the greyed Reset once after this deploys.
+OBSERVED IN A BROWSER, and it changed the design twice. The gap recorded here on the first pass —
+"nothing was exercised in a browser" — is now closed: `npm run export` serves the real web build on
+fixtures, so the course screen is reachable with no sign-in and no production data, and
+`.harness/reset-tooltip.mjs` drives Chromium against it. Full transcript in
+`.evidence/reset-tooltip-browser.txt`.
+
+**Three defects, and all twelve source assertions passed through every one of them.**
+
+| What was wrong | How it presented | What a source spec saw |
+|---|---|---|
+| `maxWidth` on an absolutely positioned box is capped by its containing block, which is the wrapper | the bubble was **82px wide and 178px tall** — the sentence as a column of broken words | present, correct, green |
+| every RN Web `View` carries `position: relative` AND `z-index: 0`, so nothing inside the row can rise above a later sibling of an ancestor | the bubble was **entirely behind the first member card** | present, 240px, inside the window, green |
+| the check walked up from the wrong element, and `course-day-add-*` is the *"Upload again"* button on a day that HAS marks | the check blamed the app for saying the right thing | n/a |
+
+The second one is the instructive one. Three z-index changes were tried — the bubble to 20, the
+wrapper to 30, the row to 5 — and every one was a no-op. It is fixed structurally instead, by
+hanging the bubble ABOVE the control where document order carries it, and all three z-index
+changes were then removed. Recorded as KL-007, with the ancestry dump.
+
+The occlusion was found by LOOKING at a screenshot. The check that can now see it samples the same
+pixel with the bubble up and with it down: presence, size and viewport containment are all
+satisfied by an element painted completely behind another one.
+
+NOT OBSERVED: the live project. The browser run is against fixtures, which is the right place for
+a layout claim and says nothing about production data. Nothing here reads or writes attendance.
+
+---
+
+## Gate run - 2026-09-11 - VERDICT: FAIL
+
+Steps: 5 pass, 5 fail, 1 blocked.
+Time: 20.8s total - slowest G7 Unit + pure specs (14.0s).
+
+- **G1 Theme artifacts in sync** - FAIL (57ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (54ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (49ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (72ms)
+- **G5 Types** - PASS (6.2s)
+- **G6 Lint** - BLOCKED (-) - no local "eslint" - not fetched from the registry on purpose. Run `npm install` (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - FAIL (14.0s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: a form asked for a record answers a failed read
+ok 169 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 170 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 183 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+  name: 'AssertionError'
+  expected: true
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+ok 300 - a ring is never a colour alone, and nothing expected is a dash
+# Subtest: a failed reset keeps the dialog open, carrying the reason
+ok 337 - a failed reset keeps the dialog open, carrying the reason
+```
+
+- **G8 Functional / integration** - FAIL (134ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (61ms)
+- **G10 Backward compatibility (fixtures)** - PASS (131ms)
+- **G11 Wide tables are configurable** - PASS (55ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

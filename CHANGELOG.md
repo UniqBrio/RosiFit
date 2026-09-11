@@ -17,6 +17,11 @@ to read, then withdraws on its own. Tapping anywhere else dismisses it. This mat
 build properly: a note that only appears on hover is a note nobody using the app in a studio would
 ever see.
 
+**It has been watched working, not just written.** The note is drawn above the button, it is wide
+enough to read a sentence in on one or two lines, and it stays on screen at phone width without
+pushing the page sideways. All three of those were wrong at some point during the build and all
+three were found by opening the actual page rather than by reading the code.
+
 **Nothing about Reset itself has changed.** It still needs a file and ticked members, it still acts
 only on the members you ticked, and it still asks before it clears anything. The only thing that is
 new is that it now explains itself.

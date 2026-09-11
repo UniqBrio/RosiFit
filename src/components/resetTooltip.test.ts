@@ -153,3 +153,56 @@ test('the bubble uses a colour pair the contrast gate already measures', () => {
   assert.ok(s.includes('color: theme.fg'),
     `${TOOLTIP}: the bubble's ink must be a measured text token.`);
 });
+
+/* ------------------------------------------------- what the BROWSER taught
+ *
+ * Everything above this line passed while the bubble was 82px wide and, later,
+ * while it was painted completely behind a member card. Source-reading cannot
+ * see layout. These three pin the two facts that only a rendered page could
+ * have revealed, so the next person does not rediscover them the same way.
+ * `.harness/reset-tooltip.mjs` is what measures them; these keep the code
+ * shaped so that it stays true.
+ */
+
+test('the bubble has an explicit width, never a maxWidth', () => {
+  // `maxWidth` on an absolutely positioned box is measured against its
+  // CONTAINING BLOCK — the wrapper, which is as wide as the button. It shrank
+  // the sentence to an 82px column of broken words and no spec could see it.
+  const s = read(TOOLTIP);
+  assert.match(s, /width: 240,/,
+    `${TOOLTIP}: the bubble needs a real width; a maxWidth is capped by the wrapper.`);
+  // CODE LINES ONLY. The first version of this assertion failed against the
+  // fixed file, because the comment explaining the defect quotes the defect:
+  // `maxWidth: 260`. A spec that cannot tell code from the prose about the
+  // code will fail on every file that documents itself honestly.
+  const code = s.split('\n').filter(l => !/^\s*(\*|\/\/|\/\*)/.test(l));
+  assert.ok(!code.some(l => /maxWidth: \d/.test(l)),
+    `${TOOLTIP}: a numeric maxWidth is the defect that made the bubble 82px wide.`);
+});
+
+test('the bubble hangs ABOVE the control, which is what makes it visible at all', () => {
+  /*
+   * Not a taste decision. React Native Web gives every View
+   * `position: relative` AND `z-index: 0`, so almost every node is its own
+   * stacking context. A bubble hanging BELOW is drawn over the member cards,
+   * which are later siblings several levels up — at equal z-index the later
+   * one wins, and no z-index inside this row can reach past the ancestor that
+   * contains both. Lifting the bubble, the wrapper and the row all changed
+   * nothing. Upward, document order works in its favour with no z-index at all.
+   */
+  const s = read(TOOLTIP);
+  assert.match(s, /bottom: '100%'/,
+    `${TOOLTIP}: the bubble must be anchored above the control.`);
+  assert.ok(!/top: '100%'/.test(s),
+    `${TOOLTIP}: anchored below, the bubble is painted behind the member cards — present, `
+    + 'correctly sized, and invisible.');
+});
+
+test('no z-index is relied on, because none of them worked', () => {
+  // Kept as a negative so nobody re-adds one believing it helps. If a future
+  // layout DOES need stacking, it has to be proved in the browser first —
+  // three z-index changes were tried here and every one of them was a no-op.
+  assert.ok(!/zIndex/.test(read(TOOLTIP)),
+    `${TOOLTIP}: a z-index here is a no-op against a later sibling of an ancestor. `
+    + 'Prove any new one with .harness/reset-tooltip.mjs before trusting it.');
+});
