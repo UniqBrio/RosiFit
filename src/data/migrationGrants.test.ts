@@ -64,22 +64,29 @@ test('the spec is looking at a real tree', () => {
  * NOT anon-callable in production today. Verified against the live project on
  * 12-Sep-2026 (`has_function_privilege('anon', …)` is false for every one).
  *
- * THEY ARE SAFE BY ACCIDENT OF TIMING, NOT BY DESIGN, and that is why they are
- * written down rather than ignored. Migration 0025 set
+ * They were created while migration 0025's
  *
  *     alter default privileges in schema public revoke execute on functions
  *       from anon, authenticated;
  *
- * and each of these was created while that was in force, so none ever received
- * the grant. **That default is no longer in force.** `pg_default_acl` for role
- * `postgres` on schema `public`, objtype `f`, currently reads
- * `{postgres=X, anon=X, authenticated=X, service_role=X}` — the revoke has been
- * undone, which is how 0067 acquired an `anon=X` the moment it was applied.
+ * was in force, so none ever received the grant. That default was later undone
+ * — which is how 0067 acquired an `anon=X` the moment it was applied — and
+ * **migration 0069 has now put it back**. Verified against production on
+ * 12-Sep-2026: `pg_default_acl` for role `postgres`, schema `public`, objtype
+ * `f` reads `{postgres=X, service_role=X}`.
  *
- * So a `create or replace` of ANY function on this list re-acquires the grant,
- * silently. Each needs an explicit revoke, and the default privilege needs
- * restoring; both are RC-042's open items and neither is this change's to make
- * unasked. Listing them here means the number can only shrink.
+ * A CORRECTION TO WHAT THIS BLOCK USED TO SAY. It claimed a `create or replace`
+ * of any function here would "silently re-acquire the grant". **That is wrong.**
+ * PostgreSQL preserves a function's ACL across CREATE OR REPLACE — ownership
+ * and permissions are explicitly not changed — so default privileges only ever
+ * applied to a genuinely new object. The real exposure was narrower than first
+ * written: new functions, and functions dropped and recreated. It was still
+ * real (0067 was new), but overstating it would have been the easier mistake to
+ * leave standing.
+ *
+ * So these twenty-three are safe, and 0069 is what keeps them that way. They
+ * stay listed because an explicit revoke is still the stronger statement than
+ * a default nobody re-reads, and because the number can then only shrink.
  */
 const NO_EXPLICIT_ANON_REVOKE = new Set([
   'attendance_reset_preview', 'bulk_import_members', 'bulk_set_member_dates',

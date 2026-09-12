@@ -1,0 +1,63 @@
+RC-042 CLOSED — the function default privilege, restored and verified
+12-Sep-2026. project lhpzhkzbnquwjljmbylo. Migration 0069, owner-approved.
+
+BEFORE
+  pg_default_acl  postgres / public / functions
+    {postgres=X/postgres, anon=X/postgres, authenticated=X/postgres, service_role=X/postgres}
+  13 non-extension functions anon-executable:
+    9 trigger functions (3 of them SECURITY DEFINER) + 4 helpers
+  Every function created from then on would have arrived anon-executable.
+  0067 is the proof: created 3 days earlier, landed with anon=X.
+
+THE FIRST DRAFT WOULD NOT HAVE WORKED, AND THE HARNESS SAID SO
+  It revoked `from anon, authenticated` and stopped. Rehearsal came back with
+  audit_remarks_immutable STILL anon-executable:
+
+    {=X/postgres, postgres=X/postgres, service_role=X/postgres}
+
+  The leading `=X` with no grantee is PUBLIC, and anon is a member of PUBLIC.
+  All thirteen carry BOTH a PUBLIC grant and a direct one.
+
+  THIS IS THE 0067 DEFECT POINTING THE OTHER WAY. 0067 revoked PUBLIC and left
+  the direct grant; the draft revoked the direct grant and left PUBLIC. Both
+  halves must be named. Applied to production, the draft would have read like a
+  fix and changed nothing.
+
+AFTER, verified against production
+  pg_default_acl  postgres / public / functions
+    {postgres=X/postgres, service_role=X/postgres}
+  trigger functions reachable by anon or authenticated .......... 0
+  non-extension functions reachable by anon ..................... 0
+  authenticated still holds week_bounds ......................... true
+  authenticated still holds normalize_email ..................... true
+  authenticated still holds member_period_metrics ............... true
+  authenticated still holds course_week_day_status .............. true
+
+NOTHING BROKE, and it is proven rather than assumed
+  Functional smoke against production, read-only:
+    course_week_day_status(General, 2026-09-07) ......  7 rows
+    member_period_metrics('2026-09-07','2026-09-13') .. 892 rows
+    week_bounds(current_date, 1) ...................... (2026-09-07,2026-09-13)
+    normalize_email(' Foo@Example.COM ') .............. foo@example.com
+    follow_up_candidates('2026-09-07','2026-09-13') ... 287 rows
+
+  And the trigger question is answered by the suite, not by reasoning: dozens
+  of cases insert and update rows, firing every one of the nine revoked trigger
+  functions, and they pass. PostgreSQL does not check EXECUTE against the
+  statement's role to fire a trigger.
+
+THE SUITE
+  before 0069 ....... 725 PASS / 10 FAIL
+  after  0069 ....... 732 PASS /  9 FAIL
+
+  The one that went green is "no trigger function is executable by anon or
+  authenticated" -- a failure that had been red on main with no diagnosis until
+  0067's own defect led to its cause.
+
+A CORRECTION CARRIED INTO BOTH REGISTERS
+  RC-042 and migrationGrants.test.ts said a `create or replace` of an unrevoked
+  function would silently re-acquire the grant. That is WRONG: PostgreSQL
+  preserves a function's ACL across CREATE OR REPLACE. The real exposure was
+  new functions, and functions dropped and recreated. Still real -- 0067 was
+  new -- but narrower than first written, and overstating a security finding is
+  the easier mistake to leave standing.

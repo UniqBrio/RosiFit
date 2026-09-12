@@ -91,22 +91,38 @@ so an `anon` caller is still bound by the RLS on all three tables it reads, each
 requires `is_active_app_user()`. An anonymous call returned seven rows of zeroes — the dates of a
 week, no counts. Not nothing: the migration claimed something that was not true.
 
-**THE WIDER FINDING, which is not this change's and is larger.** `pg_default_acl` for role
-`postgres`, schema `public`, objtype `f` currently reads
-`{postgres=X, anon=X, authenticated=X, service_role=X}`. Migration `0025` set
-`alter default privileges in schema public revoke execute on functions from anon, authenticated`
-and **that is no longer in force**. Tables are still locked; functions are not. So:
+**THE WIDER FINDING, which was not this change's and was larger — now CLOSED by `0069`.**
+`pg_default_acl` for role `postgres`, schema `public`, objtype `f` read
+`{postgres=X, anon=X, authenticated=X, service_role=X}`: migration `0025` set
+`alter default privileges … revoke execute on functions from anon, authenticated` and it was no
+longer in force. Tables were locked; functions were not. Thirteen non-extension functions were
+`anon`-executable, nine of them trigger functions and three of those `SECURITY DEFINER` — which
+is what the failing spec *"no trigger function is executable by anon or authenticated"* had been
+reporting on `main` all along.
 
-- every function created in `public` from now on is `anon`-executable by default;
-- **23 existing functions** have no explicit revoke and are safe only because they were created
-  while `0025` held. A `create or replace` of any one re-acquires the grant, silently. They are
-  listed in `src/data/migrationGrants.test.ts` so the number can only shrink;
-- three `SECURITY DEFINER` trigger functions are `anon`-executable right now —
-  `branches_fill_code`, `branches_guard_removal`, `holidays_apply_effects` — which is what the
-  pre-existing failing spec *"no trigger function is executable by anon or authenticated"* has
-  been reporting on `main`.
+**A CORRECTION, made rather than left standing.** This entry originally said a `create or
+replace` of one of the 23 unrevoked functions would "silently re-acquire the grant". **That is
+wrong.** PostgreSQL preserves a function's ACL across CREATE OR REPLACE; default privileges apply
+only to a genuinely new object. The exposure was narrower than first written — new functions, and
+functions dropped and recreated. Still real, since `0067` was new. But the overstatement was the
+easier error to leave uncorrected, so it is named here.
 
-Restoring a schema-wide default privilege is a decision of its own and is **not made here**.
+**`0069`, approved by the owner on 12-Sep-2026 as its own decision**, restores the default and
+revokes the thirteen. Two things worth keeping from writing it:
+
+1. **The first draft would not have worked, and the harness said so.** It revoked from
+   `anon, authenticated` and stopped. All thirteen carry a PUBLIC grant *as well as* a direct one,
+   so the functions stayed reachable through PUBLIC. **That is this very defect pointing the other
+   way** — `0067` revoked PUBLIC and left the direct grant; the draft revoked the direct grant and
+   left PUBLIC. Both halves have to be named. The rehearsal is what caught it.
+2. **Revoking EXECUTE from a trigger function breaks nothing**, which the suite proves rather than
+   asserts: dozens of cases insert and update rows, firing every one of the nine, and they pass.
+   PostgreSQL does not check EXECUTE against the statement's role to fire a trigger.
+
+Verified in production after applying: default ACL `{postgres=X, service_role=X}`, zero trigger
+functions reachable by `anon` or `authenticated`, zero non-extension functions reachable by
+`anon`, and `authenticated` still holds everything it needs. Local suite 725 pass / 10 fail →
+**732 pass / 9 fail** — the trigger-function spec went green.
 
 **Prevention** — `rung: src/data/migrationGrants.test.ts`. It reads the migration TEXT, not a
 harness, because the text is the one thing identical in both places: every function granted to

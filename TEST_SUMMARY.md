@@ -1,3 +1,54 @@
+## RC-042 CLOSED — the function default privilege restored (12-Sep-2026)
+
+Owner-approved. Migration `0069`.
+
+**The first draft would not have worked, and the harness said so.** It revoked
+`from anon, authenticated` and stopped; rehearsal came back with
+`audit_remarks_immutable` still anon-executable:
+
+```
+{=X/postgres, postgres=X/postgres, service_role=X/postgres}
+```
+
+The leading `=X` with no grantee is PUBLIC, and `anon` is a member of PUBLIC. All thirteen
+functions carry BOTH a PUBLIC grant and a direct one. **That is the 0067 defect pointing the
+other way** — 0067 revoked PUBLIC and left the direct grant; this draft revoked the direct grant
+and left PUBLIC. Applied to production as drafted, it would have read like a fix and changed
+nothing.
+
+**After, verified in production:**
+
+```
+pg_default_acl  postgres / public / functions   {postgres=X, service_role=X}
+trigger fns reachable by anon or authenticated  0
+non-extension fns reachable by anon             0
+authenticated keeps week_bounds / normalize_email / metrics / 0067   all true
+```
+
+**Nothing broke, and the trigger question is proved rather than reasoned.** Dozens of suite cases
+insert and update rows, firing every one of the nine revoked trigger functions, and they pass —
+PostgreSQL does not check EXECUTE against the statement's role to fire a trigger. Functional
+smoke against production: 7 day-status rows, 892 metrics rows, 287 follow-up candidates,
+`week_bounds` and `normalize_email` both correct.
+
+```
+DB suite   before 0069   725 PASS / 10 FAIL
+           after  0069   732 PASS /  9 FAIL
+```
+
+The one that went green is **"no trigger function is executable by anon or authenticated"** — red
+on `main` with no diagnosis until 0067's own defect led to its cause.
+
+**A correction carried into both registers rather than left standing:** RC-042 and
+`migrationGrants.test.ts` said a `create or replace` would "silently re-acquire the grant". That
+is wrong — PostgreSQL preserves a function's ACL across CREATE OR REPLACE. The exposure was new
+functions and drop-and-recreate. Still real (0067 was new), but overstating a security finding is
+the easier mistake to leave uncorrected.
+
+Unit unchanged: 1554 tests, 1548 pass, 6 fail — the same 6.
+
+---
+
 FAIL-FIRST: src/data/migrationGrants.test.ts - written AFTER the defect it guards reached production, which is stated rather than dressed up; it fails on the real 0067 text with the revoke removed.
 
 ## 0067 SHIPPED A DEFECT, AND THE VERIFICATION STEP CAUGHT IT (12-Sep-2026)
@@ -39,6 +90,68 @@ here** — restoring a schema-wide default privilege is its own decision. RC-042
 
 Suite after 0068: **725 PASS / 10 FAIL**, the same 10 as the baseline. Unit: 1554 tests, 1548 pass,
 6 fail — the same 6.
+
+---
+
+## Gate run - 2026-09-12 - VERDICT: FAIL
+
+Steps: 6 pass, 5 fail, 1 blocked.
+Time: 30.6s total - slowest G7 Unit + pure specs (16.4s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (65ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (62ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (64ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (86ms)
+- **G5 Types** - PASS (13.3s)
+- **G6 Lint** - BLOCKED (-) - no local "eslint" in . - not fetched from the registry on purpose. Run `npm install` in . (provides eslint), or state why this class is unverified. - **134 consecutive runs**: a verdict that never changes is not a signal; make this class runnable or accept it in writing
+- **G7 Unit + pure specs** - FAIL (16.4s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 180 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 181 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 194 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (148ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (69ms)
+- **G10 Backward compatibility (fixtures)** - PASS (143ms)
+- **G11 Wide tables are configurable** - PASS (65ms)
+- **G12 Installable as an application** - PASS (87ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
