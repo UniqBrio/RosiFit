@@ -59,6 +59,69 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-042 — 0067 shipped a function `anon` could execute, and every test said otherwise
+**Date:** 12-Sep-2026  ·  **Severity:** S3  ·  **Modules:** `supabase/migrations/0067`, `db/harness/000_local_shim.sql`, `supabase/tests/48`
+
+**FOUND IN PRODUCTION, BY THE VERIFICATION STEP, FOUR MINUTES AFTER APPLYING.** Logged with
+the severity the exposure actually warrants rather than the severity the mistake feels like.
+
+**Symptom** — none observable. The post-apply check that CLAUDE.md requires read the function's
+ACL and found `anon=X/postgres` on a function the migration said `anon` could not execute.
+
+**Root cause** — `0067` ends with `revoke all on function ... from public`, copying migration
+`0011`. Supabase's default privileges grant EXECUTE on every new `public` function **directly**
+to `anon`, not through the PUBLIC pseudo-role, so revoking from PUBLIC does not touch it.
+**The lesson was already in this repository**: `0012` is named
+`harden_function_security_direct_grants` and its header states exactly this. `0067` was written
+against `0011`'s pattern and never read `0012`'s.
+
+**Why every test passed** — and this is the part worth keeping. `supabase/tests/48` asserts
+`has_function_privilege('anon', …) = false` **explicitly**, and it passed. The harness builds
+its own roles in `000_local_shim.sql` and grants all functions to `anon` by default; it does not
+reproduce the platform's default privileges. The grant being revoked never existed locally, so
+the assertion had nothing to find. **An assertion that passes for the wrong reason is worse than
+no assertion, because it reads like proof** — the same shape as RC-039 itself, where a truncated
+reply was reported as success.
+
+**Fix** — `0068_course_week_day_status_revoke_anon.sql`, one line, `revoke execute … from anon`.
+Verified against production: the ACL is now byte-identical in shape to `member_period_metrics`.
+
+**What was exposed** — about four minutes, and very little. The function is `SECURITY INVOKER`,
+so an `anon` caller is still bound by the RLS on all three tables it reads, each of which
+requires `is_active_app_user()`. An anonymous call returned seven rows of zeroes — the dates of a
+week, no counts. Not nothing: the migration claimed something that was not true.
+
+**THE WIDER FINDING, which is not this change's and is larger.** `pg_default_acl` for role
+`postgres`, schema `public`, objtype `f` currently reads
+`{postgres=X, anon=X, authenticated=X, service_role=X}`. Migration `0025` set
+`alter default privileges in schema public revoke execute on functions from anon, authenticated`
+and **that is no longer in force**. Tables are still locked; functions are not. So:
+
+- every function created in `public` from now on is `anon`-executable by default;
+- **23 existing functions** have no explicit revoke and are safe only because they were created
+  while `0025` held. A `create or replace` of any one re-acquires the grant, silently. They are
+  listed in `src/data/migrationGrants.test.ts` so the number can only shrink;
+- three `SECURITY DEFINER` trigger functions are `anon`-executable right now —
+  `branches_fill_code`, `branches_guard_removal`, `holidays_apply_effects` — which is what the
+  pre-existing failing spec *"no trigger function is executable by anon or authenticated"* has
+  been reporting on `main`.
+
+Restoring a schema-wide default privilege is a decision of its own and is **not made here**.
+
+**Prevention** — `rung: src/data/migrationGrants.test.ts`. It reads the migration TEXT, not a
+harness, because the text is the one thing identical in both places: every function granted to
+`authenticated` must carry an explicit `revoke … from anon`. The 23 exceptions are named
+individually with the reason, and a separate case fails if one is fixed and left listed.
+
+**Process check** — would a correct process have caught this? The process **did** catch it, at
+the last possible moment: the post-apply verification CLAUDE.md mandates. What failed earlier is
+the assumption that a green local suite says anything about privileges, when the harness's own
+shim configures them differently on purpose. The gap is now named as KL-008, and the rung for
+this class is a file-based one rather than a runtime one. *A test whose subject is the
+environment cannot be run in an environment that does not have it.*
+
+---
+
 ## RC-041 — the fix for RC-039 could reintroduce RC-039, and a failed read still read as "Awaiting upload"
 **Date:** 11-Sep-2026  ·  **Severity:** S2  ·  **Modules:** `src/data/pageAll.ts`, `src/data/repository.ts`, `src/data/dayLoad.ts`, `app/course/[id].tsx`
 

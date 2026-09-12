@@ -1,3 +1,47 @@
+FAIL-FIRST: src/data/migrationGrants.test.ts - written AFTER the defect it guards reached production, which is stated rather than dressed up; it fails on the real 0067 text with the revoke removed.
+
+## 0067 SHIPPED A DEFECT, AND THE VERIFICATION STEP CAUGHT IT (12-Sep-2026)
+
+Applied to production, then verified per CLAUDE.md. The ACL read:
+
+```
+proacl: {postgres=X/postgres, anon=X/postgres, authenticated=X/postgres, service_role=X/postgres}
+has_function_privilege('anon', ...) = TRUE
+```
+
+`revoke all ... from public` does not remove a DIRECT grant, and Supabase makes one on every new
+public function. Migration 0012 is named `harden_function_security_direct_grants` and says so in
+its header; 0067 was written against 0011's pattern and never read it.
+
+**`supabase/tests/48` asserts exactly this and PASSED.** The harness grants all functions to anon
+in its own shim, so the grant being revoked never existed locally and the assertion had nothing to
+find. An assertion that passes for the wrong reason is worse than no assertion — it reads like
+proof. Now KL-008.
+
+Fixed by `0068`, verified in production:
+
+```
+proacl: {postgres=X/postgres, authenticated=X/postgres, service_role=X/postgres}
+anon=false  authenticated=true  service_role=true  secdef=false  volatility=stable
+```
+
+Exposure: about four minutes. SECURITY INVOKER, so an anon caller was still bound by RLS on all
+three tables — seven rows of zeroes, no counts. Stated rather than minimised: the migration claimed
+something untrue.
+
+**The wider finding, which is not this change's.** `pg_default_acl` for `postgres` / `public` /
+functions currently reads `{postgres=X, anon=X, authenticated=X, service_role=X}`. Migration 0025's
+`alter default privileges ... revoke execute on functions from anon, authenticated` is no longer in
+force. Every function created from now on is anon-executable by default; 23 existing ones are safe
+only by accident of when they were created; three SECURITY DEFINER trigger functions are
+anon-executable right now, which is what the pre-existing failing spec on main reports. **Not fixed
+here** — restoring a schema-wide default privilege is its own decision. RC-042.
+
+Suite after 0068: **725 PASS / 10 FAIL**, the same 10 as the baseline. Unit: 1554 tests, 1548 pass,
+6 fail — the same 6.
+
+---
+
 FAIL-FIRST: supabase/tests/48_course_week_day_status.sql - 32 assertions, each of the five defects it names put into the migration and caught by name.
 FAIL-FIRST: src/data/courseWeekDays.test.ts - four mutations, all caught; and case 2 was found passing while never running its own long-week branch.
 FAIL-FIRST: .harness/course-week-strip.mjs - 4 of 23 browser checks RED on the first run, against a screen every source assertion had passed.

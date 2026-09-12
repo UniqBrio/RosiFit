@@ -1,0 +1,74 @@
+THE DEFECT 0067 SHIPPED, FOUND IN PRODUCTION MINUTES AFTER APPLYING IT
+12-Sep-2026. project lhpzhkzbnquwjljmbylo.
+
+1. WHAT WAS WRONG
+   0067 ends with `revoke all on function ... from public`, the pattern
+   migration 0011 uses for every read function here. Immediately after the
+   apply, production said:
+
+     proacl: {postgres=X/postgres, anon=X/postgres,
+              authenticated=X/postgres, service_role=X/postgres}
+     has_function_privilege('anon', ...) = TRUE
+
+   `anon=X` is a DIRECT grant. Revoking from PUBLIC does not touch it.
+
+2. THE LESSON WAS ALREADY IN THIS REPOSITORY
+   Migration 0012 is named `harden_function_security_direct_grants` and its
+   header says, in as many words: "this project, like every Supabase project,
+   carries a default-privileges rule that grants EXECUTE on new `public`
+   functions DIRECTLY to `anon` ... so `revoke ... from public` left those
+   direct grants untouched." 0067 was written against 0011's pattern and never
+   looked at 0012's.
+
+3. WHY EVERY TEST PASSED
+   supabase/tests/48 asserts `has_function_privilege('anon', ...) = false`
+   explicitly, and it PASSED in the harness. db/harness/000_local_shim.sql
+   builds the roles itself and grants all functions to anon/authenticated by
+   default -- it does not reproduce Supabase's platform default privileges. The
+   grant being revoked never existed locally, so the assertion had nothing to
+   find and passed for the wrong reason. An assertion that passes for the wrong
+   reason is worse than no assertion: it reads like proof.
+
+4. FIXED, AND VERIFIED
+   0068_course_week_day_status_revoke_anon.sql:
+     revoke execute on function public.course_week_day_status(uuid, date, uuid) from anon;
+
+   After:
+     proacl: {postgres=X/postgres, authenticated=X/postgres, service_role=X/postgres}
+     anon=false  authenticated=true  service_role=true  secdef=false  volatility=stable
+
+   Byte-identical in shape to member_period_metrics and follow_up_candidates.
+
+5. WHAT WAS ACTUALLY EXPOSED, and for how long
+   About four minutes, and very little. The function is SECURITY INVOKER, so an
+   anon caller is still bound by the RLS on attendance_records, sessions and
+   course_offerings -- all three require is_active_app_user() for
+   `authenticated`. An anonymous call returns seven rows of zeroes: the dates of
+   a week, and no counts. Not nothing, because the migration claimed anon could
+   not execute it and it could. This is stated rather than minimised.
+
+6. THE WIDER FINDING, WHICH IS NOT MINE AND IS BIGGER
+   pg_default_acl for role `postgres`, schema `public`, objtype `f`:
+
+     {postgres=X/postgres, anon=X/postgres,
+      authenticated=X/postgres, service_role=X/postgres}
+
+   Migration 0025 set `alter default privileges in schema public revoke execute
+   on functions from anon, authenticated;`. THAT IS NO LONGER IN FORCE. Tables
+   are still correctly locked (objtype `r` has no anon entry); functions are
+   not.
+
+   Consequences, verified against production:
+     - every function created in `public` from now on is anon-executable by
+       default. 0067 is the proof.
+     - 23 existing functions have no explicit `revoke ... from anon` and are
+       currently safe ONLY because they were created while 0025's default was
+       in force. A `create or replace` of any of them re-acquires the grant,
+       silently. They are listed in src/data/migrationGrants.test.ts.
+     - three SECURITY DEFINER trigger functions are anon-executable right now:
+       branches_fill_code, branches_guard_removal, holidays_apply_effects.
+       This is what the pre-existing failing spec "no trigger function is
+       executable by anon or authenticated" has been reporting on main.
+
+   NOT FIXED HERE. Restoring a schema-wide default privilege is beyond the
+   Phase B approval and is put to the requester as its own decision.
