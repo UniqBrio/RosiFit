@@ -66,4 +66,5 @@ should start by reading this table rather than by guessing which part felt slow.
 
 | ID | Action | Type | Scale | Started | Ended | Total | Stages | Gate | Verdict | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
+| R-002 | Attendance upload of three 11-Sep Meet files fails with 500: csv-import reads members unpaged past the API 1000-row cap | BUG | micro | 2026-09-12 10:34 | 2026-09-12 10:40 | 6m | ground 1m · build 2m · verify 3m · gate 1m | 19.9s | FAIL | csv-import paged (RC-043); gate 6/5/1 identical to the two prior runs on main - G6 no eslint, G7 six pre-existing specs (formDropdownMenu, message), G8 no test:functional; none touch this change. Function not deployed. |
 | R-001 | In dropdown with in the forms such as add edit forms of course member and other form within which drop down is present apply dropdown ui as shown in atatched image only inside forms and dialogs | CHANGE | scoped | 2026-09-08 14:13 | 2026-09-08 14:24 | 11m | - | - | - | - |

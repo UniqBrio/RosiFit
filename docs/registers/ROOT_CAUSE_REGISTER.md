@@ -59,6 +59,83 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-043 — the upload died at 1,000 members: csv-import read the members table unpaged, on the service role
+**Date:** 12-Sep-2026  ·  **Severity:** S2  ·  **Modules:** `supabase/functions/csv-import/index.ts`, `supabase/functions/_shared/pageAll.ts` (new), `src/data/edgeFunctionPagedReads.test.ts` (new)
+
+**Symptom** — three Meet exports for Thu 11 Sep (08:53–08:54 AM, three meeting codes) picked
+together would not upload: *"Something went wrong. Please try again. Nothing was written."*
+The function log for every attempt, six of them between 03:47 and 04:10 UTC on 12-Sep-2026:
+
+```
+TypeError: Cannot read properties of undefined (reading 'full_name')
+    at csv-import/index.ts (the candidate lookup, `memberById.get(id)!`)
+POST | 500 | /functions/v1/csv-import
+```
+
+The three-file batches for the same day uploaded a minute earlier (10:53, 16:02, 18:27) all
+succeeded. The files themselves parse cleanly: BOM, CRLF, four preamble lines, 25 + 19 + 30
+rows, one day, no future date, every name between 2 and 120 characters.
+
+**Root cause** — RC-039's class, in the one place it was never swept. PostgREST caps every reply
+at `db-max-rows` (1,000 here) and reports nothing: `200`, a thousand rows, `error: null`. The
+client learned this on 10-Sep and pages every growing table (`src/data/pageAll.ts`). The
+csv-import function reads `members`, `member_aliases`, `member_emails`, `member_stats` and
+`member_enrollments` in full with a bare `.select()` on the service-role client, and nobody
+swept it because "the service role bypasses RLS" was read as "bypasses the cap". It does not;
+the cap is PostgREST's and applies to every role.
+
+At 03:40 UTC on 12-Sep a twelve-file batch uploaded against the wrong course created 106
+members in one commit: live members 935 → 1,041. From then on `members` came back one page
+short while `member_aliases` (744 rows) still loaded whole, so an alias could point at a member
+`memberById` no longer held — and the candidate builder read `.full_name` off `undefined`.
+**That is the selectivity:** a file fails if and only if it names a member outside the first
+1,000 rows returned. These three did ("Ruby nancy" → *Nancy tenkasi dec*, "saranya ramasamy" →
+*Saran namakkal nov*); the neighbouring batches did not.
+
+The same truncation was already degrading matching silently where it did not crash: active
+enrolments (1,026) and member_stats (1,052) were also past the cap, so ~26 members had no
+course on the review screen and a member past the page matched by canonical name came back
+`unmatched` and was created again.
+
+**Fix** — `supabase/functions/_shared/pageAll.ts`: the client's keyset pager, same contract
+(order by a unique selected key, anchor on `key > last`, END ONLY ON AN EMPTY PAGE, throw on
+any page error, take a factory). The five academy-scale reads in the preview go through it and
+each now SELECTS the key it pages by (`id`, or `member_id` for member_stats). The non-null
+assertion on the candidate lookup is replaced by a guard that throws an `HttpError` naming the
+member, so a short read — should one ever recur — reaches the log and the person as a sentence,
+not as a TypeError.
+
+**Files** — `supabase/functions/_shared/pageAll.ts` (new) · `supabase/functions/csv-import/index.ts`
+(five reads, one guard, one import) · `src/data/edgeFunctionPagedReads.test.ts` (new, 16) ·
+`requests/2026-09-12-upload-fails-past-1000-members.md`.
+
+**How to verify** — `npx tsx --test src/data/edgeFunctionPagedReads.test.ts`: the pager returns
+1,050 rows from a fake table capped at 1,000 and at 400; every read of the five tables in the
+function is `pageAllByKey(` with its key in the `select`; `memberById.get(id)!` is absent. In
+production — **version 17 deployed 12-Sep-2026 10:56 UTC** on the owner's go-ahead — re-upload
+the three 08:54 files for Thu 11 Sep against Postnatal · Main and expect one merged register,
+not a 500. The function log is the record either way.
+
+**Recurrence risk** — every Edge Function that reads a growing table in full. Swept with
+`grep -rn "await admin.from('" supabase/functions/*/index.ts`: csv-import held all five
+unbounded reads. `send-followups` reads `members` and `member_enrollments` with
+`.in('id', memberIds)` — bounded by the recipient list the screen sends, which is itself drawn
+from a paged client read; a single send of more than 1,000 members would truncate and is noted
+in `docs/registers/TECH_DEBT.md` rather than widened into this fix. `app_users` (staff, 11
+rows), `courses`, `branches` and `course_offerings` are configuration-scale.
+
+**Prevention** — `rung: src/data/edgeFunctionPagedReads.test.ts`, which runs the Edge
+Function's pager under node AND reads the function's source for unpaged reads of the five
+tables — the same two-rung shape as `pageAll.test.ts` + `pagedReads.test.ts` on the client.
+KL-005 amended to name the Edge Functions as affected.
+
+**Process check** — Yes, partly. RC-039's sweep asked "every read of a growing table" and
+answered it for `src/data/repository.ts` only; `pagedReads.test.ts` names the client file and
+no other. The rung existed and had a blind spot rather than the process lacking a rung, so this
+is the register entry plus the second rung, not a framework change: the lesson is "the cap is
+PostgREST's, not RLS's — the service role is not exempt", and it is now written where the next
+Edge Function will be read against it.
+
 ## RC-042 — 0067 shipped a function `anon` could execute, and every test said otherwise
 **Date:** 12-Sep-2026  ·  **Severity:** S3  ·  **Modules:** `supabase/migrations/0067`, `db/harness/000_local_shim.sql`, `supabase/tests/48`
 
