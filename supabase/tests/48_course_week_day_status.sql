@@ -230,10 +230,26 @@ select t.eq((select prosecdef from pg_proc p
             false,
   'SECURITY INVOKER -- it cannot return a row its caller could not read directly');
 
+/*
+ * READ THE LABEL, NOT THE RESULT. This assertion PASSED here and the function
+ * was still anon-executable in production (RC-042). Its original label said
+ * "the default grant to PUBLIC is revoked", which is exactly the
+ * misunderstanding that caused the defect: Supabase grants EXECUTE to `anon`
+ * DIRECTLY, and `revoke ... from public` does not touch a direct grant.
+ *
+ * It cannot be made trustworthy here. db/harness/000_local_shim.sql builds the
+ * roles itself and grants all functions to anon, so the grant this is about
+ * never exists locally and there is nothing for the assertion to find (KL-008).
+ * It is KEPT, because it is still worth having against a harness that may one
+ * day mirror the platform, and its label now says what it is actually worth.
+ *
+ * The rung that DOES catch this is src/data/migrationGrants.test.ts, which
+ * reads the migration text -- the one thing identical in both places.
+ */
 select t.eq(has_function_privilege('anon',
               'public.course_week_day_status(uuid, date, uuid)', 'EXECUTE'),
             false,
-  'anon cannot execute it -- the default grant to PUBLIC is revoked');
+  'anon cannot execute it HERE -- which proves nothing about production, see KL-008');
 
 select t.eq(has_function_privilege('authenticated',
               'public.course_week_day_status(uuid, date, uuid)', 'EXECUTE'),
