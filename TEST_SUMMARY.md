@@ -1,3 +1,401 @@
+## RC-042 CLOSED — the function default privilege restored (12-Sep-2026)
+
+Owner-approved. Migration `0069`.
+
+**The first draft would not have worked, and the harness said so.** It revoked
+`from anon, authenticated` and stopped; rehearsal came back with
+`audit_remarks_immutable` still anon-executable:
+
+```
+{=X/postgres, postgres=X/postgres, service_role=X/postgres}
+```
+
+The leading `=X` with no grantee is PUBLIC, and `anon` is a member of PUBLIC. All thirteen
+functions carry BOTH a PUBLIC grant and a direct one. **That is the 0067 defect pointing the
+other way** — 0067 revoked PUBLIC and left the direct grant; this draft revoked the direct grant
+and left PUBLIC. Applied to production as drafted, it would have read like a fix and changed
+nothing.
+
+**After, verified in production:**
+
+```
+pg_default_acl  postgres / public / functions   {postgres=X, service_role=X}
+trigger fns reachable by anon or authenticated  0
+non-extension fns reachable by anon             0
+authenticated keeps week_bounds / normalize_email / metrics / 0067   all true
+```
+
+**Nothing broke, and the trigger question is proved rather than reasoned.** Dozens of suite cases
+insert and update rows, firing every one of the nine revoked trigger functions, and they pass —
+PostgreSQL does not check EXECUTE against the statement's role to fire a trigger. Functional
+smoke against production: 7 day-status rows, 892 metrics rows, 287 follow-up candidates,
+`week_bounds` and `normalize_email` both correct.
+
+```
+DB suite   before 0069   725 PASS / 10 FAIL
+           after  0069   732 PASS /  9 FAIL
+```
+
+The one that went green is **"no trigger function is executable by anon or authenticated"** — red
+on `main` with no diagnosis until 0067's own defect led to its cause.
+
+**A correction carried into both registers rather than left standing:** RC-042 and
+`migrationGrants.test.ts` said a `create or replace` would "silently re-acquire the grant". That
+is wrong — PostgreSQL preserves a function's ACL across CREATE OR REPLACE. The exposure was new
+functions and drop-and-recreate. Still real (0067 was new), but overstating a security finding is
+the easier mistake to leave uncorrected.
+
+Unit unchanged: 1554 tests, 1548 pass, 6 fail — the same 6.
+
+---
+
+FAIL-FIRST: src/data/migrationGrants.test.ts - written AFTER the defect it guards reached production, which is stated rather than dressed up; it fails on the real 0067 text with the revoke removed.
+
+## 0067 SHIPPED A DEFECT, AND THE VERIFICATION STEP CAUGHT IT (12-Sep-2026)
+
+Applied to production, then verified per CLAUDE.md. The ACL read:
+
+```
+proacl: {postgres=X/postgres, anon=X/postgres, authenticated=X/postgres, service_role=X/postgres}
+has_function_privilege('anon', ...) = TRUE
+```
+
+`revoke all ... from public` does not remove a DIRECT grant, and Supabase makes one on every new
+public function. Migration 0012 is named `harden_function_security_direct_grants` and says so in
+its header; 0067 was written against 0011's pattern and never read it.
+
+**`supabase/tests/48` asserts exactly this and PASSED.** The harness grants all functions to anon
+in its own shim, so the grant being revoked never existed locally and the assertion had nothing to
+find. An assertion that passes for the wrong reason is worse than no assertion — it reads like
+proof. Now KL-008.
+
+Fixed by `0068`, verified in production:
+
+```
+proacl: {postgres=X/postgres, authenticated=X/postgres, service_role=X/postgres}
+anon=false  authenticated=true  service_role=true  secdef=false  volatility=stable
+```
+
+Exposure: about four minutes. SECURITY INVOKER, so an anon caller was still bound by RLS on all
+three tables — seven rows of zeroes, no counts. Stated rather than minimised: the migration claimed
+something untrue.
+
+**The wider finding, which is not this change's.** `pg_default_acl` for `postgres` / `public` /
+functions currently reads `{postgres=X, anon=X, authenticated=X, service_role=X}`. Migration 0025's
+`alter default privileges ... revoke execute on functions from anon, authenticated` is no longer in
+force. Every function created from now on is anon-executable by default; 23 existing ones are safe
+only by accident of when they were created; three SECURITY DEFINER trigger functions are
+anon-executable right now, which is what the pre-existing failing spec on main reports. **Not fixed
+here** — restoring a schema-wide default privilege is its own decision. RC-042.
+
+Suite after 0068: **725 PASS / 10 FAIL**, the same 10 as the baseline. Unit: 1554 tests, 1548 pass,
+6 fail — the same 6.
+
+---
+
+## Gate run - 2026-09-12 - VERDICT: FAIL
+
+Steps: 6 pass, 5 fail, 1 blocked.
+Time: 30.6s total - slowest G7 Unit + pure specs (16.4s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (65ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (62ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (64ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (86ms)
+- **G5 Types** - PASS (13.3s)
+- **G6 Lint** - BLOCKED (-) - no local "eslint" in . - not fetched from the registry on purpose. Run `npm install` in . (provides eslint), or state why this class is unverified. - **134 consecutive runs**: a verdict that never changes is not a signal; make this class runnable or accept it in writing
+- **G7 Unit + pure specs** - FAIL (16.4s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 180 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 181 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 194 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (148ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (69ms)
+- **G10 Backward compatibility (fixtures)** - PASS (143ms)
+- **G11 Wide tables are configurable** - PASS (65ms)
+- **G12 Installable as an application** - PASS (87ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+FAIL-FIRST: supabase/tests/48_course_week_day_status.sql - 32 assertions, each of the five defects it names put into the migration and caught by name.
+FAIL-FIRST: src/data/courseWeekDays.test.ts - four mutations, all caught; and case 2 was found passing while never running its own long-week branch.
+FAIL-FIRST: .harness/course-week-strip.mjs - 4 of 23 browser checks RED on the first run, against a screen every source assertion had passed.
+
+## FAIL-FIRST — Phase B, the course week aggregated in Postgres (11-Sep-2026)
+
+**The browser found what source could not.** `.harness/course-week-strip.mjs` opens the real
+export on fixtures and watches the strip. First run: **4 of 23 red** — zero day cells and no
+retry banner on a failed week, on a screen whose twelve source assertions were all green.
+
+The cause was not the strip. `?state=error` forces EVERY read on a screen, the course record
+included, so the screen's own `if (courses.state === 'error')` guard rendered instead and the
+strip was never reached. **Phase A's Task 3 had therefore never been visible to a reviewer
+either** — on fixtures or anywhere else. `useAsync` now accepts a targeted form,
+`?state=error:week`, which forces one named read and leaves the guards in front of it out of
+the way. After that: **23 of 23 green**, and the state is reviewable by a person for the first
+time.
+
+It also found a real defect in the finished work: the legend above the strip named four
+states and not the fifth, so a failed week showed a pink marker with nothing explaining it —
+colour alone, which guardrail 3 exists to stop. `Load failed` now joins the legend while it is
+on screen, and the browser check asserts it.
+
+```
+ok    SEVEN DAY CELLS ARE DRAWN — 7 cells
+ok    A FAILED WEEK STILL DRAWS ITS SEVEN DAYS — 7 cells
+ok    and EVERY ONE of them says Load failed — Mon 7 SEP, Load failed
+ok    none of them says "Awaiting upload" — the bug this whole change is about
+ok    THE LEGEND NAMES the failed state while the week is failed
+ok    IT SAYS EXACTLY WHAT WAS ASKED FOR — Couldn't load attendance. Tap to retry.
+ok    THE BANNER IS ACTUALLY PAINTED, not hidden behind the cards below it — sampled at 36,414
+ok    the banner is still fully on screen at 400px — x=16 w=368
+ALL PASS (c1)
+```
+
+**The SQL suite, rehearsed in the local harness** — which CLAUDE.md says is the whole of the
+pre-flight. `reset.sh` drops the database and replays all 67 migrations before every test file.
+
+```
+BEFORE (no 0067, no test 48)     693 PASS   10 FAIL
+AFTER  (0067 + test 48)          725 PASS   10 FAIL
+                                 +32 pass, THE SAME 10 failures
+```
+
+The ten are byte-identical to the baseline and to what CI reports on `main` at `5b30efe`. This
+change contains no SQL beyond the new function and its own test file.
+
+**The 32 new assertions were all green on their first run, which is not evidence.** Each of the
+five defects the file names was put INTO the migration and the suite re-run
+(`.evidence/0067-mutation-check.txt`):
+
+```
+DEFECT 2 — uploaded computed as present_count > 0
+  FAIL  TUESDAY IS UPLOADED, and everybody was absent  got false want true
+DEFECT 1 — an inner join, so a day with no records is ABSENT from the answer
+  FAIL  SEVEN ROWS, one per day, whatever the data does  got 3 want 7
+DEFECT 3 — 'extra' stops counting as present
+  FAIL  EXTRA COUNTS AS PRESENT  got 1 want 2
+DEFECT 4 — soft-deleted records counted, so a RESET day still reads uploaded
+  FAIL  THURSDAY WAS RESET: its records are soft-deleted  got true want false
+DEFECT 6 — SECURITY DEFINER instead of INVOKER
+  FAIL  SECURITY INVOKER  got true want false
+```
+
+**And against real data, read-only, before any apply.** The function's body run as a plain
+SELECT against production with General's id and `2026-09-07`: the four days that reported
+"Awaiting upload" come back `uploaded: true`, and 280 present + 893 absent = **1,173**, exactly
+General's week and exactly what the Phase A keyset replay recovered
+(`.evidence/0067-production-preview.txt`).
+
+**`src/data/courseWeekDays.test.ts`** — 8 cases over the TypeScript half, four mutations, all
+caught. One is recorded rather than quietly fixed: the long-week case passed on its first run
+**while never executing** — `week().slice(0, 8)` on a seven-element array is a no-op.
+
+---
+
+## FAIL-FIRST — the truncation hardening (11-Sep-2026)
+
+FAIL-FIRST: src/data/dayLoad.test.ts - 8 of 8 red against the derivation as it stood before this change (four mutations, each caught by name).
+FAIL-FIRST: src/components/courseWeekLoadFailed.test.ts - 9 of 11 red against the pre-change screen at 5b30efe.
+FAIL-FIRST: src/data/dataLayerBoundary.test.ts - red before the guard, before the npm wiring, and again with the rule mutated.
+
+Three spec files are new in this change. A test never observed failing is not
+evidence that it can fail, so each was run against a tree in which the thing it
+asserts is not true. Full transcripts are in `.evidence/`.
+
+**FAIL-FIRST: src/data/dayLoad.test.ts** — 8 cases over the rule RC-039 broke:
+"not uploaded" is a claim only a completed read may make. The module is new, so
+there is no earlier tree to run it against; the proof is four mutations, each
+putting an older behaviour back.
+`.evidence/dayload-fail-first.txt`
+
+```
+MUTATION 1 — the derivation exactly as it stood before this change:
+    export function dayLoad(read, hasRows) { return hasRows ? 'uploaded' : 'not-uploaded'; }
+  not ok 1 - THE DEFECT: a FAILED read never reads as a day nobody uploaded
+  not ok 2 - a read still in flight is not a day nobody uploaded either
+
+MUTATION 2 — a failed day is DRAWN as an awaiting one (case 'failed' -> 'awaiting')
+  not ok 1 - THE DEFECT: a FAILED read never reads as a day nobody uploaded
+  not ok 6 - the four states are exhaustive, and no two of them draw the same
+  not ok 8 - THE UPLOAD BUTTON FALLS OUT OF THE MAPPING, with no clause of its own
+
+MUTATION 3 — a loading day is given a business word instead of a blank one
+  not ok 2 - a read still in flight is not a day nobody uploaded either
+  not ok 6 - the four states are exhaustive, and no two of them draw the same
+  not ok 8 - THE UPLOAD BUTTON FALLS OUT OF THE MAPPING, with no clause of its own
+
+MUTATION 4 — Load failed is given the awaiting colour, word and icon (guardrail 3)
+  not ok 7 - LOAD FAILED CARRIES ITS OWN WORD AND ITS OWN ICON (guardrail 3)
+```
+
+**FAIL-FIRST: src/components/courseWeekLoadFailed.test.ts** — 11 cases over what
+the course screen does with that rule. Run against the PRE-CHANGE screen
+(`5b30efe`) through `COURSE_WEEK_FAILED_SPEC_ROOT`: **9 of 11 red.**
+`.evidence/course-week-failed-fail-first.txt`
+
+```
+not ok 1  - THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok     2  - the strip still shows a skeleton while the week is in flight
+not ok 3  - the derivation is the specced one, not a second copy of it
+not ok 4  - the day status is read from that derivation too
+ok     5  - a day the app could not read is never offered an upload
+not ok 6  - THE RETRY SAYS EXACTLY WHAT WAS ASKED FOR
+not ok 7  - and the sentence is never retyped as a second literal
+not ok 8  - the whole banner is the press, and it retries the read
+not ok 9  - the banner wears the failed status, not a colour of its own
+not ok 10 - the technical reason is still on screen, under the sentence
+not ok 11 - the roster card states a failed week rather than guessing at it
+# pass 2  # fail 9
+```
+
+The two that already passed are honest passes, and are named rather than
+hidden: the skeleton branch was already correct, and the upload press was
+already gated on a status key a failed day does not wear — because a failed day
+had no key at all, the strip having rendered nothing at all on an error.
+
+**FAIL-FIRST: src/data/dataLayerBoundary.test.ts** — 6 cases over "a Supabase
+query may only be written in src/data/". Recorded live while it was built:
+before the guard script existed, 1–3 red; after the guard but before the npm
+wiring and `eslint.config.mjs`, 2 red. Then the rule itself was mutated, to show
+the spec tests the RULE and not the file's existence.
+`.evidence/boundary-fail-first.txt`
+
+```
+after the guard, before the wiring:
+  not ok 4 - the guard is wired into a command somebody actually runs
+  not ok 6 - the same rule is written for ESLint, for whenever it is installed here
+
+MUTATION — the pattern drops the receiver, so `.from(` matches Array.from too
+  not ok 1 - THE BOUNDARY HOLDS: no Supabase query is written outside src/data/
+  not ok 2 - the guard insists on the RECEIVER, because `.from(` is not a query
+```
+
+**The two MODIFIED spec files, for completeness.**
+`src/data/pagedReads.test.ts` against the pre-change tree: **8 of 9 red**
+(`.evidence/paged-reads-fail-first.txt`). `src/data/pageAll.test.ts`: its 12
+keyset cases were written before the helper existed and recorded 12/12 red
+(`.evidence/keyset-paging-fail-first.txt`); the 7 cases added for `readBounded`
+and `guardUntruncated` were written alongside their implementation, which is
+said plainly rather than dressed up, and are proved instead by four mutations,
+every one caught (`.evidence/pageall-mutation-check.txt`).
+
+**And the guard catching a real violation.** A Supabase read added to
+`app/course/[id].tsx` and then removed:
+`.evidence/boundary-guard-catches-it.txt`
+
+```
+$ node scripts/audits/check-data-layer-boundary.mjs
+  FAIL  app/course/[id].tsx:158  const leak = supabase.from('attendance_records').select('id');
+  125 files outside src/data/ scanned; 1 Supabase query found there.
+  exit status: 1
+... violation removed ...
+  125 files outside src/data/ scanned; 0 Supabase queries found there.
+  exit status: 0
+```
+
+---
+
+## Gate run - 2026-09-11 - VERDICT: FAIL
+
+Steps: 6 pass, 5 fail, 1 blocked.
+Time: 22.3s total - slowest G7 Unit + pure specs (15.0s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (55ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (58ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (56ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (78ms)
+- **G5 Types** - PASS (6.6s)
+- **G6 Lint** - BLOCKED (-) - no local "eslint" in . - not fetched from the registry on purpose. Run `npm install` in . (provides eslint), or state why this class is unverified. - **133 consecutive runs**: a verdict that never changes is not a signal; make this class runnable or accept it in writing
+- **G7 Unit + pure specs** - FAIL (15.0s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 180 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 181 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 194 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (151ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (64ms)
+- **G10 Backward compatibility (fixtures)** - PASS (130ms)
+- **G11 Wide tables are configurable** - PASS (62ms)
+- **G12 Installable as an application** - PASS (79ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
 ## CI became real, and the typecheck blocker is gone (11-Sep-2026)
 
 **GitHub Actions is getting runners again.** Every run since 09-Sep had failed in four seconds
@@ -46,6 +444,68 @@ Every one of these is a product decision about someone else's feature — what a
 which row it sits in. Guessing at them inside a tooltip change would be widening this pull request
 into work nobody asked for, on copy nobody has approved. They are named here, with the exact
 assertion and the exact number, so whoever owns that feature can close them in minutes.
+
+---
+
+## Gate run - 2026-09-11 - VERDICT: FAIL
+
+Steps: 6 pass, 5 fail, 1 blocked.
+Time: 23.0s total - slowest G7 Unit + pure specs (15.7s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (57ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (57ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (55ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (84ms)
+- **G5 Types** - PASS (6.6s)
+- **G6 Lint** - BLOCKED (-) - no local "eslint" in . - not fetched from the registry on purpose. Run `npm install` in . (provides eslint), or state why this class is unverified. - **132 consecutive runs**: a verdict that never changes is not a signal; make this class runnable or accept it in writing
+- **G7 Unit + pure specs** - FAIL (15.7s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 180 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 181 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 194 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (148ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (62ms)
+- **G10 Backward compatibility (fixtures)** - PASS (127ms)
+- **G11 Wide tables are configurable** - PASS (60ms)
+- **G12 Installable as an application** - PASS (78ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

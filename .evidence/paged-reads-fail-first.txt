@@ -1,0 +1,30 @@
+FAIL-FIRST: src/data/pagedReads.test.ts run against the PRE-CHANGE tree
+(HEAD = 5b30efe, the merge of PR #15) via PAGED_READS_SPEC_ROOT.
+11-Sep-2026
+
+ok 1 - the spec is looking at a real tree
+not ok 2 - CARRIED: every read of a growing table is paged, or bounded with its reason
+not ok 3 - OFFSET PAGING IS GONE — no .range( survives in the data layer
+not ok 4 - every paged read names a key, AND the key is in its own select
+not ok 5 - CARRIED: the pager states which ceiling it exists to clear
+not ok 6 - a bounded read may never ask for the cap or more
+not ok 7 - the truncation guard does NOT key on Content-Range
+not ok 8 - the backstop is WIRED IN, not merely exported
+not ok 9 - the two sanctioned shapes are the only ones the module offers
+# tests 9
+# pass 1
+# fail 8
+
+AFTER the change, in the working tree:
+ok 1 - the spec is looking at a real tree
+ok 2 - CARRIED: every read of a growing table is paged, or bounded with its reason
+ok 3 - OFFSET PAGING IS GONE — no .range( survives in the data layer
+ok 4 - every paged read names a key, AND the key is in its own select
+ok 5 - CARRIED: the pager states which ceiling it exists to clear
+ok 6 - a bounded read may never ask for the cap or more
+ok 7 - the truncation guard does NOT key on Content-Range
+ok 8 - the backstop is WIRED IN, not merely exported
+ok 9 - the two sanctioned shapes are the only ones the module offers
+# tests 9
+# pass 9
+# fail 0

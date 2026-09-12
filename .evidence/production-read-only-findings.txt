@@ -1,0 +1,88 @@
+PRODUCTION, READ-ONLY. 11-Sep-2026
+project lhpzhkzbnquwjljmbylo "Rosifit" (ap-southeast-1, Postgres 17.6) — the
+only Supabase project. Every statement behind this file is a SELECT. Nothing
+was written, no migration was applied, no branch was created, and the app was
+not signed in to.
+
+1. PRIMARY KEYS OF EVERY TABLE THAT IS PAGED
+   From pg_constraint joined to pg_attribute. A primary key is indexed by
+   definition, which is what a keyset cursor needs.
+
+     members              id           uuid
+     member_emails        id           uuid
+     member_aliases       id           uuid
+     member_enrollments   id           uuid
+     member_schedules     id           uuid
+     member_stats         member_id    uuid      <- the PK is the FK
+     attendance_records   id           uuid
+     holidays             id           uuid
+
+   EVERY PRIMARY KEY IN THE SCHEMA IS SINGLE-COLUMN. All 34 of them. So the
+   composite-key row-value cursor the brief asks for — `a > lastA OR (a =
+   lastA AND b > lastB)` through PostgREST's .or() — has no table to be
+   written for, and is NOT built. An untested branch for a shape that does not
+   exist is worse than no branch: it would be specced against a fake and
+   believed.
+
+   `member_stats` is the one worth naming: its primary key is `member_id`, not
+   an `id`. It is paged by `member_id`, which is unique because it IS the key,
+   and the select carries it.
+
+2. ROW COUNTS (pg_stat_user_tables.n_live_tup)
+
+     audit_logs          6188     already 6x the cap. Read with .limit(50)
+     attendance_records  3119     (3110 live, 9 soft-deleted)
+     member_stats         937
+     members              937     <-- 94% OF THE CAP
+     member_enrollments   913
+     member_aliases       735
+     member_emails        705
+     sessions              32
+     csv_imports           28
+     email_batches         17
+     super_admin_recovery  12
+     app_users             11
+     security_questions    10
+     offering_schedules     6
+     courses                4
+     course_offerings       4
+     course_follow_up_config 4
+     member_import_runs     4
+     email_events           4
+     user_preferences       3
+     branches               2
+     pin_reset_requests     2
+     holidays               1
+     email_messages         1
+     email_templates        1
+     follow_up_config       1
+     app_settings           1
+     app_subscription       1
+     auth_rate_limits       1
+     member_schedules       0
+     session_expectations   0
+     audit_remarks          0
+     mobile_number_changes  0
+
+   THE MEMBER LIST IS 63 ROWS FROM THE SAME BUG. `members` at 937 against a
+   1,000-row ceiling is not hypothetical: the next intake silently truncates
+   the roster, the follow-up list derived from it, and every count on the
+   Overview. That is RC-039 in a different screen, and it was going to arrive
+   on its own.
+
+3. attendance_records, THE TWO COUNTS THE BRIEF ASKS ABOUT
+
+     select count(*) from attendance_records                     3119
+     ... where deleted_at is null                                3110
+     ... live, in sessions dated 2026-09-07..2026-09-13          3110
+
+   The brief quotes 3,111 in total against 2,220 in that week and asks for the
+   discrepancy to be resolved. It resolves as TWO MEASUREMENTS AT DIFFERENT
+   TIMES, not two different scopes: every live attendance row in the table
+   falls inside that week (3,110 = 3,110), and the table has grown since. So
+   the brief's expected replay figures, 2,220/2,220/2,220/881, are the same
+   shape as today's 3,110/3,110/3,110/1,173.
+
+   Sessions span 2026-07-09..2026-09-11 across 20 distinct dates, 32 live
+   sessions, 12 of them in the week above — but only that week's sessions
+   carry attendance rows at all.

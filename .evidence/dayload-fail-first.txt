@@ -1,0 +1,34 @@
+FAIL-FIRST / MUTATION CHECK: src/data/dayLoad.test.ts
+11-Sep-2026
+
+The module is new, so there is no earlier tree to run the spec against.
+This is the proof instead: put the OLD derivation back, one way at a
+time, and show which case notices.
+
+MUTATION 1 — the derivation exactly as it stood before this change. The
+  screen did `const rows = attendance.data ?? []` and asked no further
+  question, which is this function with the read's state ignored:
+    export function dayLoad(read, hasRows) { return hasRows ? 'uploaded' : 'not-uploaded'; }
+    not ok 1 - THE DEFECT: a FAILED read never reads as a day nobody uploaded
+    not ok 2 - a read still in flight is not a day nobody uploaded either
+
+MUTATION 2 — the state is read, but a failed day is DRAWN as an awaiting
+  one. This is the same bug one layer down, and the one a fix that only
+  changed the fetch would leave behind:
+    not ok 1 - THE DEFECT: a FAILED read never reads as a day nobody uploaded
+    not ok 6 - the four states are exhaustive, and no two of them draw the same
+    not ok 8 - THE UPLOAD BUTTON FALLS OUT OF THE MAPPING, with no clause of its own
+
+MUTATION 3 — a loading day is given a business word instead of a blank one:
+    not ok 2 - a read still in flight is not a day nobody uploaded either
+    not ok 6 - the four states are exhaustive, and no two of them draw the same
+    not ok 8 - THE UPLOAD BUTTON FALLS OUT OF THE MAPPING, with no clause of its own
+
+MUTATION 4 — Load failed is given the awaiting colour, word or icon
+  (guardrail 3: colour is never the only signal):
+    not ok 7 - LOAD FAILED CARRIES ITS OWN WORD AND ITS OWN ICON (guardrail 3)
+
+restored; clean run:
+  # tests 8
+  # pass 8
+  # fail 0

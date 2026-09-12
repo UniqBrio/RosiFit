@@ -1,6 +1,65 @@
 # Changelog
 
-## Unreleased — The greyed-out Reset says what would make it work
+## Unreleased — The course screen stops downloading the week to count it
+
+**It was fetching three thousand records to draw seven day cards.** Every time a course
+screen opened it pulled every attendance record in the week — for every course, not just the
+one being looked at — and counted them on the device. That is 3,110 records and about 673 kB
+in the academy's current data, and it was the same 673 kB whichever course you tapped.
+
+**Now it asks for the seven answers.** The database counts, and sends back one line per day:
+was anything uploaded, how many present, how many absent. Seven lines, about 600 bytes. The
+screen opens on roughly a thousandth of what it used to download.
+
+**The roster reads the day you actually tapped.** The names and chips under the strip do need
+real records — that is what they list — but they never needed the whole week, and they never
+needed the other courses. They now load one course, one date, and only once you pick a day.
+
+**This is also the end of the attendance bug rather than a guard against it.** A screen that
+works out a day's status from a pile of records can get the status wrong by being handed the
+wrong pile — which is exactly what happened. A screen that asks for the status cannot. The
+paging fix made the old approach correct; this removes the thing it was correcting.
+
+**Nothing about what you see has changed** — except one thing, found by looking at the
+rendered page rather than the code: when a week fails to load, *Load failed* now appears in
+the key above the strip. Every other state was named there and it was not, so its pink marker
+was a colour with nothing explaining it.
+
+## A week that could not be loaded now says so
+
+**The attendance bug had a second half, and this is it.** The one already fixed was the app asking
+for a week and being handed part of it without being told. The half still open was what the screen
+then did: it read "no records for Monday" as "nobody has uploaded Monday" and printed *Awaiting
+upload* over four days of attendance that were sitting in the database. Those are not the same
+sentence, and until now the app could not tell them apart.
+
+**A day now says which of four things is true.** It is still loading. It has a register. Nothing
+has been uploaded for it. Or the app could not read it — which is its own state now, in its own
+colour, with its own word and its own icon, and never borrowed from any of the other three.
+
+**A failed week keeps its seven days.** It used to vanish entirely, which reads as a course with no
+week rather than a week that would not load, and it took the dates with it so you could not even
+tell which week had failed. The days stay, marked *Load failed*, and under them a band the full
+width of the screen: **"Couldn't load attendance. Tap to retry."** The whole band is the button —
+a retry hidden behind a second tap on a 33-pixel day card is a retry nobody finds. The technical
+reason stays underneath in small type for whoever has to diagnose it.
+
+**And the reading itself is rebuilt.** The first fix asked for a thousand rows at a time and
+stopped when a page came back short. Review found that a short page proves nothing — one setting
+change on the server and every list in the app would quietly go back to showing its first page and
+claiming to be whole — and that asking by POSITION means an upload landing mid-read can push a
+member off the end of one page and onto nobody's. Reads are now anchored to a value rather than a
+position, and they stop only when a page comes back genuinely empty.
+
+**None of that is visible, and that is the point.** The proof is in the numbers: replayed against
+the real week of 7–13 September, the new reading returns 3,110 records where the old one returned
+1,000 — every one of them, none twice — and recovers all 1,173 of General's.
+
+**The member list was 63 members from the same bug.** 937 rows against a ceiling of 1,000. Left
+alone it would have taken the roster, the follow-up list and every Overview count with it, on the
+day of an intake and with nothing on screen to say so.
+
+## The greyed-out Reset says what would make it work
 
 **Reset was grey and silent.** On a day whose attendance file has not arrived, the Reset button
 beside the date is greyed out, and until now that was all it said. Nothing told you whether it was

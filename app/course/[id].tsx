@@ -10,9 +10,9 @@ import {
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useAutoFocus } from '../../src/components/openingFocus';
 import { useToast } from '../../src/components/Toast';
-import { SPACE, RADIUS, STATUS, statusSurface, type StatusKey } from '../../src/theme/tokens';
+import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface, type StatusKey } from '../../src/theme/tokens';
 import { DAY_NAMES, ruleSentence, AVATAR_TINTS, initials, primaryEmail, type Member, type MemberStatus } from '../../src/data/mock';
-import { useCourses, useFollowUp, useAttendance } from '../../src/data/hooks';
+import { useCourses, useFollowUp, useCourseWeekDays, useCourseDay } from '../../src/data/hooks';
 import { weekStart, iso, label as periodLabel } from '../../src/data/period';
 import {
   setMemberStatus, mergeMemberInto, deleteMember, memberDeletionPreview, dataSource,
@@ -38,6 +38,9 @@ import { fieldValue, toggle } from '../../src/data/overview';
 import { streakReading, missLine } from '../../src/data/streak';
 import { enrolledIn } from '../../src/data/course';
 import { offersUpload } from '../../src/data/uploadWindow';
+// The RC-039 rule, pure and specced next door: "not uploaded" is a claim
+// only a COMPLETED read may make (src/data/dayLoad.ts).
+import { dayLoad, dayStatusKey, type DayLoad } from '../../src/data/dayLoad';
 import { membersOnDay, joinedLaterNote } from '../../src/data/joined';
 import {
   isActiveOn, pendingInactiveFrom, dateInWords, membersActiveOn, leftEarlierNote,
@@ -123,11 +126,23 @@ const FILTER_EMPTY: Record<string, string> = {
   'no-email': 'Everybody here has an email address',
 };
 
+/**
+ * The sentence a failed week says, and the only one it says.
+ *
+ * Exported so the spec pins the literal rather than a paraphrase of it, and
+ * so nothing retypes it. The word STATUS.awaiting carries is the one this
+ * screen must never put in front of a person whose read failed, and the two
+ * states are one line apart in the derivation.
+ */
+export const ATTENDANCE_LOAD_FAILED = "Couldn't load attendance. Tap to retry.";
+
 type DayCell = {
   iso: string;
   dayNum: string;
   mon: string;
   dow: string;
+  /** what the app knows. `key` is only how that is drawn */
+  load: DayLoad;
   key: StatusKey;
   /** may this day offer its own upload button -- see ../src/data/uploadWindow */
   canUpload: boolean;
@@ -229,8 +244,6 @@ function CourseDetailBody() {
   // reads is how those two answers end up on different sides of midnight.
   const todayIso = iso(new Date());
 
-  const attendance = useAttendance(week, forced);
-
   const course = (courses.data ?? []).find(c => c.id === id);
   const members = followUp.data?.members ?? [];
   const rules = followUp.data?.rules;
@@ -240,6 +253,26 @@ function CourseDetailBody() {
   // Only the branches this course actually runs at. Offering one it has no
   // offering at would filter every member away and read as "nobody is
   // enrolled" rather than "it does not run there".
+  /*
+   * THE WEEK, AS SEVEN STATUSES RATHER THAN AS A PILE OF ROWS (0067).
+   *
+   * This used to be `useAttendance(week)`: every attendance record in the week
+   * for EVERY course, counted here. In production that is 3,110 rows and
+   * ~673 kB the moment the screen opens, identical whichever course is opened.
+   * It is seven rows and about 600 bytes now.
+   *
+   * It is also the structural end of RC-039 rather than the defensive one. A
+   * screen that DERIVES a status from a pile of rows can be wrong about the
+   * status by receiving the wrong pile; a screen that ASKS for the status
+   * cannot. Paging made the old read correct; it did not make it sensible.
+   *
+   * The name stays `attendance` because everything below reads its STATE, not
+   * its rows: the skeleton, the Load failed banner and its retry are about
+   * "did this week load", and that question has not changed.
+   */
+  const attendance = useCourseWeekDays(
+    course?.id ?? null, week.from, branch === ALL_BRANCHES ? null : branch, forced);
+
   const branchOptions = useMemo(() => {
     const own = [...new Set((course?.offerings ?? []).map(o => o.branch))].sort();
     return [ALL_BRANCHES, ...own];
@@ -258,11 +291,16 @@ function CourseDetailBody() {
    * The seven cells, built from the attendance rows for this course so the
    * strip and the register cannot disagree:
    *
+   *   the read has not answered -> loading. Nothing is claimed.
+   *   the read FAILED           -> load failed. Still nothing is claimed:
+   *                               no rows arrived, and "no rows arrived" is
+   *                               not evidence about any file.
    *   rows present             -> completed; present/absent as recorded
    *   no rows, offering is off -> not expected
    *   no rows                  -> awaiting upload. No file has arrived for a
    *                               day this course runs, which is the state
-   *                               the Upload action exists for.
+   *                               the Upload action exists for. Reachable
+   *                               ONLY from a read that came back whole.
    *
    * A day still to come used to be its own key, `scheduled`, drawn with a
    * clock. Nothing on the screen said what the clock meant: it was left out
@@ -280,54 +318,59 @@ function CourseDetailBody() {
    * nothing to press. See src/data/uploadWindow for why, and for the week
    * boundary.
    */
+  // One ink for the failed state, read from the same STATUS map the cells
+  // above use. Two copies of a colour is how a banner and the strip it
+  // belongs to end up disagreeing about what red means.
+  const failedInk = theme.isDark ? STATUS.failed.fgDark : STATUS.failed.fgLight;
+
   const days: DayCell[] = useMemo(() => {
-    // By course id: a deleted course's COMPLETED sessions are kept on
-    // purpose (0020), so its rows are still in the week's load under its old
-    // name, and a strip asking for rows "called this" would show them.
-    const rows = (attendance.data ?? []).filter(r => r.course_id === course?.id
-      && (branch === ALL_BRANCHES || r.branch === branch));
-    const byDate = new Map<string, typeof rows>();
-    for (const r of rows) {
-      const list = byDate.get(r.date) ?? [];
-      list.push(r);
-      byDate.set(r.date, list);
-    }
-
-    // The weekdays this course runs across the branches in scope. 1..7 with
-    // Monday = 1, which is what offering_schedules.weekdays stores.
-    const runsOn = new Set<number>();
-    for (const o of course?.offerings ?? []) {
-      if (branch !== ALL_BRANCHES && o.branch !== branch) continue;
-      for (const d of o.weekdays) runsOn.add(d);
-    }
-
+    /*
+     * SEVEN IN, SEVEN OUT. The counting, the schedule and "was anything
+     * uploaded" are all 0067's answers now -- there is nothing to group, no
+     * second reconstruction of the timetable, and no chance of this strip
+     * disagreeing with the database about a day because it received the
+     * wrong rows. What is left here is the calendar labels and the tone.
+     *
+     * A week that has not arrived is an EMPTY list, not seven blank cells:
+     * `dayLoad` is given the read's own state, so a day is only ever called
+     * "not uploaded" by a read that came back whole (RC-039, src/data/dayLoad).
+     */
     const start = new Date(`${week.from}T00:00:00`);
+    const status = attendance.data ?? [];
+
     return Array.from({ length: 7 }, (_, i) => {
       const date = new Date(start);
       date.setDate(date.getDate() + i);
       const dateIso = iso(date);
-      const dayRows = byDate.get(dateIso) ?? [];
       // JS puts Sunday at 0; offering weekdays put Monday at 1, Sunday at 7.
       const weekday = date.getDay() === 0 ? 7 : date.getDay();
+      const d = status.find(x => x.day === dateIso) ?? null;
 
-      const present = dayRows.filter(r => r.status === 'present' || r.status === 'extra').length;
-      const absent = dayRows.filter(r => r.status === 'absent').length;
-      const expected = dayRows.filter(r => r.expected).length;
+      const present = d?.present ?? 0;
+      const absent = d?.absent ?? 0;
+      const expected = d?.expected ?? 0;
 
-      const key: StatusKey = dayRows.length > 0
-        ? (absent > 0 && present === 0 ? 'absent' : 'present')
-        : !runsOn.has(weekday) ? 'none'
-        : 'awaiting';
+      /*
+       * THE READ'S OWN OUTCOME FIRST, the day's answer second. `attendance.data`
+       * is null while a read is in flight AND null when one has failed, so
+       * `?? []` turns either into "nothing uploaded anywhere" -- which is the
+       * exact shape of a week nobody has uploaded. That single collapse is
+       * RC-039, and reading the STATE first is what keeps the three apart.
+       */
+      const load: DayLoad = dayLoad(attendance.state, d?.uploaded ?? false);
+      const key: StatusKey = dayStatusKey(load, { present, absent, runsToday: d?.runs ?? false });
 
       return {
         iso: dateIso,
         dayNum: String(date.getDate()),
         mon: date.toLocaleDateString(undefined, { month: 'short' }).toUpperCase(),
         dow: DAY_NAMES[weekday],
-        key, canUpload: offersUpload(dateIso, todayIso), present, absent, expected,
+        load, key,
+        canUpload: offersUpload(dateIso, todayIso),
+        present, absent, expected,
       };
     });
-  }, [attendance.data, course, branch, week.from, todayIso]);
+  }, [attendance.data, attendance.state, week.from, todayIso]);
 
   /**
    * The weekdays this course runs across the branches in scope, hoisted out
@@ -351,6 +394,24 @@ function CourseDetailBody() {
   const chosen = days.find(d => d.iso === selectedDay)
     ?? days.find(d => d.iso === todayIso)
     ?? days[0];
+
+  /*
+   * THE ROSTER'S OWN READ: one course, one day (0067's other half).
+   *
+   * Everything below that wanted raw rows wanted THIS day's rows -- the chips,
+   * the reading filter, the reset preview. None of it ever read a second day,
+   * and none of it ever read another course. So the screen no longer fetches
+   * the week: General's busiest day is 292 rows against the 3,110 that used to
+   * arrive before anybody had tapped anything.
+   *
+   * `marks`, not `attendance`: the two reads answer different questions and
+   * fail independently. The strip's failure is the banner under the strip; a
+   * day's failure is stated on the cards themselves, which is where somebody
+   * is looking when it happens.
+   */
+  const marks = useCourseDay(
+    course?.id ?? null, chosen?.iso ?? null,
+    branch === ALL_BRANCHES ? null : branch, forced);
 
   /**
    * THE ROSTER IS ABOUT THE SELECTED DAY, so it holds the members who were
@@ -413,12 +474,12 @@ function CourseDetailBody() {
    * a card reading *Absent* can never appear under *Present*.
    */
   const rosterScope: RosterScope = useMemo(() => ({
-    rows: attendance.data ?? [],
+    rows: marks.data ?? [],
     dayIso: chosen?.iso ?? null,
     weekdays: scopeWeekdays,
     todayIso,
-    ready: attendance.state === 'ready',
-  }), [attendance.data, attendance.state, chosen?.iso, scopeWeekdays, todayIso]);
+    ready: marks.state === 'ready',
+  }), [marks.data, marks.state, chosen?.iso, scopeWeekdays, todayIso]);
 
   // Recomputed from the labels rather than held beside them: two pieces of
   // state for one choice is how a tick and the list it narrows drift apart.
@@ -437,7 +498,7 @@ function CourseDetailBody() {
   // rather than left to be noticed: this screen's own rule is that a count
   // which drops -- or keeps -- rows silently is the defect.
   const showPending = showKeys.some(k => k !== 'no-email')
-    && attendance.state !== 'ready';
+    && marks.state !== 'ready';
 
   const withEmail = shown.filter(m => m.emails.length > 0);
   const withoutEmail = shown.filter(m => m.emails.length === 0);
@@ -497,10 +558,10 @@ function CourseDetailBody() {
    * with nothing on it has nothing to undo, and a button that opens a dialog
    * saying "nothing to reset" is a button that should not have been there.
    */
-  const dayMarks = useMemo(() => (attendance.data ?? []).filter(
+  const dayMarks = useMemo(() => (marks.data ?? []).filter(
     r => r.course_id === course?.id && r.date === (chosen?.iso ?? '')
       && (branch === ALL_BRANCHES || r.branch === branch)).length,
-    [attendance.data, course?.id, chosen?.iso, branch]);
+    [marks.data, course?.id, chosen?.iso, branch]);
 
   const openReset = async () => {
     if (!course || !chosen) return;
@@ -518,7 +579,7 @@ function CourseDetailBody() {
     // write that is not going to happen.
     const picked = [...selected];
     setResetPreviewData(
-      resetPreview(attendance.data ?? [], scoped, course.id, chosen.iso, picked));
+      resetPreview(marks.data ?? [], scoped, course.id, chosen.iso, picked));
     try {
       setResetPreviewData(await attendanceResetPreview(course.id, chosen.iso, picked));
     } catch (err) {
@@ -784,7 +845,7 @@ function CourseDetailBody() {
               flex: compact ? undefined : 1, fontSize: 13, fontWeight: '700',
               color: theme.fg, fontVariant: ['tabular-nums'],
             }}>{weekOffset === 0 ? `${week.label} · this week` : week.label}</Text>
-            <DayLegend />
+            <DayLegend failed={attendance.state === 'error'} />
           </View>
 
           {/* -------------------------------------------------- week strip
@@ -814,9 +875,16 @@ function CourseDetailBody() {
               }} />
 
             <View style={{ flex: 1, minWidth: 0 }}>
+              {/* A FAILED WEEK STILL DRAWS ITS SEVEN DAYS. The strip used to
+                  vanish on an error, which reads as "this course has no week"
+                  rather than "the week could not be fetched" -- and it took
+                  the dates with it, so there was nothing left to orient the
+                  message below against. The cells stay; they wear Load failed,
+                  which is its own word, its own icon and an ink unlike any
+                  other status here, and they offer no upload. */}
               {attendance.state === 'loading' ? (
                 <Skeleton lines={2} />
-              ) : attendance.state === 'error' ? null : (
+              ) : (
                 <View style={{ flexDirection: 'row', gap: compact ? 4 : 6 }}>
                   {days.map(d => {
                     const on = chosen?.iso === d.iso;
@@ -828,6 +896,13 @@ function CourseDetailBody() {
                     // or one in a week that is not this one -- falls to the
                     // other branch and keeps the cloud in the cell, with
                     // nothing to press (src/data/uploadWindow).
+                    /* A DAY THE APP COULD NOT READ IS OFFERED NEITHER
+                       BUTTON, and it falls out of the status key rather than
+                       needing a clause here: a failed day wears `failed` and
+                       a loading one wears `none`, so neither of the two tests
+                       below can be true of it. That is the whole reason
+                       dayStatusKey never maps those two onto a business word,
+                       and src/data/dayLoad.test.ts pins the mapping. */
                     const waiting = d.key === 'awaiting' && d.canUpload;
                     /* A DAY THAT ALREADY HAS A REGISTER can still take another
                        file. A course runs several meetings on one day -- a
@@ -997,12 +1072,38 @@ function CourseDetailBody() {
 
           {/* A week that could not be loaded is stated under the strip
               rather than in place of it: the arrows still work, so stepping
-              off the broken week is one tap and not a reload. */}
+              off the broken week is one tap and not a reload.
+
+              THE WHOLE BANNER IS THE BUTTON. The cells above are 33pt wide on
+              a phone -- there is no room in one for a sentence, and a retry
+              hidden behind a second tap on a day is a retry nobody finds. So
+              the strip carries the state and this carries the action, in one
+              target the width of the screen.
+
+              The technical reason stays, underneath and quieter: "Couldn't
+              load attendance" is what a person needs, and the timeout or the
+              PostgREST message is what the next person debugging it needs. */}
           {attendance.state === 'error' ? (
-            <View style={{ marginTop: SPACE.md }}>
-              <ErrorState onRetry={attendance.retry}
-                message={attendance.error ?? 'This week could not be loaded. Nothing has been changed.'} />
-            </View>
+            <Pressable testID="course-week-retry" onPress={attendance.retry}
+              accessibilityRole="button"
+              accessibilityLabel={`${ATTENDANCE_LOAD_FAILED} ${attendance.error ?? ''}`.trim()}
+              style={({ pressed }) => ({
+                marginTop: SPACE.md, padding: SPACE.md, borderRadius: RADIUS.lg,
+                borderWidth: 1, borderColor: statusSurface(failedInk).border,
+                backgroundColor: statusSurface(failedInk).bg,
+                flexDirection: 'row', alignItems: 'flex-start', gap: SPACE.sm,
+                minHeight: TAP_MIN, opacity: pressed ? 0.7 : 1,
+              })}>
+              <Icon name={STATUS.failed.icon} size={18} color={failedInk} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontSize: 14, fontWeight: '800', color: failedInk }}>
+                  {ATTENDANCE_LOAD_FAILED}
+                </Text>
+                <Text style={{ fontSize: 12, color: theme.muted, marginTop: 2, lineHeight: 17 }}>
+                  {attendance.error ?? 'Nothing has been changed.'}
+                </Text>
+              </View>
+            </Pressable>
           ) : null}
 
           {/* THE DAY PANEL IS GONE. Tapping a day used to open a card under
@@ -1320,7 +1421,7 @@ function CourseDetailBody() {
                 letting the extra names read as matches. */}
             {showPending ? (
               <Text testID="course-show-note" style={{ fontSize: 11.5, color: theme.muted }}>
-                {attendance.state === 'error'
+                {marks.state === 'error'
                   ? `This week's register could not be loaded, so the roster is not narrowed to ${showPhrase}. Every member of the day is listed.`
                   : `This week's register is still loading, so the roster is not narrowed to ${showPhrase} yet.`}
               </Text>
@@ -1436,7 +1537,7 @@ function CourseDetailBody() {
                   <MemberCard key={m.id} member={m} tint={AVATAR_TINTS[(i + 3) % AVATAR_TINTS.length]}
                     weekLabel={week.label} noEmail={false} allMembers={members}
                     dayIso={chosen?.iso ?? null} weekdays={scopeWeekdays}
-                    rows={attendance.data ?? []} attendanceState={attendance.state}
+                    rows={marks.data ?? []} attendanceState={marks.state}
                     selectable={selectMode} selected={selected.has(m.id)}
                     onToggleSelect={() => toggleSelected(m.id)} />
                 ))}
@@ -1551,7 +1652,7 @@ function CourseDetailBody() {
                       <MemberCard key={m.id} member={m} tint={AVATAR_TINTS[i % AVATAR_TINTS.length]}
                         weekLabel={week.label} noEmail allMembers={members}
                         dayIso={chosen?.iso ?? null} weekdays={scopeWeekdays}
-                        rows={attendance.data ?? []} attendanceState={attendance.state}
+                        rows={marks.data ?? []} attendanceState={marks.state}
                         /* Always tickable, toggle or no toggle: the bar above
                            offers a delete over these cards, so the cards have
                            to be selectable from here. */
@@ -1675,13 +1776,23 @@ function StripArrow({ testID, icon, label, disabled, onPress }: {
 /**
  * What the icon on a date card means, in one wrapping row.
  *
- * The four states a WEEK of this course can be in -- and the four the strip
- * above draws, exactly. Every icon on a date card is named here, which is
- * what a legend is for.
+ * The states a WEEK of this course can be in -- and the ones the strip above
+ * draws, exactly. Every icon on a date card is named here, which is what a
+ * legend is for, and in this app it is also HOW the word reaches a sighted
+ * reader: a day cell is about 33pt wide on a phone and carries its icon alone,
+ * so the legend is the only place the word appears (guardrail 3).
+ *
+ * `failed` JOINS THEM ONLY WHEN IT IS ON SCREEN. A key for a state nobody is
+ * looking at is clutter on the other 99 weeks out of 100 -- but while the week
+ * has failed, a pink icon with nothing naming it is exactly the colour-alone
+ * signal this project does not ship. Found by looking at the rendered page;
+ * every source assertion passed straight through it (.harness/course-week-strip.mjs).
  */
-function DayLegend() {
+function DayLegend({ failed }: { failed: boolean }) {
   const { theme } = useTheme();
-  const keys: StatusKey[] = ['present', 'absent', 'awaiting', 'none'];
+  const keys: StatusKey[] = failed
+    ? ['failed', 'present', 'absent', 'awaiting', 'none']
+    : ['present', 'absent', 'awaiting', 'none'];
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.md }}>
       {keys.map(k => {
@@ -2087,9 +2198,14 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
             not expected, no row  -> Not expected. "Yet to mark" there would
                                      promise an upload that is never coming,
                                      for a session that does not run. */}
+      {/* THE SAME RULE AS THE STRIP, one level in. A card whose week failed
+          says so; it does not fall through to "Yet to mark", which is a
+          business claim about an upload nobody has made. The retry is the
+          banner under the strip -- one action for one failed read, not one
+          per card. */}
       {attendanceState === 'error' ? (
         <Text style={{ fontSize: 11, color: theme.dim, marginTop: 11 }}>
-          Her attendance for this week could not be loaded.
+          Attendance for this week could not be loaded.
         </Text>
       ) : attendanceState === 'loading' ? (
         // 44 + 4, the exact height the row occupies once it lands, so the

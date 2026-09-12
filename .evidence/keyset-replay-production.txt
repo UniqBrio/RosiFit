@@ -1,0 +1,33 @@
+KEYSET REPLAY AGAINST PRODUCTION (read-only SELECT), 11-Sep-2026
+project lhpzhkzbnquwjljmbylo "Rosifit" — the only Supabase project.
+
+Replays the exact requests `pageAllByKey` makes for the read at
+src/data/repository.ts:2241 (fetchAttendance -> attendance_records), week of
+7-13 September 2026: the same filter the app sends
+(`session_id in (<week's live sessions>) and deleted_at is null`), ordered by
+the primary key `id`, 1,000 a page, each page anchored with `id > <last id of
+the previous page>`, stopping on an EMPTY page.
+
+  page 1   1000 rows
+  page 2   1000 rows
+  page 3   1000 rows
+  page 4    110 rows   <- a SHORT page. The offset pager stopped here; this
+                          one does not, because a short page proves nothing.
+  page 5      0 rows   <- the only thing that ends a read
+
+  rows returned      3110
+  distinct rows      3110   (no row read twice)
+  rows that exist    3110   (select count(*) with the same filter)
+  General recovered  1173   (join sessions -> course_offerings -> courses)
+
+The unpaged read this replaces returned 1000 of those 3110 — 2110 rows short,
+with `200 OK`, `Content-Range: 0-999/*` and `error: null`.
+
+ON THE 2,220 IN THE BRIEF. The brief quotes 3,111 total / 2,220 in the week
+and asks for the discrepancy to be resolved. Both are measurements of the same
+thing at different times, not different scopes: every live attendance record
+in the table falls inside this week (table total 3,110 live rows = week total
+3,110), and the table has grown since the earlier measurement. So the expected
+figures 2,220/2,220/2,220/881 are the same shape as 3,110/3,110/3,110/1,173,
+one measurement apart. Sessions span 2026-07-09..2026-09-11, but only the
+sessions in this week carry attendance rows.

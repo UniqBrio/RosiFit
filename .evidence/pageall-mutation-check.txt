@@ -1,0 +1,23 @@
+MUTATION CHECK: src/data/pageAll.test.ts, the seven specs added for Task 2.
+These were written alongside their implementation, not before it, so the
+fail-first evidence does not cover them. This is the proof instead: break
+the implementation one way at a time and show which spec notices.
+11-Sep-2026
+
+  MUTATION: readBounded stops fetching the extra row
+    not ok 13 - readBounded asks for ONE MORE than it returns, and says there is more
+
+  MUTATION: the cap itself becomes an allowed bound
+    not ok 15 - readBounded REFUSES a limit at or above the cap
+
+  MUTATION: the guard stops firing AT the ceiling
+    not ok 18 - the guard throws on EXACTLY the ceiling, and reports it before throwing
+    not ok 19 - the guard lets every honest row count through untouched
+
+  MUTATION: the guard throws without reporting
+    not ok 18 - the guard throws on EXACTLY the ceiling, and reports it before throwing
+
+restored; clean run:
+  # tests 19
+  # pass 19
+  # fail 0

@@ -1,0 +1,36 @@
+-- 0068 — take course_week_day_status away from `anon`, directly
+--
+-- A CORRECTION TO 0067, FOUND IN PRODUCTION MINUTES AFTER APPLYING IT, and the
+-- harness could not have caught it.
+--
+-- 0067 ends with `revoke all on function ... from public`, which is what every
+-- other read function in this schema does and which passed the local suite.
+-- Against the real project it left this:
+--
+--     proacl: {postgres=X/postgres, anon=X/postgres, authenticated=X/postgres, ...}
+--
+-- `anon=X` is a DIRECT grant, not one inherited through PUBLIC, so revoking
+-- from PUBLIC does not touch it. Supabase's own `alter default privileges` on
+-- the public schema hands EXECUTE to `anon` on every function created there.
+-- Migration 0012 is named `harden_function_security_direct_grants` for exactly
+-- this reason and does exactly this for the seven functions that existed then;
+-- 0067 was written against 0011's pattern and missed 0012's.
+--
+-- WHY THE HARNESS SAID OTHERWISE. `supabase/tests/48` asserts
+-- `has_function_privilege('anon', ..., 'EXECUTE') = false` and it PASSED. The
+-- harness builds its roles in 000_local_shim.sql and does not reproduce
+-- Supabase's default privileges, so the grant this is revoking never existed
+-- there to be found. That is the harness's stated limit -- it proves a
+-- migration is well-formed by RECONSTRUCTION, and cannot prove it is correct
+-- against a configuration it does not have. The rung that would have caught it
+-- is a file-based one, and now exists: src/data/migrationGrants.test.ts.
+--
+-- WHAT WAS ACTUALLY EXPOSED, stated plainly rather than minimised: very little,
+-- and not nothing. The function is SECURITY INVOKER, so an `anon` caller is
+-- still bound by the RLS on attendance_records, sessions and course_offerings,
+-- all three of which require `is_active_app_user()` for `authenticated`. An
+-- anonymous call therefore returns seven rows of zeroes -- the shape of the
+-- week, its dates, and no counts. Dates of a week are not a secret. But the
+-- migration claimed anon could not execute it, and it could.
+
+revoke execute on function public.course_week_day_status(uuid, date, uuid) from anon;

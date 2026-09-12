@@ -47,7 +47,13 @@ import { memberWeek, NO_SESSIONS_ROW, type MemberWeekSession } from './memberWee
 // Every read below that is unbounded BY CONSTRUCTION -- a whole table, or an
 // id list of member scale -- goes through this. PostgREST stops at 1000 rows
 // and calls it success; see src/data/pageAll.ts and RC-039.
-import { pageAll } from './pageAll';
+import {
+  pageAllByKey, guardUntruncated, PagedReadError, type QueryFactory,
+} from './pageAll';
+import {
+  mapCourseWeekDays, ShortWeekError, WEEK_DAYS,
+  type CourseDayRow, type CourseDayStatus,
+} from './courseWeekDays';
 
 export const dataSource: 'live' | 'fixtures' = isConfigured ? 'live' : 'fixtures';
 
@@ -66,6 +72,55 @@ function fail(context: string, error: { message?: string } | null): never {
       ? 'RosiFit could not reach the academy database. Check the connection and try again — nothing has been changed.'
       : `${context}. Nothing has been changed.`
   );
+}
+
+/**
+ * A PAGED READ, adapted to this file's one error convention.
+ *
+ * `pageAllByKey` throws, deliberately: a partial list must never reach a
+ * caller as a successful answer (RC-039). This is the single place that turns
+ * that throw into the sentence a person reads, so no call site carries an
+ * `if (res.error)` line that somebody can forget.
+ *
+ * THE ONE CAST IN THE FILE, and it is here rather than at nine call sites.
+ * `pageAllByKey` takes a structural `KeysetQuery` so it can be specced under
+ * plain node with no Supabase client imported. supabase-js's builder has
+ * `gt`, `order`, `limit` and is thenable, so it satisfies that shape at
+ * runtime; proving it to the type checker would mean naming PostgREST's
+ * generic builder type at every call. One documented cast, one place.
+ *
+ * `key` must be UNIQUE, INDEXED and IN THE SELECT. The helper throws a
+ * sentence naming the column if a row arrives without it.
+ */
+async function paged<T extends Record<string, unknown> = Record<string, unknown>>(
+  what: string,
+  build: () => unknown,
+  key: string,
+): Promise<T[]> {
+  try {
+    return await pageAllByKey<T>(build as QueryFactory<T>, { key });
+  } catch (err) {
+    if (err instanceof PagedReadError) fail(`Could not load ${what}`, err);
+    throw err;
+  }
+}
+
+/**
+ * A list read whose bound is DATA-DEPENDENT rather than a number in the
+ * source -- `.in(<ids>)`, or a date range whose row count scales with how
+ * many offerings the academy runs. Those bounds are safe today because of a
+ * fact about production, not because of anything the code says, and a fact
+ * about production is exactly the kind of thing that changes without anyone
+ * touching this file.
+ *
+ * A read with a literal `.limit(50)` needs none of this: fifty can never be a
+ * thousand. This is for the ones where nobody can tell by reading.
+ *
+ * It is a BACKSTOP, not a third read shape. Tripping it means the read should
+ * have been `paged()` or `readBounded()` all along, and it says so.
+ */
+function checked<T>(what: string, res: { data: T[] | null }): T[] {
+  return guardUntruncated(res.data ?? [], what);
 }
 
 /**
@@ -144,27 +199,45 @@ export async function fetchMembers(period: Period): Promise<Member[]> {
   // the follow-up list with it (RC-039). `full_name` is not unique -- two
   // members may share a name -- so the key is appended to make the order
   // total; without a total order two pages can return the same row.
+  /*
+   * KEYSET, NOT OFFSET, AND THE KEY IS IN EVERY SELECT.
+   *
+   * Three of these six selected only the columns the screen wanted and were
+   * keyed on `id`, which was therefore not in the payload the cursor is read
+   * from. `id` is added to each. That is a few bytes a row against a reader
+   * that would otherwise not terminate correctly.
+   *
+   * `members` LOSES its server-side `.order('full_name')`: a keyset read is
+   * ordered by its key and nothing else. The alphabetical order is the one
+   * the screens actually render, so it is restored below, client-side, after
+   * the whole list is in hand. Dropping the sort without restoring it would
+   * have shuffled every member list in the app into UUID order.
+   */
   const [membersRes, emailsRes, aliasesRes, statsRes, enrolRes, schedRes, metricsRes] = await Promise.all([
-    pageAll((from, to) => supabase.from('members').select('id, member_code, full_name, status, inactive_from, joined_on').is('deleted_at', null).order('full_name').order('id').range(from, to)),
-    pageAll((from, to) => supabase.from('member_emails').select('member_id, email, is_primary, status').is('deleted_at', null).order('id').range(from, to)),
-    pageAll((from, to) => supabase.from('member_aliases').select('member_id, alias_display').eq('alias_type', 'name').order('id').range(from, to)),
+    paged('the member list', () => supabase.from('members').select('id, member_code, full_name, status, inactive_from, joined_on').is('deleted_at', null), 'id'),
+    paged('member addresses', () => supabase.from('member_emails').select('id, member_id, email, is_primary, status').is('deleted_at', null), 'id'),
+    paged('member alternate names', () => supabase.from('member_aliases').select('id, member_id, alias_display').eq('alias_type', 'name'), 'id'),
     // last_present_date DATES the streak beside it. The run was printed bare
     // ("consecutive 6") beside a weekly miss count on a five-day course, which
     // is a number a reader can neither verify nor divide by anything on
     // screen; the day it counts back to is what makes it checkable.
-    pageAll((from, to) => supabase.from('member_stats').select('member_id, current_streak, last_present_date, last_emailed_at').order('member_id').range(from, to)),
-    pageAll((from, to) => supabase.from('member_enrollments').select('member_id, offering_id').eq('status', 'active').order('id').range(from, to)),
-    pageAll((from, to) => supabase.from('member_schedules').select('member_id, weekdays, effective_from, effective_to').order('id').range(from, to)),
+    paged('member figures', () => supabase.from('member_stats').select('member_id, current_streak, last_present_date, last_emailed_at'), 'member_id'),
+    paged('member enrolments', () => supabase.from('member_enrollments').select('id, member_id, offering_id').eq('status', 'active'), 'id'),
+    paged('the days members have of their own', () => supabase.from('member_schedules').select('id, member_id, weekdays, effective_from, effective_to'), 'id'),
     supabase.rpc('member_period_metrics', { p_from: period.from, p_to: period.to }),
   ]);
-  if (membersRes.error) fail('Could not load members', membersRes.error);
-  // Her own days are the one read here whose SILENT failure is destructive:
-  // an empty result reads as "nobody has days of her own", the edit form
-  // opens her row on the course's days instead of hers, and Save then ends
-  // an override nobody asked to end. A failed read says so (RC-020).
-  if (schedRes.error) fail('Could not load the days members have of their own', schedRes.error);
-
-  const offeringIds = [...new Set((enrolRes.data ?? []).map(e => e.offering_id as string))];
+  /*
+   * NO `if (res.error)` LINE SURVIVES HERE, and that is the point of the
+   * change rather than a tidy-up. A paged read now THROWS, through `paged()`
+   * below, so a failure cannot reach this code as an empty array at all.
+   *
+   * The one that mattered most is the schedules read (RC-020): an empty
+   * result read as "nobody has days of her own", the edit form then opened
+   * her row on the course's days, and Save ended an override nobody asked to
+   * end. That class is now impossible by construction rather than by a
+   * remembered guard -- which is the same lesson as RC-039, one level up.
+   */
+  const offeringIds = [...new Set(enrolRes.map(e => e.offering_id as string))];
   // `deleted_at is null` on BOTH joins below, the same filter fetchCourses
   // applies. Without it a member could resolve onto a course the course list
   // does not have -- delete_course ends her enrolment, but a row that somehow
@@ -185,37 +258,45 @@ export async function fetchMembers(period: Period): Promise<Member[]> {
   const offeringById = new Map((offerings.data ?? []).map(o => [o.id as string, o]));
   const courseName = new Map((coursesRes.data ?? []).map(c => [c.id, c.name]));
   const branchName = new Map((branchesRes.data ?? []).map(b => [b.id, b.name]));
-  const enrolByMember = new Map((enrolRes.data ?? []).map(e => [e.member_id as string, e.offering_id as string]));
+  const enrolByMember = new Map(enrolRes.map(e => [e.member_id as string, e.offering_id as string]));
   // Her OWN days, when she has any. member_schedules is effective-dated the
   // same way offering_schedules is, so it is answered by the same tested
   // resolver -- a second copy of the window arithmetic is exactly how two
   // answers to "which version is in force" drift apart (src/data/schedule.ts).
   // The resolver keys on `offering_id`, so the member id goes in that slot.
   const ownDaysByMember = currentSchedules(
-    (schedRes.data ?? []).map(sc => ({
+    schedRes.map(sc => ({
       offering_id: sc.member_id as string,
       weekdays: (sc.weekdays as number[]) ?? [],
       effective_from: sc.effective_from as string,
       effective_to: (sc.effective_to as string | null) ?? null,
     })), today());
   const metricByMember = new Map(((metricsRes.data ?? []) as MetricRow[]).map(m => [m.member_id, m]));
-  const statByMember = new Map((statsRes.data ?? []).map(s => [s.member_id as string, s]));
+  const statByMember = new Map(statsRes.map(s => [s.member_id as string, s]));
 
   const aliasesByMember = new Map<string, string[]>();
-  for (const a of aliasesRes.data ?? []) {
+  for (const a of aliasesRes) {
     const list = aliasesByMember.get(a.member_id as string) ?? [];
     list.push(a.alias_display as string);
     aliasesByMember.set(a.member_id as string, list);
   }
   const emailsByMember = new Map<string, { address: string; primary: boolean }[]>();
-  for (const e of emailsRes.data ?? []) {
+  for (const e of emailsRes) {
     if (e.status === 'bounced' || e.status === 'unsubscribed') continue;
     const list = emailsByMember.get(e.member_id as string) ?? [];
     list.push({ address: e.email as string, primary: Boolean(e.is_primary) });
     emailsByMember.set(e.member_id as string, list);
   }
 
-  return (membersRes.data ?? []).map(m => {
+  /*
+   * THE ALPHABETICAL ORDER, RESTORED. A keyset read is ordered by its key, so
+   * `members` now arrives in UUID order. Every screen renders this array as
+   * it is given, so without this line the whole app's member lists would have
+   * shuffled into an order nobody can scan. Sorted here, once, rather than in
+   * each screen -- the list has ONE order and this is where it is decided.
+   */
+  return membersRes.slice().sort((a, b) =>
+    String(a.full_name ?? '').localeCompare(String(b.full_name ?? ''))).map(m => {
     const offering = offeringById.get(enrolByMember.get(m.id as string) ?? '');
     const metric = metricByMember.get(m.id as string);
     const stat = statByMember.get(m.id as string);
@@ -777,8 +858,8 @@ export async function fetchBranchUsage(): Promise<BranchUsage[]> {
     supabase.from('course_offerings').select('id, course_id, branch_id').is('deleted_at', null),
     // Whole table, member scale: paged, or a branch's member count is however
     // many enrolments happened to fit in one reply (RC-039).
-    pageAll((from, to) => supabase.from('member_enrollments')
-      .select('member_id, offering_id').eq('status', 'active').order('id').range(from, to)),
+    paged('branch membership', () => supabase.from('member_enrollments')
+      .select('id, member_id, offering_id').eq('status', 'active'), 'id'),
   ]);
   if (branchesRes.error) fail('The branch list could not be loaded', branchesRes.error);
 
@@ -797,7 +878,7 @@ export async function fetchBranchUsage(): Promise<BranchUsage[]> {
   }
 
   const membersAt = new Map<string, Set<string>>();
-  for (const e of enrolRes.data ?? []) {
+  for (const e of enrolRes) {
     const branchId = offeringBranch.get(e.offering_id as string);
     if (!branchId) continue;
     const set = membersAt.get(branchId) ?? new Set<string>();
@@ -1825,7 +1906,10 @@ export async function fetchMonthSessions(year: number, month: number): Promise<S
     .gte('session_date', first).lte('session_date', last).is('deleted_at', null);
   if (error) fail('Could not load the session calendar', error);
 
-  const byDate = new Map((data ?? []).map(s => [s.session_date as string, s]));
+  // offerings x 31 days. Four offerings in production, so a thousand is far
+  // off -- but it is the OFFERING COUNT that decides, and nothing here knows it.
+  const byDate = new Map(checked('the session calendar', { data })
+    .map(s => [s.session_date as string, s]));
   return Array.from({ length: lastDay }, (_, i) => {
     const day = i + 1;
     const date = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -2117,7 +2201,9 @@ export async function fetchSentForPeriod(period: Period): Promise<SentMap> {
   }
 
   const out: SentMap = {};
-  for (const m of messages.data ?? []) {
+  // A batch holds one message per member it went to, so this one really can
+  // reach a thousand -- it is the only bound here that the academy sets.
+  for (const m of checked('the messages already sent', messages)) {
     // A row can be 'sent' with no timestamp only if the update that stamped
     // it half-failed; the batch's period is still the honest answer to WHEN,
     // and claiming "sent" with no date at all is the one thing the row must
@@ -2148,6 +2234,94 @@ export async function savePreferences(appUserId: string, prefs: Partial<Preferen
   );
 }
 
+// ------------------------------------------------ the course week, aggregated
+export type { CourseDayStatus, CourseDayRow } from './courseWeekDays';
+
+/**
+ * The seven day statuses for one course's week (0067).
+ *
+ * WHAT THIS REPLACES. The strip used to download every attendance record in
+ * the week, for EVERY course, and count them here — 3,110 rows and ~673 kB per
+ * screen open in production on 11-Sep-2026, and the same 673 kB whichever
+ * course was opened. This is seven rows and about 600 bytes.
+ *
+ * It is also the structural answer to RC-039 rather than the defensive one. A
+ * screen that DERIVES a status from a pile of rows can be wrong about the
+ * status by receiving the wrong pile; a screen that ASKS for the status
+ * cannot. Paging made the old read correct; it did not make it sensible.
+ *
+ * NOT `paged()`, and the distinction is the whole of Phase A: it asks for seven
+ * rows and gets seven rows, because `generate_series(0, 6)` is written into the
+ * function. "Could this exceed a thousand" has an answer in the SOURCE here,
+ * not a fact about production that might stop being true.
+ */
+export async function fetchCourseWeekDays(
+  courseId: string,
+  weekStart: string,
+  branchId: string | null,
+): Promise<CourseDayStatus[]> {
+  if (!isConfigured) return courseWeekDaysFixture(courseId, weekStart, branchId);
+
+  const { data, error } = await supabase.rpc('course_week_day_status', {
+    p_course_id: courseId,
+    p_week_start: weekStart,
+    p_branch_id: branchId,
+  });
+  if (error) fail('Could not load this week', error);
+
+  try {
+    return mapCourseWeekDays((data ?? []) as CourseDayRow[]);
+  } catch (err) {
+    // Translated into this file's one error convention (CP-003): the person
+    // gets a sentence and the console keeps the count.
+    if (err instanceof ShortWeekError) fail('Could not load this week', err);
+    throw err;
+  }
+}
+
+/**
+ * The same seven statuses, DERIVED FROM THE FIXTURE ROWS rather than invented.
+ *
+ * Two fixture sources for one screen is how the offline strip and the offline
+ * roster under it start telling different stories — the objection guardrail 1
+ * makes about the follow-up list. So this counts exactly what the live
+ * function counts, over the rows `attendanceFixture` already returns.
+ */
+function courseWeekDaysFixture(
+  courseId: string, weekStart: string, branchId: string | null,
+): CourseDayStatus[] {
+  const days = Array.from({ length: WEEK_DAYS }, (_, i) => {
+    const d = new Date(`${weekStart}T00:00:00`);
+    d.setDate(d.getDate() + i);
+    return iso(d);
+  });
+  const last = days[days.length - 1];
+  const rows = attendanceFixture(weekStart, last)
+    .filter(r => r.course_id === courseId && (branchId === null || r.branch === branchId));
+
+  const course = COURSE_LIST.find(c => c.id === courseId) ?? null;
+  const runsOn = new Set<number>();
+  for (const o of course?.offerings ?? []) {
+    if (branchId !== null && o.branch !== branchId) continue;
+    for (const w of o.weekdays) runsOn.add(w);
+  }
+
+  return days.map(day => {
+    const onDay = rows.filter(r => r.date === day);
+    const weekday = new Date(`${day}T00:00:00`).getDay();
+    return {
+      day,
+      // The existence of records, exactly as 0067 has it — never a count
+      // above zero. A day everybody missed is an uploaded day.
+      uploaded: onDay.length > 0,
+      present: onDay.filter(r => r.status === 'present' || r.status === 'extra').length,
+      absent: onDay.filter(r => r.status === 'absent').length,
+      expected: onDay.filter(r => r.expected).length,
+      runs: runsOn.has(weekday === 0 ? 7 : weekday),
+    };
+  });
+}
+
 // -------------------------------------------------------- attendance list
 /**
  * Every attendance fact in a period, one row per member per session.
@@ -2168,7 +2342,13 @@ export async function fetchAttendance(period: Period): Promise<AttendanceRow[]> 
     .order('session_date', { ascending: false });
   if (error) fail('Could not load attendance', error);
 
-  const sessionIds = (sessions ?? []).map(s => s.id as string);
+  // Every offering's sessions across the period, so this grows with the
+  // TIMETABLE while the records below grow with attendance. The records were
+  // the read that broke; this one is behind them in the same query, and the
+  // only reason it is not paged too is that nothing here can page a list the
+  // next read has to send back as an `.in()`.
+  const weekSessions = checked('attendance', { data: sessions });
+  const sessionIds = weekSessions.map(s => s.id as string);
   if (sessionIds.length === 0) return [];
 
   // THE READ RC-039 WAS ABOUT. A week of a busy academy is thousands of
@@ -2181,24 +2361,22 @@ export async function fetchAttendance(period: Period): Promise<AttendanceRow[]> 
   // Overview, which aggregates in member_period_metrics and ships no rows,
   // printed the true figure two taps away. `id` is the primary key, so the
   // order is total and the pages cannot repeat or skip a row.
-  const { data: records, error: recordError } = await pageAll((from, to) =>
+  const records = await paged('attendance for this week', () =>
     supabase.from('attendance_records')
       .select('id, session_id, member_id, status, expected, minutes_in_call')
-      .in('session_id', sessionIds).is('deleted_at', null)
-      .order('id').range(from, to));
-  if (recordError) fail('Could not load attendance', recordError);
-  if (!records || records.length === 0) return [];
+      .in('session_id', sessionIds).is('deleted_at', null), 'id');
+  if (records.length === 0) return [];
 
   // The same manual joins the rest of this file uses, rather than a PostgREST
   // embed: an embed silently returns null for a row RLS hides on the far
   // side, and a member who vanished that way would read as a blank name.
   const memberIds = [...new Set(records.map(r => r.member_id as string))];
-  const offeringIds = [...new Set((sessions ?? []).map(s => s.offering_id as string))];
+  const offeringIds = [...new Set(weekSessions.map(s => s.offering_id as string))];
   const [membersRes, offeringsRes] = await Promise.all([
     // The id list is every member who attended anything this week, so it is
     // member-scale and paged for the same reason the records above are.
-    pageAll((from, to) => supabase.from('members').select('id, full_name')
-      .in('id', memberIds).order('id').range(from, to)),
+    paged('the names on this week', () => supabase.from('members').select('id, full_name')
+      .in('id', memberIds), 'id'),
     supabase.from('course_offerings').select('id, course_id, branch_id').in('id', offeringIds),
   ]);
   const courseIds = [...new Set((offeringsRes.data ?? []).map(o => o.course_id as string))];
@@ -2210,8 +2388,8 @@ export async function fetchAttendance(period: Period): Promise<AttendanceRow[]> 
                      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
   ]);
 
-  const sessionById = new Map((sessions ?? []).map(s => [s.id as string, s]));
-  const memberById = new Map((membersRes.data ?? []).map(m => [m.id as string, m]));
+  const sessionById = new Map(weekSessions.map(s => [s.id as string, s]));
+  const memberById = new Map(membersRes.map(m => [m.id as string, m]));
   const offeringById = new Map((offeringsRes.data ?? []).map(o => [o.id as string, o]));
   const courseName = new Map((coursesRes.data ?? []).map(c => [c.id as string, c.name as string]));
   const branchName = new Map((branchesRes.data ?? []).map(b => [b.id as string, b.name as string]));
@@ -2236,6 +2414,99 @@ export async function fetchAttendance(period: Period): Promise<AttendanceRow[]> 
       minutes: (r.minutes_in_call as number | null) ?? null,
     };
   }).sort((a, b) => (a.date === b.date ? a.member.localeCompare(b.member) : b.date.localeCompare(a.date)));
+}
+
+/**
+ * ONE COURSE, ONE DAY — the rows the roster under the strip actually lists.
+ *
+ * The other half of 0067. The strip stopped needing raw rows; the roster still
+ * does, because it genuinely lists individual records: who is present, who is
+ * absent, who is yet to be marked. What it never needed is the WEEK, or the
+ * other courses.
+ *
+ * In production on 11-Sep-2026 the screen fetched 3,110 rows (~673 kB) the
+ * moment it opened, the same 3,110 whichever course was opened. This fetches
+ * General's busiest single day — 292 rows, ~63 kB — and only once somebody
+ * taps a day.
+ *
+ * `checked()` rather than `paged()`, deliberately: the bound is one course's
+ * roster on one date, which is a fact about the academy rather than a number
+ * in this file, so it gets the backstop and not the pager (RC-041). A course
+ * with a thousand members on one day is not a course; it is a truncated read.
+ */
+export async function fetchCourseDayRows(
+  courseId: string, dateIso: string, branch: string | null,
+): Promise<AttendanceRow[]> {
+  if (!isConfigured) {
+    return attendanceFixture(dateIso, dateIso)
+      .filter(r => r.course_id === courseId && (branch === null || r.branch === branch));
+  }
+
+  // The offerings of THIS course, at the branches in scope. Everything below
+  // hangs off this list, so a course that runs nowhere in scope is an empty
+  // day rather than a query for every session in the academy.
+  const offerings = await supabase.from('course_offerings')
+    .select('id, course_id, branch_id').eq('course_id', courseId).is('deleted_at', null);
+  if (offerings.error) fail('Could not load this day', offerings.error);
+
+  const branchIds = [...new Set(checked('this day', offerings).map(o => o.branch_id as string))];
+  const [coursesRes, branchesRes] = await Promise.all([
+    supabase.from('courses').select('id, name').eq('id', courseId).maybeSingle(),
+    branchIds.length ? supabase.from('branches').select('id, name').in('id', branchIds)
+                     : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+  ]);
+  const branchName = new Map((branchesRes.data ?? []).map(b => [b.id as string, b.name as string]));
+
+  const offeringIds = checked('this day', offerings)
+    .filter(o => branch === null || branchName.get(o.branch_id as string) === branch)
+    .map(o => o.id as string);
+  if (offeringIds.length === 0) return [];
+
+  const sessions = await supabase.from('sessions')
+    .select('id, offering_id, session_date, start_time')
+    .in('offering_id', offeringIds).eq('session_date', dateIso).is('deleted_at', null);
+  if (sessions.error) fail('Could not load this day', sessions.error);
+  const daySessions = checked('this day', sessions);
+  if (daySessions.length === 0) return [];
+
+  const records = await supabase.from('attendance_records')
+    .select('id, session_id, member_id, status, expected, minutes_in_call')
+    .in('session_id', daySessions.map(s => s.id as string)).is('deleted_at', null);
+  if (records.error) fail('Could not load this day', records.error);
+  const dayRecords = checked('this day', records);
+  if (dayRecords.length === 0) return [];
+
+  // The names on this day only. Paged for the same reason the member list is:
+  // an `.in()` of member ids is member-scale, and member-scale is 937 of a
+  // 1,000-row ceiling in production today.
+  const memberIds = [...new Set(dayRecords.map(r => r.member_id as string))];
+  const members = await paged('the names on this day', () =>
+    supabase.from('members').select('id, full_name').in('id', memberIds), 'id');
+
+  const sessionById = new Map(daySessions.map(s => [s.id as string, s]));
+  const offeringById = new Map(checked('this day', offerings).map(o => [o.id as string, o]));
+  const memberById = new Map(members.map(m => [m.id as string, m]));
+  const name = (coursesRes.data?.name as string | undefined) ?? '—';
+
+  return dayRecords.map(r => {
+    const session = sessionById.get(r.session_id as string);
+    const offering = session ? offeringById.get(session.offering_id as string) : undefined;
+    const member = memberById.get(r.member_id as string);
+    return {
+      id: r.id as string,
+      member_id: r.member_id as string,
+      // '—' rather than '', so a row whose member RLS hid still reads as a row
+      member: (member?.full_name as string) ?? '—',
+      course: name,
+      course_id: (offering?.course_id as string | undefined) ?? null,
+      branch: offering ? (branchName.get(offering.branch_id as string) ?? '—') : '—',
+      date: (session?.session_date as string) ?? dateIso,
+      time: (session?.start_time as string | null)?.slice(0, 5) ?? '',
+      status: r.status as AttendanceStatus,
+      expected: Boolean(r.expected),
+      minutes: (r.minutes_in_call as number | null) ?? null,
+    };
+  }).sort((a, b) => a.member.localeCompare(b.member));
 }
 
 // ------------------------------------------------------------ her own week
@@ -2281,14 +2552,16 @@ export async function fetchMemberWeek(memberId: string, period: Period): Promise
     .gte('session_date', period.from).lte('session_date', period.to)
     .is('deleted_at', null);
   if (error) fail('Could not load these sessions', error);
-  if (!sessions || sessions.length === 0) return [NO_SESSIONS_ROW];
+  const weekSessions = checked('these sessions', { data: sessions });
+  if (weekSessions.length === 0) return [NO_SESSIONS_ROW];
 
   const { data: records, error: recordError } = await supabase.from('attendance_records')
     .select('session_id, status, expected')
     .eq('member_id', memberId)
-    .in('session_id', sessions.map(s => s.id as string))
+    .in('session_id', weekSessions.map(s => s.id as string))
     .is('deleted_at', null);
   if (recordError) fail('Could not load these sessions', recordError);
+  const weekRecords = checked('these sessions', { data: records });
 
   // The same manual joins the rest of this file uses rather than a PostgREST
   // embed: an embed returns null for a row RLS hides on the far side, and a
@@ -2298,7 +2571,7 @@ export async function fetchMemberWeek(memberId: string, period: Period): Promise
   const courseIds = [...new Set((offerings.data ?? []).map(o => o.course_id as string))];
   const branchIds = [...new Set((offerings.data ?? []).map(o => o.branch_id as string))];
   const holidayIds = [...new Set(
-    sessions.map(s => s.holiday_id as string | null).filter((x): x is string => Boolean(x)))];
+    weekSessions.map(s => s.holiday_id as string | null).filter((x): x is string => Boolean(x)))];
   const [coursesRes, branchesRes, holidaysRes] = await Promise.all([
     courseIds.length ? supabase.from('courses').select('id, name').in('id', courseIds)
                      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
@@ -2312,9 +2585,9 @@ export async function fetchMemberWeek(memberId: string, period: Period): Promise
   const courseName = new Map((coursesRes.data ?? []).map(c => [c.id as string, c.name as string]));
   const branchName = new Map((branchesRes.data ?? []).map(b => [b.id as string, b.name as string]));
   const holidayName = new Map((holidaysRes.data ?? []).map(h => [h.id as string, h.name as string]));
-  const recordBySession = new Map((records ?? []).map(r => [r.session_id as string, r]));
+  const recordBySession = new Map(weekRecords.map(r => [r.session_id as string, r]));
 
-  const rows: MemberWeekSession[] = sessions.map(s => {
+  const rows: MemberWeekSession[] = weekSessions.map(s => {
     const offering = offeringById.get(s.offering_id as string);
     const record = recordBySession.get(s.id as string);
     return {
@@ -2391,11 +2664,23 @@ function holidayWriteError(error: { code?: string; message?: string } | null, ve
 export async function fetchHolidays(): Promise<Holiday[]> {
   if (!isConfigured) return HOLIDAYS.map(h => ({ ...h }));
 
-  const { data, error } = await supabase.from('holidays')
-    .select('id, name, start_date, end_date, branch_id')
-    .order('start_date', { ascending: false });
-  if (error) fail('Could not load holidays', error);
-  if (!data || data.length === 0) return [];
+  /*
+   * PAGED, even though production holds one row. A holiday is entered per
+   * closure, so the table only ever grows, and nothing about this read tells
+   * the reader where its ceiling is. Both callers want all of them -- the
+   * holiday screen lists them, and the engine needs every one to know which
+   * sessions do not count -- so this is `pageAllByKey`'s case rather than
+   * `readBounded`'s. The cost is one extra request on a screen nobody opens
+   * in a loop.
+   *
+   * The newest-first order is lost with the server-side `.order(start_date)`
+   * -- a keyset read is ordered by its key -- and restored below, because
+   * that order is what the screen renders.
+   */
+  const data = (await paged('holidays', () => supabase.from('holidays')
+    .select('id, name, start_date, end_date, branch_id'), 'id'))
+    .sort((a, b) => String(b.start_date ?? '').localeCompare(String(a.start_date ?? '')));
+  if (data.length === 0) return [];
 
   // The session count is what the delete confirmation promises to restore, so
   // it is counted from sessions.holiday_id -- the same link remove_holiday
@@ -2413,7 +2698,7 @@ export async function fetchHolidays(): Promise<Holiday[]> {
   ]);
   const branchName = new Map((branchesRes.data ?? []).map(b => [b.id as string, b.name as string]));
   const held = new Map<string, number>();
-  for (const s of sessionsRes.data ?? []) {
+  for (const s of checked('the sessions these holidays cover', sessionsRes)) {
     const id = s.holiday_id as string;
     held.set(id, (held.get(id) ?? 0) + 1);
   }

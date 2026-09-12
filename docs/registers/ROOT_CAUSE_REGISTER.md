@@ -59,6 +59,201 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-042 — 0067 shipped a function `anon` could execute, and every test said otherwise
+**Date:** 12-Sep-2026  ·  **Severity:** S3  ·  **Modules:** `supabase/migrations/0067`, `db/harness/000_local_shim.sql`, `supabase/tests/48`
+
+**FOUND IN PRODUCTION, BY THE VERIFICATION STEP, FOUR MINUTES AFTER APPLYING.** Logged with
+the severity the exposure actually warrants rather than the severity the mistake feels like.
+
+**Symptom** — none observable. The post-apply check that CLAUDE.md requires read the function's
+ACL and found `anon=X/postgres` on a function the migration said `anon` could not execute.
+
+**Root cause** — `0067` ends with `revoke all on function ... from public`, copying migration
+`0011`. Supabase's default privileges grant EXECUTE on every new `public` function **directly**
+to `anon`, not through the PUBLIC pseudo-role, so revoking from PUBLIC does not touch it.
+**The lesson was already in this repository**: `0012` is named
+`harden_function_security_direct_grants` and its header states exactly this. `0067` was written
+against `0011`'s pattern and never read `0012`'s.
+
+**Why every test passed** — and this is the part worth keeping. `supabase/tests/48` asserts
+`has_function_privilege('anon', …) = false` **explicitly**, and it passed. The harness builds
+its own roles in `000_local_shim.sql` and grants all functions to `anon` by default; it does not
+reproduce the platform's default privileges. The grant being revoked never existed locally, so
+the assertion had nothing to find. **An assertion that passes for the wrong reason is worse than
+no assertion, because it reads like proof** — the same shape as RC-039 itself, where a truncated
+reply was reported as success.
+
+**Fix** — `0068_course_week_day_status_revoke_anon.sql`, one line, `revoke execute … from anon`.
+Verified against production: the ACL is now byte-identical in shape to `member_period_metrics`.
+
+**What was exposed** — about four minutes, and very little. The function is `SECURITY INVOKER`,
+so an `anon` caller is still bound by the RLS on all three tables it reads, each of which
+requires `is_active_app_user()`. An anonymous call returned seven rows of zeroes — the dates of a
+week, no counts. Not nothing: the migration claimed something that was not true.
+
+**THE WIDER FINDING, which was not this change's and was larger — now CLOSED by `0069`.**
+`pg_default_acl` for role `postgres`, schema `public`, objtype `f` read
+`{postgres=X, anon=X, authenticated=X, service_role=X}`: migration `0025` set
+`alter default privileges … revoke execute on functions from anon, authenticated` and it was no
+longer in force. Tables were locked; functions were not. Thirteen non-extension functions were
+`anon`-executable, nine of them trigger functions and three of those `SECURITY DEFINER` — which
+is what the failing spec *"no trigger function is executable by anon or authenticated"* had been
+reporting on `main` all along.
+
+**A CORRECTION, made rather than left standing.** This entry originally said a `create or
+replace` of one of the 23 unrevoked functions would "silently re-acquire the grant". **That is
+wrong.** PostgreSQL preserves a function's ACL across CREATE OR REPLACE; default privileges apply
+only to a genuinely new object. The exposure was narrower than first written — new functions, and
+functions dropped and recreated. Still real, since `0067` was new. But the overstatement was the
+easier error to leave uncorrected, so it is named here.
+
+**`0069`, approved by the owner on 12-Sep-2026 as its own decision**, restores the default and
+revokes the thirteen. Two things worth keeping from writing it:
+
+1. **The first draft would not have worked, and the harness said so.** It revoked from
+   `anon, authenticated` and stopped. All thirteen carry a PUBLIC grant *as well as* a direct one,
+   so the functions stayed reachable through PUBLIC. **That is this very defect pointing the other
+   way** — `0067` revoked PUBLIC and left the direct grant; the draft revoked the direct grant and
+   left PUBLIC. Both halves have to be named. The rehearsal is what caught it.
+2. **Revoking EXECUTE from a trigger function breaks nothing**, which the suite proves rather than
+   asserts: dozens of cases insert and update rows, firing every one of the nine, and they pass.
+   PostgreSQL does not check EXECUTE against the statement's role to fire a trigger.
+
+Verified in production after applying: default ACL `{postgres=X, service_role=X}`, zero trigger
+functions reachable by `anon` or `authenticated`, zero non-extension functions reachable by
+`anon`, and `authenticated` still holds everything it needs. Local suite 725 pass / 10 fail →
+**732 pass / 9 fail** — the trigger-function spec went green.
+
+**Prevention** — `rung: src/data/migrationGrants.test.ts`. It reads the migration TEXT, not a
+harness, because the text is the one thing identical in both places: every function granted to
+`authenticated` must carry an explicit `revoke … from anon`. The 23 exceptions are named
+individually with the reason, and a separate case fails if one is fixed and left listed.
+
+**Process check** — would a correct process have caught this? The process **did** catch it, at
+the last possible moment: the post-apply verification CLAUDE.md mandates. What failed earlier is
+the assumption that a green local suite says anything about privileges, when the harness's own
+shim configures them differently on purpose. The gap is now named as KL-008, and the rung for
+this class is a file-based one rather than a runtime one. *A test whose subject is the
+environment cannot be run in an environment that does not have it.*
+
+---
+
+## RC-041 — the fix for RC-039 could reintroduce RC-039, and a failed read still read as "Awaiting upload"
+**Date:** 11-Sep-2026  ·  **Severity:** S2  ·  **Modules:** `src/data/pageAll.ts`, `src/data/repository.ts`, `src/data/dayLoad.ts`, `app/course/[id].tsx`
+
+**FOUND BY REVIEW, NOT BY A USER.** Independent review of the merged RC-039 fix (PR 13,
+`969c90a`) found two defects in the pager and three structural gaps around it. Logged as its
+own entry rather than as an amendment to RC-039, because "the fix carried the bug it fixed"
+is the finding, and burying it inside the entry it corrects is how that lesson is lost.
+
+**Symptom** — none observed. Every defect below is latent, and that is the point: the class
+is *a read whose truncation is reported as success*, and it has no failure signal by
+construction. RC-039 itself ran undetected for as long as the academy was under a thousand
+records a week.
+
+**Root cause, 1 — SHORT-PAGE TERMINATION.** The pager stopped when a page returned fewer
+rows than it asked for. That is sound only if the server's ceiling is never below the page
+size — and `db-max-rows` is a Supabase project SETTING, not a constant. Lower it to 500, or
+restore this project with a different default, and every paged read in the app returns its
+first page and reports success. RC-039 exactly, reintroduced by the code that fixed it. A
+short page now means nothing at all; **only an empty page ends a read.**
+
+**Root cause, 2 — OFFSET PAGING IS NOT STABLE UNDER WRITES.** `.range(1000, 1999)` is
+`OFFSET 1000`, which is a POSITION rather than a place. An insert earlier in the ordering
+shifts every later page down and a row is skipped; a delete shifts them up and a row is read
+twice. A unique `ORDER BY` does not help — it makes the ordering total, not the offsets
+stable. Attendance is bulk-imported while people have the course screen open, so this is an
+ordinary Tuesday rather than a race nobody will hit. A keyset cursor is anchored to a VALUE,
+`where key > :lastSeen`, and no write before the cursor can move what comes after it.
+
+**Root cause, 3 — A LOAD FAILURE RENDERED AS A BUSINESS STATE.** The half of RC-039 that
+made it invisible, and which RC-039's fix did not touch. The course strip did
+
+```ts
+const rows = (attendance.data ?? []).filter(r => r.course_id === course?.id && …);
+```
+
+`data` is null while a read is in flight AND null when a read has failed, so `?? []` hands
+the strip an empty week — which is the exact shape of a week nobody has uploaded. **No data
+received was being read as no upload exists.** Nobody wrote that inference; it falls out of
+one `??`.
+
+**Root cause, 4 — nothing stopped a new unpaged read being written.** Three read shapes in
+`src/data/` are worth nothing the first time a screen writes `supabase.from('members')`
+itself: that read goes to the network past all of them.
+
+**Root cause, 5 — the course screen downloads thousands of raw rows to render seven day
+statuses.** Not fixed here. It is the root design problem and is prepared, unapplied, as a
+Postgres aggregate awaiting approval.
+
+**Fix** — `pageAllByKey`: order by a unique, indexed key; anchor each page with
+`key > <last key seen>`; terminate ONLY on an empty page; throw on any page error so a
+partial list never escapes; take a query FACTORY so each page gets a fresh builder carrying
+the caller's own filters. Three of the six original call sites paged by a key they did not
+`select` — the cursor would have been read from a column that was not in the payload — and
+`member_emails`, `member_aliases` and `member_enrollments` now select `id`.
+
+`readBounded(query, limit)` is the second sanctioned shape, for a list somebody scrolls: it
+asks for `limit + 1` and reports the extra as `hasMore`, and REFUSES a limit at or above the
+ceiling, where a full answer and a truncated one are the same bytes.
+
+`guardUntruncated` is the backstop for a read that is neither, wired in through `checked()`
+at the seven reads whose bound is a fact about production rather than a number in the source.
+It keys on the row count landing exactly on the ceiling, never on `Content-Range` — that ends
+in `/*` on every healthy response, so keying on it would flag every read in the app and the
+guard would be switched off within a week.
+
+`src/data/dayLoad.ts` holds root cause 3: a day carries what the app KNOWS —
+`loading` / `uploaded` / `not-uploaded` / `failed` — and "not uploaded" is a claim only a
+COMPLETED read may make. `failed` is a real status with its own word and its own icon
+(CP-010), and a failed week still draws its seven days, under a banner that is entirely the
+retry: *"Couldn't load attendance. Tap to retry."*
+
+**Composite keys** — the brief asked for a row-value cursor
+(`a > lastA OR (a = lastA AND b > lastB)`) for any table with a composite primary key.
+**Every primary key in this schema is single-column, all 34 of them** (`pg_constraint`,
+11-Sep-2026), so that branch has no table to be written for and is deliberately NOT built:
+an untested branch for a shape that does not exist would be specced against a fake and
+believed.
+
+**Files** — `src/data/pageAll.ts` (rewritten), `src/data/dayLoad.ts` (new),
+`src/data/repository.ts` (nine paged call sites, seven guarded), `src/theme/tokens.ts`
+(`STATUS.failed`), `app/course/[id].tsx`,
+`scripts/audits/check-data-layer-boundary.mjs` (new), `eslint.config.mjs` (new).
+
+**How to verify** — replay the keyset requests against production, read-only:
+`.evidence/keyset-replay-production.txt` records 1000 + 1000 + 1000 + 110 + 0 = 3,110 rows,
+3,110 distinct, against 3,110 that exist, with General's 1,173 recovered. **The fourth page
+is short, and that is the whole point** — it is exactly where the offset pager stopped. In
+specs: `src/data/pageAll.test.ts` → "DEFECT 1: a server cap BELOW the page size returns
+everything, not one page" (server cap 50, page size 1000, 2,220 rows, 45 full pages and one
+empty) and "DEFECT 2: a row INSERTED behind the cursor cannot skip a row that was already
+there".
+
+**Recurrence risk** — the reads are now in one place and enforced there, so the remaining
+risk is a read written somewhere else. `members` at **937 rows against a 1,000 ceiling** is
+the live measure of how little room there is: the next intake truncates the roster, the
+follow-up list derived from it and every Overview count, silently.
+
+**Prevention** — three rungs. `rung: src/data/pagedReads.test.ts` (every growing table is
+paged or bounded with a stated reason; no `.range(` survives; every paged read names a key
+AND selects it). `rung: src/data/dayLoad.test.ts` (the absence of rows may not be read as a
+business fact). `rung: scripts/audits/check-data-layer-boundary.mjs` + `npm run audit:all`
+(a Supabase query may only be WRITTEN in `src/data/`; zero violations today, no baseline,
+because the correct number is nought).
+
+**Process check** — would a correct process have caught this? RC-039's own Process check
+named the gap and did not close it: *"none of [the gates] has ever been run against a data
+volume the platform's own limits react to"*. That is still true, and both defects here are
+in that class — defect 1 needs a server cap below the page size, which no fixture has, and
+defect 2 needs a concurrent write during a page turn. What DID catch them was adversarial
+review of a merged fix, which is a process step and a cheap one. The rung that would have
+caught defect 1 mechanically now exists and is the first case in `pageAll.test.ts`: a fake
+client whose server cap is deliberately lower than the page size. **A pager should be
+specced against a hostile server, not a cooperative one.**
+
+---
+
 ## RC-040 — the header tab row lit EVERY tab on a course detail, and none on a member's
 **Date:** 10-Sep-2026  ·  **Severity:** S3  ·  **Modules:** `src/components/AppShell.tsx`, `src/data/access.ts`
 

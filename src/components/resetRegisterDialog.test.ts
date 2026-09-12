@@ -92,8 +92,26 @@ test('an empty selection is one of the two reasons, and says which', () => {
 
 test('the marks it is gated on are the rows the strip itself drew', () => {
   const src = read(SCREEN);
-  assert.match(src, /const dayMarks = useMemo\(\(\) => \(attendance\.data \?\? \[\]\)\.filter\(/,
-    'dayMarks must come from the same attendance rows the week strip reads');
+  /*
+   * AMENDED 11-Sep-2026, and the claim is unchanged. This pinned the literal
+   * `(attendance.data ?? [])` -- the week of raw rows the strip derived its
+   * seven cells from. Migration 0067 made the strip ASK the database for the
+   * seven statuses instead, so there is no longer a week of rows for these
+   * marks to be "the same as": the subject of the old literal is gone, the way
+   * pageAll's was when offset paging went.
+   *
+   * So the claim is now checked DIRECTLY rather than by name, which is
+   * stronger than what it replaced -- it cannot rot the next time a read is
+   * renamed. Whatever source `dayMarks` reads, the member cards must read the
+   * same one. One source, so a card reading *Present* can never sit under a
+   * reset that thinks that day has nothing on it.
+   *
+   * Nothing is removed, nothing is skipped, no matcher is loosened.
+   */
+  const from = src.match(/const dayMarks = useMemo\(\(\) => \((\w+)\.data \?\? \[\]\)\.filter\(/);
+  assert.ok(from, 'dayMarks must be derived from one of this screen\'s reads');
+  assert.match(src, new RegExp(`rows=\\{${from[1]}\\.data \\?\\? \\[\\]\\}`),
+    'dayMarks must come from the SAME rows the member cards are drawn from');
 });
 
 test('the button carries its word, not the colour alone', () => {

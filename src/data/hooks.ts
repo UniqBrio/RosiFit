@@ -26,6 +26,7 @@ import {
   fetchSentForPeriod,
   type Branch, type BranchUsage, type OfferingDetail,
   fetchAttendance, onCoursesChanged, onMembersChanged, onAttendanceChanged, onRulesChanged,
+  fetchCourseWeekDays, fetchCourseDayRows, type CourseDayStatus,
   fetchHolidays, onHolidaysChanged, fetchMemberWeek,
   type Rules, type PendingSession, type Holiday,
 } from './repository';
@@ -66,7 +67,32 @@ function withTimeout<T>(work: Promise<T>): Promise<T> {
   });
 }
 
-export function useAsync<T>(load: () => Promise<T>, deps: unknown[], forced?: string): Async<T> {
+/**
+ * A FORCED STATE MAY NAME ONE READ, `?state=error:week`.
+ *
+ * `?state=error` forces EVERY read on a screen, which is the right default and
+ * is unchanged. But a screen whose first guard is `if (courses.state ===
+ * 'error') return <ErrorState/>` renders that guard and nothing else — so the
+ * branches BEHIND it have never been reachable by a reviewer at all. On the
+ * course screen that hid the whole of Task 3: a failed week's seven Load failed
+ * cells and their retry banner could not be looked at, on fixtures or
+ * otherwise, and the browser check written to watch them found an empty screen.
+ *
+ * So a target may be named, and only the read carrying that tag is forced;
+ * every other read on the screen loads normally and the guards in front of it
+ * stay out of the way. Tags are opt-in, so a hook that names none behaves
+ * exactly as it did.
+ */
+function forcedFor(forced: string | undefined, tag: string | undefined): string | null {
+  if (!forced) return null;
+  const at = forced.indexOf(':');
+  if (at === -1) return forced;                             // `?state=error` — everything
+  return forced.slice(at + 1) === tag ? forced.slice(0, at) : null;
+}
+
+export function useAsync<T>(
+  load: () => Promise<T>, deps: unknown[], forced?: string, tag?: string,
+): Async<T> {
   const [state, setState] = useState<ScreenState>('loading');
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -74,10 +100,11 @@ export function useAsync<T>(load: () => Promise<T>, deps: unknown[], forced?: st
 
   useEffect(() => {
     let cancelled = false;
-    if (forced === 'loading') return;                       // pinned for review
-    if (forced === 'error') {
+    const mode = forcedFor(forced, tag);
+    if (mode === 'loading') return;                         // pinned for review
+    if (mode === 'error') {
       setState('error');
-      setError('Forced error state (?state=error). Nothing has been changed.');
+      setError(`Forced error state (?state=${forced}). Nothing has been changed.`);
       return;
     }
     setState('loading');
@@ -95,7 +122,7 @@ export function useAsync<T>(load: () => Promise<T>, deps: unknown[], forced?: st
       });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [forced, attempt, ...deps]);
+  }, [forced, tag, attempt, ...deps]);
 
   const retry = useCallback(() => setAttempt(a => a + 1), []);
   return { state, data, error, retry };
@@ -239,6 +266,53 @@ export function useMonthSessions(year: number, month: number, forced?: string): 
  *  Refetched whenever attendance is written, for the reason useCourses
  *  carries a version: a member marked present whose week strip still says
  *  "awaiting upload" is two answers to one question on one screen. */
+/**
+ * The seven day statuses for ONE course's week (0067).
+ *
+ * Seven rows instead of every attendance record in the week for every course.
+ * See fetchCourseWeekDays for what that costs today and what it costs after.
+ *
+ * It listens to the same `onAttendanceChanged` the row list does, so an upload
+ * or a reset refreshes the strip — otherwise a day would keep its old cell
+ * until the screen was left and re-entered, which is the "a save that did
+ * nothing" complaint this file's other hooks carry a version for.
+ *
+ * `courseId` is nullable because the course record arrives from its own read:
+ * a null means there is nothing to ask about yet, and the hook resolves to an
+ * empty week rather than sending a query for `undefined`.
+ */
+export function useCourseWeekDays(
+  courseId: string | null, weekStart: string, branchId: string | null, forced?: string,
+): Async<CourseDayStatus[]> {
+  const [version, setVersion] = useState(0);
+  useEffect(() => onAttendanceChanged(() => setVersion(v => v + 1)), []);
+  return useAsync(
+    () => courseId ? fetchCourseWeekDays(courseId, weekStart, branchId) : Promise.resolve([]),
+    [courseId ?? '', weekStart, branchId ?? '', version], forced, 'week');
+}
+
+/**
+ * ONE course's ONE day — the rows the roster under the strip lists.
+ *
+ * The other half of 0067. The strip asks the database for seven statuses; this
+ * asks for the records of the day somebody actually tapped, for the course
+ * they are looking at. Nothing fetches a week of every course any more.
+ *
+ * A null day is "nothing is selected", and resolves to an empty list rather
+ * than a query — the same reason useCourseWeekDays takes a nullable course.
+ */
+export function useCourseDay(
+  courseId: string | null, dateIso: string | null, branch: string | null, forced?: string,
+): Async<AttendanceRow[]> {
+  const [version, setVersion] = useState(0);
+  useEffect(() => onAttendanceChanged(() => setVersion(v => v + 1)), []);
+  return useAsync(
+    () => courseId && dateIso
+      ? fetchCourseDayRows(courseId, dateIso, branch)
+      : Promise.resolve([] as AttendanceRow[]),
+    [courseId ?? '', dateIso ?? '', branch ?? '', version], forced);
+}
+
 export function useAttendance(period: Period, forced?: string): Async<AttendanceRow[]> {
   const [version, setVersion] = useState(0);
   useEffect(() => onAttendanceChanged(() => setVersion(v => v + 1)), []);
