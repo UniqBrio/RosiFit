@@ -112,8 +112,9 @@ not as a TypeError.
 **How to verify** — `npx tsx --test src/data/edgeFunctionPagedReads.test.ts`: the pager returns
 1,050 rows from a fake table capped at 1,000 and at 400; every read of the five tables in the
 function is `pageAllByKey(` with its key in the `select`; `memberById.get(id)!` is absent. In
-production, after the function is redeployed: re-upload the three 08:54 files for Thu 11 Sep
-against Postnatal · Main and expect one merged register, not a 500.
+production — **version 17 deployed 12-Sep-2026 10:56 UTC** on the owner's go-ahead — re-upload
+the three 08:54 files for Thu 11 Sep against Postnatal · Main and expect one merged register,
+not a 500. The function log is the record either way.
 
 **Recurrence risk** — every Edge Function that reads a growing table in full. Swept with
 `grep -rn "await admin.from('" supabase/functions/*/index.ts`: csv-import held all five

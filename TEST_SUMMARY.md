@@ -32,9 +32,13 @@ npm run gate                               6 pass · 5 fail · 1 blocked — ver
 **NOT run:** the DB harness (no migration, no schema surface — N/A); the browser (the change is
 server-side, and the fixtures build never calls the function); the function in Deno (no `deno`
 on this machine — the pager is exercised under node by the spec, and index.ts's edit is five
-call sites and one guard, read twice). **NOT deployed:** `csv-import` in production is still the
-version that fails; the fix takes effect on `supabase functions deploy csv-import`, which is a
-production change and waits for the owner's word.
+call sites and one guard, read twice). **DEPLOYED 12-Sep-2026 10:56 UTC, on the owner's word:** `csv-import` version 17 on
+`lhpzhkzbnquwjljmbylo`, `verify_jwt` unchanged (true). Read back from the platform: the bundle
+carries all seven files, `_shared/pageAll.ts` included, and the entrypoint imports it. The
+deployed source is the repo's, which also carries the two copy commits landed since version 16
+("the canonical name" for "her canonical name", and `splitByCourse`'s other-course names). A
+live probe from this machine is refused by its network policy (CONNECT 403 to the project
+host), so the first real upload is the live check; the function log is where it shows.
 
 FAIL-FIRST: src/data/edgeFunctionPagedReads.test.ts - 16 cases, new file. Run on 12-Sep-2026 against HEAD fd887ed's csv-import/index.ts with the new shared pager already on disk: 8 of 16 failed, and they are exactly the claims this change makes - the function does not import the pager, all five growing-table reads (members, member_aliases, member_emails, member_stats, member_enrollments) are unpaged and select no key, and the candidate lookup is the bare non-null assertion. One more (14, "both pagers end a read only on an empty page") failed for a spec defect - it found `.range(` in the CLIENT pager's own comments - and was corrected to read code rather than prose before the fix went in; the remaining 7 pass in both trees as they must: the five pager behaviour cases run the new file directly, and the two cross-pager agreement cases assert lines that were already true. 16 of 16 after. Full output: .evidence/edge-paged-reads-fail-first.txt.
 
