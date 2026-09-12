@@ -9,6 +9,7 @@ import { json, errorJson, HttpError } from '../_shared/response.ts';
 import { adminClient } from '../_shared/db.ts';
 import { requireCaller } from '../_shared/authz.ts';
 import { normalizeName, similarity, splitByCourse } from '../_shared/match.ts';
+import { pageAllByKey } from '../_shared/pageAll.ts';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 /**
@@ -256,15 +257,28 @@ async function preview(admin: SupabaseClient, actorId: string, body: Record<stri
       'Every name in that file belongs to a staff member, so there is no attendance to import.');
   }
 
-  const { data: aliases } = await admin.from('member_aliases')
-    .select('member_id, alias_display, alias_normalized').eq('alias_type', 'name');
-  const { data: members } = await admin.from('members')
-    .select('id, full_name, name_normalized').is('deleted_at', null);
+  /**
+   * EVERY ROW, PAGED (RC-043). PostgREST caps a reply at 1,000 rows and says
+   * nothing about it -- `200`, a thousand rows, `error: null` -- and the
+   * service role is not exempt: the cap is PostgREST's, not RLS's. On
+   * 12-Sep-2026 the academy passed 1,000 live members, `members` came back
+   * one page short, and the aliases (still under the cap) pointed at members
+   * this map no longer held. Every upload naming one of them died on the
+   * candidate lookup below. Each read here goes through the keyset pager and
+   * SELECTS the key it pages by, because the cursor is read out of the last
+   * row returned. `src/data/edgeFunctionPagedReads.test.ts` holds this shut.
+   */
+  const aliases = await pageAllByKey(() => admin.from('member_aliases')
+    .select('id, member_id, alias_display, alias_normalized').eq('alias_type', 'name'), { key: 'id' });
+  const members = await pageAllByKey(() => admin.from('members')
+    .select('id, full_name, name_normalized').is('deleted_at', null), { key: 'id' });
   // The ADDRESS, not just whether there is one: with the member code retired
   // it is what tells two same-named candidates apart on the review screen.
-  const { data: primaryEmails } = await admin.from('member_emails')
-    .select('member_id, email').eq('is_primary', true).is('deleted_at', null).neq('status', 'bounced');
-  const { data: stats } = await admin.from('member_stats').select('member_id, last_present_date');
+  const primaryEmails = await pageAllByKey(() => admin.from('member_emails')
+    .select('id, member_id, email').eq('is_primary', true).is('deleted_at', null).neq('status', 'bounced'),
+    { key: 'id' });
+  const stats = await pageAllByKey(() => admin.from('member_stats')
+    .select('member_id, last_present_date'), { key: 'member_id' });
 
   const hasEmail = new Set((primaryEmails ?? []).map(e => e.member_id as string));
   const emailBy = new Map((primaryEmails ?? []).map(e => [e.member_id as string, e.email as string]));
@@ -275,8 +289,8 @@ async function preview(admin: SupabaseClient, actorId: string, body: Record<stri
   // display names already known for her. Outcome C is the prompt that stops
   // a duplicate being created, and it can only do that if the person
   // deciding can see who the candidate actually is.
-  const { data: enrollments } = await admin.from('member_enrollments')
-    .select('member_id, offering_id').eq('status', 'active');
+  const enrollments = await pageAllByKey(() => admin.from('member_enrollments')
+    .select('id, member_id, offering_id').eq('status', 'active'), { key: 'id' });
   const offeringIds = [...new Set((enrollments ?? []).map(e => e.offering_id as string))];
   const zero = '00000000-0000-0000-0000-000000000000';
   const { data: offeringRows } = await admin.from('course_offerings')
@@ -356,7 +370,16 @@ async function preview(admin: SupabaseClient, actorId: string, body: Record<stri
     else kind = hasEmail.has(here[0]) ? 'matched' : 'noEmail';
 
     const candidates = [...here, ...elsewhere].map(id => {
-      const m = memberById.get(id)!;
+      const m = memberById.get(id);
+      if (!m) {
+        // A candidate came from the alias, canonical or fuzzy tier, so it IS
+        // a member -- and every live member is in this map now that the read
+        // is paged. Reaching here means a read came back short after all,
+        // and that is said in words rather than left to a TypeError: the
+        // sentence reaches the log AND the person, and nothing is staged.
+        throw new HttpError(500,
+          `A member this file names (${id}) matched but could not be loaded. Nothing was staged.`);
+      }
       const offering = offeringById.get(offeringByMember.get(id) ?? '');
       return {
         member_id: id,

@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased — Uploading attendance works again past a thousand members
+
+**Three Meet files for Thursday would not upload, and the reason was the size of the academy.**
+The register passed a thousand members on Friday morning, and from that moment the import was
+reading only the first thousand of them. Any file naming somebody beyond that point stopped with
+*"Something went wrong"* — which is why three files uploaded at 9:17 went through and the next
+three, a minute later, did not.
+
+**The import now reads every member, however many there are.** It asks for them a page at a
+time, the way the rest of the app has since last week, and does not stop until there are none
+left. The same fix reaches the enrolments and the last-seen dates the review uses, which had
+also been cut short without anybody seeing it.
+
+**If it ever happens again it will say so.** A member the file names but the import could not
+load is now a sentence naming the problem, not a generic failure.
+
+**Nothing else about uploading changed.** Same picker, same merging of a day's files, same
+questions, same result screen. This needs the `csv-import` function redeployed to take effect.
+
 ## Unreleased — The course screen stops downloading the week to count it
 
 **It was fetching three thousand records to draw seven day cards.** Every time a course

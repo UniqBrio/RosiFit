@@ -1,3 +1,43 @@
+## RC-043 — the upload died at 1,000 members; csv-import now pages every growing table (12-Sep-2026)
+
+**Found in the live function log, not by reasoning.** Six `POST | 500 | csv-import` between
+03:47 and 04:10 UTC, each with `TypeError: Cannot read properties of undefined (reading
+'full_name')` at the candidate lookup. Live members had passed 1,000 at 03:40 UTC (935 → 1,041,
+one wrong-course batch); the function's `members` read was a bare `.select()` on the service-role
+client and came back one page short; the alias table (744 rows) did not, so two names in the
+three files ("Ruby nancy", "saranya ramasamy") pointed at members the map no longer held.
+
+**The files were never the problem.** All three parse under the real `parseMeetCsv`: BOM, CRLF,
+four preamble lines, 25 + 19 + 30 rows, one day, no future date, every name 2–120 characters.
+`.evidence/`-grade check run under node against the actual uploads.
+
+**Fix:** `supabase/functions/_shared/pageAll.ts` (the client pager's contract, verbatim: order
+by a selected unique key, anchor on `key > last`, end ONLY on an empty page, throw on any page
+error); five reads in the preview go through it and select their key; the non-null assertion on
+the lookup becomes an `HttpError` that names the member. `npx tsc --noEmit --ignoreConfig
+--strict` on the new pager: clean.
+
+```
+src/data/edgeFunctionPagedReads.test.ts   16 of 16 after · 8 of 16 before (below)
+npm run typecheck                          clean
+npm run check:contrast                     2852/2852
+npm run check:icons                        75/75
+unit suite                                 1570 cases · 6 FAIL — the SAME six on the untouched
+                                           tree (git stash, re-run): formDropdownMenu 1,
+                                           message 5. Not this change's files.
+npm run gate                               6 pass · 5 fail · 1 blocked — verdict identical to the
+                                           two previous runs on main; no class moved.
+```
+
+**NOT run:** the DB harness (no migration, no schema surface — N/A); the browser (the change is
+server-side, and the fixtures build never calls the function); the function in Deno (no `deno`
+on this machine — the pager is exercised under node by the spec, and index.ts's edit is five
+call sites and one guard, read twice). **NOT deployed:** `csv-import` in production is still the
+version that fails; the fix takes effect on `supabase functions deploy csv-import`, which is a
+production change and waits for the owner's word.
+
+FAIL-FIRST: src/data/edgeFunctionPagedReads.test.ts - 16 cases, new file. Run on 12-Sep-2026 against HEAD fd887ed's csv-import/index.ts with the new shared pager already on disk: 8 of 16 failed, and they are exactly the claims this change makes - the function does not import the pager, all five growing-table reads (members, member_aliases, member_emails, member_stats, member_enrollments) are unpaged and select no key, and the candidate lookup is the bare non-null assertion. One more (14, "both pagers end a read only on an empty page") failed for a spec defect - it found `.range(` in the CLIENT pager's own comments - and was corrected to read code rather than prose before the fix went in; the remaining 7 pass in both trees as they must: the five pager behaviour cases run the new file directly, and the two cross-pager agreement cases assert lines that were already true. 16 of 16 after. Full output: .evidence/edge-paged-reads-fail-first.txt.
+
 ## RC-042 CLOSED — the function default privilege restored (12-Sep-2026)
 
 Owner-approved. Migration `0069`.
@@ -46,6 +86,68 @@ functions and drop-and-recreate. Still real (0067 was new), but overstating a se
 the easier mistake to leave uncorrected.
 
 Unit unchanged: 1554 tests, 1548 pass, 6 fail — the same 6.
+
+---
+
+## Gate run - 2026-09-12 - VERDICT: FAIL
+
+Steps: 6 pass, 5 fail, 1 blocked.
+Time: 19.9s total - slowest G7 Unit + pure specs (13.5s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (52ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (48ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (52ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (67ms)
+- **G5 Types** - PASS (5.7s)
+- **G6 Lint** - BLOCKED (-) - no local "eslint" in . - not fetched from the registry on purpose. Run `npm install` in . (provides eslint), or state why this class is unverified. - **135 consecutive runs**: a verdict that never changes is not a signal; make this class runnable or accept it in writing
+- **G7 Unit + pure specs** - FAIL (13.5s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 180 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 181 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 194 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (120ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (52ms)
+- **G10 Backward compatibility (fixtures)** - PASS (116ms)
+- **G11 Wide tables are configurable** - PASS (54ms)
+- **G12 Installable as an application** - PASS (70ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
