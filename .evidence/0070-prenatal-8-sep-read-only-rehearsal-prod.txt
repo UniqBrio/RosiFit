@@ -16,3 +16,18 @@ live marks).
 
 One cell changes, the one the defect is about. Every other day keeps 0067's
 answer.
+
+APPLIED 12-Sep-2026 13:43 UTC on the owner's "go", as ledger row
+20260912134313 / 0070_ad_hoc_day_runs_after_reset. Read back from the platform
+after the apply:
+
+  proacl      {postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+              -- no anon entry; has_function_privilege('anon', ...) = false
+  prosecdef   false (SECURITY INVOKER)   provolatile  s (STABLE)   overloads  1
+  body        md5 1c51043c... (0067, 1,725 chars) -> 69a56914... (0070, 3,865 chars),
+              held_on CTE present
+
+  public.course_week_day_status(Prenatal, 2026-09-07, null), THE REAL FUNCTION:
+    Mon true · Tue TRUE · Wed true · Thu false · Fri true · Sat false · Sun false
+  Every course, same week (General, Postnatal, Prenatal, Test Course): the one
+  cell that differs from 0067's answer is Prenatal Tue 8 Sep. Nothing else moved.

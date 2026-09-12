@@ -32,8 +32,9 @@ production, READ-ONLY            0070's body run as a SELECT for Prenatal's week
 
 **NOT run:** the browser (no client line changed; the strip's `awaiting` press is already held by
 `src/components/dayStripUploadButton.test.ts`); `npm run gate` (not re-run for a comment-only
-client diff — the verdict on main is recorded in RC-043's row). **NOT applied to production:**
-the raw SQL is shown to the owner and waits for the go-ahead CLAUDE.md requires. No run-log row:
+client diff — the verdict on main is recorded in RC-043's row). **Applied to production 12-Sep-2026 13:43 UTC on the owner's "go"** (ledger row
+20260912134313): ACL read back with no anon entry, INVOKER, STABLE, one overload; the real
+function answers Prenatal Tue 8 Sep `runs = true` and no other cell in any course's week moved. No run-log row:
 no run was opened when the work began, and a duration typed in afterwards is the recalled number
 `docs/registers/RUN_LOG.md` forbids.
 
