@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased — The day card and the Show filter, tidied on the course screen
+
+**No red cross over "Upload again".** A day in the current week that had a register with
+nobody present drew its ✕ in the card and, under it, the button for another file — a verdict on
+a day that is still open. The cross comes off that card only. The legend keeps its ✕, so does
+every Absent chip on the roster, and so does a past week's day. A day with somebody present
+keeps its tick. A screen reader still hears the day's status word on every card.
+
+**The Show filter sits beside the search box, on the right.** It used to take a full row of its
+own under the search, which on a wide screen pushed the first member that much further down.
+It now shares the search row and the roster starts a row higher. Nothing about the filter
+itself changed: the same options, the same counts, the same pop-over, the same multi-select. On a
+phone the two still stack, exactly as before, because at that width neither would be readable
+side by side.
+
 ## Unreleased — Uploading attendance works again past a thousand members
 
 **Three Meet files for Thursday would not upload, and the reason was the size of the academy.**

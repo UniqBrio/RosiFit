@@ -918,6 +918,19 @@ function CourseDetailBody() {
                        take a file" is one question with one answer, and asking
                        it twice is the defect uploadWindow was written to end. */
                     const second = d.canUpload && (d.key === 'present' || d.key === 'absent');
+                    /* NO CROSS OVER "UPLOAD AGAIN" (12-Sep-2026). An all-absent
+                       day in the current week drew its red ✕ in the cell AND
+                       offered another file under it, and the requester read
+                       the pair as a verdict on a day that is still open:
+                       "Remove that marking of x on upload again button from
+                       date cards not others." So the ✕ comes off THIS card
+                       only -- the legend, the member chips and a past week's
+                       absent day all keep theirs -- and the status WORD stays
+                       in the spoken label below, so the card is never a colour
+                       with nothing explaining it (guardrail 3). The tick on a
+                       present day was not named and is not touched
+                       (requests/2026-09-12-day-card-cross-and-show-filter-right.md). */
+                    const crossed = second && d.key === 'absent';
                     const dayWords = `${d.dow} ${d.dayNum} ${d.mon}`;
                     const box = statusSurface(ink);
                     return (
@@ -959,7 +972,10 @@ function CourseDetailBody() {
                           {/* An uploaded day shows what it recorded, a day the
                               course does not run shows its dash. The awaiting
                               day hands this slot to the button below instead. */}
-                          {waiting ? null : <Icon name={tone.icon} size={13} color={ink} />}
+                          {/* The outer clause is the 12-Sep cross rule; the inner
+                              is the 08-Sep one multipleFilesSameDay.test.ts pins,
+                              and it goes on being true of a present day. */}
+                          {crossed ? null : waiting ? null : <Icon name={tone.icon} size={13} color={ink} />}
                         </Pressable>
 
                         {/* ---------------------------------- upload, ON THE DAY
@@ -1154,7 +1170,23 @@ function CourseDetailBody() {
               }}>{memberSplit}</Text>
             </View>
 
+            {/* THE SEARCH BOX AND THE SHOW FILTER SHARE A ROW on a wide screen,
+                the filter on the RIGHT (12-Sep-2026): stacked, the filter cost
+                the roster a full row above the fold -- "Place the filter
+                dropdown on right side making more members visible as its
+                occupying more space". Under 768pt the two still stack, on the
+                360pt reason the filter's own comment records; that decision
+                is not reopened here. This row is a new link in the z-order
+                chain described at the top of this ScrollView -- it is the
+                panel's parent now, so it is lifted while the panel is out
+                (requests/2026-09-12-day-card-cross-and-show-filter-right.md). */}
             <View style={{
+              flexDirection: compact ? 'column' : 'row',
+              alignItems: compact ? 'stretch' : 'center',
+              gap: SPACE.sm, zIndex: showOpen ? 40 : 0,
+            }}>
+            <View style={{
+              flex: compact ? undefined : 1, minWidth: 0,
               flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
               height: 42, borderRadius: RADIUS.md, backgroundColor: theme.surface,
               borderWidth: 1, borderColor: searching ? theme.accent : theme.lineStrong,
@@ -1182,9 +1214,11 @@ function CourseDetailBody() {
                 that clears them, ticking as many as you like. Several ticks
                 are an OR, and the line under the field says so in words.
 
-                UNDER THE SEARCH BOX, not beside it: at 360pt a field and a
-                search box on one row leave neither enough to read, and this
-                is the same stack the branch filter above uses.
+                UNDER THE SEARCH BOX on a phone, not beside it: at 360pt a
+                field and a search box on one row leave neither enough to
+                read, and this is the same stack the branch filter above
+                uses. On a wide screen it sits BESIDE the box, on the right,
+                since 12-Sep-2026 -- see the row above.
 
                 IT IS A POP-UP, drawn OVER the roster and never pushing it
                 down -- the requester, on being shown the pushing version:
@@ -1207,7 +1241,7 @@ function CourseDetailBody() {
                 out is the field again, or a press beside it. Each row carries
                 the number it would leave, counted off the very list below. */}
             <DropdownRow open={showOpen}
-              style={{ width: '100%', maxWidth: FILTER_WIDTH }}
+              style={compact ? { width: '100%', maxWidth: FILTER_WIDTH } : { width: FILTER_WIDTH }}
               dismiss={{ onPress: () => setShowOpen(false), testID: 'course-show-dismiss' }}>
               <DropdownField label="Show" value={showValue} open={showOpen}
                 testID="course-show-field"
@@ -1231,6 +1265,7 @@ function CourseDetailBody() {
                 </DropdownPanel>
               ) : null}
             </DropdownRow>
+            </View>
 
             {/* WHICH DAY the chips below are about, said once for the whole
                 roster rather than on every card. The strip above highlights

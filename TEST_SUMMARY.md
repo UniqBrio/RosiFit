@@ -1,3 +1,28 @@
+## Course screen: no cross over Upload again, Show filter on the right (12-Sep-2026)
+
+`requests/2026-09-12-day-card-cross-and-show-filter-right.md`, `app/course/[id].tsx` only, SCALE
+micro. Two clauses: `crossed = second && d.key === 'absent'` in front of the cell's icon, and the
+search box + Show filter in one row on ≥768pt (stacked under, as before). No string changed.
+
+```
+src/components/courseDayCrossAndShowRow.test.ts   8 of 8 after · 2 of 8 before (below)
+multipleFilesSameDay.test.ts (pins the tick)        unchanged, still green
+npm run typecheck                                   clean
+unit suite                                          1578 cases · 6 FAIL, the same six pre-existing
+                                                    (formDropdownMenu 1, message 5)
+browser, both themes, 1200 and 430                  ALL CHECKS PASS — .evidence/day-cross-show-row-browser.txt
+```
+
+**Watched, not assumed.** Fixtures export, both themes, both widths, course c1 and c3. On a wide
+screen the filter shares the search row, sits to its right, reaches the block's right edge at
+340pt, and the open panel is painted on top of the roster without moving it. On a phone the
+two still stack at the widths they always had. Course c3 (one member, attended 0 of 4) is the
+case the requester saw: Wed 9 is Absent with *Upload again* and draws NO icon, while Mon 7 and
+Fri 11 (Present + *Upload again*) keep their tick, and every card still speaks its status word.
+Composited contrast 115–118 of 115–118 on every page. Screenshots in `.harness/shot-course-*`.
+
+FAIL-FIRST: src/components/courseDayCrossAndShowRow.test.ts - 8 cases, new file. Run on 12-Sep-2026 against app/course/[id].tsx at HEAD a907361: 6 of 8 failed, and they are exactly the claims this change makes - no `crossed` rule, the icon slot still `waiting ? null : <Icon`, no row switching by width around the search box, the search box not growing to fill a row, the filter without its wide-screen width, and no z-order lift on the row. The 2 that pass in both trees must: the status word was always in the spoken label, and the Show field was always AFTER the search box in source order (it was under it; the row is what makes "after" mean "right of"). 8 of 8 after. Full output: .evidence/day-cross-show-row-fail-first.txt.
+
 ## RC-043 — the upload died at 1,000 members; csv-import now pages every growing table (12-Sep-2026)
 
 **Found in the live function log, not by reasoning.** Six `POST | 500 | csv-import` between

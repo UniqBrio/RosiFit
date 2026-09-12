@@ -1,0 +1,157 @@
+BROWSER — requests/2026-09-12-day-card-cross-and-show-filter-right.md
+12-Sep-2026. expo export (EXPO_NO_DOTENV=1: isConfigured=false, fixtures answer, nothing reaches the live project), served by .harness/serve.mjs on 8100, driven with Playwright on the cached Chromium. Both themes, 1200x900 and 430x900. DOM geometry and composited contrast, no pixels. Screenshots: .harness/shot-course-{dark,light}-{1200,430}.png and shot-course-show-open-*.
+
+
+================ DARK THEME ================
+
+[1200pt]
+  body background: rgba(0, 0, 0, 0)
+  OK   the search box and the Show field are both drawn
+  OK   WIDE: the filter sits on the SAME ROW as the search box — search y=455..470, field y=438..487
+  OK   WIDE: the filter is to the RIGHT of the search box — search right=823, field x=844
+  OK   WIDE: the filter reaches the right edge of the block — field right=1184, block right=1184
+  OK   WIDE: the filter keeps a bounded width — 340pt
+  first roster element top: 549pt (viewport 900)
+  OK   the Show panel opens
+  OK   the open panel is PAINTED on top of what is under it
+  OK   WIDE: the open panel does not push the roster (search box did not move)
+  day cells: 09-07 Present icon +again | 09-08 Not expected icon | 09-09 Present icon +again | 09-10 Not expected icon | 09-11 Present icon +again | 09-12 Not expected icon | 09-13 Not expected icon
+  NOT EXERCISED here: the fixture week has no all-absent day carrying Upload again
+  OK   a present day carrying Upload again keeps its tick — 2026-09-07 2026-09-09 2026-09-11
+  OK   every card still speaks its status word
+  OK   the legend still names Absent
+  OK   composited contrast: 118/118 pass
+  OK   no page errors
+
+[430pt]
+  body background: rgba(0, 0, 0, 0)
+  OK   the search box and the Show field are both drawn
+  OK   PHONE: the filter still stacks UNDER the search box — search bottom=673, field y=694
+  OK   PHONE: the filter keeps its stacked width (100%, max 340 -- unchanged) — 340 vs search 346
+  first roster element top: 805pt (viewport 900)
+  OK   the Show panel opens
+  OK   the open panel is PAINTED on top of what is under it
+  day cells: 09-07 Present icon +again | 09-08 Not expected icon | 09-09 Present icon +again | 09-10 Not expected icon | 09-11 Present icon +again | 09-12 Not expected icon | 09-13 Not expected icon
+  NOT EXERCISED here: the fixture week has no all-absent day carrying Upload again
+  OK   a present day carrying Upload again keeps its tick — 2026-09-07 2026-09-09 2026-09-11
+  OK   every card still speaks its status word
+  OK   the legend still names Absent
+  OK   composited contrast: 115/115 pass
+  OK   no page errors
+
+================ LIGHT THEME ================
+
+[1200pt]
+  body background: rgba(0, 0, 0, 0)
+  OK   the search box and the Show field are both drawn
+  OK   WIDE: the filter sits on the SAME ROW as the search box — search y=455..470, field y=438..487
+  OK   WIDE: the filter is to the RIGHT of the search box — search right=823, field x=844
+  OK   WIDE: the filter reaches the right edge of the block — field right=1184, block right=1184
+  OK   WIDE: the filter keeps a bounded width — 340pt
+  first roster element top: 549pt (viewport 900)
+  OK   the Show panel opens
+  OK   the open panel is PAINTED on top of what is under it
+  OK   WIDE: the open panel does not push the roster (search box did not move)
+  day cells: 09-07 Present icon +again | 09-08 Not expected icon | 09-09 Present icon +again | 09-10 Not expected icon | 09-11 Present icon +again | 09-12 Not expected icon | 09-13 Not expected icon
+  NOT EXERCISED here: the fixture week has no all-absent day carrying Upload again
+  OK   a present day carrying Upload again keeps its tick — 2026-09-07 2026-09-09 2026-09-11
+  OK   every card still speaks its status word
+  OK   the legend still names Absent
+  OK   composited contrast: 118/118 pass
+  OK   no page errors
+
+[430pt]
+  body background: rgba(0, 0, 0, 0)
+  OK   the search box and the Show field are both drawn
+  OK   PHONE: the filter still stacks UNDER the search box — search bottom=673, field y=694
+  OK   PHONE: the filter keeps its stacked width (100%, max 340 -- unchanged) — 340 vs search 346
+  first roster element top: 805pt (viewport 900)
+  OK   the Show panel opens
+  OK   the open panel is PAINTED on top of what is under it
+  day cells: 09-07 Present icon +again | 09-08 Not expected icon | 09-09 Present icon +again | 09-10 Not expected icon | 09-11 Present icon +again | 09-12 Not expected icon | 09-13 Not expected icon
+  NOT EXERCISED here: the fixture week has no all-absent day carrying Upload again
+  OK   a present day carrying Upload again keeps its tick — 2026-09-07 2026-09-09 2026-09-11
+  OK   every card still speaks its status word
+  OK   the legend still names Absent
+  OK   composited contrast: 115/115 pass
+  OK   no page errors
+
+ALL CHECKS PASS
+
+================ COURSE c3 (Trimester 3 Gentle: its one member has attended 0 of 4, so its uploaded days are all-absent) ================
+
+================ DARK THEME ================
+
+[1200pt]
+  body background: rgba(0, 0, 0, 0)
+  OK   the search box and the Show field are both drawn
+  OK   WIDE: the filter sits on the SAME ROW as the search box — search y=406..421, field y=389..438
+  OK   WIDE: the filter is to the RIGHT of the search box — search right=823, field x=844
+  OK   WIDE: the filter reaches the right edge of the block — field right=1184, block right=1184
+  OK   WIDE: the filter keeps a bounded width — 340pt
+  first roster element top: 500pt (viewport 900)
+  OK   the Show panel opens
+  OK   the open panel is PAINTED on top of what is under it
+  OK   WIDE: the open panel does not push the roster (search box did not move)
+  day cells: 09-07 Present icon +again | 09-08 Not expected icon | 09-09 Absent +again | 09-10 Awaiting upload +awaiting | 09-11 Present icon +again | 09-12 Not expected icon | 09-13 Not expected icon
+  OK   an absent day carrying Upload again draws NO icon — 2026-09-09
+  OK   a present day carrying Upload again keeps its tick — 2026-09-07 2026-09-11
+  OK   every card still speaks its status word
+  OK   the legend still names Absent
+  OK   composited contrast: 87/87 pass
+  OK   no page errors
+
+[430pt]
+  body background: rgba(0, 0, 0, 0)
+  OK   the search box and the Show field are both drawn
+  OK   PHONE: the filter still stacks UNDER the search box — search bottom=610, field y=631
+  OK   PHONE: the filter keeps its stacked width (100%, max 340 -- unchanged) — 340 vs search 346
+  first roster element top: 742pt (viewport 900)
+  OK   the Show panel opens
+  OK   the open panel is PAINTED on top of what is under it
+  day cells: 09-07 Present icon +again | 09-08 Not expected icon | 09-09 Absent +again | 09-10 Awaiting upload +awaiting | 09-11 Present icon +again | 09-12 Not expected icon | 09-13 Not expected icon
+  OK   an absent day carrying Upload again draws NO icon — 2026-09-09
+  OK   a present day carrying Upload again keeps its tick — 2026-09-07 2026-09-11
+  OK   every card still speaks its status word
+  OK   the legend still names Absent
+  OK   composited contrast: 83/83 pass
+  OK   no page errors
+
+================ LIGHT THEME ================
+
+[1200pt]
+  body background: rgba(0, 0, 0, 0)
+  OK   the search box and the Show field are both drawn
+  OK   WIDE: the filter sits on the SAME ROW as the search box — search y=406..421, field y=389..438
+  OK   WIDE: the filter is to the RIGHT of the search box — search right=823, field x=844
+  OK   WIDE: the filter reaches the right edge of the block — field right=1184, block right=1184
+  OK   WIDE: the filter keeps a bounded width — 340pt
+  first roster element top: 500pt (viewport 900)
+  OK   the Show panel opens
+  OK   the open panel is PAINTED on top of what is under it
+  OK   WIDE: the open panel does not push the roster (search box did not move)
+  day cells: 09-07 Present icon +again | 09-08 Not expected icon | 09-09 Absent +again | 09-10 Awaiting upload +awaiting | 09-11 Present icon +again | 09-12 Not expected icon | 09-13 Not expected icon
+  OK   an absent day carrying Upload again draws NO icon — 2026-09-09
+  OK   a present day carrying Upload again keeps its tick — 2026-09-07 2026-09-11
+  OK   every card still speaks its status word
+  OK   the legend still names Absent
+  OK   composited contrast: 87/87 pass
+  OK   no page errors
+
+[430pt]
+  body background: rgba(0, 0, 0, 0)
+  OK   the search box and the Show field are both drawn
+  OK   PHONE: the filter still stacks UNDER the search box — search bottom=610, field y=631
+  OK   PHONE: the filter keeps its stacked width (100%, max 340 -- unchanged) — 340 vs search 346
+  first roster element top: 742pt (viewport 900)
+  OK   the Show panel opens
+  OK   the open panel is PAINTED on top of what is under it
+  day cells: 09-07 Present icon +again | 09-08 Not expected icon | 09-09 Absent +again | 09-10 Awaiting upload +awaiting | 09-11 Present icon +again | 09-12 Not expected icon | 09-13 Not expected icon
+  OK   an absent day carrying Upload again draws NO icon — 2026-09-09
+  OK   a present day carrying Upload again keeps its tick — 2026-09-07 2026-09-11
+  OK   every card still speaks its status word
+  OK   the legend still names Absent
+  OK   composited contrast: 83/83 pass
+  OK   no page errors
+
+ALL CHECKS PASS
