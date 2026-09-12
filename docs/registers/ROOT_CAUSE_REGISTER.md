@@ -59,6 +59,59 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-044 — A day uploaded off the timetable and then reset came back as a dash, not as awaiting
+**Date:** 12-Sep-2026  ·  **Severity:** S3  ·  **Modules:** `supabase/migrations/0067` (`runs`), `app/course/[id].tsx` week strip, `src/data/dayLoad.ts`
+
+**Symptom** — requester: *"when i upload a file on day when its not scheduled then since for
+that day attendance was upload hen we should be able to reset aattendance and show that upload
+again button right"*. Upload on an unscheduled day, reset it, and the day card is a grey dash
+with nothing to press — while the Attendance tab lists that same session as awaiting a file.
+Production: Prenatal, Tue 8 Sep 2026 (Prenatal runs Mon/Wed/Fri).
+
+**Root cause** — `course_week_day_status.runs` answered *"is this weekday on the timetable"*
+(from `offering_schedules` alone) while the strip used it to answer *"can a file be uploaded for
+this day"*. Those agree on every day nothing ever happened on and disagree on exactly one: a day
+a session was CREATED by an upload (0024) and then RESET (0056) — the session is still there,
+still `scheduled`, and `fetchPendingSessions` reads `sessions.status` and lists it. Before the
+reset the day read Present/Absent from `uploaded` and `runs` was never consulted, which is why
+every step up to the reset worked and the gap was invisible until the one order a person
+actually uses them in.
+
+**Fix** — `0070_ad_hoc_day_runs_after_reset.sql`: `runs` is now the timetable OR a live
+`scheduled`/`completed` session on that date, scoped to the course and branches exactly as the
+timetable half is. Cancelled and holiday sessions do not count (0056: they "never held a
+register"). `create or replace`, same signature — the ACL 0068/0069 set is preserved. **No
+client change**: `dayStatusKey` already maps `runs && !uploaded` to `awaiting`, and the strip
+already draws the press on an awaiting day of the current week that has arrived.
+
+**Files** — `supabase/migrations/0070_ad_hoc_day_runs_after_reset.sql`,
+`supabase/tests/49_ad_hoc_day_runs_after_reset.sql`,
+`supabase/rollback/0070_ad_hoc_day_runs_after_reset.down.sql`,
+`requests/2026-09-12-unscheduled-day-after-reset-offers-upload.md`; doc comments on `runs` in
+`src/data/courseWeekDays.ts` and `runsToday` in `src/data/dayLoad.ts`.
+
+**How to verify** — `npm run test:db`: spec 49 seeds a Mon–Fri course, an ad-hoc Saturday
+session with soft-deleted marks, and a Sunday holding one cancelled and one deleted session.
+Saturday `runs = true`, Sunday `runs = false`, six running days, and the Erode-scoped answer
+says Saturday does not run. Fail-first against 0001..0069: three failures, all on Saturday's
+`runs` (`.evidence/0070-ad-hoc-day-runs-fail-first.txt`).
+
+**Recurrence risk** — any consumer that reads `runs` as "timetabled" rather than "a file belongs
+here". Swept: `runs` is read in exactly one place (`dayStatusKey`, via the strip's memo); the
+roster's *Not expected* reading is computed client-side from the offerings' weekdays
+(`dayAttendance`) and is not affected. The wider class is two screens deriving one fact from
+two sources — here `sessions.status` on the Attendance tab against `offering_schedules` on the
+strip — which is guardrail 1 pointing at a session rather than at a member.
+
+**Prevention** — `rung: supabase/tests/49_ad_hoc_day_runs_after_reset.sql`. The `runs` doc
+comment now says what it is used for, not only what it is computed from.
+
+**Process check** — No. Every part of this was built and tested on its own and each passed its
+own spec; the defect is in the composition (upload off-timetable → reset), which no single
+track's spec seeds. The lesson is a request-shaped one — a reset spec should seed the ad-hoc
+case as well as the timetabled one — and it is now written into 49 rather than into the
+framework.
+
 ## RC-043 — the upload died at 1,000 members: csv-import read the members table unpaged, on the service role
 **Date:** 12-Sep-2026  ·  **Severity:** S2  ·  **Modules:** `supabase/functions/csv-import/index.ts`, `supabase/functions/_shared/pageAll.ts` (new), `src/data/edgeFunctionPagedReads.test.ts` (new)
 

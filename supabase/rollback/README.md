@@ -25,3 +25,6 @@ Every one states what has to happen **before** it is run. For `0067` that is:
 revert the app first. Dropping a function the screen still calls turns the
 course screen into the Load failed state added in Phase A — honest, retryable,
 and still a broken screen.
+
+`0070` needs nothing before it: it re-issues `0067`'s body over the same
+signature, so no screen breaks — the defect RC-044 describes simply comes back.

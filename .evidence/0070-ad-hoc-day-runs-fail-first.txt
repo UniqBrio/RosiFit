@@ -1,0 +1,30 @@
+FAIL-FIRST: supabase/tests/49_ad_hoc_day_runs_after_reset.sql against migrations 0001..0069
+(0070 absent). Harness Postgres 16, 12-Sep-2026.
+
+  PASS  SEVEN ROWS, still -- the re-issue changes one column and not the shape (= 7)
+  PASS  Saturday was reset, so nothing is uploaded for it (= f)
+ERROR:  FAIL  AND SATURDAY RUNS: a session was held that day, timetable or not, so the day awaits a file  got false want true
+  PASS  Sunday does NOT run -- a cancelled session and a deleted one are not a day awaiting a file (= f)
+  PASS  and nothing is uploaded for it either (= f)
+  PASS  Monday runs by the timetable alone -- no session was ever created for it (= t)
+  PASS  so does Friday (= t)
+ERROR:  FAIL  SIX running days: the five the timetable names plus the Saturday a class was held on  got 5 want 6
+  PASS  Erode held no class that Saturday, so ERODE'S strip does not say the day runs (= f)
+  PASS  while its Monday still runs, by the timetable (= t)
+ERROR:  FAIL  and Salem's strip does, because the session is at Salem  got false want true
+  PASS  exactly one course_week_day_status exists -- no overload crept in beside it (= 1)
+  PASS  still SECURITY INVOKER -- it cannot return a row its caller could not read directly (= f)
+  PASS  still STABLE
+  PASS  anon cannot execute it HERE -- which proves nothing about production, see KL-008 (= f)
+  PASS  signed-in staff can (= t)
+
+Three failures, all on `runs` for the ad-hoc Saturday, none anywhere else: the defect is
+exactly the one column, and the timetable half, the branch filter and the security
+properties are untouched by it.
+
+FULL SUITE, 12-Sep-2026, after 0070 (bash db/harness/test.sh, fresh database per file):
+49_ad_hoc_day_runs_after_reset.sql 16/16 PASS; 48_course_week_day_status.sql 24/24 PASS.
+15 failures elsewhere. Their assertion names were extracted from this run and from the
+db-harness job of main's latest CI run (34692694007, commit 02e6a93) and compared as sorted
+sets: IDENTICAL. This change adds no failure and removes none; the 15 are the pre-existing
+red main was merged with (PR #16's merge message records the decision).

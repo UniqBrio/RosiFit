@@ -1,3 +1,42 @@
+## RC-044 — a day uploaded off the timetable and then reset offers the upload again (12-Sep-2026)
+
+**The requester's words:** *"when i upload a file on day when its not scheduled then since for
+that day attendance was upload hen we should be able to reset aattendance and show that upload
+again button right"*. Traced end to end before anything was written: upload, tick, Reset and
+"Upload again" all work on an unscheduled day; the RESET is where it broke — the day fell back to
+`runs`, which read the timetable alone, and drew a dash over a session the Attendance tab still
+listed as awaiting. Production case: Prenatal, Tue 8 Sep (timetabled Mon/Wed/Fri).
+
+**Fix:** `0070_ad_hoc_day_runs_after_reset.sql` — `course_week_day_status.runs` is the timetable
+OR a live scheduled/completed session on the date. `create or replace`, same signature, ACL
+preserved. No client change: `dayStatusKey` already maps `runs && !uploaded` to `awaiting`.
+
+```
+FAIL-FIRST: supabase/tests/49_ad_hoc_day_runs_after_reset.sql — against migrations 0001..0069
+            (0070 absent), 3 of 16 FAIL, all on the ad-hoc Saturday's `runs` ("got false want
+            true"; "got 5 want 6"; Salem-scoped "got false want true"). 16 of 16 after 0070.
+            Full output: .evidence/0070-ad-hoc-day-runs-fail-first.txt
+bash db/harness/test.sh          49: 16/16 · 48: 24/24 · 15 failures elsewhere, their names
+                                 compared as sorted sets against main's CI db-harness log
+                                 (run 34692694007, commit 02e6a93): IDENTICAL. None added,
+                                 none removed.
+npm run typecheck                clean
+unit suite                       1570 cases · 6 FAIL — the same six as RC-043's row
+                                 (formDropdownMenu 1, message 5); neither file imports
+                                 anything this change touched (comments only in two .ts files)
+npm run check:contrast           pass  ·  npm run check:icons  pass
+production, READ-ONLY            0070's body run as a SELECT for Prenatal's week of 7 Sep:
+                                 Tue 8 Sep runs false → TRUE, every other day unchanged.
+                                 .evidence/0070-prenatal-8-sep-read-only-rehearsal-prod.txt
+```
+
+**NOT run:** the browser (no client line changed; the strip's `awaiting` press is already held by
+`src/components/dayStripUploadButton.test.ts`); `npm run gate` (not re-run for a comment-only
+client diff — the verdict on main is recorded in RC-043's row). **NOT applied to production:**
+the raw SQL is shown to the owner and waits for the go-ahead CLAUDE.md requires. No run-log row:
+no run was opened when the work began, and a duration typed in afterwards is the recalled number
+`docs/registers/RUN_LOG.md` forbids.
+
 ## RC-043 — the upload died at 1,000 members; csv-import now pages every growing table (12-Sep-2026)
 
 **Found in the live function log, not by reasoning.** Six `POST | 500 | csv-import` between

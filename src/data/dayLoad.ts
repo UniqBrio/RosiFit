@@ -65,7 +65,8 @@ export function dayStatusKey(load: DayLoad, day: {
   present: number;
   /** rows marked absent */
   absent: number;
-  /** does this course run on this weekday, at the branches in scope */
+  /** does a file belong on this day -- timetabled, or a session was held on
+   *  it off the timetable (0070). Read from 0067's `runs`, never re-derived */
   runsToday: boolean;
 }): StatusKey {
   switch (load) {

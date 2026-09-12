@@ -44,7 +44,9 @@ export type CourseDayStatus = {
   present: number;
   absent: number;
   expected: number;
-  /** does this course run on this weekday, at the branches in scope */
+  /** does a file belong on this day: the course is timetabled on this weekday
+   *  at the branches in scope, OR a live session was held on this date off
+   *  the timetable (0070) -- an ad-hoc upload that was reset still awaits */
   runs: boolean;
 };
 
