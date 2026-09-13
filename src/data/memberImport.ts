@@ -153,19 +153,68 @@ export function normalizeForMatch(name: string): string {
     .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
+/**
+ * A member already on the register, as much of them as judging a row needs.
+ *
+ * `course` is the one that turns an academy-wide duplicate into a per-course
+ * one (0071). It is the course the member is LIVE in, or null when they have
+ * no live enrolment at all -- and null is not "no course", it is "a candidate
+ * for every course", which is `splitByCourse`'s answer in
+ * supabase/functions/_shared/match.ts and the same answer public.is_in_course
+ * gives on the server: "A member with NO live enrolment is `here`. Nothing
+ * contradicts this course for her, and creating a second record for a woman
+ * already on the register would be inventing a duplicate to avoid a collision
+ * that does not exist."
+ */
+export type ExistingMember = {
+  /** as the academy writes it; normalised here, not by the caller */
+  name: string;
+  /** their Google Meet display names, as written */
+  aliases: string[];
+  /** their addresses, in any case */
+  emails: string[];
+  /** the course they are live in, as written, or null for no live enrolment */
+  course: string | null;
+};
+
 export type ValidationContext = {
-  /** every name already on the register, normalised */
-  existingNames: Set<string>;
-  /** every display name already claimed, normalised — unique academy-wide */
-  existingAliases: Set<string>;
-  /** every live address already on file, lowercased */
-  existingEmails: Set<string>;
+  /** everybody already on the register, each with the course they are in */
+  existing: ExistingMember[];
   /** course name (as written) -> the branches it runs at */
   offerings: { course: string; branch: string }[];
   /** the course and branch a blank cell falls back to */
   defaultCourse: string;
   defaultBranch: string;
 };
+
+/** A course name, compared the way every other course comparison in this file
+ *  is: case-folded, because the file is typed by a person. */
+const courseKey = (course: string) => course.trim().toLowerCase();
+
+/**
+ * Which courses claim a given key -- a name, a display name, an address.
+ *
+ * `null` in the set is a member with no live enrolment, and it claims the key
+ * in EVERY course. Kept as a set of courses rather than one course per key
+ * because one key can now legitimately be claimed several times over: that is
+ * the whole point of the change.
+ */
+type Claims = Map<string, Set<string | null>>;
+
+function claim(into: Claims, key: string, course: string | null): void {
+  if (!key) return;
+  const set = into.get(key);
+  if (set) set.add(course); else into.set(key, new Set([course]));
+}
+
+/** Is this key already claimed in THIS course? A claim by a member with no
+ *  live enrolment counts in every course; a claim by another course does not
+ *  count here at all, which is the whole of the requested change. */
+function claimedIn(claims: Claims, key: string, course: string): boolean {
+  const set = claims.get(key);
+  if (!set) return false;
+  return set.has(null) || set.has(courseKey(course));
+}
 
 /**
  * Every row, judged BEFORE anything is written. A blocked row carries its
@@ -182,9 +231,26 @@ export type ValidationContext = {
 export function validateMemberRows(
   rows: MemberImportRow[], ctx: ValidationContext,
 ): RowVerdict[] {
-  const seenNames = new Set<string>();
-  const seenAliases = new Set<string>();
-  const seenEmails = new Set<string>();
+  // The register, indexed once per file rather than per row: 500 rows against
+  // a register of any size is otherwise 1,500 linear scans.
+  const names: Claims = new Map();
+  const aliases: Claims = new Map();
+  const emails: Claims = new Map();
+  for (const m of ctx.existing) {
+    const where = m.course === null ? null : courseKey(m.course);
+    claim(names, normalizeForMatch(m.name), where);
+    for (const a of m.aliases) claim(aliases, normalizeForMatch(a), where);
+    for (const e of m.emails) claim(emails, e.trim().toLowerCase(), where);
+  }
+
+  // The same three, for what THIS FILE has already claimed. Course-keyed for
+  // the same reason the register is: one spreadsheet may legitimately carry
+  // the same person twice, once per course (import.tsx says so out loud --
+  // "one spreadsheet can carry members for as many courses as the academy
+  // runs"), and that is two members now, not a duplicate.
+  const seenNames: Claims = new Map();
+  const seenAliases: Claims = new Map();
+  const seenEmails: Claims = new Map();
 
   return rows.map(row => {
     const blocked = (reason: string, kind: BlockKind = 'invalid'): RowVerdict =>
@@ -196,12 +262,6 @@ export function validateMemberRows(
 
     const norm = normalizeForMatch(name);
     if (!norm) return blocked('That name has no letters or digits in it.');
-    if (seenNames.has(norm)) return blocked(`“${name}” appears earlier in this file.`, 'duplicate');
-    if (ctx.existingNames.has(norm)) {
-      // The reference SKIPS a duplicate rather than overwriting. Shown here
-      // before the tap so the person is not surprised by the count.
-      return blocked(`“${name}” is already on the register — skipped. Edit the member instead.`, 'duplicate');
-    }
 
     const course = row.course || ctx.defaultCourse;
     // The default branch belongs to the DEFAULT course. A row that names its
@@ -223,6 +283,25 @@ export function validateMemberRows(
       || ctx.offerings.find(o => o.course.toLowerCase() === course.toLowerCase())?.branch
       || '';
 
+    // THE THREE DUPLICATE CHECKS, AND WHY THEY ARE DOWN HERE (0071).
+    //
+    // They used to run before the course was resolved, because a duplicate
+    // was a duplicate of the ACADEMY and the course was beside the point. It
+    // is now the whole point: the same name, display name and address may be
+    // added again in a course this member is not in, and may not be added
+    // twice in one course. So the course has to be known first, and a row
+    // that names no course we run is told THAT -- it is a row the person
+    // fixes in RosiFit rather than in the file, and it was never really a
+    // duplicate of anything.
+    if (claimedIn(seenNames, norm, course)) {
+      return blocked(`“${name}” appears earlier in this file.`, 'duplicate');
+    }
+    if (claimedIn(names, norm, course)) {
+      // The reference SKIPS a duplicate rather than overwriting. Shown here
+      // before the tap so the person is not surprised by the count.
+      return blocked(`“${name}” is already on the register — skipped. Edit the member instead.`, 'duplicate');
+    }
+
     // AN ADDRESS IS REQUIRED, which it was not before. A member with no
     // address cannot be written to, and a file is the one place a hundred of
     // them arrive at once -- so a blank here is a row to fix now rather than a
@@ -232,8 +311,9 @@ export function validateMemberRows(
     }
     if (row.email.length > EMAIL_MAX) return blocked(`That address is longer than ${EMAIL_MAX} characters.`);
     if (!EMAIL.test(row.email)) return blocked(`“${row.email}” is not an email address.`);
-    if (seenEmails.has(row.email)) return blocked(`${row.email} appears earlier in this file.`, 'duplicate');
-    if (ctx.existingEmails.has(row.email)) return blocked(`${row.email} is already on another member.`);
+    const address = row.email.trim().toLowerCase();
+    if (claimedIn(seenEmails, address, course)) return blocked(`${row.email} appears earlier in this file.`, 'duplicate');
+    if (claimedIn(emails, address, course)) return blocked(`${row.email} is already on another member.`);
 
     for (const alias of row.aliases) {
       const a = normalizeForMatch(alias);
@@ -241,15 +321,18 @@ export function validateMemberRows(
       if (alias.length > ALIAS_MAX) {
         return blocked(`The display name “${alias}” is longer than ${ALIAS_MAX} characters.`);
       }
-      // Academy-wide unique: one display name can never point at two members,
-      // or an attendance import would have to guess which.
-      if (seenAliases.has(a)) return blocked(`The display name “${alias}” appears earlier in this file.`);
-      if (ctx.existingAliases.has(a)) return blocked(`The display name “${alias}” already belongs to another member.`);
+      // Unique WITHIN A COURSE since 0071 (it was academy-wide, 0006). The
+      // attendance import still never has to guess which member a row belongs
+      // to, because splitByCourse narrows its candidates to the course before
+      // it decides a row's kind -- so two members of two courses may share a
+      // display name without the matcher losing its answer.
+      if (claimedIn(seenAliases, a, course)) return blocked(`The display name “${alias}” appears earlier in this file.`);
+      if (claimedIn(aliases, a, course)) return blocked(`The display name “${alias}” already belongs to another member.`);
     }
 
-    seenNames.add(norm);
-    row.aliases.forEach(a => seenAliases.add(normalizeForMatch(a)));
-    seenEmails.add(row.email);
+    claim(seenNames, norm, courseKey(course));
+    row.aliases.forEach(a => claim(seenAliases, normalizeForMatch(a), courseKey(course)));
+    claim(seenEmails, address, courseKey(course));
     return { state: 'ready', row: { ...row, course, branch: resolvedBranch } };
   });
 }

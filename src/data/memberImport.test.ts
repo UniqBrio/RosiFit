@@ -4,19 +4,31 @@ import {
   validateMemberRows, normalizeForMatch, tallyImport, MEMBER_IMPORT_COLUMNS, MEMBER_IMPORT_HELP,
   MEMBER_IMPORT_MAX_ROWS, MEMBER_IMPORT_MAX_BYTES, MEMBER_IMPORT_HEADERS,
   canonicalColumn, splitAliases, NAME_MIN, NAME_MAX, ALIAS_MAX, EMAIL_MAX,
-  type MemberImportRow, type ValidationContext,
+  type MemberImportRow, type ValidationContext, type ExistingMember,
 } from './memberImport';
 
 const ctx = (over: Partial<ValidationContext> = {}): ValidationContext => ({
-  existingNames: new Set<string>(),
-  existingAliases: new Set<string>(),
-  existingEmails: new Set<string>(),
+  existing: [],
   offerings: [{ course: 'Yoga Flow', branch: 'Velachery' },
               { course: 'Prenatal Flow', branch: 'Anna Nagar' }],
   defaultCourse: 'Yoga Flow',
   defaultBranch: 'Velachery',
   ...over,
 });
+
+/**
+ * Somebody already on the register, in the course these rows land in.
+ *
+ * The course defaults to `Yoga Flow` -- the same `defaultCourse` above, so a
+ * member built with this helper is in the SAME course as a row built with
+ * `row()`. That is what keeps the clash assertions below asserting what they
+ * always asserted: since 0071 a duplicate is a duplicate OF A COURSE, and
+ * these have always been same-course clashes. The cross-course half of the
+ * rule is asserted in duplicatePerCourse.test.ts, which is where the new
+ * claims belong.
+ */
+const onRegister = (over: Partial<ExistingMember>): ExistingMember =>
+  ({ name: '', aliases: [], emails: [], course: 'Yoga Flow', ...over });
 
 /**
  * A row the way the workbook parser hands it over.
@@ -55,7 +67,7 @@ test('a member already on the register is blocked, named, and told she will be S
   // The reference skips a duplicate rather than overwriting; saying so before
   // the tap is what stops the count surprising anyone.
   const v = validateMemberRows([row({ full_name: 'Divya  Ramesh' })],
-    ctx({ existingNames: new Set(['divya ramesh']) }));
+    ctx({ existing: [onRegister({ name: 'Divya Ramesh' })] }));
   assert.equal(v[0].state, 'blocked');
   assert.match(reason(v[0]), /already on the register/);
   assert.match(reason(v[0]), /skipped/);
@@ -71,7 +83,7 @@ test('a display name already belonging to somebody else is blocked', () => {
   // member_aliases is UNIQUE academy-wide: one display name can never point
   // at two members, or an attendance import would have to guess.
   const v = validateMemberRows([row({ full_name: 'Anitha', aliases: ['Divya B'] })],
-    ctx({ existingAliases: new Set(['divya b']) }));
+    ctx({ existing: [onRegister({ name: 'Someone', aliases: ['Divya B'] })] }));
   assert.equal(v[0].state, 'blocked');
   assert.match(reason(v[0]), /already belongs to another member/);
 });
@@ -85,7 +97,7 @@ test('a duplicate display name WITHIN the file is blocked too', () => {
 
 test('an address already on another member is blocked', () => {
   const v = validateMemberRows([row({ full_name: 'Anitha', email: 'a@b.com' })],
-    ctx({ existingEmails: new Set(['a@b.com']) }));
+    ctx({ existing: [onRegister({ name: 'Someone', emails: ['a@b.com'] })] }));
   assert.equal(v[0].state, 'blocked');
 });
 
@@ -261,7 +273,7 @@ test('a duplicate is kind "duplicate" — she is already there, so nothing happe
   const v = validateMemberRows([
     row({ full_name: 'Divya Ramesh' }),
     row({ full_name: 'Anitha' }), row({ full_name: 'anitha' }),
-  ], ctx({ existingNames: new Set(['divya ramesh']) }));
+  ], ctx({ existing: [onRegister({ name: 'Divya Ramesh' })] }));
   assert.deepEqual(v.map(x => (x as { kind?: string }).kind),
     ['duplicate', undefined, 'duplicate'],
     'already on the register, and the same person twice in one file');
@@ -283,7 +295,7 @@ test('everything else is kind "invalid" — a row to fix in the file and import 
     row({ full_name: 'A' }),
     row({ full_name: 'Anitha', email: 'not-an-email' }),
     row({ full_name: 'Divya', aliases: ['Taken'] }),
-  ], ctx({ existingAliases: new Set(['taken']) }));
+  ], ctx({ existing: [onRegister({ name: 'Someone', aliases: ['Taken'] })] }));
   assert.deepEqual(v.map(x => (x as { kind?: string }).kind),
     ['invalid', 'invalid', 'invalid']);
 });
@@ -297,7 +309,7 @@ test('the tally merges BOTH halves — rows refused here never reached the serve
     row({ full_name: 'Meera Krishnan' }),                          // duplicate
     row({ full_name: 'Kavya', course: 'Kickboxing' }),             // no course
     row({ full_name: 'Sita', email: '' }),                         // invalid
-  ], ctx({ existingNames: new Set(['meera krishnan']) }));
+  ], ctx({ existing: [onRegister({ name: 'Meera Krishnan' })] }));
   assert.deepEqual(v.map(x => x.state),
     ['ready', 'ready', 'blocked', 'blocked', 'blocked']);
 

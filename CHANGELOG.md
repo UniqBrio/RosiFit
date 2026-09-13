@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased — The same person can now join a second course
+
+**One person could be on the register once, and only once.** Someone who comes to Prenatal on
+Tuesdays and Postnatal on Saturdays had to be added twice, and the second time the academy
+refused it — *"the address … is already on another member"*. Which was true, and no help: the
+operator was not trying to edit that member, they were trying to put the same person in a
+second course.
+
+**A duplicate is now a duplicate of a course.** The same name, the same email address and the
+same Google Meet display name can all be used again for a course that person is not already
+in. Add Member, the member file, and editing a member all agree about it.
+
+**One course still cannot have the same person twice.** Inside a course nothing has been
+relaxed: the same name, the same address or the same display name as somebody already in that
+course is refused on the form and skipped in the file, exactly as before. The refusal now says
+which scope it means — *"already belongs to another member of this course"*.
+
+**Somebody on the register but in no course counts as already there.** They are not added a
+second time; they are the member, and editing them is what puts them in a course. This is the
+same rule the attendance import has always used when it decides who a name belongs to.
+
+**Two courses means two records for one person.** That is what one course per member makes it
+mean, and the roster shows the name twice. Unsubscribing from one course’s follow-up does not
+unsubscribe the other; a bounced address is still marked on both.
+
+**Nothing else about members changed.** Same forms, same fields, same counts on the import
+result. This needs migration `0071` applied to take effect.
+
 ## Unreleased — Uploading attendance works again past a thousand members
 
 **Three Meet files for Thursday would not upload, and the reason was the size of the academy.**

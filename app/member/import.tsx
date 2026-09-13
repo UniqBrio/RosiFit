@@ -32,7 +32,7 @@ import { useCourses, useMembers } from '../../src/data/hooks';
 import { bulkImportMembers, fetchAcademyName } from '../../src/data/repository';
 import { pickFile, downloadBlob } from '../../src/data/csv';
 import {
-  validateMemberRows, normalizeForMatch, tallyImport, MemberImportError, MEMBER_IMPORT_HELP,
+  validateMemberRows, tallyImport, MemberImportError, MEMBER_IMPORT_HELP,
   MEMBER_IMPORT_MAX_ROWS, MEMBER_IMPORT_MAX_BYTES,
   type RowVerdict, type ImportResult, type MemberImportRow,
 } from '../../src/data/memberImport';
@@ -118,10 +118,26 @@ function MemberImportBody() {
     () => courseList.flatMap(c => c.offerings.map(o => ({ course: c.name, branch: o.branch }))),
     [courseList]);
 
+  /* THE REGISTER, WITH THE COURSE EACH MEMBER IS IN (0071). It used to be
+     three flat sets -- every name, every display name, every address in the
+     academy -- because a duplicate was a duplicate of the ACADEMY. It is a
+     duplicate of a COURSE now, so the course has to travel with the member:
+     the same person may be added again for a course they are not in, and may
+     not be added twice to one course.
+
+     `m.course` is '—' for a member with no live enrolment (repository.ts),
+     and null is what that has to become here -- null means "claims every
+     course", which is the answer splitByCourse and public.is_in_course both
+     give for somebody who is on the register but in no course. Reading it as
+     a course NAMED '—' would file them under a course nobody runs, and the
+     register would stop seeing them at all. */
   const ctx = useMemo(() => ({
-    existingNames: new Set((roster.data ?? []).map(m => normalizeForMatch(m.name))),
-    existingAliases: new Set((roster.data ?? []).flatMap(m => m.aliases.map(normalizeForMatch))),
-    existingEmails: new Set((roster.data ?? []).flatMap(m => m.emails.map(e => e.address.toLowerCase()))),
+    existing: (roster.data ?? []).map(m => ({
+      name: m.name,
+      aliases: m.aliases,
+      emails: m.emails.map(e => e.address),
+      course: m.course_id ? m.course : null,
+    })),
     offerings,
     defaultCourse: chosenCourse,
     defaultBranch: chosenBranch,

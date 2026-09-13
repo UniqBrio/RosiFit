@@ -96,7 +96,7 @@ test('a file may carry rows for DIFFERENT courses — the course is per row', as
   ]);
   const rows = await parseMemberXlsx(bytes);
   const v = validateMemberRows(rows, {
-    existingNames: new Set(), existingAliases: new Set(), existingEmails: new Set(),
+    existing: [],
     offerings, defaultCourse: '', defaultBranch: '',
   });
   assert.deepEqual(v.map(x => x.state), ['ready', 'ready'], 'no course chosen up front, both rows fine');
@@ -122,7 +122,7 @@ test('the sample rows are a shape the importer ACCEPTS', async () => {
   const bytes = await workbookWith(SAMPLE_ROWS);
   const rows = await parseMemberXlsx(bytes);
   const v = validateMemberRows(rows, {
-    existingNames: new Set(), existingAliases: new Set(), existingEmails: new Set(),
+    existing: [],
     offerings, defaultCourse: 'Yoga Flow', defaultBranch: 'Velachery',
   });
   assert.deepEqual(v.map(x => x.state), ['ready', 'ready']);
@@ -278,7 +278,7 @@ test('a file with no Branch column still imports — the branch comes from the c
   assert.equal(rows[0].branch, '');
   assert.deepEqual(rows[0].aliases, ['Anitha R', 'Anitha']);
   const v = validateMemberRows(rows, {
-    existingNames: new Set(), existingAliases: new Set(), existingEmails: new Set(),
+    existing: [],
     offerings, defaultCourse: '', defaultBranch: '',
   });
   assert.equal(v[0].state, 'ready');
@@ -387,7 +387,7 @@ test('every sample row carries an address — the template cannot teach a row it
   }
   const rows = await parseMemberXlsx(await workbookWith(SAMPLE_ROWS));
   const v = validateMemberRows(rows, {
-    existingNames: new Set(), existingAliases: new Set(), existingEmails: new Set(),
+    existing: [],
     offerings, defaultCourse: 'Yoga Flow', defaultBranch: 'Velachery',
   });
   assert.deepEqual(v.map(x => x.state), ['ready', 'ready']);

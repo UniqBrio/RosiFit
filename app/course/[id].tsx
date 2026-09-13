@@ -956,10 +956,18 @@ function CourseDetailBody() {
                           <Text style={{ fontSize: 8.5, fontWeight: '700', color: on ? theme.accentInk : theme.dim }}>
                             {d.dow}
                           </Text>
-                          {/* An uploaded day shows what it recorded, a day the
-                              course does not run shows its dash. The awaiting
-                              day hands this slot to the button below instead. */}
-                          {waiting ? null : <Icon name={tone.icon} size={13} color={ink} />}
+                          {/* A day the course does not run shows its dash, and
+                              a failed one its error. EVERY DAY WITH A BUTTON
+                              UNDER IT HANDS THIS SLOT TO THE BUTTON -- the
+                              awaiting day always did, and the uploaded day now
+                              does too, on request: a cell 33pt wide showing a
+                              red cross above an Upload again reads as a
+                              warning ON the button, as though the upload were
+                              the thing that had failed. The day's own word and
+                              icon are not lost -- the legend above the strip
+                              carries both, and the roster below says it member
+                              by member for the selected day. */}
+                          {waiting || second ? null : <Icon name={tone.icon} size={13} color={ink} />}
                         </Pressable>
 
                         {/* ---------------------------------- upload, ON THE DAY
@@ -1118,11 +1126,12 @@ function CourseDetailBody() {
 
           {/* ----------------------------------------------------- members
               The heading carries the count; the search box is the row UNDER
-              it, full width at every size. It used to share the heading row
-              on a desktop, at the far right, where the requester's screenshot
-              cut it off -- so it is under the heading now, where it was asked
-              for. Name or address, because those are the two things written
-              on a card.
+              it. It used to share the HEADING row on a desktop, at the far
+              right, where the requester's screenshot cut it off -- so it is
+              under the heading, where it was asked for; what shares its row
+              now is the reading filter, which is a control over the same
+              roster and not a heading. Name or address, because those are the
+              two things written on a card.
 
               THE PINNED ADD MEMBER BAR IS GONE. It was a full-width button in
               a sticky child of its own, pinned because the roster is the long
@@ -1154,83 +1163,114 @@ function CourseDetailBody() {
               }}>{memberSplit}</Text>
             </View>
 
+            {/* SEARCH AND THE READING FILTER SHARE A ROW on a wide screen,
+                on request -- the filter was capped at FILTER_WIDTH and so left
+                a desktop's worth of empty rule beside it, on a line of its own,
+                while the box above it ran the full width. Side by side, that
+                room goes to the box a name is typed into and the pair reads as
+                one set of controls over the roster.
+
+                UNDER 768pt THEY STACK, unchanged: a field and a search box on
+                one row at 360pt leave neither enough to read, which is the
+                trade the filter's own note below still describes.
+
+                Bottom-aligned, because the field carries a cap-label above its
+                value and the search box does not: it is the two BOXES that
+                have to line up, not their first lines.
+
+                THIS VIEW LIFTS WITH THE REST OF THE CHAIN. A plain View around
+                a DropdownRow ranks its open panel against this row's siblings
+                instead of the screen's, which is RC-035 exactly -- the cards
+                below would paint over the options however high DropdownRow
+                lifts itself. */}
             <View style={{
-              flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
-              height: 42, borderRadius: RADIUS.md, backgroundColor: theme.surface,
-              borderWidth: 1, borderColor: searching ? theme.accent : theme.lineStrong,
-              paddingHorizontal: 12,
+              flexDirection: compact ? 'column' : 'row',
+              alignItems: compact ? 'stretch' : 'flex-end',
+              gap: SPACE.sm,
+              zIndex: showOpen ? 40 : 0,
             }}>
-              <Icon name="search" size={18} color={theme.muted} />
-              <TextInput ref={search} testID="course-member-search"
-                value={query} onChangeText={setQuery}
-                placeholder="Search by name or email"
-                placeholderTextColor={theme.muted}
-                accessibilityLabel="Search the members of this course"
-                onFocus={() => setSearching(true)} onBlur={() => setSearching(false)}
-                selectionColor={theme.accent}
-                style={{ flex: 1, minWidth: 0, color: theme.fgStrong, fontSize: 13.5, fontWeight: '600',
-                  outlineWidth: 0, outlineStyle: 'solid' }} />
+              <View style={{
+                flex: compact ? undefined : 1, minWidth: 0,
+                flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
+                height: 42, borderRadius: RADIUS.md, backgroundColor: theme.surface,
+                borderWidth: 1, borderColor: searching ? theme.accent : theme.lineStrong,
+                paddingHorizontal: 12,
+              }}>
+                <Icon name="search" size={18} color={theme.muted} />
+                <TextInput ref={search} testID="course-member-search"
+                  value={query} onChangeText={setQuery}
+                  placeholder="Search by name or email"
+                  placeholderTextColor={theme.muted}
+                  accessibilityLabel="Search the members of this course"
+                  onFocus={() => setSearching(true)} onBlur={() => setSearching(false)}
+                  selectionColor={theme.accent}
+                  style={{ flex: 1, minWidth: 0, color: theme.fgStrong, fontSize: 13.5, fontWeight: '600',
+                    outlineWidth: 0, outlineStyle: 'solid' }} />
+              </View>
+
+              {/* ------------------------------------------ the reading filter
+                  "add filter to choose present, absent, yet to mark & no
+                  emails" -- the four words already printed on the cards below,
+                  and ANY NUMBER of them at once, which is the second half of
+                  the ask: "like in overview drop down multi selection is
+                  possible". So it is the OVERVIEW's control rather than the
+                  Attendance tab's: checkboxes, headed by the All members row
+                  that clears them, ticking as many as you like. Several ticks
+                  are an OR, and the line under the field says so in words.
+
+                  BESIDE THE SEARCH BOX on a wide screen and UNDER it below
+                  768pt: at 360pt a field and a search box on one row leave
+                  neither enough to read, so the phone keeps the stack the
+                  branch filter above uses. See the note on the row itself.
+
+                  IT IS A POP-UP, drawn OVER the roster and never pushing it
+                  down -- the requester, on being shown the pushing version:
+                  "on click of filter open it on top of it as pop up does".
+
+                  That is what the panel does by default, and it is why the
+                  options were invisible to begin with: a floating panel is
+                  placed by z-order, and this row is nested three containers
+                  deep inside the scroller while the member cards are a LATER
+                  SIBLING of those containers. A later sibling wins by default,
+                  so the cards painted over the options however high the
+                  z-index went HERE. Lifting the row alone cannot settle it;
+                  the lift has to run the whole chain, which is what the three
+                  containers above now carry while a panel is open. With that in place the panel
+                  floats, the roster stays exactly where it was, and the counts
+                  the filter is being chosen against stay on screen (ADR-035).
+
+                  It stays OPEN on a tick, because a multi-choice panel that shut
+                  on the first one could never take a second (ADR-035); the way
+                  out is the field again, or a press beside it. Each row carries
+                  the number it would leave, counted off the very list below. */}
+              <DropdownRow open={showOpen}
+                style={compact
+                  ? { width: '100%', maxWidth: FILTER_WIDTH }
+                  : { width: FILTER_WIDTH, flexShrink: 0 }}
+                dismiss={{ onPress: () => setShowOpen(false), testID: 'course-show-dismiss' }}>
+                <DropdownField label="Show" value={showValue} open={showOpen}
+                  testID="course-show-field"
+                  highlight={rosterShow.length > 0}
+                  onPress={() => { setBranchOpen(false); setShowOpen(o => !o); }} />
+                {showOpen ? (
+                  <DropdownPanel>
+                    <DropdownCheckList testID="course-show"
+                      allLabel={ALL_MEMBERS}
+                      options={ROSTER_FILTER_OPTIONS.map(f => ({
+                        label: f.label,
+                        // null is "the week has not arrived", and it is drawn as
+                        // no number at all -- a 0 there would claim nobody is
+                        // present when nothing has been counted yet.
+                        meta: showCounts[f.key] === null ? undefined
+                          : `${showCounts[f.key]}`,
+                      }))}
+                      selected={rosterShow}
+                      onToggle={l => setRosterShow(v => toggle(v, l))}
+                      onAll={() => setRosterShow([])} />
+                  </DropdownPanel>
+                ) : null}
+              </DropdownRow>
             </View>
-
-            {/* ------------------------------------------ the reading filter
-                "add filter to choose present, absent, yet to mark & no
-                emails" -- the four words already printed on the cards below,
-                and ANY NUMBER of them at once, which is the second half of
-                the ask: "like in overview drop down multi selection is
-                possible". So it is the OVERVIEW's control rather than the
-                Attendance tab's: checkboxes, headed by the All members row
-                that clears them, ticking as many as you like. Several ticks
-                are an OR, and the line under the field says so in words.
-
-                UNDER THE SEARCH BOX, not beside it: at 360pt a field and a
-                search box on one row leave neither enough to read, and this
-                is the same stack the branch filter above uses.
-
-                IT IS A POP-UP, drawn OVER the roster and never pushing it
-                down -- the requester, on being shown the pushing version:
-                "on click of filter open it on top of it as pop up does".
-
-                That is what the panel does by default, and it is why the
-                options were invisible to begin with: a floating panel is
-                placed by z-order, and this row is nested two containers deep
-                inside the scroller while the member cards are a LATER SIBLING
-                of those containers. A later sibling wins by default, so the
-                cards painted over the options however high the z-index went
-                HERE. Lifting the row alone cannot settle it; the lift has to
-                run the whole chain, which is what the two containers above
-                now carry while a panel is open. With that in place the panel
-                floats, the roster stays exactly where it was, and the counts
-                the filter is being chosen against stay on screen (ADR-035).
-
-                It stays OPEN on a tick, because a multi-choice panel that shut
-                on the first one could never take a second (ADR-035); the way
-                out is the field again, or a press beside it. Each row carries
-                the number it would leave, counted off the very list below. */}
-            <DropdownRow open={showOpen}
-              style={{ width: '100%', maxWidth: FILTER_WIDTH }}
-              dismiss={{ onPress: () => setShowOpen(false), testID: 'course-show-dismiss' }}>
-              <DropdownField label="Show" value={showValue} open={showOpen}
-                testID="course-show-field"
-                highlight={rosterShow.length > 0}
-                onPress={() => { setBranchOpen(false); setShowOpen(o => !o); }} />
-              {showOpen ? (
-                <DropdownPanel>
-                  <DropdownCheckList testID="course-show"
-                    allLabel={ALL_MEMBERS}
-                    options={ROSTER_FILTER_OPTIONS.map(f => ({
-                      label: f.label,
-                      // null is "the week has not arrived", and it is drawn as
-                      // no number at all -- a 0 there would claim nobody is
-                      // present when nothing has been counted yet.
-                      meta: showCounts[f.key] === null ? undefined
-                        : `${showCounts[f.key]}`,
-                    }))}
-                    selected={rosterShow}
-                    onToggle={l => setRosterShow(v => toggle(v, l))}
-                    onAll={() => setRosterShow([])} />
-                </DropdownPanel>
-              ) : null}
-            </DropdownRow>
 
             {/* WHICH DAY the chips below are about, said once for the whole
                 roster rather than on every card. The strip above highlights

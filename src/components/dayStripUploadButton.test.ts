@@ -19,7 +19,7 @@ import path from 'node:path';
  * What can silently regress, and is guarded below:
  *
  *   - the button goes again, or renders for every day instead of the
- *     awaiting ones (an uploaded day shows its tick and nothing to press);
+ *     awaiting ones (a day the course does not run on has nothing to press);
  *   - the press drops the date and opens the undated course upload the bar
  *     already has, so a file for the wrong day stops being ASKED about (0024);
  *   - the word is retyped as a literal instead of read from STATUS, and the
@@ -57,12 +57,37 @@ test('the button is drawn only for a day that is awaiting a file', () => {
   assert.notEqual(guard, -1, 'the upload button is not gated on the awaiting state');
 });
 
-test('an uploaded day keeps its icon in the cell, with nothing to press', () => {
-  // The icon is drawn for the NON-awaiting branch inside the select press;
-  // the awaiting branch hands its slot to the button instead.
+/**
+ * SUPERSEDED BY THE REQUESTER (13-Sep-2026), and rewritten rather than
+ * deleted -- the same treatment the reset button's hidden/disabled spec got
+ * on 09-Sep-2026, and for the same reason: the claim did not rot, it was
+ * overruled, and the record of what it used to hold is worth more than a
+ * deleted test.
+ *
+ * It pinned the status icon as DRAWN on an uploaded day, in the cell above
+ * that day's "Upload again" press -- the pairing this file's round-3 note
+ * describes as "an uploaded day shows its tick and nothing to press", which
+ * stopped being true the moment a second file could be uploaded for a day
+ * that already had one. The requester, shown the result: a red cross sitting
+ * directly on top of an Upload again button reads as a warning about the
+ * BUTTON, as though the upload were the thing that had failed.
+ *
+ * So the uploaded day now hands its icon slot to its press, exactly as the
+ * awaiting day always has. What is pinned instead is the SHAPE of that rule,
+ * which is the part that can silently regress: the slot is given up by
+ * precisely the two days that carry a button, and never by a day with
+ * nothing to press -- which is what the test further down still holds to.
+ *
+ * WHAT THE DAY'S STATUS RIDES ON NOW, since it is no longer in the cell: the
+ * cell's own spoken label, the legend above the strip, and the roster under
+ * it for the selected day. The label was the icon's companion and is now the
+ * only one of the two left in the cell, so it acquires a spec of its own
+ * below -- an unasserted last line of defence is not a defence.
+ */
+test('a day with a press under it hands its icon slot to that press', () => {
   const cell = strip.slice(selectAt, uploadAt);
-  assert.match(cell, /waiting \? null : <Icon name=\{tone\.icon\}/,
-    'the uploaded day no longer draws its status icon in the cell');
+  assert.match(cell, /waiting \|\| second \? null : <Icon name=\{tone\.icon\}/,
+    'the icon slot must be given up by exactly the two days that carry a button');
 });
 
 test('the press opens the upload for THAT date, not the undated course upload', () => {
@@ -153,10 +178,24 @@ test('the screen reads the clock once, and the strip shares it', () => {
 });
 
 test('a day whose file cannot exist yet keeps its icon in the cell', () => {
-  // Same branch as an uploaded day: `waiting` is now "awaiting AND
-  // pressable", so a future day falls through to the icon rather than
-  // leaving the slot empty. Colour is never the only signal (guardrail 3).
+  // The claim is unchanged; only the expression it reads has moved, because
+  // the uploaded day joined the awaiting one in giving up the slot. Both
+  // `waiting` and `second` are gated on d.canUpload, so a future day is
+  // NEITHER and still falls through to the icon rather than leaving the slot
+  // empty. Colour is never the only signal (guardrail 3).
   const cell = strip.slice(selectAt, uploadAt);
-  assert.match(cell, /waiting \? null : <Icon name=\{tone\.icon\}/,
+  assert.match(cell, /waiting \|\| second \? null : <Icon name=\{tone\.icon\}/,
     'a day with nothing to press draws no status icon either');
+});
+
+test('THE CELL STILL SPEAKS ITS STATUS, now that it no longer draws it', () => {
+  /*
+   * The icon left the two pressable days on 13-Sep-2026 (see the superseded
+   * note above). For a day with a button under it this label is the only
+   * place the status remains in the cell at all, which makes it the one line
+   * that must not be quietly reworded into `${dayWords}` alone.
+   */
+  const cell = strip.slice(selectAt, uploadAt);
+  assert.match(cell, /accessibilityLabel=\{`\$\{dayWords\}, \$\{tone\.word\}`\}/,
+    'the cell must still say its status word, read from STATUS and not retyped');
 });

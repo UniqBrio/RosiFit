@@ -167,10 +167,24 @@ test('the two presses are exclusive, so no day shows both', () => {
     'the awaiting gate has changed shape; `waiting` and `second` may now both be true');
 });
 
-test('an uploaded day still keeps its status icon in the cell', () => {
+/**
+ * SUPERSEDED BY THE REQUESTER (13-Sep-2026), and rewritten rather than
+ * deleted -- see the fuller note in dayStripUploadButton.test.ts, which held
+ * the same claim and is where this one's history is written down.
+ *
+ * It read: "the added press says what can be done next; the tick still says
+ * what the day recorded. Losing the tick would trade one for the other."
+ * That trade is what the requester then asked for, on seeing it: a red cross
+ * stacked directly on an Upload again button reads as a warning about the
+ * button rather than a fact about the day.
+ *
+ * So the icon slot now goes to the press on BOTH pressable days, and what
+ * this pins is that the two are still one rule and not two -- an uploaded day
+ * that kept the old expression while the awaiting day moved on is precisely
+ * the drift these strip specs exist to catch.
+ */
+test('the uploaded day gives up its icon slot on the same terms as the awaiting one', () => {
   const src = read(SCREEN);
-  // The added press says what can be done next; the tick still says what the
-  // day recorded. Losing the tick would trade one for the other.
-  assert.match(src, /waiting \? null : <Icon name=\{tone\.icon\}/,
-    'the uploaded day no longer draws its status icon in the cell');
+  assert.match(src, /waiting \|\| second \? null : <Icon name=\{tone\.icon\}/,
+    'the two pressable days must give up the icon slot in one expression');
 });
