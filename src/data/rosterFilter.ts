@@ -34,9 +34,11 @@
  * anything else.
  */
 import { dayAttendance } from './dayAttendance';
+import { isActiveOn } from './inactiveFrom';
 import type { AttendanceRow, Member } from './mock';
 
-export type RosterFilterKey = 'all' | 'present' | 'absent' | 'unmarked' | 'no-email';
+export type RosterFilterKey =
+  | 'all' | 'present' | 'absent' | 'unmarked' | 'no-email' | 'active' | 'inactive';
 
 /** The word a card reads on the selected day. `null` when it reads nothing --
  *  no day is selected, or the week has not arrived. */
@@ -58,6 +60,16 @@ export const ROSTER_FILTERS: { key: RosterFilterKey; label: string }[] = [
   { key: 'absent', label: 'Absent' },
   { key: 'unmarked', label: 'Yet to mark' },
   { key: 'no-email', label: 'No email' },
+  /* Active and Inactive sit AFTER the readings, and last, because they are a
+     different kind of fact and the order says so: Present, Absent and Yet to
+     mark are readings of the day's register, while these two -- like No email
+     -- are facts about the RECORD, true whether a file has arrived or not.
+     They are the words already on the roster's own pill and on the heading of
+     the section below it, letter for letter (app/course/[id].tsx), because a
+     filter named differently from the thing it filters is a second vocabulary
+     for one fact. */
+  { key: 'active', label: 'Active' },
+  { key: 'inactive', label: 'Inactive' },
 ];
 
 export const ALL_MEMBERS = ROSTER_FILTERS[0].label;
@@ -116,7 +128,41 @@ export function rosterReading(
   return day.expected ? 'unmarked' : 'not-expected';
 }
 
-type RosterMember = Pick<Member, 'id' | 'name' | 'course' | 'course_id' | 'weekdays' | 'emails'>;
+/**
+ * The status fields are OPTIONAL here, though `Member.status` is required.
+ *
+ * Every real caller hands over a whole `Member`, so nothing in the app reaches
+ * the default. What it buys is that a record which states no status reads as
+ * ACTIVE -- the same answer `statusOn` gives a row carrying no dates, and the
+ * answer every member written before those columns existed has always had.
+ * Requiring it here would have meant editing an existing spec's fixture to
+ * satisfy a type rather than to assert anything.
+ */
+type RosterMember =
+  Pick<Member, 'id' | 'name' | 'course' | 'course_id' | 'weekdays' | 'emails'>
+  & Pick<Partial<Member>, 'status' | 'inactiveFrom' | 'activeAgainFrom'>;
+
+/**
+ * Whether this member is ON the register on the day the roster is showing.
+ *
+ * `isActiveOn` and nothing else -- the same predicate the screen splits the
+ * roster with (`membersActiveOn` / `membersInactiveOn`), so a member cannot be
+ * listed under the Inactive heading and matched by the *Active* tick at the
+ * same time. Guardrail 1, applied to the one fact these two filters are about.
+ *
+ * NO DAY SELECTED IS EVERYBODY ACTIVE, which is not a guess: with no day the
+ * screen builds no Inactive section at all (`membersInactiveOn` answers `[]`
+ * for a null day), so there is nobody for *Inactive* to match and every card
+ * on screen is one *Active* should keep.
+ */
+function activeOnDay(member: RosterMember, scope: RosterScope): boolean {
+  if (scope.dayIso === null) return true;
+  return isActiveOn({
+    status: member.status ?? 'active',
+    inactiveFrom: member.inactiveFrom ?? null,
+    activeAgainFrom: member.activeAgainFrom ?? null,
+  }, scope.dayIso);
+}
 
 /** One ticked option, against one member. */
 function matchesOne(member: RosterMember, key: RosterFilterKey, scope: RosterScope): boolean {
@@ -124,6 +170,11 @@ function matchesOne(member: RosterMember, key: RosterFilterKey, scope: RosterSco
   // A fact about the RECORD, not about the day -- so it is answered whether
   // the week has loaded or not, and on a day the course does not run.
   if (key === 'no-email') return member.emails.length === 0;
+  // The same, and for the same reason: whether somebody is on the register is
+  // not a reading of a register that may not have arrived. Answered ABOVE the
+  // `ready` gate below, so these two narrow while a week is still loading.
+  if (key === 'active') return activeOnDay(member, scope);
+  if (key === 'inactive') return !activeOnDay(member, scope);
   const reading = rosterReading(member, scope);
   // No reading to filter by: the cards show no chips either, so narrowing
   // here would hide members for a word nothing on screen is saying.
@@ -166,6 +217,34 @@ export function rosterFilterPhrase(labels: string[], allLabel: string): string {
 }
 
 /**
+ * Whether the INACTIVE section below the roster belongs to this choice.
+ *
+ * The section is not part of the day's register, and the three reading filters
+ * deliberately never reached it -- Present, Absent and Yet to mark are
+ * readings of a register these members are not on, so narrowing by one of them
+ * left the section whole. That stays exactly as it was.
+ *
+ * *Active* and *Inactive* are the two that DO speak about it, because it is
+ * the half of the split they name:
+ *
+ *   Inactive ticked  -> the section shows (and the register above it empties,
+ *                       on its own, because every card in it is active).
+ *   Active ticked, Inactive not -> the section is hidden. Somebody who asked
+ *                       for the active members and is still shown a list of
+ *                       inactive ones has been given an answer to a question
+ *                       they did not ask.
+ *   Neither ticked   -> unchanged, whatever else is ticked.
+ *
+ * Both ticked is everybody, which falls out of the first line rather than
+ * needing a case of its own.
+ */
+export function showsInactive(keys: RosterFilterKey[]): boolean {
+  if (keys.includes('inactive')) return true;
+  if (keys.includes('active')) return false;
+  return true;
+}
+
+/**
  * How many members each choice would leave, for the meta on its row: a filter
  * that offers a word with nobody behind it should say so before it is picked,
  * not after. `null` is "not known yet" -- the week has not arrived -- and is
@@ -173,6 +252,21 @@ export function rosterFilterPhrase(labels: string[], allLabel: string): string {
  */
 export function rosterFilterCounts(
   members: RosterMember[], scope: RosterScope,
+  /**
+   * The members listed under the INACTIVE heading below the roster.
+   *
+   * Passed in rather than derived here, and this is the whole reason: the
+   * `members` argument is the day's register, which by construction holds only
+   * people who are ACTIVE on it -- the screen has already split them
+   * (`membersActiveOn` / `membersInactiveOn`). Counting *Inactive* over that
+   * list would print a confident `0` beside a row that, once ticked, reveals a
+   * section full of names. The two lists are two halves of one split, so the
+   * count needs both halves.
+   *
+   * Defaulted to empty so a caller with no inactive section -- no day
+   * selected, where the screen builds none -- reads `0`, which is true there.
+   */
+  inactive: RosterMember[] = [],
 ): Record<RosterFilterKey, number | null> {
   const known = scope.ready && scope.dayIso !== null;
   const counts: Record<RosterFilterKey, number | null> = {
@@ -181,6 +275,8 @@ export function rosterFilterCounts(
     absent: known ? 0 : null,
     unmarked: known ? 0 : null,
     'no-email': 0,
+    active: members.length,
+    inactive: inactive.length,
   };
   for (const m of members) {
     if (m.emails.length === 0) counts['no-email'] = (counts['no-email'] ?? 0) + 1;

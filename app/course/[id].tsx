@@ -31,7 +31,7 @@ import {
 import { dayAttendance, dayInWords, type DayState } from '../../src/data/dayAttendance';
 import {
   ROSTER_FILTER_OPTIONS, ALL_MEMBERS, rosterFilterKeys, rosterFilterPhrase,
-  narrowRoster, rosterFilterCounts, type RosterScope,
+  narrowRoster, rosterFilterCounts, showsInactive, type RosterScope,
 } from '../../src/data/rosterFilter';
 // The two the Overview's own multi-choice filters are built from, so this one
 // prints its field and toggles its ticks by exactly the same rules.
@@ -126,6 +126,11 @@ const FILTER_EMPTY: Record<string, string> = {
   absent: 'Nobody is marked absent',
   unmarked: 'Nothing is left to mark',
   'no-email': 'Everybody here has an email address',
+  /* Only ever shown when the section below is EMPTY too -- with members
+     under the Inactive heading the register's emptiness is the choice
+     working, not a dead end, and the body below says so instead. */
+  active: 'Nobody is on the register that day',
+  inactive: 'Nobody is off the register that day',
 };
 
 /**
@@ -525,8 +530,19 @@ function CourseDetailBody() {
   const showKeys = useMemo(() => rosterFilterKeys(rosterShow), [rosterShow]);
   const shown = useMemo(
     () => narrowRoster(searched, showKeys, rosterScope), [searched, showKeys, rosterScope]);
+  /* BOTH HALVES OF THE SPLIT, because the *Inactive* row's number comes from
+     the section below and every other row's comes from the register above.
+     `inactiveShown` is search-narrowed and NOT filter-narrowed, exactly as
+     `searched` is, so each row still counts what picking it would give. */
   const showCounts = useMemo(
-    () => rosterFilterCounts(searched, rosterScope), [searched, rosterScope]);
+    () => rosterFilterCounts(searched, rosterScope, inactiveShown),
+    [searched, rosterScope, inactiveShown]);
+
+  /* The inactive section, once the filter has had its say. Only *Active* and
+     *Inactive* reach it (src/data/rosterFilter says why); every other choice
+     leaves it whole, which is what it did before these two options existed. */
+  const inactiveListed = useMemo(
+    () => (showsInactive(showKeys) ? inactiveShown : []), [inactiveShown, showKeys]);
   // What the field prints, and what the notes below say in words. Several
   // ticks are an OR and the phrase says so -- "Present or No email".
   const showValue = fieldValue(rosterShow, ALL_MEMBERS, 'filters');
@@ -536,7 +552,7 @@ function CourseDetailBody() {
   // says why), so the roster is wider than the field claims. Said in a line
   // rather than left to be noticed: this screen's own rule is that a count
   // which drops -- or keeps -- rows silently is the defect.
-  const showPending = showKeys.some(k => k !== 'no-email')
+  const showPending = showKeys.some(k => k !== 'no-email' && k !== 'active' && k !== 'inactive')
     && marks.state !== 'ready';
 
   const withEmail = shown.filter(m => m.emails.length > 0);
@@ -1618,9 +1634,19 @@ function CourseDetailBody() {
                itself rather than the search. */
             <View style={{ marginTop: SPACE.md }}>
               <EmptyState
-                title={(showKeys.length === 1 ? FILTER_EMPTY[showKeys[0]] : null)
+                title={inactiveListed.length > 0
+                  ? 'The day’s register is empty under that choice'
+                  : (showKeys.length === 1 ? FILTER_EMPTY[showKeys[0]] : null)
                   ?? 'Nobody matches those filters'}
-                body={showKeys.length === 1 && showKeys[0] === 'no-email'
+                /* INACTIVE TICKED IS NOT A DEAD END. Every card on the
+                   register is active by construction, so asking for the
+                   inactive ones empties it -- and the members asked for are
+                   on screen, under the heading below. Saying "nobody
+                   matches" over a section full of names is the reading
+                   filters' own failure mode wearing a new word. */
+                body={inactiveListed.length > 0
+                  ? `${inactiveListed.length} ${inactiveListed.length === 1 ? 'member is' : 'members are'} listed under Inactive below — they are off the register for ${chosen ? dayLabel(chosen.iso) : 'that day'}, so no attendance is expected of them.`
+                  : showKeys.length === 1 && showKeys[0] === 'no-email'
                   ? `Every member on this roster has an address, so every one of them is counted for follow-up.${query.trim() ? ' That is of the members matching your search.' : ''}`
                   : `No member on this roster reads ${showPhrase} for ${chosen ? dayLabel(chosen.iso) : 'that day'}.${query.trim() ? ' That is of the members matching your search.' : ''} All members brings all ${searched.length} back.`}
                 action="Show all members" onAction={() => setRosterShow([])} />
@@ -1781,7 +1807,7 @@ function CourseDetailBody() {
               They are not counted in the day's figures, not reachable by the
               roster's Select all, and not offered to the reset or the bulk
               delete -- every one of those is about the day's register. */}
-          {inactiveShown.length > 0 ? (
+          {inactiveListed.length > 0 ? (
             <View testID="course-inactive-section" style={{ marginTop: SPACE.xl }}>
               {/* The heading wears the same ink as the pills under it, for
                   the reason the No email heading wears its section's: a
@@ -1790,7 +1816,7 @@ function CourseDetailBody() {
                 <Icon name="pause_circle" size={16} color={dangerInk} />
                 <Label style={{ flex: 1, color: dangerInk }}>Inactive</Label>
                 <Text style={{ fontSize: 11.5, color: theme.muted, fontVariant: ['tabular-nums'] }}>
-                  {`${inactiveShown.length} of ${joinedByDay.length}`}
+                  {`${inactiveListed.length} of ${joinedByDay.length}`}
                 </Text>
               </View>
               <View style={{
@@ -1805,7 +1831,7 @@ function CourseDetailBody() {
                 </Muted>
               </View>
               <View style={{ gap: SPACE.sm, marginTop: 10 }}>
-                {inactiveShown.map((m, i) => (
+                {inactiveListed.map((m, i) => (
                   <MemberCard key={m.id} member={m} tint={AVATAR_TINTS[i % AVATAR_TINTS.length]}
                     weekLabel={week.label} noEmail={m.emails.length === 0} allMembers={members}
                     dayIso={chosen?.iso ?? null} weekdays={scopeWeekdays}
