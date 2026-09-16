@@ -130,12 +130,45 @@ test('but the TAP is about today, in the write, the title and the button', () =>
   assert.match(src, /title=\{inactiveToday \?/, 'the confirmation names today, not the strip');
   assert.match(src, /confirmLabel=\{saving \? 'Saving…' : inactiveToday \?/,
     'and so does the button that does it');
+  // 0072 SPLIT THE PILL INTO TWO DIALOGS, so "which one opens" is now a
+  // fourth place the same reading has to be used. Re-pointed rather than
+  // dropped: this test's subject is that TODAY decides, and the split gave it
+  // one more thing to decide.
+  assert.match(src, /open=\{confirmStatus && inactiveToday\}/,
+    'the dated Mark-active dialog opens on TODAY\'s reading, not the strip\'s');
+  assert.match(src, /open=\{confirmStatus && !inactiveToday\}/,
+    'and the untouched Mark-inactive confirmation on the other half of it');
 });
 
 test('the pill writes a date, so the two surfaces record the same kind of fact', () => {
-  assert.match(read(ROSTER),
-    /await setMemberStatus\(member\.id, wanted, wanted === 'active' \? null : todayIso\)/,
-    'the one-tap pill has always meant "from now on"; now it says so in the column');
+  const src = read(ROSTER);
+  // RE-POINTED AT 0072. The assertion's subject is unchanged -- the pill
+  // writes a DATE rather than a bare status -- but the call it pins now
+  // carries the date for BOTH directions: today for the way off (which is
+  // what this always asserted, unchanged), and the dialog's pick for the way
+  // back on. The old literal could not survive a fourth argument existing.
+  assert.match(src,
+    /await setMemberStatus\(member\.id, wanted,\s*wanted === 'active' \? null : todayIso,\s*wanted === 'active' \? activeAgainFrom : null\)/,
+    'the one-tap pill has always meant "from now on" for the way OFF the register, and '
+    + 'still writes today there; the way back on carries the day that was chosen');
+  assert.match(src, /const applyStatus = async \(activeAgainFrom: string \| null = null\)/,
+    'and marking inactive stays a one-tap act -- the date defaults to null, so the '
+    + 'inactive direction passes nothing and is unchanged');
+});
+
+test('the way back on is DATED, and the way off is still one tap', () => {
+  const src = read(ROSTER);
+  // "allow user to select active from date in pop up and by default the date
+  // should be todays date" (16-Sep-2026).
+  assert.match(src, /<MarkActiveDialog/,
+    'ConfirmDialog takes a body STRING and cannot hold a date picker');
+  assert.match(src, /todayIso=\{todayIso\}/,
+    'the dialog is told what today is rather than reading the clock itself');
+  assert.match(src, /joinedOn=\{member\.joinedOn \?\? null\}/,
+    'a return before the joining date is refused, and the picker needs the date to refuse it');
+  // The other direction must not have acquired a picker by accident.
+  assert.match(src, /confirmLabel=\{saving \? 'Saving…' : inactiveToday \? 'Mark active' : 'Mark inactive'\}/,
+    'marking inactive is still the same confirmation it always was');
 });
 
 test('a departure still to come is stated on the card, not left to the day it happens', () => {

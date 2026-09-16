@@ -195,6 +195,22 @@ export type Member = {
    */
   inactiveFrom?: string | null;
   /**
+   * The day a stated ACTIVE starts applying -- `members.active_again_from`
+   * (0072) -- or null/absent when the record carries no return date.
+   *
+   * The mirror of the field above, and the two are never both set: the
+   * database allows this one only beside an active status and that one only
+   * beside a non-active one, and `set_member_status` clears whichever belongs
+   * to the side not being stated. `src/data/inactiveFrom.ts` is the whole of
+   * what the trio means -- the member is off the register on every day before
+   * this date and on it from the date onward.
+   *
+   * NULL IS NOT "TODAY" here either. Every row written before 0072 carries
+   * null, and null goes on meaning active on every day anybody asks about,
+   * which is what the one-tap pill has always meant.
+   */
+  activeAgainFrom?: string | null;
+  /**
    * Her OWN weekdays (1..7, Monday = 1), or null when she follows the days
    * her offering runs.
    *

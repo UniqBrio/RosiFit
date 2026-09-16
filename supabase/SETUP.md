@@ -1,5 +1,41 @@
 # Connecting RosiFit to Supabase
 
+> ## 16-Sep-2026 — `0072_member_active_again_from` applied, WITHOUT the harness rehearsal
+>
+> Applied to production on the requester's explicit instruction ("apply db part
+> as well"). **The local harness rehearsal CLAUDE.md requires was not run and
+> could not be**: this machine has no `psql`, no `pg_ctl` and no `docker`, and
+> `db/harness/start.sh` wants a unix socket in `/tmp`. Recorded here rather than
+> left implied — the same gap as the 04-Sep block at the foot of this file.
+>
+> **What stood in for it**, all against the live project:
+>
+> - The whole migration was run inside `begin; … rollback;` first, twice. A
+>   probe (`create table … rollback`) proved transaction control is honoured
+>   through the tool before either run was trusted.
+> - The second dry run carried its assertions as `raise exception`s, so
+>   completing without error IS the pass: the new boundary on both sides, the
+>   0045 rules unchanged, the 3-arg `member_status_on` still answering, and a
+>   real row rejecting a return date before its joining date.
+> - **All 1,152 member rows read identically under the old and new
+>   derivation** — the compatibility claim, measured rather than argued. It is
+>   true by construction (the column is added NULL and both CHECKs are
+>   `active_again_from is null or …`), and it was checked anyway.
+>
+> **Read back after the apply:** column present, both CHECKs present, BOTH
+> `member_status_on` arities present (the 3-arg one is untouched, which is what
+> keeps `tests/34` a spec), `set_member_status` now `(uuid,text,date,date)` with
+> the 3-arg version dropped, 0 rows carrying a return date, 0 rows reading
+> differently. `follow_up_candidates` re-ran and returned 748 candidates.
+> Ledger row `20260916093816 · 0072_member_active_again_from`.
+>
+> **PostgREST cache:** `notify pgrst, 'reload schema'` was issued, and the new
+> column was confirmed visible to REST — a select naming `active_again_from`
+> fails at *authorization* (`42501`), not with `PGRST204`, so the cache has it.
+>
+> **Still outstanding:** `supabase/tests/50_member_active_again_from.sql` has
+> never been executed anywhere. It needs a Postgres 16 machine or CI.
+
 > ## 08-Sep-2026 — `0045_member_inactive_from` applied, and what querying the project revealed
 >
 > **Verified by querying the live project, before and after.** Read this before

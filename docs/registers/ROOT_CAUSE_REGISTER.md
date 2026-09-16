@@ -59,6 +59,110 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-045 — a roster of 629 was bounded in rows and still too big to SEND, so the gateway refused it
+**Date:** 16-Sep-2026  ·  **Severity:** S2  ·  **Modules:** `src/data/repository.ts`, `src/data/pageAll.ts`
+
+**Symptom** — requester, with a screenshot of the Postnatal course on Tue 15 Sep 2026:
+*"Investigate what is the issue"*. Every member card on the roster read **"Attendance for
+this week could not be loaded."** in place of its Present / Absent / Yet to mark reading —
+every card, not some. Everything else on the screen was correct: the roster listed the right
+people, the missed counts were right, the joined-after and inactive lines were right, and the
+week strip above it was fine.
+
+**Root cause** — `fetchCourseDayRows` finishes by reading the names for the day:
+`members.select('id, full_name').in('id', memberIds)`. That list is one UUID per member on the
+day, and an `.in()` filter travels in the QUERY STRING — supabase-js percent-encodes each
+separator, so a UUID costs 39 bytes. The gateway in front of PostgREST refuses an over-long
+request head with a bare **`400 Bad Request`**: no rows, no PostgREST error body, nothing that
+names a limit. Postnatal's 15 Sep roster is **629 members**, which is a 24.6 KB request head,
+and the budget is shared with the request's HEADERS — so a signed-in browser's session JWT and
+its own headers pushed it over where the bare probe below still fit.
+
+Measured against this project's own endpoint that day, sending the exact query the app builds
+(anon key, so a request that REACHES PostgREST answers `401 permission denied`; the gateway's
+own refusal is a plain `400`):
+
+| ids | URL bytes | answer |
+|---|---|---|
+| 629 | 24,643 | 401 — reached PostgREST |
+| 640 | 25,072 | 401 — reached PostgREST |
+| 660 | 25,852 | **400 — refused by the gateway** |
+| 700 | 27,412 | **400 — refused by the gateway** |
+
+And with the budget spent on headers instead: +0 bytes → 643 ids got through, +700 → 634,
++1400 → **625**. The reported roster needs 629.
+
+**This is RC-039's blind spot, not RC-039 again.** RC-039 was about the REPLY — PostgREST
+truncating at 1,000 rows and reporting success. `pageAll.ts` closed that and
+`pagedReads.test.ts` holds every call site to it. Nothing was ever about the REQUEST, and
+RC-039's own recurrence note treats an `.in()` bound as *evidence of safety* — four reads are
+exempted there because their id list "comes from a query carrying its own `.limit()`". A
+bounded id list does bound the rows. It is also exactly what makes the request too big to send.
+
+**Fix** — `inChunks(ids, build)` in `src/data/pageAll.ts`: an id list too long for one request,
+split into requests that will actually be sent. `pageAllByKey` understands it and runs the
+chunks sequentially — sequentially because the problem was a request that was too big, and
+firing five at once trades a refused request for a rate-limited one. A chunk that fails throws
+out of the whole read, so half a roster can never return as a success (the RC-039 rule, one
+level out), and each chunk is still paged, so the row ceiling keeps applying.
+
+`MAX_IDS_PER_REQUEST = 150` is deliberately **not** the measured cliff minus a margin: tuning
+to a cliff means re-measuring it on every gateway the traffic ever passes through. 150 ids is
+under 6 KB, inside the conventional 8 KB request head every proxy in the chain allows, and it
+turns the worst roster in production into five requests rather than one refusal.
+
+**Files** — `src/data/pageAll.ts` (`MAX_IDS_PER_REQUEST`, `ChunkedSource`, `inChunks`,
+`pageAllByKey`), `src/data/repository.ts` (`paged`, `fetchCourseDayRows`, `fetchAttendance`,
+`fetchMemberWeek`).
+
+**How to verify** — open a course whose roster on one day exceeds 150 members (Postnatal,
+Tue 15 Sep 2026, 629) and read the cards: each must show its Present / Absent / Yet to mark
+reading, not "Attendance for this week could not be loaded." From the outside: no
+`GET /rest/v1/members` in the project's edge logs should answer `400` any more, and none
+should carry an `id=in.()` list longer than 150. In specs:
+`src/data/requestSize.test.ts` → "THE REPORTED CASE: 629 ids go out as several small requests".
+
+**Recurrence risk** — the class is *a request whose SIZE grows with the data, while every guard
+in the file watches the reply*. Searched `src/data/repository.ts` for `.in('` — **34 sites**,
+classified by what bounds each list:
+
+- **4 can exceed the ceiling, all now chunked**: the roster's names on a day (629 in
+  production), the names in a period (larger again), the attendance records of a period, and
+  one member's records across a period. The last three are reachable through the **custom date
+  range** rather than through academy size — four offerings across a year is 800 session ids.
+- **30 cannot**: ids of courses, branches, offerings, sessions-on-one-date, batches, holidays
+  and app_users — counted in tens and set by the academy rather than by its intake — plus the
+  audit log and notification tray, whose lists come from reads carrying `.limit(50)` or
+  `NOTIFICATION_LIMIT`.
+
+**The Edge Functions are NOT swept, and this is the same miss RC-043 was.** Searched
+`supabase/functions/` for `.in(` — 14 sites, of which **four are member-scale and all four are
+in `send-followups/index.ts`**: `members` (line 108), `member_enrollments` (113),
+`member_emails` (152) and `member_stats` (155), each carrying one id per member in the send.
+An academy-wide follow-up run passes the same 150-id line the roster did. They are **not fixed
+here**: an Edge Function is a separate deployment artifact and changing the send path is an
+approval-gated action (guardrail 5), not something to sweep in silently on a roster fix. Logged
+as the open half of this entry — `supabase/functions/_shared/pageAll.ts` is where the chunker
+would go, beside the pager RC-043 put there for exactly the same reason.
+
+**Prevention** — `rung: src/data/requestSize.test.ts`. It pins the chunk size against the
+portable 8 KB head budget (not against the measured cliff), proves the chunker returns the
+whole list once and in order, proves a failed chunk throws rather than shortening the answer,
+and — the half that actually fails — reads `repository.ts` and fails the build if either
+member-scale read sends its id list in one request. Verified to fail first: all nine
+assertions failed against the pre-fix tree, the rung naming the read and the reason.
+
+**Process check** — would a correct process have caught this? **Yes**, and it is the same gap
+RC-039 named and only half-closed: no gate runs against a data volume the platform's own limits
+react to. RC-039 wrote that gap down as a REPLY-size problem and then, in the same entry,
+recorded four `.in()`-bounded reads as safe — which taught the next reader that an id list is a
+bound rather than a payload. The prevention rung it left behind (`pagedReads.test.ts`) counts
+rows and cannot see bytes. Flagged for `/framework-update`: the lesson is that a bound on what
+comes BACK is not a bound on what goes OUT, and the question to ask when a read is written is
+"what does this SEND when the academy is ten times bigger", alongside the one RC-039 added.
+
+---
+
 ## RC-044 — A day uploaded off the timetable and then reset came back as a dash, not as awaiting
 **Date:** 12-Sep-2026  ·  **Severity:** S3  ·  **Modules:** `supabase/migrations/0067` (`runs`), `app/course/[id].tsx` week strip, `src/data/dayLoad.ts`
 

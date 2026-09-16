@@ -22,7 +22,8 @@ import assert from 'node:assert/strict';
 import {
   statusOn, isActiveOn, pendingInactiveFrom, statusNote,
   inactiveFromProblem, dateInWords, dayBefore,
-  membersActiveOn, leftEarlierNote,
+  membersActiveOn, membersInactiveOn, leftEarlierNote,
+  pendingActiveAgainFrom, activeAgainFromProblem,
 } from './inactiveFrom';
 import { isEligible, isFollowable, flagged } from './followup';
 import { dayAttendance } from './dayAttendance';
@@ -297,10 +298,53 @@ test('the two ends compose: joined in March, gone from October', () => {
 
 test('the omission is STATED, never a count that drops rows in silence', () => {
   assert.equal(leftEarlierNote(1, 'Thu 1 Oct'),
-    '1 member was inactive on Thu 1 Oct and is not listed for it. They are still on the course.');
+    '1 member was inactive on Thu 1 Oct and is listed under Inactive below. They are still on the course.');
   assert.equal(leftEarlierNote(3, 'Thu 1 Oct'),
-    '3 members were inactive on Thu 1 Oct and are not listed for it. They are still on the course.');
+    '3 members were inactive on Thu 1 Oct and are listed under Inactive below. They are still on the course.');
   assert.equal(leftEarlierNote(0, 'Thu 1 Oct'), null, 'nothing hidden, nothing said');
+});
+
+/* ------------------------------------- and the section they are listed in
+ *
+ * "in attendnace section show inactive members at bottom" -- the requester,
+ * 16-Sep-2026. The day's rows are unchanged (the 08-Sep rule above still
+ * holds); what is new is that the members that rule takes out are gathered
+ * underneath instead of vanishing, so the pill that puts them back is
+ * reachable from the day somebody is looking at.
+ *
+ * Asserted as a SPLIT, not as a second list: every member of the day is in
+ * exactly one of the two halves, whatever the day. */
+
+/** The same three the roster half is asserted against, given ids of their
+ *  own: one active, one dated off from 1 October, one off every day. */
+const SPLIT = [
+  member({ id: 'a' }),
+  member({ id: 'b', status: 'inactive', inactiveFrom: '2026-10-01' }),
+  member({ id: 'c', status: 'inactive' }),
+];
+
+test('the inactive half is exactly what the roster half left behind', () => {
+  assert.deepEqual(membersInactiveOn(SPLIT, '2026-10-01').map(m => m.id), ['b', 'c'],
+    'the dated one is off from the 1st, and the undated one is off every day');
+  assert.deepEqual(membersInactiveOn(SPLIT, '2026-09-30').map(m => m.id), ['c'],
+    'the day before, only the undated one is off');
+});
+
+test('the two halves partition the day — nobody in both, nobody in neither', () => {
+  const set = SPLIT;
+  for (const day of ['2026-03-01', '2026-09-30', '2026-10-01', '2026-12-25']) {
+    const on = membersActiveOn(set, day).map(m => m.id);
+    const off = membersInactiveOn(set, day).map(m => m.id);
+    assert.deepEqual([...on, ...off].sort(), ['a', 'b', 'c'], `every member accounted for on ${day}`);
+    assert.deepEqual(on.filter(id => off.includes(id)), [], `nobody is in both halves on ${day}`);
+  }
+});
+
+test('no day selected: nothing was dropped, so the section has nothing to show', () => {
+  // The mirror of `membersActiveOn(set, null)` returning all three. An
+  // unselected strip narrows nothing, and a section listing members the
+  // roster above is already listing would print each of them twice.
+  assert.deepEqual(membersInactiveOn(SPLIT, null), []);
 });
 
 test('a departure is pending only while the day on screen is BEFORE it', () => {
@@ -322,4 +366,105 @@ test('being hidden from a day changes nothing about her attendance on it', () =>
   });
   assert.equal(after.expected, true);
   assert.equal(after.state, 'present');
+});
+
+/* ============================================ the way BACK on, dated (0072)
+ *
+ * "allow user to select active from date in pop up and by default the date
+ * should be todays date" -- the requester, 16-Sep-2026.
+ *
+ * `active_again_from` is the mirror of the column above: status stays the
+ * STATED answer and this date says from when a stated ACTIVE applies. These
+ * assert the boundary both ways round, that the return date is read FIRST
+ * (the order is the whole of the rule), and that every row written before
+ * 0072 -- which carries neither date, or only the old one -- reads exactly as
+ * it always did. */
+
+/** Back on the register from 1 October, stated active. */
+const RETURNING = member({ status: 'active', activeAgainFrom: '2026-10-01' });
+
+test('before the return date the member is OFF the register, though stated active', () => {
+  assert.equal(statusOn(RETURNING, '2026-09-30'), 'inactive');
+  assert.equal(isActiveOn(RETURNING, '2026-09-30'), false);
+});
+
+test('ON the return date they are back — the first day on, not the last day off', () => {
+  assert.equal(statusOn(RETURNING, '2026-10-01'), 'active');
+  assert.equal(isActiveOn(RETURNING, '2026-10-01'), true);
+  assert.equal(statusOn(RETURNING, '2026-12-25'), 'active', 'and every day after it');
+});
+
+test('the return date is read FIRST — the order is the whole of the rule', () => {
+  // The row STATES active, so a derivation asking "is it active?" before
+  // looking at the date answers 'active' for every day including the ones
+  // before the member came back. That is the defect 0045 removed from the
+  // other direction, arriving from this one.
+  assert.equal(statusOn(RETURNING, '2026-01-01'), 'inactive',
+    'a stated active with a future return date is NOT active today');
+});
+
+test('a backdated return reads active from the day it names', () => {
+  const back = member({ status: 'active', activeAgainFrom: '2026-09-01' });
+  assert.equal(statusOn(back, '2026-08-31'), 'inactive', 'the day before, still off');
+  assert.equal(statusOn(back, '2026-09-01'), 'active');
+});
+
+test('every row written before 0072 reads exactly as it always did', () => {
+  // No return date at all: the one-tap pill's meaning, and what every
+  // existing row carries.
+  assert.equal(statusOn(member({ status: 'active' }), '2020-01-01'), 'active');
+  assert.equal(statusOn(member({ status: 'inactive' }), '2020-01-01'), 'inactive');
+  // And 0045's pair goes on meaning what it meant.
+  assert.equal(statusOn(LEAVING, '2026-09-30'), 'active');
+  assert.equal(statusOn(LEAVING, '2026-10-01'), 'inactive');
+});
+
+test('a return still to come is stated, and only while it is still to come', () => {
+  assert.equal(pendingActiveAgainFrom(RETURNING, '2026-09-30'), '2026-10-01');
+  assert.equal(pendingActiveAgainFrom(RETURNING, '2026-10-01'), null, 'the day it arrives, nothing is pending');
+  assert.equal(pendingActiveAgainFrom(RETURNING, '2026-10-02'), null);
+  assert.equal(pendingActiveAgainFrom(member({ status: 'active' }), TODAY), null,
+    'a member with no return date has nothing coming');
+  assert.equal(pendingActiveAgainFrom(LEAVING, TODAY), null,
+    'and a stated INACTIVE row never carries one -- the database will not hold it');
+});
+
+test('the card can say which is coming without the two ever contradicting', () => {
+  // The database allows each date only beside its own side of the pill, so a
+  // record carrying one carries no other. Both lines can be drawn from one
+  // record and never both appear.
+  assert.equal(pendingInactiveFrom(RETURNING, '2026-09-30'), null);
+  assert.equal(pendingActiveAgainFrom(LEAVING, '2026-09-30'), null);
+});
+
+test('the note under the word dates the return, in both tenses', () => {
+  assert.equal(statusNote(RETURNING, '2026-09-30'),
+    'Active from 1 October 2026 — out of the follow-up rule until then');
+  assert.equal(statusNote(RETURNING, '2026-10-02'), 'Active since 1 October 2026');
+  assert.equal(statusNote(member({ status: 'active' }), TODAY), null,
+    'an undated active row still says nothing, exactly as before');
+});
+
+test('a return before the joining date is refused, in a sentence', () => {
+  assert.equal(activeAgainFromProblem('2026-03-01', '2026-03-01'), null, 'the joining day itself is fine');
+  assert.equal(activeAgainFromProblem('2026-02-28', '2026-03-01'),
+    'The member joined on 1 March 2026, so cannot go back on the register before that');
+  assert.equal(activeAgainFromProblem('', '2026-03-01'), 'Choose the date they go back on the register');
+  assert.match(activeAgainFromProblem('the 5th', '2026-03-01') ?? '', /is not a date/);
+});
+
+test('a PAST return date is allowed, for the reason its twin allows one', () => {
+  // Recording a return somebody forgot to enter last month is the same act as
+  // scheduling one for next month.
+  assert.equal(activeAgainFromProblem('2026-04-01', '2026-03-01'), null);
+  assert.equal(activeAgainFromProblem('2099-01-01', '2026-03-01'), null, 'and so is a future one');
+});
+
+test('a dated return narrows the day roster, so the section below picks them up', () => {
+  const set = [member({ id: 'a' }), member({ id: 'b', status: 'active', activeAgainFrom: '2026-10-01' })];
+  assert.deepEqual(membersActiveOn(set, '2026-09-30').map(m => m.id), ['a']);
+  assert.deepEqual(membersInactiveOn(set, '2026-09-30').map(m => m.id), ['b'],
+    'and they are listed under Inactive until the day they are back');
+  assert.deepEqual(membersActiveOn(set, '2026-10-01').map(m => m.id), ['a', 'b']);
+  assert.deepEqual(membersInactiveOn(set, '2026-10-01'), []);
 });

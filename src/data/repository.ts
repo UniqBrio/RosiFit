@@ -22,7 +22,7 @@ import { SUBJECT_MIN, SUBJECT_MAX, BODY_MIN, COURSE_NAME_MIN, COURSE_NAME_MAX } 
 import { bucketFixture, type BucketMetrics } from './buckets';
 import type { SentMap } from './sent';
 import { currentSchedules, today } from './schedule';
-import { inactiveFromProblem } from './inactiveFrom';
+import { inactiveFromProblem, activeAgainFromProblem } from './inactiveFrom';
 import { activeFromProblem } from './joined';
 import { enrolledIn, endEnrolment } from './course';
 import { isoWeekday, storedStatus, dayInWords } from './dayAttendance';
@@ -48,7 +48,8 @@ import { memberWeek, NO_SESSIONS_ROW, type MemberWeekSession } from './memberWee
 // id list of member scale -- goes through this. PostgREST stops at 1000 rows
 // and calls it success; see src/data/pageAll.ts and RC-039.
 import {
-  pageAllByKey, guardUntruncated, PagedReadError, type QueryFactory,
+  pageAllByKey, guardUntruncated, PagedReadError, inChunks, type ChunkedSource,
+  type QueryFactory,
 } from './pageAll';
 import {
   mapCourseWeekDays, ShortWeekError, WEEK_DAYS,
@@ -94,11 +95,12 @@ function fail(context: string, error: { message?: string } | null): never {
  */
 async function paged<T extends Record<string, unknown> = Record<string, unknown>>(
   what: string,
-  build: () => unknown,
+  build: (() => unknown) | ChunkedSource,
   key: string,
 ): Promise<T[]> {
   try {
-    return await pageAllByKey<T>(build as QueryFactory<T>, { key });
+    return await pageAllByKey<T>(
+      typeof build === 'function' ? (build as QueryFactory<T>) : build, { key });
   } catch (err) {
     if (err instanceof PagedReadError) fail(`Could not load ${what}`, err);
     throw err;
@@ -214,7 +216,7 @@ export async function fetchMembers(period: Period): Promise<Member[]> {
    * have shuffled every member list in the app into UUID order.
    */
   const [membersRes, emailsRes, aliasesRes, statsRes, enrolRes, schedRes, metricsRes] = await Promise.all([
-    paged('the member list', () => supabase.from('members').select('id, member_code, full_name, status, inactive_from, joined_on').is('deleted_at', null), 'id'),
+    paged('the member list', () => supabase.from('members').select('id, member_code, full_name, status, inactive_from, active_again_from, joined_on').is('deleted_at', null), 'id'),
     paged('member addresses', () => supabase.from('member_emails').select('id, member_id, email, is_primary, status').is('deleted_at', null), 'id'),
     paged('member alternate names', () => supabase.from('member_aliases').select('id, member_id, alias_display').eq('alias_type', 'name'), 'id'),
     // last_present_date DATES the streak beside it. The run was printed bare
@@ -335,6 +337,11 @@ export async function fetchMembers(period: Period): Promise<Member[]> {
       // roster answer a question about a past week with the fact that was
       // true in that week (src/data/inactiveFrom.ts).
       inactiveFrom: (m.inactive_from as string | null) ?? null,
+      // ...and from when a stated ACTIVE applies (0072), read on exactly the
+      // same terms: null on every row written before it, and null goes on
+      // meaning "on every day". The pair is never both set -- the database
+      // allows each only beside its own side of the pill.
+      activeAgainFrom: (m.active_again_from as string | null) ?? null,
       // The stored date `joined` below is the LABEL of, carried EXACTLY as
       // the column holds it. This read used to format the column and throw
       // the date away, and a month is neither comparable nor openable: the
@@ -2361,10 +2368,14 @@ export async function fetchAttendance(period: Period): Promise<AttendanceRow[]> 
   // Overview, which aggregates in member_period_metrics and ships no rows,
   // printed the true figure two taps away. `id` is the primary key, so the
   // order is total and the pages cannot repeat or skip a row.
-  const records = await paged('attendance for this week', () =>
-    supabase.from('attendance_records')
+  // Chunked as well as paged. `sessionIds` is every session in the PERIOD, and
+  // a period can be a custom range of any length — four offerings across a year
+  // is 800 session ids, which is a 31 KB request the gateway refuses outright
+  // (RC-045). "This week" was never near it; a date somebody typed is.
+  const records = await paged('attendance for this week',
+    inChunks(sessionIds, ids => supabase.from('attendance_records')
       .select('id, session_id, member_id, status, expected, minutes_in_call')
-      .in('session_id', sessionIds).is('deleted_at', null), 'id');
+      .in('session_id', ids).is('deleted_at', null)), 'id');
   if (records.length === 0) return [];
 
   // The same manual joins the rest of this file uses, rather than a PostgREST
@@ -2374,9 +2385,12 @@ export async function fetchAttendance(period: Period): Promise<AttendanceRow[]> 
   const offeringIds = [...new Set(weekSessions.map(s => s.offering_id as string))];
   const [membersRes, offeringsRes] = await Promise.all([
     // The id list is every member who attended anything this week, so it is
-    // member-scale and paged for the same reason the records above are.
-    paged('the names on this week', () => supabase.from('members').select('id, full_name')
-      .in('id', memberIds), 'id'),
+    // member-scale and paged for the same reason the records above are — and
+    // chunked for the reason the roster's own name read is: a member-scale id
+    // list is too long to SEND in one request, whatever the reply would hold
+    // (RC-045). A period is larger than a day, so this one is further over.
+    paged('the names on this week', inChunks(memberIds, ids =>
+      supabase.from('members').select('id, full_name').in('id', ids)), 'id'),
     supabase.from('course_offerings').select('id, course_id, branch_id').in('id', offeringIds),
   ]);
   const courseIds = [...new Set((offeringsRes.data ?? []).map(o => o.course_id as string))];
@@ -2479,9 +2493,17 @@ export async function fetchCourseDayRows(
   // The names on this day only. Paged for the same reason the member list is:
   // an `.in()` of member ids is member-scale, and member-scale is 937 of a
   // 1,000-row ceiling in production today.
+  //
+  // And CHUNKED, because that id list is also what the request has to carry.
+  // Postnatal's Tue 15 Sep 2026 roster is 629 members; at 39 bytes per encoded
+  // UUID that is a 24.6 KB request head, and the gateway refused it with a bare
+  // `400 Bad Request` — so every card on the roster read "Attendance for this
+  // week could not be loaded" while the rows sat there, perfectly readable, in
+  // a table nothing had asked for correctly (RC-045).
   const memberIds = [...new Set(dayRecords.map(r => r.member_id as string))];
-  const members = await paged('the names on this day', () =>
-    supabase.from('members').select('id, full_name').in('id', memberIds), 'id');
+  const members = await paged('the names on this day',
+    inChunks(memberIds, ids =>
+      supabase.from('members').select('id, full_name').in('id', ids)), 'id');
 
   const sessionById = new Map(daySessions.map(s => [s.id as string, s]));
   const offeringById = new Map(checked('this day', offerings).map(o => [o.id as string, o]));
@@ -2555,13 +2577,18 @@ export async function fetchMemberWeek(memberId: string, period: Period): Promise
   const weekSessions = checked('these sessions', { data: sessions });
   if (weekSessions.length === 0) return [NO_SESSIONS_ROW];
 
-  const { data: records, error: recordError } = await supabase.from('attendance_records')
-    .select('session_id, status, expected')
-    .eq('member_id', memberId)
-    .in('session_id', weekSessions.map(s => s.id as string))
-    .is('deleted_at', null);
-  if (recordError) fail('Could not load these sessions', recordError);
-  const weekRecords = checked('these sessions', { data: records });
+  // The same request ceiling, one member wide. The id list is this member's
+  // sessions across the PERIOD, and a custom range of a year is hundreds of
+  // them — enough to be refused (RC-045). `id` joins the select because a
+  // chunk is paged by it, and paging replaces the checked() backstop that used
+  // to stand here: a keyset read cannot come back silently short.
+  const weekRecords = await paged('these sessions',
+    inChunks(weekSessions.map(s => s.id as string), ids =>
+      supabase.from('attendance_records')
+        .select('id, session_id, status, expected')
+        .eq('member_id', memberId)
+        .in('session_id', ids)
+        .is('deleted_at', null)), 'id');
 
   // The same manual joins the rest of this file uses rather than a PostgREST
   // embed: an embed returns null for a row RLS hides on the far side, and a
@@ -3343,9 +3370,15 @@ export async function mergeMemberInto(strayId: string, targetId: string):
  * would tell different stories about the same tap.
  */
 export async function setMemberStatus(
-  id: string, status: MemberStatus, inactiveFrom: string | null = null):
+  id: string, status: MemberStatus, inactiveFrom: string | null = null,
+  activeAgainFrom: string | null = null):
   Promise<{ changed: boolean }> {
   const from = status === 'active' ? null : inactiveFrom;
+  // ...and the mirror (0072). Each date belongs to one side of the pill and
+  // the other side takes it OFF, which is the rule the database enforces with
+  // two CHECKs -- restated here so the offline store cannot hold a pair the
+  // live one would refuse.
+  const again = status === 'active' ? activeAgainFrom : null;
   if (!isConfigured) {
     // Offline the fixture list IS the store -- a pill that flips and a list
     // that did not change is the lie RC-008 was about.
@@ -3354,11 +3387,14 @@ export async function setMemberStatus(
     // The same refusal set_member_status raises, run against the fixture
     // register: a form that saves offline what the database would decline is
     // a form nobody can trust the offline mode of.
-    const problem = from ? inactiveFromProblem(from, MEMBERS[i].joinedOn ?? null) : null;
+    const problem = from ? inactiveFromProblem(from, MEMBERS[i].joinedOn ?? null)
+      : again ? activeAgainFromProblem(again, MEMBERS[i].joinedOn ?? null)
+      : null;
     if (problem) throw new Error(`${problem}. Nothing has been saved.`);
     const changed = MEMBERS[i].status !== status
-      || (MEMBERS[i].inactiveFrom ?? null) !== from;
-    MEMBERS[i] = { ...MEMBERS[i], status, inactiveFrom: from };
+      || (MEMBERS[i].inactiveFrom ?? null) !== from
+      || (MEMBERS[i].activeAgainFrom ?? null) !== again;
+    MEMBERS[i] = { ...MEMBERS[i], status, inactiveFrom: from, activeAgainFrom: again };
     membersChanged();
     return { changed };
   }
@@ -3367,6 +3403,7 @@ export async function setMemberStatus(
     p_member_id: id,
     p_status: status,
     p_inactive_from: from,
+    p_active_again_from: again,
   });
   if (error || !data) {
     console.error('setMemberStatus:', error?.message ?? 'no row returned');

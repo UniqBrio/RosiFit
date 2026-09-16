@@ -1,4 +1,67 @@
 
+## Gate run - 2026-09-16 - VERDICT: FAIL
+
+Steps: 7 pass, 5 fail, 1 blocked.
+Time: 22.2s total - slowest G7 Unit + pure specs (14.1s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (96ms)
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (86ms)
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (85ms)
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (120ms)
+- **G5 Types** - PASS (6.5s)
+- **G6 Lint** - BLOCKED (-) - no local "eslint" in . - not fetched from the registry on purpose. Run `npm install` in . (provides eslint), or state why this class is unverified. - **138 consecutive runs**: a verdict that never changes is not a signal; make this class runnable or accept it in writing
+- **G7 Unit + pure specs** - FAIL (14.1s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (527ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (100ms)
+- **G10 Backward compatibility (fixtures)** - PASS (162ms)
+- **G11 Wide tables are configurable** - PASS (100ms)
+- **G12 Installable as an application** - PASS (127ms)
+- **G13 Approved design still being built** - PASS (110ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
 ## Gate run - 2026-09-12 - VERDICT: FAIL
 
 Steps: 6 pass, 5 fail, 1 blocked.
@@ -8604,3 +8667,33 @@ FAIL-FIRST: src/data/uploadBatch.test.ts - 26 cases, new file. Run on 08-Sep-202
 
 NOT OBSERVED FAILING: src/data/memberWeek.test.ts - written by a peer session (requests/2026-09-08-her-week-and-the-run.md) and swept into this commit on the repo owner's instruction, 08-Sep-2026. This session ran it once against the changed tree only (see the pass count in the commit message); it was not run against the pre-change tree here, and whatever fail-first that session observed is recorded in its own request file, not vouched for by this one.
 NOT OBSERVED FAILING: src/data/streak.test.ts - same provenance and same caveat as memberWeek.test.ts above: peer session's spec, run once here against the changed tree, not observed failing by this session.
+
+FAIL-FIRST: src/data/requestSize.test.ts - 9 cases, new file, RC-045. Run 16-Sep-2026 against
+the pre-fix tree (pageAll.ts and repository.ts as at HEAD 5e361de): 9 of 9 failed - two on the
+missing MAX_IDS_PER_REQUEST constant, five on `inChunks is not a function`, and the two call-site
+rungs naming `src/data/repository.ts` and the read labelled 'the names on this day'. 9 of 9 after
+the fix. Full output, plus the live measurement the chunk size is argued from:
+.evidence/request-size-fail-first.txt. Test 7 was corrected once before it had ever been green -
+its fake counted one entry per build() call and pageAllByKey builds a fresh query per PAGE, so
+requests and pages were the same number; it now counts distinct chunks. No assertion removed or
+loosened. The RC-039 rungs it sits beside were re-run unchanged and pass: pageAll.test.ts and
+pagedReads.test.ts - 28 of 28 (an earlier line here also named courseDay.test.ts, which does
+not exist - tsx ignores a path that matches nothing, so it contributed no cases).
+
+FULL SUITE, 16-Sep-2026: npm run test:unit - 1596 of 1603 pass, 7 fail. The 7 are NOT from this
+change and were failing before it: "the list-screen filters are untouched"
+(src/components/formDropdownMenu.test.ts), "the row is a live picker on the Edit form, and it is
+labelled Active from" (src/data/memberJoinedOn.test.ts), and five token-list cases
+(src/data/message.test.ts). They belong to a CONCURRENT session's uncommitted work in this shared
+worktree - app/course/[id].tsx, src/data/inactiveFrom.*, supabase/migrations/0072 - whose own
+request file is requests/2026-09-16-inactive-at-the-bottom-and-active-from.md. Their failure
+messages quote the member Edit form's DateField and the message token map; this change touches
+only src/data/pageAll.ts and four read helpers in src/data/repository.ts, neither of which any of
+the three specs reads for the failing assertions. typecheck clean. check:contrast 2852/2852.
+check:icons 75/75.
+
+NOT RUN: npm run gate, and no browser walk. The fix is in the data layer and the app's live data
+needs a signed-in session (mobile + PIN through the auth-login Edge Function) that this session
+did not have - so the defect and the fix are evidenced by the live request-size measurement in
+.evidence/request-size-fail-first.txt rather than by driving the UI. DB harness - N/A: no
+migration, no schema surface.

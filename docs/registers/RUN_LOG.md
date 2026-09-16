@@ -88,3 +88,5 @@ should start by reading this table rather than by guessing which part felt slow.
 
 | ID | Action | Type | Scale | Started | Ended | Total | Stages | Gate | Verdict | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
+| R-002 | apply db part as well + Build pop up as well | CHANGE | scoped | 2026-09-16 15:20 | 2026-09-16 15:20 | 7s active · 7s elapsed | build 7s | 22.2s | - | - |
+| R-001 | In attendnace section show inactive members at bottom and on click of inactive tag a pop up should be appearing as mark as active same which is shown for clciking active but allow user to select active from date in pop up and by default the date should be todays date | CHANGE | scoped | 2026-09-16 12:24 | 2026-09-16 14:43 | 31m active · 2h 19m elapsed | ground 43m · build 21m · verify 1m | 18.7s | - | - |

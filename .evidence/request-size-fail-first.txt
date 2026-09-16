@@ -1,0 +1,76 @@
+FAIL-FIRST — src/data/requestSize.test.ts against the pre-fix tree
+RosiFit · 16-Sep-2026 · RC-045
+Command: npx tsx --test src/data/requestSize.test.ts
+
+Pre-fix tree = src/data/pageAll.ts and src/data/repository.ts as at HEAD 5e361de,
+i.e. before MAX_IDS_PER_REQUEST / ChunkedSource / inChunks existed and before any
+call site was chunked.
+
+not ok 1 - a request carries few enough ids to fit the portable head budget
+  error: 'undefined ids is NaN bytes of request head, over the 8192 byte budget. The point is
+          to be nowhere near any gateway cliff, not just under this one.'
+not ok 2 - and it is not so small that a roster becomes a hundred requests
+  error: 'chunks of undefined turn one roster read into an unreasonable number of requests'
+not ok 3 - THE REPORTED CASE: 629 ids go out as several small requests, not one huge one
+  error: '(0 , import_pageAll.inChunks) is not a function'
+not ok 4 - the chunks are the whole list, once each, in order
+  error: '(0 , import_pageAll.inChunks) is not a function'
+not ok 5 - an empty id list asks for nothing at all
+  error: '(0 , import_pageAll.inChunks) is not a function'
+not ok 6 - a failed chunk is a FAILURE, never the chunks that happened to work
+  error: '(0 , import_pageAll.inChunks) is not a function'
+not ok 7 - each chunk is still PAGED - the row ceiling does not stop applying
+  error: '(0 , import_pageAll.inChunks) is not a function'
+not ok 8 - THE RUNG: every member-scale id list is sent in chunks
+  error: 'src/data/repository.ts: the read labelled 'the names on this day' sends its whole id
+          list in one request. [...] An `.in()` of that many UUIDs is ~39 bytes each and the
+          gateway refuses the request with a bare 400 - no rows, no PostgREST error. Send it
+          through inChunks().'
+not ok 9 - the chunker is imported, or it chunks nothing
+  error: 'src/data/repository.ts: inChunks must be imported from the module that owns how this
+          app reads a list.'
+# pass 0
+# fail 9
+
+After the fix, same command:
+# pass 9
+# fail 0
+
+Test 7 was corrected once between those two runs, before it had ever been green: its fake
+recorded one entry per build() call, and pageAllByKey builds a fresh query per PAGE, so
+"requests" and "pages" were the same number and the assertion could not distinguish them. It
+now counts DISTINCT chunks. No assertion was removed or loosened.
+
+---
+
+THE MEASUREMENT THE FIX IS BUILT ON
+Live probe against this project's REST endpoint, 16-Sep-2026, using the anon key: a request
+that REACHES PostgREST answers 401 (permission denied for table members); the gateway's own
+refusal is a plain 400 Bad Request with no JSON body. Query built by supabase-js itself, the
+exact shape fetchCourseDayRows sends.
+
+   629 ids  urlLen 24,643  ->  401   reached PostgREST
+   640 ids  urlLen 25,072  ->  401   reached PostgREST
+   660 ids  urlLen 25,852  ->  400   refused by the gateway
+   700 ids  urlLen 27,412  ->  400   refused by the gateway
+
+The budget is shared with the request HEADERS (binary search on the id count, per header size):
+   +0 bytes of extra header   ->  643 ids got through  (urlLen 25,189)
+   +700 bytes                 ->  634 ids              (urlLen 24,838)
+   +1400 bytes                ->  625 ids              (urlLen 24,487)
+
+The probe carried a 208-byte anon key. The app carries a session JWT plus everything a browser
+adds, which is comfortably more than +1400 - so the app's own cliff is at or below 625 ids.
+Postnatal's roster on Tue 15 Sep 2026 is 629 members (629 attendance_records on that day for
+that course, counted in production before the fix).
+
+Also confirmed in the same session, ruling out the two other candidates:
+ - the week strip's RPC course_week_day_status EXISTS in production (401 permission denied,
+   not PGRST202 not-found), so the strip is not the failing read;
+ - 629 is below the 1,000-row PostgREST ceiling, so RC-039's guard was never going to fire.
+
+NOT RUN: any signed-in reproduction in the real app. The app authenticates through the
+auth-login Edge Function (mobile + PIN) and this session had no credentials, so the failing
+request was reproduced by its SHAPE and SIZE against the live endpoint, not by driving the UI.
+The final confirmation available from the requester's browser is a 400 on
+GET /rest/v1/members?...id=in.(...) in the network tab.

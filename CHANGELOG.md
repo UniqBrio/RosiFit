@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased — A big course's attendance loads again
+
+**Every card on Postnatal's roster said "Attendance for this week could not be loaded."** The
+right people were listed, their missed counts were right, and the week above them was right —
+but where each card should have said *Present*, *Absent* or *Yet to mark*, it said it could not
+tell you.
+
+**The course had simply grown too big for one question.** To put a name against each mark, the
+app asked the database about every member of that day at once — and on 15 September that was 629
+people in a single question, which is longer than the database will accept. It refused the whole
+thing, so the app had no names and said so on every card.
+
+**It now asks in batches of 150.** Nothing else changes: the same people, the same readings, a
+large day drawn a moment later because reading it takes a few questions instead of one. Three
+other places asked the same over-long question and have been fixed with it — the attendance list
+and a member's own week, both of which could hit it once you picked a long date range of your
+own.
+
 ## Unreleased — The same person can now join a second course
 
 **One person could be on the register once, and only once.** Someone who comes to Prenatal on

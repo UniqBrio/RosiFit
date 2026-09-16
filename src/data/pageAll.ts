@@ -61,6 +61,59 @@ export const PAGE_SIZE = SUPABASE_MAX_ROWS;
 /** A runaway stop. Not a budget: the guard for a key that is not unique. */
 export const PAGE_CAP = 200_000;
 
+/**
+ * THE OTHER CEILING — how many ids one request may CARRY.
+ *
+ * Everything above is about the reply. An `.in(ids)` filter travels in the
+ * query string, where supabase-js percent-encodes each separator, so a UUID
+ * costs 39 bytes. The gateway in front of PostgREST refuses an over-long
+ * request head with a bare `400 Bad Request` — no rows, no PostgREST error
+ * body, nothing that says what the limit was. Measured on this project on
+ * 16-Sep-2026: 640 ids got through, 660 did not, and the budget is shared with
+ * the headers, so a signed-in browser lost about 18 more ids to its own JWT.
+ * A roster of 629 landed on the wrong side of that (see RC-045).
+ *
+ * 150 is not that cliff minus a margin. Tuning to a measured cliff means
+ * re-measuring it forever, on every gateway the traffic ever passes through.
+ * 150 ids is under 6 KB of request head, inside the conventional 8 KB every
+ * proxy in the chain allows, and it turns the worst roster in production into
+ * five requests rather than one refusal.
+ */
+export const MAX_IDS_PER_REQUEST = 150;
+
+/**
+ * An id list too long for one request, and the query it belongs to.
+ *
+ * Built by `inChunks` and understood by `pageAllByKey`, so a caller writes one
+ * read and gets N requests — rather than a loop at every call site, each with
+ * its own idea of how to concatenate and what to do when one chunk fails.
+ */
+export type ChunkedSource = {
+  readonly chunks: string[][];
+  readonly build: (ids: string[]) => unknown;
+};
+
+/**
+ * Split an id list into requests that will actually be sent.
+ *
+ * `build` receives ONE chunk and returns the query for it — the caller's own
+ * `.select()` and filters, with `.in(<column>, ids)` given that chunk. An empty
+ * list produces no requests at all: an `.in()` on nothing is an empty answer,
+ * not a query.
+ */
+export function inChunks(
+  ids: readonly string[],
+  build: (ids: string[]) => unknown,
+  size: number = MAX_IDS_PER_REQUEST,
+): ChunkedSource {
+  if (!Number.isInteger(size) || size < 1) {
+    throw new PagedReadError(`a chunked read needs a positive chunk size, got ${size}`);
+  }
+  const chunks: string[][] = [];
+  for (let at = 0; at < ids.length; at += size) chunks.push(ids.slice(at, at + size));
+  return { chunks, build };
+}
+
 /** A read that could not be completed. Never carries partial rows. */
 export class PagedReadError extends Error {
   constructor(message: string) { super(message); this.name = 'PagedReadError'; }
@@ -104,9 +157,32 @@ export type QueryFactory<T> = () => KeysetQuery<T>;
  * that will not terminate. Never returns a partial list.
  */
 export async function pageAllByKey<T extends Record<string, unknown>>(
-  build: QueryFactory<T>,
+  source: QueryFactory<T> | ChunkedSource,
   opts: { key: string; pageSize?: number; cap?: number },
 ): Promise<T[]> {
+  /*
+   * A CHUNKED SOURCE IS N ORDINARY PAGED READS, concatenated in order.
+   *
+   * Sequentially, not in parallel: the reason this exists is that one request
+   * was too big, and answering that by firing five at once trades a refused
+   * request for a rate-limited one. Nothing here catches — a chunk that fails
+   * throws out of the whole read, because half a roster returned as a success
+   * is the defect this module exists to prevent (RC-039), and it does not stop
+   * being one because the missing half is a later chunk rather than a later
+   * page.
+   */
+  if (typeof source !== 'function') {
+    const rows: T[] = [];
+    for (const chunk of source.chunks) {
+      // The module's own structural contract, asserted where the contract
+      // lives rather than at every call site — the same reason `paged()` in
+      // repository.ts carries exactly one cast.
+      rows.push(...await pageAllByKey<T>(() => source.build(chunk) as KeysetQuery<T>, opts));
+    }
+    return rows;
+  }
+
+  const build = source;
   const key = opts.key;
   const size = opts.pageSize ?? PAGE_SIZE;
   const cap = opts.cap ?? PAGE_CAP;

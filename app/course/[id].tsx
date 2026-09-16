@@ -19,6 +19,7 @@ import {
   attendanceResetPreview, resetDayAttendance, bulkDeleteMembers,
 } from '../../src/data/repository';
 import { ResetRegisterDialog } from '../../src/components/ResetRegisterDialog';
+import { MarkActiveDialog } from '../../src/components/MarkActiveDialog';
 import { Tooltip } from '../../src/components/Tooltip';
 import {
   resetPreview, resetOutcome, resetFailure,
@@ -43,7 +44,8 @@ import { offersUpload } from '../../src/data/uploadWindow';
 import { dayLoad, dayStatusKey, type DayLoad } from '../../src/data/dayLoad';
 import { membersOnDay, joinedLaterNote } from '../../src/data/joined';
 import {
-  isActiveOn, pendingInactiveFrom, dateInWords, membersActiveOn, leftEarlierNote,
+  isActiveOn, pendingInactiveFrom, pendingActiveAgainFrom, dateInWords,
+  membersActiveOn, membersInactiveOn, leftEarlierNote,
 } from '../../src/data/inactiveFrom';
 import type { AttendanceRow } from '../../src/data/mock';
 import type { ScreenState } from '../../src/data/useScreenState';
@@ -125,6 +127,21 @@ const FILTER_EMPTY: Record<string, string> = {
   unmarked: 'Nothing is left to mark',
   'no-email': 'Everybody here has an email address',
 };
+
+/**
+ * What the search box narrows, wherever on this screen it narrows something.
+ *
+ * Name or address, because those are the two things written on a card. It is
+ * a function rather than two inline filters because the roster and the
+ * inactive section below it are both searched: a second copy of the rule is
+ * how one list starts matching an address the other does not.
+ */
+function narrowToSearch(members: Member[], query: string): Member[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return members;
+  return members.filter(m => m.name.toLowerCase().includes(q)
+    || m.emails.some(e => e.address.toLowerCase().includes(q)));
+}
 
 /**
  * The sentence a failed week says, and the only one it says.
@@ -451,15 +468,37 @@ function CourseDetailBody() {
     dayLabel(chosen.iso)) : null;
   const leftEarlier = chosen ? leftEarlierNote(joinedByDay.length - onDay.length,
     dayLabel(chosen.iso)) : null;
+  /**
+   * ...AND WHERE THE ONES IT TOOK OUT GO — "in attendnace section show
+   * inactive members at bottom" (16-Sep-2026).
+   *
+   * The line above is unchanged and so is the rule it applies: a member who
+   * was off the register on the selected day is still not one of the day's
+   * rows, which is the 08-Sep request and is still right. What was wrong was
+   * the next step — they left the screen altogether, so the one control that
+   * puts a member back is on a card nobody can reach from the day they are
+   * looking at, and the note explaining the absence was the only trace.
+   *
+   * Drawn from `membersInactiveOn`, which is the very predicate `onDay` is
+   * the other half of, so the two lists cannot disagree about a member
+   * (guardrail 1). They are NOT a second roster: no attendance is read for
+   * them, they are not counted in the day's figures, and the reset and the
+   * bulk delete never see them.
+   */
+  const inactiveOnDay = useMemo(
+    () => membersInactiveOn(joinedByDay, chosen?.iso ?? null), [joinedByDay, chosen?.iso]);
 
   // The members of that day, less anything the search box hides. Name or
   // address, because those are the two things written on a card.
-  const searched = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return onDay;
-    return onDay.filter(m => m.name.toLowerCase().includes(q)
-      || m.emails.some(e => e.address.toLowerCase().includes(q)));
-  }, [onDay, query]);
+  const searched = useMemo(() => narrowToSearch(onDay, query), [onDay, query]);
+  /* The SAME search over the section below, because a member somebody is
+     looking for by name is no less findable for having gone inactive -- and a
+     search that emptied the roster while leaving the inactive list whole would
+     read as the search having failed. The reading filters deliberately do NOT
+     reach it: Present, Absent and Yet to mark are readings of the day's
+     register, and these members are not on it. */
+  const inactiveShown = useMemo(
+    () => narrowToSearch(inactiveOnDay, query), [inactiveOnDay, query]);
 
   /**
    * ...and then the READING filter, asked for by name: "add filter to choose
@@ -1536,15 +1575,31 @@ function CourseDetailBody() {
                 title={branch === ALL_BRANCHES ? 'Nobody is enrolled yet' : `Nobody is enrolled at ${branch}`}
                 body="Adding a member names the OFFERING, the course at one branch, so she is expected at the days that offering runs." />
             </View>
-          ) : onDay.length === 0 ? (
+          ) : joinedByDay.length === 0 ? (
             /* ENROLLED, but not yet on the day being shown -- every member of
                this course joined after it. Distinct from "nobody is enrolled",
                which is a fact about the course, and it says which day it is
-               about so the strip above is the way out of it. */
+               about so the strip above is the way out of it.
+
+               MEASURED AGAINST `joinedByDay`, NOT `onDay` (16-Sep-2026). Read
+               against `onDay` this sentence also caught the day where every
+               member HAD joined and was inactive -- and told the reader they
+               joined later, which was simply untrue. The two facts have their
+               own branch each now, and the one below names the right one. */
             <View style={{ marginTop: SPACE.md }}>
               <EmptyState
                 title={`Nobody had joined by ${chosen ? dayLabel(chosen.iso) : 'that day'}`}
                 body={`All ${scoped.length} ${scoped.length === 1 ? 'member' : 'members'} of this course joined later, so there is no attendance to show for that day. Pick a later day on the strip above.`} />
+            </View>
+          ) : onDay.length === 0 ? (
+            /* JOINED, and every one of them off the register that day. The
+               members are listed under Inactive below rather than nowhere, so
+               this says where they went instead of leaving a reader to work
+               out why a course with members shows none. */
+            <View style={{ marginTop: SPACE.md }}>
+              <EmptyState
+                title={`Nobody was on the register on ${chosen ? dayLabel(chosen.iso) : 'that day'}`}
+                body={`All ${joinedByDay.length} ${joinedByDay.length === 1 ? 'member' : 'members'} of this course were inactive that day, so there is no attendance to show for it. They are listed under Inactive below, and the pill on a card puts a member back on the register.`} />
             </View>
           ) : searched.length === 0 ? (
             /* SEARCHED away, not absent. The count it offers to bring back is
@@ -1705,6 +1760,64 @@ function CourseDetailBody() {
             </>
           )}
 
+          {/* ------------------------------------------- INACTIVE, AT THE FOOT
+              "in attendnace section show inactive members at bottom".
+
+              OUTSIDE the states above, not inside the last of them: a day on
+              which every member was inactive draws an empty state AND this
+              section, and a search that matches only an inactive member still
+              finds them. Placing it in the list branch would have made the
+              section disappear in exactly the cases it is most needed.
+
+              WHY A SECTION AND NOT A SORT. The 08-Sep rule -- a member off the
+              register is not one of that day's rows -- is unchanged, and it is
+              the reason these cards carry no attendance reading: there is no
+              session they were expected at, so Present, Absent and Yet to mark
+              would each be a claim about a register they were not on. What the
+              cards do carry is the pill, which is the whole point of listing
+              them: marking a member active again is one tap from the day
+              somebody noticed they were missing.
+
+              They are not counted in the day's figures, not reachable by the
+              roster's Select all, and not offered to the reset or the bulk
+              delete -- every one of those is about the day's register. */}
+          {inactiveShown.length > 0 ? (
+            <View testID="course-inactive-section" style={{ marginTop: SPACE.xl }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                <Icon name="pause_circle" size={16} color={theme.dim} />
+                <Label style={{ flex: 1, color: theme.dim }}>Inactive</Label>
+                <Text style={{ fontSize: 11.5, color: theme.muted, fontVariant: ['tabular-nums'] }}>
+                  {`${inactiveShown.length} of ${joinedByDay.length}`}
+                </Text>
+              </View>
+              <View style={{
+                marginTop: 9, padding: 13, borderRadius: RADIUS.md,
+                backgroundColor: theme.surface2,
+                borderWidth: 1, borderColor: theme.line,
+              }}>
+                <Muted style={{ color: theme.fg }}>
+                  {`Off the register on ${chosen ? dayLabel(chosen.iso) : 'that day'}, so they are not part of it`
+                    + ' and no attendance is expected. The enrolment and the history are untouched —'
+                    + ' tap Inactive on a card to put a member back.'}
+                </Muted>
+              </View>
+              <View style={{ gap: SPACE.sm, marginTop: 10 }}>
+                {inactiveShown.map((m, i) => (
+                  <MemberCard key={m.id} member={m} tint={AVATAR_TINTS[i % AVATAR_TINTS.length]}
+                    weekLabel={week.label} noEmail={m.emails.length === 0} allMembers={members}
+                    dayIso={chosen?.iso ?? null} weekdays={scopeWeekdays}
+                    rows={marks.data ?? []} attendanceState={marks.state}
+                    /* The day's register is what the ticks feed, and these
+                       members are not on it. A checkbox here would put them in
+                       front of a reset and a delete that were never about
+                       them. */
+                    offRegister selectable={false} selected={false}
+                    onToggleSelect={() => {}} />
+                ))}
+              </View>
+            </View>
+          ) : null}
+
           {/* THE "ATTENDANCE" ACTION ROWS ARE GONE, on request.
               Send Communication was the same destination as the button in
               this screen's own header, three scroll-lengths apart; Upload
@@ -1855,9 +1968,20 @@ function DayLegend({ failed }: { failed: boolean }) {
  * two copies would be two places for the miss counts to drift.
  */
 function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
-  dayIso, weekdays, rows, attendanceState,
+  dayIso, weekdays, rows, attendanceState, offRegister = false,
   selectable, selected, onToggleSelect }:
   { member: Member; tint: string; weekLabel: string; noEmail: boolean;
+    /**
+     * This card is in the Inactive section, not on the day's register.
+     *
+     * It suppresses the attendance READING and nothing else. The member was
+     * off the register that day, so there was no session expecting them:
+     * "Yet to mark" would promise an upload that is never coming and
+     * "Not expected" would state a fact about the timetable instead of about
+     * the membership. Neither is true, so the card says neither -- the
+     * section's own note carries the reason once, above all of them.
+     */
+    offRegister?: boolean;
     /**
      * The roster is in selection mode, so this card carries a tick.
      *
@@ -1935,6 +2059,13 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
    * pending while the day on screen is before it.
    */
   const pending = pendingInactiveFrom(member, statusDay);
+  /**
+   * ...and the day they are due BACK, read against the same day and drawn for
+   * the same reason (0072). While a return is scheduled the pill says
+   * "Inactive", truthfully, and would go on saying it right up to the day;
+   * this is what stops that being a surprise to whoever set it.
+   */
+  const pendingReturn = pendingActiveAgainFrom(member, statusDay);
   /** The pill is about another day than the tap is. Said, never assumed. */
   const readingIsHistoric = inactive !== inactiveToday;
   /**
@@ -1979,24 +2110,36 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
   const [linking, setLinking] = useState(false);
   const [linkingSave, setLinkingSave] = useState(false);
 
-  /** Where she stands on the selected day -- read here, never written. */
-  const day = dayIso
+  /** Where the member stands on the selected day -- read here, never written.
+   *  Not read at all in the Inactive section: no reading of that day's
+   *  register is true of somebody who was not on it (see `offRegister`). */
+  const day = dayIso && !offRegister
     ? dayAttendance({ rows, member, dayIso, weekdays, todayIso })
     : null;
 
-  const applyStatus = async () => {
+  const applyStatus = async (activeAgainFrom: string | null = null) => {
     if (saving) return;
     setConfirmStatus(false);
     setSaving(true);
     // From TODAY's reading, never the strip's: this pill is a one-tap "now"
     // control and always has been. Scheduling a departure is the Edit form's
     // date field (0045); this writes today's date, which is what the tap has
-    // always meant -- "she is off the register from now on".
+    // always meant -- "the member is off the register from now on".
+    //
+    // THE WAY BACK ON IS DATED (0072), which is the one asymmetry between the
+    // two directions and it is the requested one: marking inactive stays a
+    // one-tap act, marking active asks which day. `activeAgainFrom` is null
+    // for the inactive direction and the dialog's pick for the other.
     const wanted: MemberStatus = inactiveToday ? 'active' : 'inactive';
     const first = member.name.split(' ')[0];
-    const said = wanted === 'active' ? 'active again' : 'inactive';
+    const scheduled = wanted === 'active' && !!activeAgainFrom && activeAgainFrom > todayIso;
+    const said = wanted === 'active'
+      ? (scheduled ? `active from ${dateInWords(activeAgainFrom!)}` : 'active again')
+      : 'inactive';
     try {
-      await setMemberStatus(member.id, wanted, wanted === 'active' ? null : todayIso);
+      await setMemberStatus(member.id, wanted,
+        wanted === 'active' ? null : todayIso,
+        wanted === 'active' ? activeAgainFrom : null);
       flash(dataSource === 'live'
         ? `${first} is ${said}`
         : `${first} is ${said} on this device only. The academy database is not configured.`,
@@ -2138,6 +2281,15 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
                 {`Inactive from ${dateInWords(pending)}`}
               </Text>
             ) : null}
+            {/* The mirror line, and the two can never both be drawn: the
+                database allows each date only beside its own side of the
+                pill, so a record carrying one carries no other. */}
+            {pendingReturn ? (
+              <Text numberOfLines={1} testID={`course-member-returning-${member.id}`}
+                style={{ fontSize: 11, marginTop: 1, color: theme.dim }}>
+                {`Active from ${dateInWords(pendingReturn)}`}
+              </Text>
+            ) : null}
           </View>
         </Pressable>
 
@@ -2243,7 +2395,10 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
           business claim about an upload nobody has made. The retry is the
           banner under the strip -- one action for one failed read, not one
           per card. */}
-      {attendanceState === 'error' ? (
+      {/* The Inactive section's cards state nothing about the day's register
+          -- including that it failed to load, which is a fact about rows none
+          of these members has. */}
+      {offRegister ? null : attendanceState === 'error' ? (
         <Text style={{ fontSize: 11, color: theme.dim, marginTop: 11 }}>
           Attendance for this week could not be loaded.
         </Text>
@@ -2440,8 +2595,28 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
       {/* What the mark DOES, in both directions, because "inactive" on its own
           could mean deleted, paused or unenrolled -- and which of those it is
           decides whether anybody dares tap it. */}
+      {/* TWO DIALOGS, ONE PILL (0072), and which one opens is TODAY's reading
+          -- `inactiveToday`, never the strip's day, exactly as the write is.
+
+          They are separate because the two directions stopped being the same
+          question. Marking somebody inactive is still one tap and a sentence:
+          it means "from now on", the date it writes is today, and
+          ConfirmDialog is the right shape for it -- that half is untouched.
+          Marking somebody active now asks WHICH DAY, which is a control, and
+          ConfirmDialog takes a body string and cannot hold one. Folding a
+          picker into it would have changed the dialog every other confirmation
+          in this app is drawn with. */}
+      <MarkActiveDialog
+        open={confirmStatus && inactiveToday}
+        onClose={() => setConfirmStatus(false)}
+        memberName={member.name}
+        joinedOn={member.joinedOn ?? null}
+        todayIso={todayIso}
+        saving={saving}
+        onConfirm={from => { void applyStatus(from); }} />
+
       <ConfirmDialog
-        open={confirmStatus}
+        open={confirmStatus && !inactiveToday}
         onClose={() => setConfirmStatus(false)}
         /* TODAY's reading, in the title, the body and the button -- the
            three places the decision is stated. The pill above may be drawing
@@ -2464,9 +2639,7 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
               + 'Marking inactive now brings that forward to today; use Edit to change '
               + 'the date instead.'
             : '',
-          inactiveToday
-            ? 'This member goes back into the follow-up rule from now on, and is listed and written to again after a missed session. Any inactive date on the record is cleared. The enrolment and the attendance history are unchanged — they never went anywhere.'
-            : 'This member stays on the roster and attendance goes on being recorded, but is left out of the follow-up rule from today: not listed for follow-up, and nothing is sent. The enrolment and the history are untouched, and marking active again puts everything straight back. Recorded in the audit log.',
+          'This member stays on the roster and attendance goes on being recorded, but is left out of the follow-up rule from today: not listed for follow-up, and nothing is sent. The enrolment and the history are untouched, and marking active again puts everything straight back. Recorded in the audit log.',
         ].filter(Boolean).join(' ')}
         cancelLabel="Cancel"
         confirmLabel={saving ? 'Saving…' : inactiveToday ? 'Mark active' : 'Mark inactive'}
