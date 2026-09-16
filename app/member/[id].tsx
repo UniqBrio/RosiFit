@@ -563,8 +563,18 @@ function HerDetails({ m }: { m: Member }) {
   // Her status ON TODAY, which since 0045 is not the same as the stored word:
   // a member marked inactive from the 1st of next month is active now, and a
   // pop-up somebody is about to reach out from has to say the true one.
-  const status = memberStatusReading(m.status, m.inactiveFrom ?? null, iso(new Date()));
-  const statusInk = status.active ? ink('present') : theme.muted;
+  // ...and since 0072 the OTHER date too: a member with a return dated next
+  // month is off the register now, and passing only half the record is how
+  // this card starts calling somebody Active while the roster calls them
+  // Inactive.
+  const status = memberStatusReading(
+    m.status, m.inactiveFrom ?? null, iso(new Date()), m.activeAgainFrom ?? null);
+  // INACTIVE IS RED, asked for by name -- "show mark inactive tag in red"
+  // (16-Sep-2026). It wore `theme.muted`, which reads as a disabled control
+  // rather than as a state somebody chose; the word and the glyph still carry
+  // the status on their own (guardrail 3), and the tone is the same `absent`
+  // ink the roster pill uses, so the two surfaces say it the same way.
+  const statusInk = status.active ? ink('present') : ink('absent');
   const days = memberDayNames(m.weekdays);
   const addresses = addressesInOrder(m.emails);
 

@@ -1783,9 +1783,12 @@ function CourseDetailBody() {
               delete -- every one of those is about the day's register. */}
           {inactiveShown.length > 0 ? (
             <View testID="course-inactive-section" style={{ marginTop: SPACE.xl }}>
+              {/* The heading wears the same ink as the pills under it, for
+                  the reason the No email heading wears its section's: a
+                  grey heading over red tags reads as two different facts. */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                <Icon name="pause_circle" size={16} color={theme.dim} />
-                <Label style={{ flex: 1, color: theme.dim }}>Inactive</Label>
+                <Icon name="pause_circle" size={16} color={dangerInk} />
+                <Label style={{ flex: 1, color: dangerInk }}>Inactive</Label>
                 <Text style={{ fontSize: 11.5, color: theme.muted, fontVariant: ['tabular-nums'] }}>
                   {`${inactiveShown.length} of ${joinedByDay.length}`}
                 </Text>
@@ -2076,7 +2079,23 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
    * a sentence claiming something already happened.
    */
   const wasOrWillBe = dayIso && dayIso > todayIso ? 'will be' : 'was';
-  const statusInk = inactive ? theme.dim : okInk;
+  /**
+   * INACTIVE IS RED, asked for by name -- "show mark inactive tag in red"
+   * (16-Sep-2026).
+   *
+   * It wore `theme.dim`, which is the tone this app uses for something
+   * SECONDARY -- a hint, a disabled control, a line nobody needs to act on.
+   * Off the register is none of those: it is a state somebody chose, it stops
+   * the academy writing to that member, and on a roster of forty names it was
+   * the quietest thing on the card. `absent` is the ink this screen already
+   * spends on the fact a member was not there, which is the nearest thing to
+   * it, so the two do not need a reader to learn a third colour.
+   *
+   * The word and the glyph still carry the status on their own (guardrail 3);
+   * this changes only which ink they are drawn in, and the pair is measured
+   * like every other (guardrail 2 -- scripts/check-contrast.ts).
+   */
+  const statusInk = inactive ? dangerInk : okInk;
   const box = statusSurface(statusInk);
   // The threshold the canvas paints the miss line at. A READING aid, not the
   // follow-up rule: the rule lives in one place (src/data/followup) and this

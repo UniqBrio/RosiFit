@@ -99,3 +99,44 @@ test('ordering the addresses does not disturb the record it was given', () => {
   addressesInOrder(stored);
   assert.deepEqual(stored.map(e => e.address), ['a@x.com', 'b@x.com']);
 });
+
+/* ------------------------------- the pop-up reads the RETURN date too (0072)
+ *
+ * The bug this pins was live for exactly one change: 0072 gave the record a
+ * second status date and this reading was not given it, so a member with a
+ * return dated next month read "Active" on the member card while the roster
+ * pill beside it read "Inactive" -- the two ends disagreeing, in the one
+ * function written to stop that. */
+
+test('a member whose return has not arrived reads Inactive on the card', () => {
+  const r = memberStatusReading('active', null, '2026-09-16', '2026-10-01');
+  assert.equal(r.word, 'Inactive');
+  assert.equal(r.active, false);
+  assert.equal(r.icon, 'pause_circle');
+  assert.equal(r.note, 'Active from 1 October 2026 — out of the follow-up rule until then');
+});
+
+test('and Active once the day has come', () => {
+  const r = memberStatusReading('active', null, '2026-10-01', '2026-10-01');
+  assert.equal(r.word, 'Active');
+  assert.equal(r.active, true);
+  assert.equal(r.note, 'Active since 1 October 2026');
+});
+
+test('the return date is ignored when there is no day to read it against', () => {
+  // A caller with no `todayIso` gets the stored word, exactly as before.
+  const r = memberStatusReading('active', null, '', '2026-10-01');
+  assert.equal(r.word, 'Active');
+  assert.equal(r.note, null);
+});
+
+test('every pre-0072 call is byte-for-byte what it always was', () => {
+  // Three arguments, no fourth: the 0045 reading, untouched.
+  assert.deepEqual(memberStatusReading('inactive', '2026-10-01', '2026-09-16'), {
+    active: true, word: 'Active', icon: 'check_circle',
+    note: 'Inactive from 1 October 2026 — in the follow-up rule until then',
+  });
+  assert.deepEqual(memberStatusReading('inactive'), {
+    active: false, word: 'Inactive', icon: 'pause_circle', note: null,
+  });
+});

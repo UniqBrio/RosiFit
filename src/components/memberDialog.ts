@@ -86,15 +86,27 @@ export function memberStatusReading(
   status: MemberStatus,
   inactiveFrom: string | null = null,
   todayIso: string = '',
+  /**
+   * The other status date (0072) -- from when a stated ACTIVE applies.
+   *
+   * Added last, and defaulted, so every existing caller is byte-for-byte
+   * unchanged. It is not optional in the sense of "nice to have": a caller
+   * that holds this date and does not pass it gets the reading that IGNORES
+   * it, which is precisely the pop-up calling a member Active while the
+   * roster beside it calls them Inactive -- the two ends disagreeing, in the
+   * one function written to stop exactly that.
+   */
+  activeAgainFrom: string | null = null,
 ): { word: string; icon: string; active: boolean; note: string | null } {
-  const dated = Boolean(inactiveFrom && todayIso);
-  const effective = dated ? statusOn({ status, inactiveFrom }, todayIso) : status;
+  const record = { status, inactiveFrom, activeAgainFrom };
+  const dated = Boolean((inactiveFrom || activeAgainFrom) && todayIso);
+  const effective = dated ? statusOn(record, todayIso) : status;
   const active = effective === 'active';
   return {
     active,
     word: active ? 'Active' : 'Inactive',
     icon: active ? 'check_circle' : 'pause_circle',
-    note: dated ? statusNote({ status, inactiveFrom }, todayIso) : null,
+    note: dated ? statusNote(record, todayIso) : null,
   };
 }
 
