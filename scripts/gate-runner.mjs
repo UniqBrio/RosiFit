@@ -129,6 +129,11 @@ const STEPS = [
     why: 'Every part of PWA support is easy to half-do, and every half-done version looks finished: a manifest nothing links, '
       + 'a worker nothing registers, an icon that was declared and never added. None break a build; all mean the app cannot '
       + 'be installed, which nobody discovers until someone tries it on a phone. CP-30.' },
+  { id: 'G13', name: 'Approved design still being built', cmd: ['node', [fwScript('scripts/audits/check-design-contract.mjs')]],
+    why: 'When a design was SUPPLIED, every material decision in it must be implemented WITH EVIDENCE the audit resolves '
+      + 'against the code, deferred or changed WITH AUTHORITY, or blocked WITH AN OWNER. Unresolved is not resolved and a '
+      + 'baseline is not an approval: hard findings exit 2 whatever was baselined. An application with no contract passes '
+      + 'with one loud line. Validation proved the prose version of this gate stopped nothing (RC-018, CP-33).' },
 ];
 
 fs.mkdirSync(LOGDIR, { recursive: true });

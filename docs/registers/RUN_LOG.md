@@ -9,11 +9,33 @@
 > the costume of a record — which is precisely what [RC-008](./ROOT_CAUSE_REGISTER.md) cost
 > this framework: "run reports carry stage timings" was a rule for three versions and produced
 > **not one measured number**, because the only party asked to honour it was a narrator.
+>
+> ### Reading the Total column (v2.7.0)
+>
+> Rows from v2.7.0 read **`12m active · 3h 38m elapsed`**. Earlier rows carry one figure, and it
+> is the **elapsed** one.
+>
+> They differ because an agent-run session spends much of its wall clock waiting for a person to
+> read something and reply. R-006 recorded **3h 38m** for about fifteen minutes of work — the
+> requester stepped away between two messages — and a column that silently measures a lunch
+> break cannot answer the one question it exists for: *was it the machine or the agent?*
+>
+> **Active is a lower-bound estimate, not a measurement.** It sums the gaps between the marks
+> the script leaves as it runs, counting at most 10 minutes of any single gap; work done between
+> two marks further apart than that is not counted at all. A run with too few marks gets
+> **`active: no marks`** rather than a flattering number — the same rule as everything else
+> here: a figure nobody measured is never printed beside figures that were.
+>
+> **Elapsed is still recorded, always.** The honest answer to "how long did this take?" is
+> different for the machine and for the calendar, so the row carries both.
 
-> **Adopted into RosiFit 08-Sep-2026 (framework v1.25.0) with no rows.** The header and columns
-> are the framework's verbatim; the timings quoted under *Why `Total` and `Gate` sit next to each
-> other* were measured on the **framework** repository, not here. RosiFit's first row is written by
-> the script, as `R-001`.
+> **Adopted into RosiFit 08-Sep-2026 (framework v1.25.0) with no rows; header re-seeded 16-Sep-2026
+> from framework v4.0.0 (the v2.7.0 *Reading the Total column* section).** The header and columns
+> are the framework's verbatim; the runs and timings it cites (R-006, the 87-second stack) were
+> measured on the **framework** repository, not here. RosiFit's first row is written by the
+> script, as `R-001`. **Since framework v2.0.0 guard G9 blocks a commit that changes application
+> code while this file gains no new row** — close every run with `run-log.mjs end`, or say
+> `RUNLOG-NA: <reason>` in the commit message.
 
 ```bash
 node scripts/run-log.mjs start --type CHANGE --action "sign-out lands on the wrong screen" --scale micro
@@ -66,6 +88,3 @@ should start by reading this table rather than by guessing which part felt slow.
 
 | ID | Action | Type | Scale | Started | Ended | Total | Stages | Gate | Verdict | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
-| R-003 | Same member can be added with same name email and display name in other course do not restrict user to add them as member in another course. But one course cannot have duplicate. A member with same display name and email and display can be added as new member in another course if he is not present in that course but if he is present in that course show as duplicate | CHANGE | scoped | 2026-09-12 21:32 | 2026-09-12 22:28 | 55m | - | 18.7s | BLOCKED | - |
-| R-002 | Attendance upload of three 11-Sep Meet files fails with 500: csv-import reads members unpaged past the API 1000-row cap | BUG | micro | 2026-09-12 10:34 | 2026-09-12 10:40 | 6m | ground 1m · build 2m · verify 3m · gate 1m | 19.9s | FAIL | csv-import paged (RC-043); gate 6/5/1 identical to the two prior runs on main - G6 no eslint, G7 six pre-existing specs (formDropdownMenu, message), G8 no test:functional; none touch this change. Function not deployed. |
-| R-001 | In dropdown with in the forms such as add edit forms of course member and other form within which drop down is present apply dropdown ui as shown in atatched image only inside forms and dialogs | CHANGE | scoped | 2026-09-08 14:13 | 2026-09-08 14:24 | 11m | - | - | - | - |

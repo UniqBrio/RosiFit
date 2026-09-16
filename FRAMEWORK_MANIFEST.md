@@ -41,7 +41,8 @@ list above is the authority for what gets linked, and everything under `starter/
 `07` security · `08` cloud · `09` code quality · `10` documentation · `11` theme · `12` themes
 light/dark · `13` contrast and accessibility · `14` assets · `15` test cases · `16` testing ·
 `17` ratchets · `18` deployment · `19` AI agents · `20` glossary · `21` agent wiring ·
-`22` framework evolution · `23` design craft · `24` design planning · `25` analytics and dashboards
+`22` framework evolution · `23` design craft · `24` design planning · `25` analytics and dashboards ·
+`26` design decisions (the judgement layer) · `27` stack selection
 
 ## Runbooks — `workflows/`
 | File | Track |
@@ -104,6 +105,10 @@ round N−1's file.
 | `audits/check-rule-coverage.mjs` | Every rule names its enforcement point |
 | `audits/check-fixture-leak.mjs` | Placeholder data wired into a screen a user can reach (ratcheted) |
 | `audits/check-column-control.mjs` | A table wider than three columns lets the user choose its columns (CP-21) |
+| `design-ingest.mjs` | Turns a folder of supplied design artifacts into a checkable inventory (CP-33). Every artifact gets one of eight classes - A parsed · B partial · C unsupported · D needs extraction · E needs visual inspection · F duplicate · G unreferenced input · H generated - so "63 need manual inspection" becomes "1 does, 53 are input material, 1 is a duplicate". Reads HTML, CSS, Markdown, JSON, CSV and DOCX (via zip, stock tooling only); candidate inventories from repeated label groups; the product's literals and the tool's document tokens reported SEPARATELY, with the medium's own readme quoted as scope evidence. Prints INGESTION: COMPLETE or INCOMPLETE and means it. Exits 3 unreadable, 1 action required, 0 clean |
+| `audits/check-design-contract.mjs` | Gate **G13** (RC-018, CP-33): every approved design decision has to EARN its status. `implemented` needs Evidence the audit resolves against the code (`file:` `route:` `testid:` `text:` `spec:` `manual:`) plus a Verified-by; `deferred`/`blocked` an owner; `changed` a §8 row; `unresolved` blocks. Classifies every row - SAME · IMPLEMENTATION DETAIL · MINOR VARIATION · MATERIAL DESIGN CHANGE · MISSING · UNKNOWN · CONFLICTING. Hard findings exit 2 whatever the baseline says: recorded is not resolved |
+| `design-fidelity.test.sh` | The 12 cases proving both of the above fire, including that implementation freedom SURVIVES |
+| `audits/check-presentation-labels.mjs` | CP-32: a canonical (machine-cased) union value rendered as user-facing text. Collects the vocabulary and the property names typed by it across the whole tree, then reads only JSX CHILDREN regions - so a canonical `data-testid`, which must stay canonical, is never flagged. Ratcheted; escape `PRESENTATION-NA:` |
 | `hooks/pre-commit-guard.sh` | Close-out obligations, per-guard escape tokens |
 | `hooks/guard-reachability.test.sh` | **Executes** the guard, proving each one can fire |
 | `upgrade.test.sh` | **Executes** lineage + upgrade against scratch apps — the behaviour rung for the three-way rule |
@@ -168,13 +173,100 @@ round N−1's file.
 | `workflows/promote.md` | The app-lesson → framework-improvement classification gate. |
 | `docs/registers/CANDIDATES.md` | Parking lot for n=1 promotion candidates. |
 | `templates/docs/FRAMEWORK_ADOPTION.md` | Per-app adoption log template. |
-| `fixtures/` | Three tiny domain-free apps: `minimal` · `with-debt` · `diverged`. |
+| `fixtures/` | Four tiny domain-free apps: `minimal` · `with-debt` · `diverged` · `adopted` (carries the registers and a real run log, so the rails added in v2.0.0/v2.1.0 are visible to `audit:compat` at all). |
 | `docs/22-FRAMEWORK-EVOLUTION.md` | How versioning, upgrade, promotion and conformance work. |
 
 ## Reference implementation — `starter/` *(Half B — the seed)*
 `design/tokens.json` *(the only file containing a colour)* · `src/theme/` · `src/lib/` ·
 `tests/{unit,render,functional}/` · `supabase/{migrations,functions/_shared}/` ·
 `playwright.config.ts` · `tsconfig.json` · `.env.example`
+
+## DR-7 column header filter *(v2.11.0)*
+
+`starter/src/components/ColumnFilter.tsx` is the smallest control that satisfies DR-7: a filter
+in the column it filters, as a button of its own beside the sort button. It holds **no filter
+state** — selection, OR-within-field, AND-across-fields and Clear all already live in
+`src/lib/list-controls.ts`, and a second filter model behind the headers is how one table starts
+filtering differently from the list beside it. `useListControls` gained `clearField` for it.
+
+Its worked example is `AuditLogTable`, the only qualifying multi-column table here; its `module`
+filter moved out of the toolbar into the header. The library row is **PARTIAL, not READY** — one
+column, one table, flat string options, no mobile answer.
+
+---
+
+## Stack selection *(v2.10.0)*
+
+`docs/27-STACK-SELECTION.md` is the policy; `scripts/lib/stack-select.mjs` is the decision, so it
+can be tested rather than interpreted. Five outcomes — **A** (Expo universal), **B** (Next.js
+web), **HYBRID** (evaluate a split), **EXISTING** (evaluate, never rewrite), **ASK** (the one
+question that separates the paths). `scripts/stack-select.test.sh` runs the policy's own seven
+cases. The distinction the whole thing turns on: **mobile browser support alone never selects
+Expo** — case 2 exists to catch it if that ever changes.
+
+`new-app.mjs` now declares that it produces **Category B** and **refuses `--category A`**: there
+is no Expo implementation here, and a Next.js tree handed over under that name would be the
+silent default with a better label.
+
+---
+
+## The design phase — reasoning and execution *(v2.8.0)*
+
+`docs/26-DESIGN-DECISIONS.md` is the **knowledge base**: what counts as evidence and what may be
+done with it, how to resolve conflicting sources, the decision classes worth a playbook, risk-
+calibrated depth, the four-way **authority** separation (requester ≠ decision owner ≠ action
+authority ≠ specialist), the escalation contract, and the failure-mode list. Its §0 is a map of
+what it deliberately does **not** restate — roughly half the original knowledge base already
+existed here under this framework's own names, and a second vocabulary for one concern produces
+two answers to every question about it.
+
+`workflows/design-phase.md` is the **runbook**: D0 frame · D1 retrieve · D2 classify · D3
+materiality → one of six actions · D4 ask well · D5 separate constraints from preferences · D6
+choose depth and design · D7 verify · D8 escalate as a package · D9 deliver. Entered from Track A
+A3 and Track B B4. Deliberately **not** a slash command — the design phase is a step inside a
+track, and `/design` already names the Claude Design canvas.
+
+---
+
+## The searchable select — DR-5's implementation *(v2.4.0)*
+
+## CP-33 implementing a supplied design *(v2.13.0)*
+
+When a design is supplied rather than decided, `workflows/design-phase.md` **D10** is the order
+of operations: inventory, declare source authority, write the contract, gate on it. The contract
+itself belongs to the APPLICATION (`templates/docs/DESIGN_CONTRACT.md` copied to its
+`docs/DESIGN_CONTRACT.md`); the framework owns the template, the ingest tool and the ratchet.
+
+The load-bearing rule is small: a MUST-PRESERVE decision may be `implemented`, `deferred`,
+`changed`, `blocked` or `unresolved` - **never blank**. A designed feature cannot disappear; it
+can only be accounted for. See RC-018 for why D5's old "preferences bind nothing" line made the
+substitution compliant rather than forbidden.
+
+## DR-8 adaptive arrangement, and CP-32 canonical vs presentation *(v2.12.0)*
+
+`starter/src/lib/presentation.ts` declares a canonical vocabulary and its labels APART. The map
+is `Record<T, string>` over the union, so a new state fails the build until it is named - which
+is the moment to decide, rather than six months later when a user reports reading `archived`.
+The canonical value is untouched: it is what the database, the API, filters, sorts and every
+`data-testid` use. `scripts/audits/check-presentation-labels.mjs` ratchets it;
+`starter/src/features/items/types.ts` is the worked example.
+
+`.form-grid` in `starter/src/components/components.css` is DR-8 in one declaration: `auto-fit` +
+`minmax(min(var(--layout-min-field-width), 100%), 1fr)`. No media query, because the rule is
+about what the CONTENT needs, not about a device - so it still holds inside a narrow dialog on a
+wide monitor. `layout.minFieldWidth` lives in `starter/design/tokens.json` and is read by
+`starter/tests/functional/responsive-fit.functional.spec.ts`, so the layout and the check that
+polices it cannot drift apart.
+
+`starter/src/lib/select-options.ts` is the pure half — filtering, duplicate detection, arrow
+bounds — with no DOM, so its edge cases are exhaustively unit-testable. `SearchableSelect.tsx`
+is the control: `role="combobox"`, focus never leaving the input, Escape consumed in the
+**capture** phase (a React `stopPropagation` does not stop the surrounding Dialog's own
+`document` listener, so one press closed both), and `+ Add` refused for a label that duplicates
+an existing one by case or spacing alone. Persistence is honest: `onCreateOption` reaches other
+users, `storageKey` is a per-browser fallback that says so.
+
+---
 
 ## Getting started — `1_AppDevelopmentSteps.md`
 

@@ -13,6 +13,103 @@ current; adopt a **MAJOR** within one quarter.
 
 ---
 
+## v4.0.0 — adopted 16-Sep-2026 (from: v1.36.1, via 2.0.0 · 2.1 … 2.13.1 · 3.0.0)
+
+### What kind of adoption this is
+
+**Half A (PROCESS) only, by hand** — the same method as every pass since v1.6.0: compare each
+upstream-changed process file against framework **v1.36.1**, replace only what is still
+**byte-identical**, never overwrite a file RosiFit has changed.
+
+**Scope held: nothing under `app/`, `src/`, `supabase/`, `assets/`, `db/`, `design/` or
+`.harness/` was touched.** Asserted mechanically from `git status`, not by inspection.
+
+### THREE MAJOR BUMPS — what each one changes for RosiFit, read before the next commit
+
+| Version | The change | Effect here |
+|---|---|---|
+| **2.0.0** | **Guard G9**: a commit that changes application code (`src/ app/ components/ lib/ api/ supabase/`) while `docs/registers/RUN_LOG.md` exists and gains no new `\| R-` row is **BLOCKED**. | **RosiFit HAS the register** (seeded at v1.25.0), so **G9 is live from this commit on.** Every app-code commit must either close a run — `node scripts/run-log.mjs start … ` at the start, `node scripts/run-log.mjs end --verdict <PASS\|FAIL\|BLOCKED>` before committing — or carry `RUNLOG-NA: <reason>` in the message, which excuses G9 and nothing else and leaves an auditable line. **This is the migration.** A framework-only commit (this one) does not trigger it: `code_changed` is false. |
+| **3.0.0** | The PreToolUse adapter (`.claude/hooks/pre-tool-use-guard.mjs`) now sets `GUARD_WORKTREE=1` when the command stages its own work (`git add -A && git commit`, `commit -am`), so the guards read the working tree instead of an index that is empty at that moment. | **Commits that used to sail through will now be guarded.** Nothing about G1–G9 changed; guards that were silently skipped on the one-liner everybody types now fire. RC-019 upstream. Proven here: adapter suite 13 / 13 including the three RC-019 cases. |
+| **4.0.0** | **Gate G13** (`check-design-contract.mjs`): an app built from a supplied design must show evidence for every approved decision. | **No action** — RosiFit has no `docs/DESIGN_CONTRACT.md`; G13 passes with one loud line ("no contract at docs/DESIGN_CONTRACT.md - nothing to audit"). Observed via the gate runner: **G13 PASS**. If a design contract is ever adopted, `templates/docs/DESIGN_CONTRACT.md` is now present and `workflows/design-phase.md` D10 is the order of operations. |
+
+Also worth knowing (MINOR): **2.9.0** — a `FAIL-FIRST:` line added to `TEST_SUMMARY.md` must now
+name an observable signal (an exit code, a count, or the message in quotes); `red first` and a
+bare `failed` are refused by G3. Existing rows are not re-judged. **2.7.0** — `run-log.mjs`
+gains `tick`; rows now carry `active · elapsed`.
+
+### Auto-applied — pristine in RosiFit, changed upstream (25)
+
+`.claude/hooks/adapter.test.sh` · **`.claude/hooks/pre-tool-use-guard.mjs`** (3.0.0) ·
+`1_AppDevelopmentSteps.md` · `FRAMEWORK_MANIFEST.md` · `UPGRADES.md` · `VERSION` · `docs/00` ·
+`docs/04` · `docs/15` · `docs/24` · `docs/registers/COMPONENT_LIBRARY.md` (pristine since
+v1.11.0) · `scripts/conformance.mjs` · **`scripts/gate-runner.mjs`** (G13) ·
+**`scripts/hooks/pre-commit-guard.sh`** (G9, G3 signal, worktree mode) ·
+`scripts/hooks/guard-reachability.test.sh` · `scripts/new-app.mjs` · **`scripts/run-log.mjs`** ·
+`scripts/run-log.test.sh` · `scripts/upgrade.mjs` · `scripts/upgrade.test.sh` ·
+`tests/cases/FRAMEWORK_PROCESS_CASES.md` · `workflows/enhance.md` · `workflows/feature.md` ·
+`workflows/framework-update.md` · `workflows/request.md`
+
+### Added — new since v1.36.1 (10 files, 2 baselines)
+
+`docs/26-DESIGN-DECISIONS.md` · `docs/27-STACK-SELECTION.md` · `workflows/design-phase.md` ·
+`templates/docs/DESIGN_CONTRACT.md` · `scripts/design-ingest.mjs` ·
+`scripts/audits/check-design-contract.mjs` (G13) · `scripts/design-fidelity.test.sh` ·
+`scripts/audits/check-presentation-labels.mjs` (CP-32, 2.12.0) · `scripts/lib/stack-select.mjs` +
+`scripts/stack-select.test.sh` (2.10.0).
+
+**`.baselines/presentation-labels-baseline.txt`** (src) and **`-app-baseline.txt`** (app) —
+the new ratchet arrives baselined like every other: **0 raw canonical values on screen in both
+trees — a clean gate on day one.**
+
+### Merged / re-seeded (2)
+
+- `checklists/DEFINITION_OF_DONE.md`: RosiFit's RC-023 item + upstream's G9 rung note; three-way
+  against v1.36.1, zero conflict markers, both present.
+- `docs/registers/RUN_LOG.md`: **re-seeded** from the v4.0.0 text (the v2.7.0 *Reading the Total
+  column* section is new), the framework's 22 own rows and the note about R-001/R-002 stripped,
+  the provenance note extended with the G9 obligation. Columns unchanged; still 0 rows.
+
+### Skipped, with the reason
+
+| File(s) | Why |
+|---|---|
+| `package.json` | RosiFit's own. Upstream adds `audit:labels`, `audit:design`, `design:ingest` and the new suites to `guard:test` — see Known gaps |
+| `CHANGELOG.md` · `TEST_SUMMARY.md` | RosiFit's own logs |
+| `docs/registers/{CANONICAL_PATTERNS,DESIGN_RULES,PRODUCT_LEXICON,ROOT_CAUSE_REGISTER}.md` | RosiFit's own. Upstream: CP-32 presentation, CP-33 design contract, DR-4…DR-8 (plain messages · searchable dropdown · filter sheet · column filter · adaptive form grid), RC-018/RC-019. **RC-018 names RosiFit** as one of two apps whose supplied design was rebuilt in the agent's taste — the cause was the framework's own D5 wording, now fixed |
+| `fixtures/` (5 files) · `starter/` (24 files) | Framework self-test fixtures and Half B seed; RosiFit has neither |
+
+`CLAUDE.md` (expected-divergent) gained only the version reference.
+
+### Verification — executed here, not read
+
+| Suite | Result |
+|---|---|
+| twelve existing ratchet/audit invocations | **all exit 0** |
+| `check-presentation-labels` src + app | **clean gate**, baselined |
+| `check-design-contract` (no contract) | loud pass, exit 0 |
+| `guard-reachability.test.sh` (incl. G9, G3 signal) | **28 / 28** |
+| `.claude/hooks/adapter.test.sh` (incl. RC-019 bypass cases) | **13 / 13** |
+| `run-log.test.sh` (re-run) | **37 / 37** — register untouched, no stray `.run-log.json` |
+| `stack-select.test.sh` | **9 / 9** |
+| `design-fidelity.test.sh` | **38 / 38** |
+| `gate-runner.mjs --only G12,G13 --summary <scratch> --logdir <scratch>` | G12 PASS · **G13 PASS**; `TEST_SUMMARY.md` untouched (hash compared) |
+| `npm run check` | **not run** — `node_modules/` absent in the adopting session; nothing under `src/` or `app/` changed |
+
+### Known gaps — owner edits, all in files this pass was told not to touch
+
+1. **`package.json`**: add `"audit:labels"` (both trees, distinct app baseline as for the other
+   ratchets) and `"audit:design"`; the `audit:fixtures` / `audit:pwa` / suite-wiring gaps from
+   v1.20.0–v1.36.1 still stand. Suites worth adding to `guard:test` now: `stack-select.test.sh`,
+   `design-fidelity.test.sh`, `.claude/hooks/adapter.test.sh`.
+2. **`.gitignore`**: still needs `.run-log.json` and `.close-out-commit.txt` — and with G9 live,
+   `.run-log.json` **will** appear the first time `run-log.mjs start` is used.
+3. **Working habit, not a file**: every app-code run now opens and closes a run log row, or
+   says why not in the commit message. That is the whole of the v2.0.0 migration.
+
+Recorded here so each is a decision, not an oversight.
+
+---
+
 ## v1.36.1 — adopted 11-Sep-2026 (from: v1.25.0, via 1.26 · 1.27 · 1.28 · 1.29 · 1.30 · 1.31 · 1.32 · 1.33 · 1.34 · 1.35 · 1.36)
 
 ### What kind of adoption this is
