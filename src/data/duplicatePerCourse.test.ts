@@ -197,10 +197,35 @@ test('both member write paths go through the course-scoped refusal', () => {
   for (const fn of ['create_member', 'update_member']) {
     assert.ok(new RegExp(`'${fn}'`).test(src) , `${MIGRATION} does not patch ${fn}.`);
   }
-  assert.match(src, /perform public\.refuse_course_duplicate\(p_offering_id, p_full_name, p_emails, p_aliases, null\)/,
+  assert.match(src, /perform public\.refuse_course_duplicate\(p_offering_id, p_emails, p_aliases, null\)/,
     'create_member must ask the course-scoped question before it writes.');
-  assert.match(src, /perform public\.refuse_course_duplicate\(p_offering_id, p_full_name, p_emails, p_aliases, p_member_id\)/,
+  assert.match(src, /perform public\.refuse_course_duplicate\(p_offering_id, p_emails, p_aliases, p_member_id\)/,
     'update_member must ask it too, excluding the member being edited.');
+});
+
+/**
+ * THE CORRECTION OF 16-Sep-2026, pinned so it cannot be undone by somebody
+ * reading the request's "any one of the three counts" and putting the name
+ * check back on the forms.
+ *
+ * The live register holds 14 names shared by two live members of ONE course
+ * -- 34 members in all -- and not one of those pairs shares an address. They
+ * are namesakes, which an academy of 1,150 women is expected to contain. A
+ * name check on refuse_course_duplicate is asked on UPDATE too, excluding only
+ * the member being edited, so all 34 would have been unable to save their own
+ * record: open the member, press Save, get "already in this course", with no
+ * way out from the screen.
+ */
+test('the form paths do NOT refuse on the full name — 34 live namesakes would stop being editable', () => {
+  const src = read(MIGRATION);
+  const body = src.slice(
+    src.indexOf('create or replace function public.refuse_course_duplicate'),
+    src.indexOf('comment on function public.refuse_course_duplicate'));
+  assert.ok(body.length > 200, 'could not isolate refuse_course_duplicate — the assertion below would be vacuous');
+  assert.ok(!/name_normalized/.test(body),
+    'refuse_course_duplicate checks the full name again. It runs on every update_member call, so every member sharing a name with somebody else in their course becomes un-editable.');
+  assert.ok(!/p_full_name/.test(body),
+    'refuse_course_duplicate should not even take the name — an unused parameter is how the check gets added back.');
 });
 
 test('the bulk import\'s own name check is scoped to the course as well', () => {

@@ -48,9 +48,37 @@ lookup indexes; `public.refuse_course_duplicate()` carries the rule instead, and
 path — `create_member`, `update_member`, `bulk_import_members` — asks it before it writes
 (`0071_duplicate_is_per_course.sql`).
 
-Inside a course nothing is loosened. All three checks survive at full strength and **any one of
-them** matching is a duplicate; the owner chose that over "all three must match", which would
-have let two members of one course share an address.
+Inside a course nothing is loosened: **any one of** the checks matching is a duplicate. The owner
+chose that over "all three must match", which would have let two members of one course share an
+address.
+
+### Amended 16-Sep-2026 — the name is not one of the keys the forms check
+
+The first draft read "any one of the three" literally and put a **name** check on Add Member and
+Edit Member as well as the import. Measured against the live register before it was applied, that
+rule refuses people who are already there:
+
+| | |
+|---|---|
+| Names held by two live members of ONE course | **14** |
+| Members in those groups | **34** |
+| Of those groups, how many share an address | **0** |
+
+They are namesakes, not duplicates — which an academy of 1,150 women across a handful of courses
+is expected to contain. And because `refuse_course_duplicate` is asked on **update** too,
+excluding only the member being edited, each of those 34 would have become un-editable: open the
+member, press Save, get *"already in this course"*, with no way out from the screen. A change
+requested to stop the app refusing things would have started refusing thirty-four saves.
+
+So the name check stays exactly where it already lived — `bulk_import_members`, which **skips a
+row** rather than blocking a person mid-edit, and which has carried it since 0028. It is
+re-scoped to the course like everything else. The two keys the forms enforce are the **address**
+and the **display name**: the one the academy writes to, and the one the attendance CSV matches
+on. "One course cannot have a duplicate" still holds, on the keys that can carry it.
+
+Pinned by `src/data/duplicatePerCourse.test.ts` — *"the form paths do NOT refuse on the full
+name"* — so the check cannot be reinstated by someone reading the request without the register in
+front of them.
 
 ### "Present in that course" is not a new rule
 
@@ -87,9 +115,9 @@ copy subscribed. That is per-course behaviour and consistent with the ask; it is
 nobody asked for it by name. Bounces are unaffected — `ses-feedback` suppresses by address with
 no row limit, so it already marks every copy.
 
-**Add Member gained a check it did not have.** Only the bulk import ever refused a duplicate
-*name*; the "any one of the three" answer puts that check on the form too, scoped to the course.
-This is the one place the change makes something stricter rather than looser.
+**Nothing on the forms got stricter.** The one candidate for that — a name check on Add and Edit
+Member — was removed on the evidence above. Every rule this change touches is now the same rule
+or a looser one, which is what the request asked for.
 
 ## Reversal
 

@@ -86,10 +86,15 @@ begin;
   select public.create_member('Divya Ramesh', (select id from public.t_pre), current_date - 30,
     array['Divya R']::text[], array['divya@example.com']::text[], null);
 
-  select t.rejects($$select public.create_member('Divya  RAMESH',
-      (select id from public.t_pre))$$,
-    'the same NAME in the same course is refused — normalised, so spacing and case do not get round it',
-    'already in this course');
+  -- THE NAME IS DELIBERATELY NOT A CLASH (16-Sep-2026). Production holds 14
+  -- names shared by two live members of one course, 34 members in all, with no
+  -- shared address between any pair -- namesakes. A name check here is asked on
+  -- every EDIT too, so it would have made all 34 unable to save their own
+  -- record. The bulk import still skips by name; a skipped row blocks nobody.
+  select public.create_member('Divya  RAMESH', (select id from public.t_pre));
+  select t.eq((select count(*)::int from public.members
+                where name_normalized='divya ramesh' and deleted_at is null), 2,
+    'two namesakes may share ONE course — a shared name is not evidence of a shared person');
 
   select t.rejects($$select public.create_member('Somebody Else',
       (select id from public.t_pre), null, array['divya r']::text[])$$,
@@ -115,12 +120,18 @@ begin;
 
   insert into public.members (full_name, joined_on, status) values ('Stray Member','2026-07-19','active');
 
-  select t.rejects($$select public.create_member('Stray Member', (select id from public.t_pre))$$,
-    'nothing contradicts Prenatal for somebody enrolled nowhere, so adding them again would invent the duplicate',
-    'already in this course');
-  select t.rejects($$select public.create_member('Stray Member', (select id from public.t_post))$$,
+  insert into public.member_emails (member_id, email, is_primary, status)
+    select id, 'stray@example.com', true, 'unknown'
+      from public.members where full_name='Stray Member';
+
+  select t.rejects($$select public.create_member('Someone New', (select id from public.t_pre),
+      null, '{}'::text[], array['stray@example.com']::text[])$$,
+    'nothing contradicts Prenatal for somebody enrolled nowhere, so their address is claimed there',
+    'already on another member of this course');
+  select t.rejects($$select public.create_member('Someone New', (select id from public.t_post),
+      null, '{}'::text[], array['stray@example.com']::text[])$$,
     'and the same answer for Postnatal — a member with no live enrolment is a candidate for every course',
-    'already in this course');
+    'already on another member of this course');
 rollback;
 
 -- ================================= an ENDED enrolment is not a live one
@@ -128,15 +139,17 @@ begin;
   set local role authenticated;
   set local request.jwt.claim.sub = 'eeeeeeee-0000-0000-0000-000000000001';
 
-  select public.create_member('Moved On', (select id from public.t_pre), current_date - 60);
+  select public.create_member('Moved On', (select id from public.t_pre), current_date - 60,
+    array['Moved']::text[], '{}'::text[], null);
   update public.member_enrollments set status='ended', effective_to = current_date - 1
    where member_id = (select id from public.members where full_name='Moved On');
 
   -- No LIVE enrolment now, so they are a candidate for every course again --
   -- the same answer as Stray Member above, reached a different way.
-  select t.rejects($$select public.create_member('Moved On', (select id from public.t_post))$$,
-    'an ended enrolment does not put them in Prenatal any more, so Postnatal treats them as already on the register',
-    'already in this course');
+  select t.rejects($$select public.create_member('Someone New', (select id from public.t_post),
+      null, array['moved']::text[])$$,
+    'an ended enrolment does not put them in Prenatal any more, so Postnatal treats their display name as claimed',
+    'already belongs to another member of this course');
 rollback;
 
 -- ======================================== editing a member asks the same question
@@ -215,7 +228,7 @@ select t.ok(exists (
 -- ------------------------------------------------------------------ the gate
 select t.rejects($$
   set local role anon;
-  select public.refuse_course_duplicate(null, 'X', '{}'::text[], '{}'::text[], null)$$,
+  select public.refuse_course_duplicate(null, '{}'::text[], '{}'::text[], null)$$,
   'anon may not call the duplicate rule either', 'permission denied');
 
 drop view public.t_pre;

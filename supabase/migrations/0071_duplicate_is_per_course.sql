@@ -40,10 +40,21 @@
 --   person -- which is guardrail 1 ("one member source, follow-up derived")
 --   applied to the question of who somebody IS.
 --
---   Within a course, ALL THREE checks survive at full strength: name, address
---   and display name. Any one of them matching a member of this course is a
---   duplicate. The requester chose that explicitly over "all three must
---   match", which would have let two members of one course share an address.
+--   Within a course, the checks survive at full strength and any one of them
+--   matching a member of this course is a duplicate -- the requester chose
+--   that over "all three must match", which would have let two members of one
+--   course share an address.
+--
+--   WITH ONE CORRECTION, MEASURED AGAINST PRODUCTION ON 16-Sep-2026. The
+--   draft put a NAME check on the Add and Edit forms as well, which the "any
+--   one of the three" answer implied. The live register says no: 14 names are
+--   held by two live members of ONE course (34 members in all), and not one of
+--   those pairs shares an address -- namesakes, not duplicates. Since the
+--   check also runs on UPDATE, every one of those 34 would have become
+--   un-editable. The name check therefore stays where it already lived, in
+--   bulk_import_members, which SKIPS a row instead of blocking a save; the two
+--   keys this migration enforces on the forms are the address and the display
+--   name, which are what the app identifies a member by. See ADR 032.
 --
 -- WHAT THIS COSTS, stated rather than discovered later
 --
@@ -139,9 +150,39 @@ comment on function public.is_in_course(uuid, uuid) is
   'Whether this member could be a member of the course this offering belongs to: true when their live enrolment is in that course, or when they have no live enrolment at all. The SQL twin of splitByCourse() in supabase/functions/_shared/match.ts -- one answer to "who could this be in this course", shared by the add paths and the attendance import.';
 
 -- ------------------------------------------------- the refusal, course-scoped
+--
+-- NO NAME CHECK HERE, and that is a decision measured against production
+-- rather than reasoned about (16-Sep-2026).
+--
+-- The requester chose "any one of the three counts" over "all three must
+-- match", and the draft of this function took that literally: name, display
+-- name, address, each refusing on its own. Run against the live register that
+-- rule refuses 34 members who are already there. Fourteen names are held by
+-- two live members of ONE course -- "vishnu priya" in Postnatal, "Saranya
+-- Velayutham", "Thunisha Albert", "kaviya prakash" in General -- and NOT ONE
+-- of those pairs shares an address. They are namesakes, not duplicates, which
+-- is what an academy of 1,150 women in a handful of courses is expected to
+-- contain.
+--
+-- A name check on this function is asked on every UPDATE too, excluding only
+-- the member being edited. So each of those 34 would have become un-editable:
+-- open the member, press Save, get "a member called ... is already in this
+-- course", with no way out of it from the screen. A change asked for to stop
+-- the app refusing things would have started refusing thirty-four saves.
+--
+-- The name check therefore stays exactly where it already was -- the bulk
+-- import, which SKIPS a row rather than blocking a person mid-edit, and which
+-- has carried it since 0028. It is re-scoped to the course below like
+-- everything else. The two keys this function does check are the two the app
+-- actually identifies a member by: the address it writes to, and the display
+-- name the attendance CSV matches on. Those are also the two the requester
+-- named first ("same name email and display name" describes one person; the
+-- address and the display name are what make them findable).
+--
+-- "One course cannot have duplicate" is still true, on the keys that can
+-- carry it.
 create or replace function public.refuse_course_duplicate(
   p_offering_id uuid,
-  p_full_name   text,
   p_emails      text[],
   p_aliases     text[],
   /** the member being EDITED, who is never their own duplicate; null when adding */
@@ -163,23 +204,6 @@ begin
   -- section. Keyed on the COURSE: two operators adding to two courses never
   -- wait on each other.
   perform pg_advisory_xact_lock(hashtext('member_duplicate:' || v_course::text));
-
-  -- ----------------------------------------------------------- the name
-  -- New on the Add Member form, which had no name check at all: the bulk
-  -- import alone carried one, academy-wide. The requester asked for any one
-  -- of the three to count, so it applies on every path now -- scoped to the
-  -- course, which is looser than the import's old rule everywhere except
-  -- inside the one course.
-  if exists (
-    select 1 from public.members m
-     where m.deleted_at is null
-       and (p_exclude_member_id is null or m.id <> p_exclude_member_id)
-       and m.name_normalized = public.normalize_name(btrim(coalesce(p_full_name, '')))
-       and public.is_in_course(m.id, p_offering_id)
-  ) then
-    raise exception 'a member called "%" is already in this course', btrim(p_full_name)
-      using errcode = '23505';
-  end if;
 
   -- --------------------------------------------------- the display names
   -- Checked before the addresses, which is the order create_member has always
@@ -225,12 +249,12 @@ begin
   end if;
 end $$;
 
-revoke execute on function public.refuse_course_duplicate(uuid, text, text[], text[], uuid) from public, anon;
-grant execute on function public.refuse_course_duplicate(uuid, text, text[], text[], uuid)
+revoke execute on function public.refuse_course_duplicate(uuid, text[], text[], uuid) from public, anon;
+grant execute on function public.refuse_course_duplicate(uuid, text[], text[], uuid)
   to authenticated, service_role;
 
-comment on function public.refuse_course_duplicate(uuid, text, text[], text[], uuid) is
-  'Raises 23505 when this name, display name or address already belongs to a member of the course this offering belongs to; silent otherwise. Since 0071 this is what replaced the academy-wide unique indexes of 0006 -- same three checks, same strength, scoped to the course. Takes an advisory lock on the course so check-and-insert is atomic, which the indexes used to make it.';
+comment on function public.refuse_course_duplicate(uuid, text[], text[], uuid) is
+  'Raises 23505 when this display name or address already belongs to a member of the course this offering belongs to; silent otherwise. Since 0071 this is what replaced the academy-wide unique indexes of 0006 -- same checks, same strength, scoped to the course. Deliberately does NOT check the full name: 34 live members are namesakes inside one course and share no address, and a name check here would have made every one of them un-editable. The name check stays in bulk_import_members, where it skips a row rather than blocking a save. Takes an advisory lock on the course so check-and-insert is atomic, which the indexes used to make it.';
 
 -- ------------------------------------------ the three write paths, in place
 --
@@ -261,7 +285,7 @@ $a$  insert into public.members (full_name, joined_on, status, created_by)$a$,
 $b$  -- 0071: a duplicate is a duplicate OF THIS COURSE. Nothing is written
   -- until this returns, and the advisory lock it takes is held to commit, so
   -- no concurrent add can slip between the question and the INSERT below.
-  perform public.refuse_course_duplicate(p_offering_id, p_full_name, p_emails, p_aliases, null);
+  perform public.refuse_course_duplicate(p_offering_id, p_emails, p_aliases, null);
 
   insert into public.members (full_name, joined_on, status, created_by)$b$],
 
@@ -274,7 +298,7 @@ $a$  if btrim(p_full_name) <> v_member.full_name then$a$,
 $b$  -- 0071: a duplicate is a duplicate OF THIS COURSE -- measured against
   -- p_offering_id, the offering this edit puts the member in, and excluding
   -- the member being edited, who is never their own duplicate.
-  perform public.refuse_course_duplicate(p_offering_id, p_full_name, p_emails, p_aliases, p_member_id);
+  perform public.refuse_course_duplicate(p_offering_id, p_emails, p_aliases, p_member_id);
 
   if btrim(p_full_name) <> v_member.full_name then$b$],
 
