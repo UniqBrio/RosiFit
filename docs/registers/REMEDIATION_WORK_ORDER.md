@@ -39,6 +39,8 @@ These were the open calls. They are decided. Record each in `docs/decisions/` as
 
 **D-7 (17-Sep-2026) — Gate 1 exits on the specs it owns, not on the whole suite.** The first executed `db-harness` run (#82, 11-Sep) found the SQL suite 16 files red; on the 0071 commit (#99) 19; on today's `main` (#104) 18 of 56, 776 assertions passing, migrations replaying clean. It was never one stale lock — it has been red at every point CI could see it, and "`npm run test:db` fully green" is therefore Gate 2's exit next to `npm run check` green, where the other seventeen files are triaged (T-110 group and the regression rows split from it). Gate 1 exits on 0073 applied and verified, and on `04`, `51` and each Gate 1 row's own spec file green in the `db-harness` job.
 
+**D-8 (17-Sep-2026) — "Never edit a historical file" means an applied one.** A migration absent from every ledger and executed only by the from-scratch harness is a draft and is corrected in place. 0073 was corrected under this rule on 17-Sep before first apply (T-111: as written it restated `merge_member_into` from 0032 and would have reverted 0061's in-place edits).
+
 ---
 
 ## 1. Corrected problem statement
