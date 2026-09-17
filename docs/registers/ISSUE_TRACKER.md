@@ -66,8 +66,8 @@ Already settled by FR (record, don't re-read): RV-39 — `member_aliases_unique`
 
 | ID | Defect | Sources | WO item | Proof | Verify | Status |
 |---|---|---|---|---|---|---|
-| T-011 | `04_members.sql:37,:40,:58` assert indexes 0071 dropped; suite contradicts `48:209-213` | RV-02, FR §11 | 1.1 / D-2 | `npm run test:db` green; diff shows only 3 literals | — | ☐ |
-| T-012 | `db-harness` CI job not actually run/read since 0071 | RV-40, A:F-01, B:T-01, FR §6 | 1.1 | Job runs `test:db` on PG16 and its output is read | T-001 | ☐ |
+| T-012 | `db-harness` CI job not actually run/read since 0071 | RV-40, A:F-01, B:T-01, FR §6 | 1.1 | Job runs `test:db` on PG16 and its output is read | T-001 | ☐ **First in Gate 1 (reordered 17-Sep-2026): proof surface for T-011 and T-013** — neither can be shown green anywhere else. |
+| T-011 | `04_members.sql:37,:40,:58` assert indexes 0071 dropped; suite contradicts `48:209-213` | RV-02, FR §11 | 1.1 / D-2, **D-2a** | `npm run test:db` green in CI (T-012 is the proof surface — no `psql`/`docker`/`supabase` on the dev machine). `:37`/`:40` re-pointed to `member_aliases_member_name_unique` via `RF-000118` (three literals each); `:58` inverted to acceptance + `t.ok` naming `refuse_course_duplicate`, cross-ref 48. **Depends on 0073 being in the replay.** | — | ☐ |
 | T-013 | `ON CONFLICT (alias_type, alias_normalized)` infers dropped index → `42P10`; whole import aborts; `merge_member_into` same | RV-01, RV-39, A:F-01, B:F-01, FR | 1.2 / D-3 | `51_alias_unique_per_member.sql` 1–9; `aliasConflictTarget.test.ts`; then one real upload | `pg_indexes` shows `member_aliases_member_name_unique` unique; `pg_get_functiondef` scan = 0 stale | ☐ |
 | T-014 | `recompute_member_stats()` unscoped in `commit_csv_import` `0045:428`, `update_member` `0027:304`, `create_member` `0026:406` | A:F-06, B:F-07, C:RF-01-A | 1.3 (0074) | Harness spec: untouched member's stats row not rewritten by an import | Timing at 2,000 rows (T-062) | ☐ |
 | T-015 | `expected_members_for_session()` called once per file row inside the loop | B:F-07, C:RF-01-B | 1.3 (0074) | Same harness spec; `v_expected_ids` computed once | — | ☐ |
@@ -138,7 +138,7 @@ Already settled by FR (record, don't re-read): RV-39 — `member_aliases_unique`
 | T-059 | Same in `recovery-check:105` + upsert, `pin-reset-request:69-88`; limit-row read error discarded; default conflict target | RV-14 | 5 | Same spec per function | ☐ |
 | T-060 | `failed_attempts` never resets on `locked_until` expiry; + `auth-lookup` oracle + no rate limit on `auth-login` = permanent lockout of every staff account | A:F-08, A:F-42 | 5 | Spec: lock expires → counter 0; `auth_rate_limits` applied to `auth-login` | ☐ |
 | T-061 | `recovery-check` never checks `is_active` | RV-15 | 5 | Spec: disabled super-admin refused | ☐ |
-| T-062 | `member_emails_unique_live` dropped, no replacement; `add_email` branch unguarded | RV-04, A:F-03, B:F-09 | 5 trigger | Harness: duplicate address in same course refused with Edit form's sentence | ☐ |
+| T-062 | `member_emails_unique_live` dropped, no replacement; `add_email` branch unguarded | RV-04, A:F-03, B:F-09 | 5 trigger | Harness: duplicate address in same course refused with Edit form's sentence; and `04_members.sql:58` re-inverted to `t.rejects` against the new trigger (D-2a) | ☐ |
 | T-063 | `commit_csv_import` `add_as_new` creates members outside the course advisory lock | A:F-03, B:C-5 | 5 | Harness: concurrent import + Add Member → one record | ☐ |
 | T-064 | `authenticated` holds direct `insert,update` on `members`, `member_emails`, `member_aliases`; `src/lib/supabase.ts` header says otherwise; no column guard | RV-16, A:F-27 | 5 | T-040 grant spec; direct PATCH refused or guarded | ☐ |
 | T-065 | `audit_attendance` update-only; `audit_members` no delete | RV-32 | 5 | Trigger spec, or documented out-of-scope | ☐ |
