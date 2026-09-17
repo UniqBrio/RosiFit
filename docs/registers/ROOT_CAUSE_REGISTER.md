@@ -59,6 +59,31 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-048 — 04_members.sql pinned the academy-wide uniqueness 0071 removed, and the harness could not be run to say so          Tracker: T-011 · Sources: RV-02, FR §11, D-2, D-2a
+**Date:** 17-Sep-2026  ·  **Severity:** S3 (a spec, not a user-facing defect; but it is the spec that made `db-harness` red on the 0071 commit)  ·  **Modules:** `supabase/tests/04_members.sql`
+
+**Symptom** — `db-harness` run #99 (`5e361de`, "0071 is live", 16-Sep 05:25 UTC) and every run since: `04_members.sql` fails at its first alias assertion — `FAIL one display name cannot point at two members (academy-wide unique) -- statement was ACCEPTED and should not have been`. RV-02 recorded the same three assertions (`:37`, `:40`, `:58`) as contradicting `48_duplicate_is_per_course.sql:209-213`, which asserts the very indexes 04 expected to fire are gone.
+
+**Root cause** — 0071 dropped `member_aliases_unique` and `member_emails_unique_live` (0071:111, :115) and moved both rules into `refuse_course_duplicate()`, scoped to the course. Three `t.rejects` calls in 04 ran direct table inserts that only those two indexes had ever refused. With the indexes gone the inserts succeed, and `t.rejects` (`db/harness/assert.sql:20-35`) raises on the accepted path regardless of its match string — so the failure was never about the literals D-2 named; it was about the statements (D-2a).
+
+**Why it shipped** — Two layers. (1) The harness could not be run on the machine that applied 0071: no `psql`, no `docker`, no `supabase` CLI (T-012). 0071 was applied to production 05:08 UTC on a rolled-back rehearsal against real data; CI's `db-harness` job executed it 17 minutes later, went red, and nobody read the verdict — `main` is unprotected and the job had been red on 16–19 files since the first executed run on 11-Sep (T-001, T-012), so one more red file carried no signal. (2) 0071's own rehearsal note says "The existing suites stay green unchanged — 10_add_member.sql and 22_bulk_import_members.sql both do their clashing inside ONE offering". It named the two suites that exercise the *rule* and never grepped for the two *index names* it was dropping; 04 names both.
+
+**Class** — every spec that asserts an index or constraint by name where a later migration dropped or renamed it. Swept by grepping `supabase/tests/*.sql` for every `t.rejects(... , '<name>')` match string and checking each name against `pg_indexes`/`pg_constraint` after full replay:
+- `member_aliases_unique` — `04:37`, `04:40` (this fix).
+- `member_emails_unique_live` — `04:58` (this fix).
+- Every other match string in the suite (`one_primary`, `at least one letter`, `exclusion`, `m_weekdays_non_empty`, `sessions_unique_live`, `email_templates_name`, …) still resolves to a live object; not re-verified individually here — T-110's triage of the other 17 red files owns any that do not.
+This fix closes 04 only. The general rung — a spec that fails when a `t.rejects` match string names an index or constraint that no longer exists after replay — is not written; it belongs with T-031's "no index dropped while an `ON CONFLICT` names it" rule, same shape, one level out.
+
+**Fix** — Under D-2a, three literals per assertion on `:37`/`:40`: the member in the statement (`RF-000131` → `RF-000118`, who already holds `'Shazia'`), the label, and the match (`member_aliases_unique` → `member_aliases_member_name_unique`). The assertions now pin the uniqueness that survived 0071 — one member cannot hold one display name twice, and the collapse of case and spacing still holds — instead of the academy-wide rule 0071 removed. `:58` inverted to an acceptance (authorised rewrite, D-2a): the insert runs inside `begin … rollback` so the C-76 count downstream is undisturbed, a `t.eq` asserts the second row was accepted, and a `t.ok` names `refuse_course_duplicate()` as where the address rule now lives, cross-referencing 48. T-062 re-inverts `:58` to `t.rejects` when it restores an address refusal by trigger. **Deliberately not changed:** no assertion removed, no `.skip`, no matcher loosened; the blank-name and malformed-address refusals either side are untouched; 0071 and 0073 untouched.
+
+**Proof** — `supabase/tests/04_members.sql` itself: red on every `db-harness` run from #99 to #108 on the three assertions; green on this branch's run. Because the re-pointed `:37`/`:40` name 0073's index, this spec now **depends on 0073 being in the replay** (it is, since `cfce708`).
+
+**Guard** — the copy-lock discipline in CLAUDE.md plus D-2a's record that `t.rejects` fails on the accepted path. No automated rung yet; see Class.
+
+**Verify** — `db-harness` on this branch: `── 04_members.sql` with no `FAIL`/`ERROR` line, and the suite's red-file count drops from 18 to 17. No production read: the spec runs only in the harness.
+
+---
+
 ## RC-047 — 0073 restated `merge_member_into` from 0032 and would have reverted 0061's in-place edits          Tracker: T-111 · Sources: T-008 read 17-Sep-2026, 0061, 0071 header
 **Date:** 17-Sep-2026  ·  **Severity:** S2 (caught before apply; would have been a live copy regression on every merge refusal)  ·  **Modules:** `supabase/migrations/0073_alias_unique_per_member.sql`, `supabase/tests/51_alias_unique_per_member.sql`
 
