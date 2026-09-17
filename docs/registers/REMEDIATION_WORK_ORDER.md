@@ -43,6 +43,8 @@ These were the open calls. They are decided. Record each in `docs/decisions/` as
 
 **D-9 (18-Sep-2026) — Two sessions work the tracker in parallel, split by SURFACE.** Session A owns anything touching `supabase/migrations`, `supabase/tests`, `db/harness`, and any row whose fix is SQL. Session B owns `app/`, `src/`, `supabase/functions/`, `.github/`, `tsconfig`, `package.json`. Neither edits the other's files. Before starting a row, a session writes `⏳ A` or `⏳ B` into the row's Status cell and pushes — a row already claimed is skipped. RC numbers: Session A uses RC-046–RC-069, Session B uses RC-070–RC-099; the register stays newest-first by date, not by number. Both sessions `git pull --rebase` before every push to the three registers; register edits are line-local and conflicts are resolved by keeping both.
 
+**D-9a (18-Sep-2026) — Three sessions.** A: `supabase/migrations`, `supabase/tests`, `db/harness`, production WRITES, RC-046–069. B: `app/`, `src/`, RC-070–099. C: `supabase/functions/`, `.github/`, `ci/`, `tsconfig*`, `package.json`, eslint config, `supabase/config.toml`, plus read-only production READS for Gate 0 rows, RC-100–129. The spec files under `src/data` that guard Edge Functions (`edgeFunctionPagedReads`, `requestSize`, `pagedReads`) belong to B; C changes function code and asks B to widen a guard via a tracker note, never by editing `src/`. Claim rows with `⏳ C`. Rebase before every register push.
+
 ---
 
 ## 1. Corrected problem statement
