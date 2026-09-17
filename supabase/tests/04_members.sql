@@ -32,12 +32,15 @@ select t.eq((select alias_normalized from public.member_aliases where alias_disp
   'shazia f', 'aliases are normalised the same way names are');
 
 -- the constraint that stops an import ever having to guess
+-- (re-pointed 17-Sep-2026, D-2a: since 0071 a display name may belong to two
+--  members; what survives is that ONE member cannot hold it twice -- 0073's
+--  member_aliases_member_name_unique. RF-000118 already holds 'Shazia'.)
 select t.rejects($$insert into public.member_aliases (member_id, alias_display)
-    select id,'Shazia' from public.members where member_code='RF-000131'$$,
-  'one display name cannot point at two members (academy-wide unique)', 'member_aliases_unique');
+    select id,'Shazia' from public.members where member_code='RF-000118'$$,
+  'one member cannot hold the same display name twice (per-member unique, 0073)', 'member_aliases_member_name_unique');
 select t.rejects($$insert into public.member_aliases (member_id, alias_display)
-    select id,'shazia' from public.members where member_code='RF-000131'$$,
-  'and the uniqueness survives case and punctuation', 'member_aliases_unique');
+    select id,'shazia' from public.members where member_code='RF-000118'$$,
+  'and the uniqueness survives case and punctuation', 'member_aliases_member_name_unique');
 select t.rejects($$insert into public.member_aliases (member_id, alias_display)
     select id,'   ' from public.members where member_code='RF-000131'$$,
   'a blank display name is refused', 'at least one letter');
@@ -53,9 +56,21 @@ select t.eq((select count(*)::int from public.member_emails), 2, 'a member can h
 select t.rejects($$insert into public.member_emails (member_id, email, is_primary)
     select id,'another@example.com',true from public.members where member_code='RF-000118'$$,
   'only one primary email per member', 'one_primary');
-select t.rejects($$insert into public.member_emails (member_id, email)
-    select id,'SHAZIA@example.com' from public.members where member_code='RF-000131'$$,
-  'an email belongs to exactly one member (case-insensitive)', 'member_emails_unique_live');
+-- Inverted 17-Sep-2026 (D-2a): 0071 dropped member_emails_unique_live and
+-- moved the address rule into refuse_course_duplicate(), scoped to the course
+-- (48_duplicate_is_per_course.sql:209-213 asserts the index is gone). This
+-- fixture has no offering yet, so the direct insert is accepted. Rolled back
+-- so the C-76 count below still sees two members without an address. T-062
+-- restores an address refusal by trigger and re-inverts this to t.rejects.
+begin;
+insert into public.member_emails (member_id, email)
+    select id,'SHAZIA@example.com' from public.members where member_code='RF-000131';
+select t.eq((select count(*)::int from public.member_emails where email = 'shazia@example.com'), 2,
+  'the same address on a second member is ACCEPTED since 0071 -- the academy-wide index is gone');
+rollback;
+select t.ok(exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+             where n.nspname = 'public' and p.proname = 'refuse_course_duplicate'),
+  'an address is unique per COURSE since 0071 -- refuse_course_duplicate() is where the rule lives now, not an index');
 select t.rejects($$insert into public.member_emails (member_id, email)
     select id,'not-an-email' from public.members where member_code='RF-000131'$$,
   'a malformed address is refused', 'check');
