@@ -190,3 +190,24 @@ select t.eq((select count(*)::int from public.member_aliases
              where member_id='cccccccc-2222-0000-0000-00000000000c'
                and alias_normalized='rani sham'), 1,
   'the surviving member holds it once -- the index is what makes that structural');
+
+-- ================================================== T-111 -- 0061 must survive 0073
+-- 0061 edited merge_member_into IN PLACE (pg_get_functiondef, one anchor
+-- replaced) to take the last two gendered refusals out of it. A later
+-- migration that restates the function from a historical file puts them
+-- back, and nothing in this suite would have noticed: the strings were never
+-- pinned. These pin them, verbatim from production on 17-Sep-2026. They FAIL
+-- against 0073 as first written -- it restated the body from 0032 -- and pass
+-- once 0073 edits the live body in place instead (D-8, RC-047).
+select t.ok((select p.prosrc like '%that is the same member -- a member cannot be merged into themselves%'
+               from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+              where n.nspname = 'public' and p.proname = 'merge_member_into'),
+  'merge_member_into refuses a self-merge in 0061''s words -- a body restated from 0032 says "herself"');
+select t.ok((select p.prosrc like '%has an email address on file, so merging would have to choose which address wins. Add the display name by hand instead.%'
+               from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+              where n.nspname = 'public' and p.proname = 'merge_member_into'),
+  'and refuses a stray with an address in 0061''s words -- the restated body says "of her own, so merging her"');
+select t.ok((select not (p.prosrc ~* 'raise exception ''[^'']*\y(she|her|hers|herself)\y')
+               from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+              where n.nspname = 'public' and p.proname = 'merge_member_into'),
+  'no refusal in merge_member_into says she or her -- 0061''s own guard, re-asked after every migration that follows it');
