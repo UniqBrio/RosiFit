@@ -59,6 +59,33 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-047 — 0073 restated `merge_member_into` from 0032 and would have reverted 0061's in-place edits          Tracker: T-111 · Sources: T-008 read 17-Sep-2026, 0061, 0071 header
+**Date:** 17-Sep-2026  ·  **Severity:** S2 (caught before apply; would have been a live copy regression on every merge refusal)  ·  **Modules:** `supabase/migrations/0073_alias_unique_per_member.sql`, `supabase/tests/51_alias_unique_per_member.sql`
+
+**Symptom** — Pre-apply review of 0073 (T-013's migration), 17-Sep-2026. Diffing 0073's restated bodies against their sources showed only the three `ON CONFLICT` lines changed — which looked like the assurance and was the problem. `git grep` for in-place edits found 0061 naming `merge_member_into`. A read-only production read confirmed `merge_member_into` there says *"a member cannot be merged into themselves"* and *"has an email address on file, so merging would have to choose"* (0061), while 0073:540 and :568 say *"merged into herself"* and *"an email address of her own, so merging her"* (0032). Applying 0073 as written would have put the gendered wording back on production's two merge refusals.
+
+**Root cause** — `CREATE OR REPLACE FUNCTION` from a historical file replaces the *whole* body with that file's text. 0061 (and 0071) edit function bodies **in place** — `pg_get_functiondef` on the live definition, one anchor replaced, result executed — precisely so no later restatement is needed. A migration that later restates the same function from the file that *last restated it* carries none of the in-place edits made since, and reverts every one of them silently. 0073 restated `merge_member_into` from 0032; 0061 sits between them. The mechanism lives wherever `create or replace function` copies a body out of an older migration file rather than out of `pg_proc`.
+
+**Why it shipped** — (into the repo, not production: caught at the pre-apply gate.) Nothing pins 0061's strings: `01_auth.sql:67` pins a different function's "themselves", and no spec asserts `merge_member_into`'s refusal copy. So `51_alias_unique_per_member.sql` was green on run #103/#104 with the revert in place — 51 tests the alias upsert and the index, which 0073 got right. 0061's own guard ("a gendered refusal survived the rewrite") runs *at 0061*, twelve migrations before 0073 re-introduces the words, so the from-scratch replay cannot see it either. And the reviewer's diff — 0073 against 0045/0032 — is the wrong diff: it proves fidelity to the *file*, and the file is not what is live. The right diff is against `pg_get_functiondef` on production, which is what the corrected migration now takes as its input.
+
+**Class** — every function any migration has edited in place, and every migration that has restated a function after such an edit:
+- **0061** edited in place: `create_member`, `update_member`, `merge_member_into`, `bulk_import_members` (four functions, eleven anchors).
+- **0071** edited in place: `create_member`, `update_member`, `bulk_import_members`.
+- **0060** restated (`create or replace`, not in place): `set_member_status`, `set_member_active_from`.
+- Restatements *after* 0061 of any 0061/0071 target — swept with `grep -l -E "create or replace function public\.(create_member|update_member|merge_member_into|bulk_import_members)\("` over `supabase/migrations/006[2-9]*.sql` and `007*.sql`: **exactly one, 0073 (`merge_member_into`).** `commit_csv_import` was also restated by 0073 but no migration edited it in place after 0045, so that restatement reverted nothing.
+- Restatements after 0060 of a 0060 target: **0072 restates `set_member_status`**; checked — it carries 0060's wording (no `she/her` in any `raise exception`), so it is a faithful restatement, not a revert. Kept in this list because the next restatement of it may not be.
+This fix closes 0073 only. T-112 (Gate 2.4) is the rung for the class.
+
+**Fix** — 0073 corrected in place under **D-8** ("never edit a historical file" means an applied one; 0073 is in no ledger and has only ever been executed by the from-scratch harness). Both restated bodies (0073:105-500, :507-658 — 550 lines) replaced by one `DO` block: `pg_get_functiondef` → replace exactly `on conflict (alias_type, alias_normalized) do nothing` with the three-column form → execute. Before the replace: `commit_csv_import` must carry the anchor exactly 2×, `merge_member_into` exactly 1×, else raise naming the count. After: no function in `public` may carry it. Duplicate-group guard, index creation and comment unchanged; grants re-emitted as they stand. 661 lines → 146. **Deliberately not changed:** 0061 itself, 0032, 0045; no new spec for `commit_csv_import`'s copy (nothing edited it in place, nothing to pin).
+
+**Proof** — `supabase/tests/51_alias_unique_per_member.sql` (appended, T-111 block): three `t.ok` assertions that the live `merge_member_into` after full replay contains both 0061 strings verbatim (taken from production `pg_proc.prosrc`, not from 0061's file) and no `raise exception` mentioning `she|her|hers|herself`. Red on run #107 (`4b41a68`, test-only commit, 0073 as first written); green on the fix commit.
+
+**Guard** — none yet for the class; the copy-lock above holds this one site. T-112 is the rung: a spec that fails when a migration `CREATE OR REPLACE`s a function that any migration numbered between its restated source and itself edited in place. Until it lands, this register entry is the only thing standing between the next restatement and the next revert.
+
+**Verify** — after 0073 is applied (T-013): `select p.proname from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='merge_member_into' and p.prosrc ~* 'raise exception ''[^'']*\y(she|her|hers|herself)\y'` must return 0 rows, and `prosrc like '%merged into themselves%'` must be true. Result and timestamp recorded in T-111's tracker row. Pre-apply state (17-Sep-2026 ~11:30 UTC): 0061's wording present, stale `ON CONFLICT` present.
+
+---
+
 ## RC-045 — a roster of 629 was bounded in rows and still too big to SEND, so the gateway refused it
 **Date:** 16-Sep-2026  ·  **Severity:** S2  ·  **Modules:** `src/data/repository.ts`, `src/data/pageAll.ts`
 
