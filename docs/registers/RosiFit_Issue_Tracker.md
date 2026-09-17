@@ -1,0 +1,219 @@
+# RosiFit — Issue Tracker
+
+Companion to `RosiFit_Remediation_Work_Order_v2.md`. One row per underlying defect. Where several audits found the same thing, the row lists every source ID — so this is the de-duplicated table the RV register wanted and could not build. When the consolidated 75/77-item register is found, map its IDs onto these rows; do not create new rows for them.
+
+Lives at `docs/registers/ISSUE_TRACKER.md`. Append-only for rows; the Status column is the only thing that changes.
+
+---
+
+## The loop — run this for every row, no exceptions
+
+1. **Take the next open row in the current gate.** Never take a row from a later gate while an earlier gate has open rows. Gate 0 rows are reads, not fixes — they can run in parallel with Gate 1.
+2. **Branch** `fix/<row-id>` (e.g. `fix/T-043`).
+3. **Write the failing test first.** The row's *Proof* column names it. If the row has no proof named, the first commit on the branch is the test. If a test cannot exist (a doc change), say so in the PR.
+4. **Make the change.** One row per PR. If you find a new defect while in there, **add a row** — do not fix it in the same PR.
+5. **Run `npm run check` locally.** Push. CI runs `gate` and `db-harness`. Both must be green. (Until Gate 2.2 lands they are not yet *required* on `main` — read them anyway; a merge on red is a Gate 2 violation.)
+6. **If the PR carries a migration:** apply per D-3 (`db query --linked -f`, then `migration repair`), never `db push`. Run the row's *Verify* read against production afterwards.
+7. **Write the root-cause entry** in `docs/registers/ROOT_CAUSE_REGISTER.md` as the next `RC-nnn` (the register stops at RC-045; the 0071 incident is RC-046 and is T-013's entry). The template is below. The PR is not mergeable without it — add a CI/spec check that every PR touching `src/`, `supabase/` or `app/` also touches `ROOT_CAUSE_REGISTER.md` or carries a `no-rc:` label with a reason. A fix without a recorded cause is how the same class recurs one file over (RC-039 → RC-043 → RV-05).
+8. **Tick the row** — `☐` → `☑ PR#, date, RC-nnn`. Append one line to `RUN_LOG.md` with the gate verdict. Rows that were `NEEDS VERIFICATION` and turned out not to be defects get `☒ not a defect` with the read that showed it.
+9. **Gate exit** is the exit condition in the work order, not "all rows ticked" — some rows can legitimately move to a later gate with a written reason in the row.
+
+### RC entry template (one per ticked row)
+
+```
+## RC-nnn — <one-line name>                          Tracker: T-nnn · Sources: RV-xx, A:F-xx …
+Symptom       What the operator / the data / the log actually showed. Dated if known.
+Root cause    The mechanism, not the site. "ON CONFLICT infers an index, not a rule" — not
+              "commit_csv_import failed." Name the file:line where the mechanism lives.
+Why it shipped  The check that should have caught it and why it did not run or could not see
+              it (the test that was never run, the guard scoped to one file, the tsconfig exclude).
+Class         Which other sites carry the same mechanism. Enumerate them — this is the sweep.
+              If this fix closes only the one site, say so and open tracker rows for the rest.
+Fix           What changed, with file:line and migration number. What deliberately did NOT change.
+Proof         The test that fails without the fix and passes with it. Its path.
+Guard         What now makes the class a build failure rather than a review finding.
+Verify        The production read taken afterwards, its result, its timestamp.
+```
+
+The two fields that matter most are **Why it shipped** and **Class**. Every audit found the same shape: a rule established, specced, and applied to the file where it was discovered rather than everywhere it holds. If those two fields are honest, the register becomes the sweep list for the next audit instead of a memorial.
+
+Cadence honesty: at ~3–5 h/weekday for two people, Gate 1 is about a week and Gate 2 another one to two. Gates 3–6 are a quarter. Gate 7 is polish that goes through a working pipeline whenever there is slack. Do not compress Gate 2 — it is the gate that makes every later tick mean something.
+
+Status marks: `☐` open · `☑` done (PR#, date) · `☒` not a defect / superseded (reason) · `→G<n>` moved with reason
+
+---
+
+## Gate 0 — Read-only verification (parallel with Gate 1)
+
+| ID | Read | Sources | Settles | Status |
+|---|---|---|---|---|
+| T-001 | GitHub Actions history for `main` — `gate` and `db-harness` state | RV-40, A:F-09/F-10 | Whether CI is red, green, or not running | ☐ |
+| T-002 | `email_batches where status='processing'` | RV-41, C:RF-06 | Killed sends already in prod | ☐ |
+| T-003 | `email_messages group by status` | B:unknown-5, B:F-14 | Rows stuck in `sending` | ☐ |
+| T-004 | Is 0072 applied? `fetchMembers` selects `active_again_from` | B:unknown-8 | Member list may fail outright | ☐ |
+| T-005 | `pg_roles.rolconfig` for `authenticated`, `service_role`, `authenticator` | C:§20-2, A:V-4 | Real `statement_timeout` (import ceiling) | ☐ |
+| T-006 | `count(*) from member_period_metrics(<this week>)` | B:unknown-4 | Whether T-042 fires today | ☐ |
+| T-007 | `csv_imports` status since 2026-09-16 | B:unknown-3 | Whether any import has succeeded since 0071 | ☐ |
+| T-008 | Re-run 0073 duplicate-group count at apply time | RV-01, FR | Guard will pass | ☐ |
+| T-009 | `get_advisors(type:'performance')` | C:§20-4 | Confirms T-047; surfaces index gaps | ☐ |
+| T-010 | SES console — sandbox?, send rate, 24h quota, config set, bounce/complaint rates | C:§3 `[U]` | Sizes Gate 4 rate limiter | ☐ |
+
+Already settled by FR (record, don't re-read): RV-39 — `member_aliases_unique` absent in prod, stale clause in exactly `commit_csv_import` and `merge_member_into`, function bodies match repo. Import is broken in production.
+
+## Gate 1 — Stop the bleeding
+
+| ID | Defect | Sources | WO item | Proof | Verify | Status |
+|---|---|---|---|---|---|---|
+| T-011 | `04_members.sql:37,:40,:58` assert indexes 0071 dropped; suite contradicts `48:209-213` | RV-02, FR §11 | 1.1 / D-2 | `npm run test:db` green; diff shows only 3 literals | — | ☐ |
+| T-012 | `db-harness` CI job not actually run/read since 0071 | RV-40, A:F-01, B:T-01, FR §6 | 1.1 | Job runs `test:db` on PG16 and its output is read | T-001 | ☐ |
+| T-013 | `ON CONFLICT (alias_type, alias_normalized)` infers dropped index → `42P10`; whole import aborts; `merge_member_into` same | RV-01, RV-39, A:F-01, B:F-01, FR | 1.2 / D-3 | `51_alias_unique_per_member.sql` 1–9; `aliasConflictTarget.test.ts`; then one real upload | `pg_indexes` shows `member_aliases_member_name_unique` unique; `pg_get_functiondef` scan = 0 stale | ☐ |
+| T-014 | `recompute_member_stats()` unscoped in `commit_csv_import` `0045:428`, `update_member` `0027:304`, `create_member` `0026:406` | A:F-06, B:F-07, C:RF-01-A | 1.3 (0074) | Harness spec: untouched member's stats row not rewritten by an import | Timing at 2,000 rows (T-062) | ☐ |
+| T-015 | `expected_members_for_session()` called once per file row inside the loop | B:F-07, C:RF-01-B | 1.3 (0074) | Same harness spec; `v_expected_ids` computed once | — | ☐ |
+| T-016 | `member_period_metrics` RPC unpaged/unguarded at `repository.ts:229, :1953, :1977` → silent zeros past 1,000 | A:F-02, B:F-02 | 1.4 stopgap | Fake-server test: 1,001 rows → throws, nobody zeroed | T-006 | ☐ |
+| T-017 | `client_batch_id` never passed (`api.ts:269` optional; `send/index.tsx:225`, `member/[id].tsx:278` omit); server mints UUID; retries duplicate | RV-06, A:F-05, B:F-05, C:RF-05, B:C-6 | 1.5 | Spec: two calls same key → one batch; source-reading spec on call sites | — | ☐ |
+| T-018 | Send screen `failed` gate omits `already.state==='error'`; `defaultSelection` pre-ticks everyone when sent-map unknown | B:F-06, C:RF-08 | 1.5 | Spec: `fetchSentForPeriod` rejects → nothing ticked, screen refuses | — | ☐ |
+| T-019 | `fetchSentForPeriod` promises "costs the mark and nothing else" then `checked()` throws at 1,000 messages | A:F-15, C:RF-08 | 1.5 (route) / 3 (page) | Covered by T-018 spec + T-045 | — | ☐ |
+| T-020 | `send-followups/index.ts:282` discards insert error; `msgRow!`, `emailRow!` ×2 → TypeError aborts batch mid-loop | RV-10 | 1.5 | Spec: failed insert fails one recipient, not the batch | — | ☐ |
+| T-021 | PWA auto-reload fires on 60s idle or `hidden` while a send/import is in flight | RV-30, C:RF-20 | 1.6 | In-flight flag unit spec now; Playwright in Gate 2 | — | ☐ |
+
+## Gate 2 — Turn verification back on (freeze lifts at exit)
+
+| ID | Defect | Sources | WO item | Proof | Status |
+|---|---|---|---|---|---|
+| T-022 | `npm run check` red: 9 failures | RV-03, A:F-09 | 2.1 | `npm run check` green | ☐ |
+| T-023 | `courses.tsx:7` dead `Dropdown*` imports; list-screen filter rule violated — **real regression** | A:F-28 | 2.1 | `formDropdownMenu.test.ts:148` passes by fixing code | ☐ |
+| T-024 | `memberJoinedOn.test.ts:141` brittle 600-char window | A:F-40 | 2.1 | Test passes on the passing implementation | ☐ |
+| T-025 | `message.test.ts` ×5, `rosterFilter.test.ts` ×2 copy-locks not re-pinned | RV-03 | 2.1 | Each still pins a rule | ☐ |
+| T-026 | `gate`/`db-harness` not required; Vercel deploys on red; no post-deploy smoke; `post-release-monitor` unscheduled | RV-20, A:F-10, A:§10 | 2.2 | Branch protection screenshot in PR; red CI blocks a test deploy | ☐ |
+| T-027 | `tsconfig` excludes `supabase/`, `scripts/`, `**/*.test.ts` — Edge Functions and specs untypechecked | RV-21, A:F-11 | 2.3 | `deno check` in `npm run check`; introduce a type error in a scratch branch, watch it fail | ☐ |
+| T-028 | `requestSize.test.ts` `MUST_CHUNK` is a 2-entry allowlist | RV-27, B:T-02, C:L | 2.4 | Every `.in()` in `src/**` + `supabase/functions/**` chunked or `BOUNDED` with reason | ☐ |
+| T-029 | `edgeFunctionPagedReads.test.ts` pins one file | RV-28, B:T-02 | 2.4 | Walks every function dir | ☐ |
+| T-030 | `pagedReads.test.ts` never scans `supabase.rpc(` | B:T-03, A:F-02 | 2.4 | RPC set-returning reads paged/bounded/exempted | ☐ |
+| T-031 | No rule against dropping an index still named in `ON CONFLICT` | A:§12-P4, FR test | 2.4 | `aliasConflictTarget.test.ts` generalised to all indexes | ☐ |
+| T-032 | Unchunked `.in()` in `resolveContext` `:1574-1602`, `fetchNotifications` `:2144`, `csv-import:297-303` | A:F-29, C:RF-15 | 2.4 (covered by T-028) | T-028 names each with reason or chunks it | ☐ |
+| T-033 | Duplicate migration prefixes `0038`×2, `0044`×3, `0045`×2, `0057`×2, `0041` gap; test prefixes `30`,`34`,`48` | RV-19, A:F-19, B:unknown-9 | 2.5 / D-3 | Collision check fails-first naming all four | ☐ |
+| T-034 | Gates G1/G2/G3 crash (`design/tokens.json`), G5 empty, G6 blocked, G8 nonexistent script, G10/G13 inert, `conformance.json` all BLOCKED | A:F-10 | 2.6 | Each gate either passes or is deleted with a `DECISION_LOG` line | ☐ |
+| T-035 | ESLint configured, not installed, not run; CI comments say no runner exists while `check` runs 1,628 tests | RV-22, A:F-10 | 2.6 | `lint` script + CI step; both CI files' comments corrected together | ☐ |
+| T-036 | No runtime test of any screen; 19 `.harness/` checks wired to nothing | A:F-12 | 2.6 | ≥3 harness checks in CI | ☐ |
+| T-037 | No DB gate — `test:db` is not one of the 13 | A:F-10 | 2.7 | G14 exists and blocks | ☐ |
+| T-038 | No `supabase/config.toml`; `verify_jwt` only in comments; already flipped once on redeploy | RV-17, A:F-20 | 2.8 | Spec: every function dir has an entry | ☐ |
+| T-039 | Harness has no volume fixtures; every SQL test is a handful of rows | A:§12-P4, B:T-04, C:§23-P0 | 2.9 | `seed_scale.sql` at 500/2,000/5,000 runs | ☐ |
+| T-040 | Harness cannot assert grants; `migrationGrants.test.ts` covers functions only | A:K-04 (KL-008), RV-16 | 2.9 → used in G5 | Table/column grant coverage added | ☐ |
+
+## Gate 3 — Bounded reads and RLS cost
+
+| ID | Defect | Sources | WO item | Proof | Status |
+|---|---|---|---|---|---|
+| T-041 | `send-followups` `.in()` ×4 unchunked/unpaged (`:108,:113,:152,:155`) + 5th on `course_offerings`; 4 of 5 discard error | RV-05, A:K-02 (KL-009), B:F-03, C:RF-03 | 3 | Fake-client test at 1,001 recipients: no recipient classified from a missing map entry; T-028/T-029 fail-closed | ☐ |
+| T-042 | `member_period_metrics` proper fix — `period_totals()` for summing callers; keyset for `fetchMembers` | A:F-02, B:F-02 | 3 | Fake-server 999/1,000/1,001 → correct totals, nobody zeroed | ☐ |
+| T-043 | 47 RLS policies call `is_active_app_user()` bare — re-evaluated per row; 0013 fixed two and never generalised | C:RF-07 | 3 | `09_grants.sql` asserts no bare helper; T-009 lint clears | ☐ |
+| T-044 | `offering_schedules` read whole, unguarded, in `fetchCourses`/`fetchOfferings`/`fetchBranchUsage`; grows with time | C:RF-13 | 3 | Spec: 1,200 schedule versions → correct current weekdays | ☐ |
+| T-045 | `TruncatedReadError` bypasses `fail()` translation — developer sentence reaches operator; `checked()` kills `fetchCourseDayRows`, `fetchAttendance`, `fetchSentForPeriod` at 1,000 | A:F-25, A:F-14, C:RF-09 | 3 | Spec: 1,000-row course-day renders; error text is person-readable | ☐ |
+| T-046 | 32 reads discard `error` → false zeros incl. inside a sent email; `fetchRules` silently applies global threshold | RV-18, A:F-13 | 3 | Spec: no un-annotated discard remains | ☐ |
+| T-047 | `upload.tsx:963` renders `err.message` raw; `ENGINE_WORDING` misses `42P10` wording | FR §9 | 3 | Spec: `42P10` text → translated sentence | ☐ |
+| T-048 | `v_present_ids` `array_append` + `= any()` O(n²) in `commit_csv_import` | C:RF-01-C | 3 (if T-062 timing says so) | Timing at 2,000 rows under 8s | ☐ |
+
+## Gate 4 — Durable, idempotent bulk send (introduces `pg_cron`)
+
+| ID | Defect | Sources | WO item | Proof | Status |
+|---|---|---|---|---|---|
+| T-049 | Send is one synchronous loop on an open browser request; terminal status written only at end; no resume, reconcile, or listing | RV-11, RV-07, A:F-04, B:F-04, B:F-32, C:RF-04, C:RF-06 | 4 claim-and-drain | Kill drain mid-slice → every row defensible; status derived from rows; same key retry sends nothing twice | ☐ |
+| T-050 | `member_period_metrics` once per recipient in the loop; one batch, two versions of the truth if an import lands | RV-07, C:RF-04-F, C:§18-12 | 4 | Metrics read once per batch | ☐ |
+| T-051 | SES non-2xx = permanent `failed`, `attempt_count` literal 1; no backoff, rate limit, quota awareness, or `AbortSignal` | RV-08, B:F-26, C:RF-11 | 4 | Fake provider 429,429,200 → one delivery, `attempt_count`=3 | ☐ |
+| T-052 | Timeout after SES accepted recorded as `failed`; retry double-sends | RV-09 | 4 | `unknown` state; reconciled by `provider_message_id` | ☐ |
+| T-053 | `sending` is terminal in practice; nothing reads `sending`/`queued`/`processing` back | B:F-14, C:RF-06 | 4 sweeper | `pg_cron` job marks stale rows `unknown`; surfaced on result screen | ☐ |
+| T-054 | Writes have no third state; "Nothing was written / sent" asserted on transport failure (`upload.tsx:672,:716`, `send/index.tsx:238`) | RV-12, A:F-24, B:F-10 | 4 | Spec: dropped response → "did not hear back" naming batch/import id | ☐ |
+| T-055 | Already-sent guard is advisory, client-side; no server refusal | RV-31, B:F-06 | 4 / D-6 | Server refuses without `resend:true` | ☐ |
+| T-056 | `fetchNotifications` `.limit()` with no `.order()` — tray freezes on oldest failures | C:RF-16 | 4 | Spec: 100 historical failures → newest shown | ☐ |
+| T-057 | No cancellation of a running send or import; `callFn` passes no `AbortSignal` | B:F-31 | 4 (drain makes cancel = stop claiming) | Cancel action leaves queued rows unsent | ☐ |
+
+## Gate 5 — Atomic security controls and integrity guards
+
+| ID | Defect | Sources | WO item | Proof | Status |
+|---|---|---|---|---|---|
+| T-058 | `auth-login:64-70` read-then-write `failed_attempts`; parallel guesses never trip lock | RV-13 | 5 | Concurrency spec: N simultaneous wrong PINs → lock at 5 | ☐ |
+| T-059 | Same in `recovery-check:105` + upsert, `pin-reset-request:69-88`; limit-row read error discarded; default conflict target | RV-14 | 5 | Same spec per function | ☐ |
+| T-060 | `failed_attempts` never resets on `locked_until` expiry; + `auth-lookup` oracle + no rate limit on `auth-login` = permanent lockout of every staff account | A:F-08, A:F-42 | 5 | Spec: lock expires → counter 0; `auth_rate_limits` applied to `auth-login` | ☐ |
+| T-061 | `recovery-check` never checks `is_active` | RV-15 | 5 | Spec: disabled super-admin refused | ☐ |
+| T-062 | `member_emails_unique_live` dropped, no replacement; `add_email` branch unguarded | RV-04, A:F-03, B:F-09 | 5 trigger | Harness: duplicate address in same course refused with Edit form's sentence | ☐ |
+| T-063 | `commit_csv_import` `add_as_new` creates members outside the course advisory lock | A:F-03, B:C-5 | 5 | Harness: concurrent import + Add Member → one record | ☐ |
+| T-064 | `authenticated` holds direct `insert,update` on `members`, `member_emails`, `member_aliases`; `src/lib/supabase.ts` header says otherwise; no column guard | RV-16, A:F-27 | 5 | T-040 grant spec; direct PATCH refused or guarded | ☐ |
+| T-065 | `audit_attendance` update-only; `audit_members` no delete | RV-32 | 5 | Trigger spec, or documented out-of-scope | ☐ |
+| T-066 | `ses-feedback` secret in `?s=` (logged); no SNS signature verification | B:F-27, B:S-1 | 5 | Forged notification with valid secret, bad signature → refused | ☐ |
+| T-067 | Any active staff can mail whole academy via `requireCaller`; no volume cap | B:S-2 | 5 — **owner decision** | Cap spec if decided | ☐ |
+
+## Gate 6 — Remaining P2, scale programme, debt
+
+| ID | Defect | Sources | WO item | Proof | Status |
+|---|---|---|---|---|---|
+| T-068 | Matcher O(rows×members): linear alias/canonical scans + Dice per member, allocation per call | RV-26, A:F-07, B:F-12, C:RF-02 | 6 (measure first — T-090) | Benchmark 2,000×2,000 under 2s CPU | ☐ |
+| T-069 | `pickCsvFiles` no `maxBytes`; sync main-thread parse; UTF-8 assumed | C:RF-21 | 6 | 10,000-row fixture in time budget | ☐ |
+| T-070 | Per-row `exception` subtransactions in `bulk_import_members`/`bulk_set_member_dates` (64-subxid overflow) | C:RF-17 | 6 (set-based rewrite) | Concurrent-read latency during a 500-row import | ☐ |
+| T-071 | Status import: client 5,000 vs server 500 cap | C:RF-12 | 6 (**after** T-070) | Harness spec at 501 rows | ☐ |
+| T-072 | `generate_sessions` has no caller; "Awaiting upload" dead; `.limit(20)` | B:F-08, C:RF-24, B:F-21 | 6 | Tuesday offering, no import → Tuesday awaiting | ☐ |
+| T-073 | Two definitions of "enrolled"; `expected_members_for_session` ignores `status`, `deleted_at` | A:F-18, A:V-8 | 6 | Harness: ended/soft-deleted member not expected | ☐ |
+| T-074 | Missing index `member_schedules (effective_from, effective_to)` on import hot path | C:§6 | 6 | `explain analyze` before/after | ☐ |
+| T-075 | DB `current_date` is UTC (20 migrations); `app_settings.timezone`, `week_start_day` stored and read by nothing; client `schedule.ts:62 today()` UTC at 3 sites | A:F-16, A:F-17, RV-29 | 6 | Clock pinned 02:00 IST: attendance markable, `joined_on` today, schedules today | ☐ |
+| T-076 | Member sharing a staff name set aside every week, never marked present | A:F-21, B:F-20 | 6 | Fixture: member + staff same name → member present | ☐ |
+| T-077 | `dedupeRows` vs `normalizeName` disagree on "same name" | A:F-22, B:F-18 | 6 | Both pinned to one fixture table via shared module | ☐ |
+| T-078 | Row numbers index filtered attendees, not file lines | RV-23, B:F-17 | 6 | Fixture with preamble + dropped rows → real line named | ☐ |
+| T-079 | Blank rows dropped client-side uncounted; `dropped_count` merges blanks+dupes; `duplicates_in_file` counts N blanks as N−1 | RV-24, B:F-19, B:F-16 | 6 | Fixture: 2 blank rows → named by line | ☐ |
+| T-080 | Quoted field with embedded newline mis-parses | RV-25, A:F-35 | 6 | Parse across lines or refuse unterminated quote | ☐ |
+| T-081 | `meeting_started_at` raw Meet string cast to `timestamptz`; long form fails; stored −5h30 | A:F-23, B:F-23 | 6 (after T-091) | Both shapes parse; stored value correct | ☐ |
+| T-082 | `autoDecisions` files every non-exact row as `add_as_new` silently; display-name drift splits one person across two members | B:F-11 | 6 | Same person, two spellings, two files → one member | ☐ |
+| T-083 | Multi-file batch progress held only in component state | B:F-13 | 6 | Abort after file 4 of 9 → remaining 5 discoverable | ☐ |
+| T-084 | 12s `LOAD_TIMEOUT_MS` vs paged member fan-out; no `AbortController` → retries multiply in-flight work; paged read restarts from page 1 | A:F-33, C:RF-14, C:§7 | 6 | Spec: timeout aborts work | ☐ |
+| T-085 | No list virtualized; `readBounded` unused | C:RF-10 | 6 | Render-count assertion at 5,000 rows | ☐ |
+| T-086 | Two operators, same file → raw `23505` string reaches screen | B:C-1 | 6 | Two concurrent commits → `already_imported` sentence | ☐ |
+| T-087 | Two files, one day → last writer wins, first operator's result screen false | B:C-2 | 6 | `supersedes` re-checked in transaction, returned | ☐ |
+| T-088 | No optimistic concurrency on `update_member` / `set_member_status` / `set_member_active_from` | B:C-4, C:§11 | 6 | `updated_at` precondition refuses stale save | ☐ |
+| T-089 | `bulkDeleteMembers` N sequential RPCs, no resume | C:RF-25 | 6 | `delete_members(uuid[])` returns per-member verdicts | ☐ |
+| T-090 | `audit_logs` unbounded, on every member write path; no retention/partitioning | C:RF-18 | 6 — **owner decision on retention** | Partition plan before 10M rows | ☐ |
+| T-091 | Register drift: `KL-005` describes replaced pager; no `RC-046` for 0071; `useScreenState` dead | RV-33, A:F-31 | 6 | Docs updated | ☐ |
+| T-092 | FR fallout: `addMemberAlias` `:3263` no longer refuses another member's name; `aliasClaimedMessage` misreads; `supabase/apply_all.sql` stale | FR §11 | 6 | Wording spec; snapshot retired | ☐ |
+| T-093 | Scale programme not run (import 500/1,000/2,000/5,000; send 50/200/500; chaos 14–19) | A:§12, B:T-04/T-05, C:§23 | 6 | Phases 1–3 green at 2,000; chaos items defined+recoverable | ☐ |
+
+## Gate 7 — P3 / polish (through a working pipeline, whenever there is slack)
+
+| ID | Defect | Sources | Status |
+|---|---|---|---|
+| T-094 | `fetchAudit` orders by non-unique `occurred_at`, no `hasMore`; `readBounded` unused here | A:F-30 | ☐ |
+| T-095 | `is_active` re-checked only on `restoreSession`; open tab keeps direct PostgREST reads | A:F-32 (state, don't fix) | ☐ |
+| T-096 | `parseMinutes("1:30")` → 1 | A:F-34 | ☐ |
+| T-097 | `generatePin` modulo bias (`buf[0] % 10000`) | A:F-36 | ☐ |
+| T-098 | Non-constant-time HMAC compare `pin.ts:93` | A:F-37 | ☐ |
+| T-099 | `manifest.webmanifest` cached with no invalidation | A:F-38 | ☐ |
+| T-100 | Three theme/background colours across `app.json` and manifest | A:F-39 | ☐ |
+| T-101 | `course_week_day_status` `marks` CTE counts cancelled/holiday sessions | A:F-41 | ☐ |
+| T-102 | `fetchSenders` hardcoded; per-course sender never reaches SES | A:K-03 (TD-016) | ☐ |
+| T-103 | `readMeta` `pick()` splits every line three times | B:F-22 | ☐ |
+| T-104 | One address, two members, two opt-outs — documented per-course behaviour | B:F-25 — **owner decision** | ☐ |
+| T-105 | Import-added addresses never validated; `unknown` status sent to and bounces | B:F-29 | ☐ |
+| T-106 | Declined/failed previews accumulate as inert `csv_imports` rows | B:F-30 | ☐ |
+| T-107 | Member deleted mid-send is still mailed; `member_stats` updated for deleted row | B:C-7 | ☐ |
+| T-108 | CORS `*` on every function while `auth-lookup` is a public oracle | B:S-3 (documented) | ☐ |
+
+## Verify before acting (Tier C — a read or benchmark promotes each to a row above)
+
+| ID | Claim | Sources | What settles it | Status |
+|---|---|---|---|---|
+| V-01 | Matcher exceeds 2s Edge CPU at 2,000×2,000 | C:RF-02, RV-26 | Node benchmark of `_shared/match.ts` | ☐ |
+| V-02 | 456-recipient send exceeds wall clock today | C:RF-11 model | Time at 50/200/500 with dev provider | ☐ |
+| V-03 | Subxid overflow measurably degrades concurrent reads | C:RF-17 | `pg_stat_slru` during 500-row import | ☐ |
+| V-04 | Alias name density forces row-by-row at 5,000 | C:RF-19 | Likely moot after 0073 (per-member uniqueness) — re-evaluate | ☐ |
+| V-05 | `csv_imports.summary` reaches MBs | C:RF-22 | `pg_column_size` on a real preview | ☐ |
+| V-06 | `meeting_started_at` long form fails / stored wrong | A:F-23, B:F-23 | `select distinct meeting_started_at … limit 20` vs source files | ☐ |
+| V-07 | SNS fan-out saturates pool at 10,000 | C:RF-26 | Pool peak during large send | ☐ |
+| V-08 | Edge body limit vs 10,000-row preview | C:§3 `[U]` | Probe at 1 MB / 5 MB | ☐ |
+| V-09 | Reset-vs-upload race (`reset_day_attendance` vs concurrent commit) | B:C-3 | Targeted harness test | ☐ |
+| V-10 | `expected_members_for_session` returns duplicate ids for any live session | A:V-8 | Run over recent sessions | ☐ |
+
+## Verified sound — protect from regression, do not touch
+
+`pageAllByKey` (RV-34, C:§19), `inChunks` / `MAX_IDS_PER_REQUEST=150` (RV-35), `useAsync` cancellation (RV-36), re-import of same file (RV-37), `refuse_course_duplicate` advisory lock — **the pattern to generalise** (RV-38), `set_attendance` scoped recompute (0035), `course_week_day_status` server-side aggregation (0067) — **the model for every heavy read**, `ses-feedback` idempotency and suppression logic, secrets posture, service worker, `app_users` column guard, attendance override semantics (0037/0042/0044/0045), change-notification wiring, Vercel static hosting.
+
+---
+
+## Accounting
+
+108 tracked rows + 10 verification items, after de-duplication across RV (41), A (46), B (48), C (25) and FR. The raw sources overlap heavily — the same four P0s appear in all three audits under different IDs. The consolidated register's 75 (or 77) will map onto a subset of these rows; when it surfaces, add its ID to the *Sources* column of the matching row and open a row only for anything genuinely not here.
