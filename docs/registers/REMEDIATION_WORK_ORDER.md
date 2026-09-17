@@ -37,6 +37,8 @@ These were the open calls. They are decided. Record each in `docs/decisions/` as
 
 **D-6 — Communication policy for repeat sends (RV-31): server-side refusal, with an explicit `resend: true` override flag on the request.** A second send to the same member for the same period is refused unless the caller passes the flag; the UI exposes it as a deliberate "Send again to N members already written to" confirmation. Rationale: fail closed. The owner can relax this later; it cannot un-send an email.
 
+**D-7 (17-Sep-2026) — Gate 1 exits on the specs it owns, not on the whole suite.** The first executed `db-harness` run (#82, 11-Sep) found the SQL suite 16 files red; on the 0071 commit (#99) 19; on today's `main` (#104) 18 of 56, 776 assertions passing, migrations replaying clean. It was never one stale lock — it has been red at every point CI could see it, and "`npm run test:db` fully green" is therefore Gate 2's exit next to `npm run check` green, where the other seventeen files are triaged (T-110 group and the regression rows split from it). Gate 1 exits on 0073 applied and verified, and on `04`, `51` and each Gate 1 row's own spec file green in the `db-harness` job.
+
 ---
 
 ## 1. Corrected problem statement
@@ -127,7 +129,7 @@ Each item ≤ one working day for one person. Each is rehearsed by the CI `db-ha
 
 **1.6 — Stop the PWA reload mid-operation.** Module-level in-flight flag set by send, stage/commit and the bulk importers; `reloadWhenIdle` consults it alongside idle and `hidden` (RV-30, C:RF-20). Playwright-verified when Gate 2.6 lands; ship the flag now.
 
-**Exit:** `npm run test:db` green in CI including 51 and the 04 re-point; 0073 and 0074 applied and verified; an import with one new name succeeds end to end; a send retried with the same `client_batch_id` delivers nothing twice; `member_period_metrics` at ≥1,000 rows throws rather than zeroes.
+**Exit (amended by D-7):** 0073 applied and verified; `04`, `51` and each Gate 1 row's own spec file green in the `db-harness` job; 0074 applied and verified; an import with one new name succeeds end to end; a send retried with the same `client_batch_id` delivers nothing twice; `member_period_metrics` at ≥1,000 rows throws rather than zeroes.
 
 ### Gate 2 — Turn the verification layer back on (permanent fix; freeze lifts at exit)
 
@@ -153,7 +155,7 @@ Each item ≤ one working day for one person. Each is rehearsed by the CI `db-ha
 
 **2.9 — Seed a scale fixture in the harness.** `seed_scale.sql` at 500 / 2,000 / 5,000 members with a year of attendance and realistic name density (A:§12 Phase 4, C:§23 Phase 0). First use: time `commit_csv_import` at 2,000 rows before and after 1.3. This is the single measurement C says would most change its conclusions.
 
-**Exit:** both CI jobs green and required; deploy blocked on red; Edge tree typechecked; all three guard specs class-scoped and proven to fail closed (add a bad `.in()` in a scratch branch, watch the build break, remove it); DB gate in place; `config.toml` committed; scale fixture runs. **D-1 freeze lifts.**
+**Exit:** `npm run check` green and `npm run test:db` fully green (all 56 files — D-7); both CI jobs green and required; deploy blocked on red; Edge tree typechecked; all three guard specs class-scoped and proven to fail closed (add a bad `.in()` in a scratch branch, watch the build break, remove it); DB gate in place; `config.toml` committed; scale fixture runs. **D-1 freeze lifts.**
 
 ### Gate 3 — Bounded reads and RLS cost
 
