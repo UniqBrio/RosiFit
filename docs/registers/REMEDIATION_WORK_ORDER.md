@@ -41,6 +41,8 @@ These were the open calls. They are decided. Record each in `docs/decisions/` as
 
 **D-8 (17-Sep-2026) — "Never edit a historical file" means an applied one.** A migration absent from every ledger and executed only by the from-scratch harness is a draft and is corrected in place. 0073 was corrected under this rule on 17-Sep before first apply (T-111: as written it restated `merge_member_into` from 0032 and would have reverted 0061's in-place edits).
 
+**D-9 (18-Sep-2026) — Two sessions work the tracker in parallel, split by SURFACE.** Session A owns anything touching `supabase/migrations`, `supabase/tests`, `db/harness`, and any row whose fix is SQL. Session B owns `app/`, `src/`, `supabase/functions/`, `.github/`, `tsconfig`, `package.json`. Neither edits the other's files. Before starting a row, a session writes `⏳ A` or `⏳ B` into the row's Status cell and pushes — a row already claimed is skipped. RC numbers: Session A uses RC-046–RC-069, Session B uses RC-070–RC-099; the register stays newest-first by date, not by number. Both sessions `git pull --rebase` before every push to the three registers; register edits are line-local and conflicts are resolved by keeping both.
+
 ---
 
 ## 1. Corrected problem statement
