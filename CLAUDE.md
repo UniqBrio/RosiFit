@@ -116,6 +116,9 @@ There is no free-form send path anywhere.
   removed, no `.skip`, no matcher loosened. Anything else is overwriting a spec.
 - **Verify every dependency before installing** — it exists, it is the
   intended name, it is pinned.
+- **Remediation is governed by `docs/registers/ISSUE_TRACKER.md`.** Work rows
+  in gate order, one row per PR, per the loop in that file. Every merged PR
+  has an `RC-nnn` entry.
 
 ## Definition of done
 `npm run check` green (typecheck + contrast + icons) · `bash db/harness/test.sh`

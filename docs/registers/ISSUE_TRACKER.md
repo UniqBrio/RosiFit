@@ -1,8 +1,9 @@
 # RosiFit — Issue Tracker
 
-Companion to `RosiFit_Remediation_Work_Order_v2.md`. One row per underlying defect. Where several audits found the same thing, the row lists every source ID — so this is the de-duplicated table the RV register wanted and could not build. When the consolidated 75/77-item register is found, map its IDs onto these rows; do not create new rows for them.
+Companion to `REMEDIATION_WORK_ORDER.md`. One row per underlying defect. Where several audits found the same thing, the row lists every source ID — so this is the de-duplicated table the RV register wanted and could not build. When the consolidated 75/77-item register is found, map its IDs onto these rows; do not create new rows for them.
 
 Lives at `docs/registers/ISSUE_TRACKER.md`. Append-only for rows; the Status column is the only thing that changes.
+(Renamed from `RosiFit_Issue_Tracker.md` and `RosiFit_Remediation_Work_Order_v2.md` on 17-Sep-2026 via `git mv`, so the history follows.)
 
 ---
 
@@ -15,7 +16,8 @@ Lives at `docs/registers/ISSUE_TRACKER.md`. Append-only for rows; the Status col
 5. **Run `npm run check` locally.** Push. CI runs `gate` and `db-harness`. Both must be green. (Until Gate 2.2 lands they are not yet *required* on `main` — read them anyway; a merge on red is a Gate 2 violation.)
 6. **If the PR carries a migration:** apply per D-3 (`db query --linked -f`, then `migration repair`), never `db push`. Run the row's *Verify* read against production afterwards.
 7. **Write the root-cause entry** in `docs/registers/ROOT_CAUSE_REGISTER.md` as the next `RC-nnn` (the register stops at RC-045; the 0071 incident is RC-046 and is T-013's entry). The template is below. The PR is not mergeable without it — add a CI/spec check that every PR touching `src/`, `supabase/` or `app/` also touches `ROOT_CAUSE_REGISTER.md` or carries a `no-rc:` label with a reason. A fix without a recorded cause is how the same class recurs one file over (RC-039 → RC-043 → RV-05).
-8. **Tick the row** — `☐` → `☑ PR#, date, RC-nnn`. Append one line to `RUN_LOG.md` with the gate verdict. Rows that were `NEEDS VERIFICATION` and turned out not to be defects get `☒ not a defect` with the read that showed it.
+8. **Tick the row** — `☐` → `☑ PR#, date, RC-nnn`. Rows that were `NEEDS VERIFICATION` and turned out not to be defects get `☒ not a defect` with the read that showed it.
+   **`RUN_LOG.md` lines are written by `scripts/run-log.mjs`, for gate verdicts only — never by hand.** A Gate 0 row is a read, not a run: it has no gate verdict, so it records its result in its own tracker row and nowhere else.
 9. **Gate exit** is the exit condition in the work order, not "all rows ticked" — some rows can legitimately move to a later gate with a written reason in the row.
 
 ### RC entry template (one per ticked row)
@@ -53,7 +55,7 @@ Status marks: `☐` open · `☑` done (PR#, date) · `☒` not a defect / super
 | T-004 | Is 0072 applied? `fetchMembers` selects `active_again_from` | B:unknown-8 | Member list may fail outright | ☐ |
 | T-005 | `pg_roles.rolconfig` for `authenticated`, `service_role`, `authenticator` | C:§20-2, A:V-4 | Real `statement_timeout` (import ceiling) | ☐ |
 | T-006 | `count(*) from member_period_metrics(<this week>)` | B:unknown-4 | Whether T-042 fires today | ☐ |
-| T-007 | `csv_imports` status since 2026-09-16 | B:unknown-3 | Whether any import has succeeded since 0071 | ☐ |
+| T-007 | `csv_imports` status since 2026-09-16 | B:unknown-3 | Whether any import has succeeded since 0071 | ☑ 17-Sep-2026, read-only on prod `lhpzhkzbnquwjljmbylo`. **Yes — one, and only because it carried no new names.** 0071 went live 16-Sep 05:08 UTC (commit `5e361de`). Since then exactly one import completed: `81341cf8` 17-Sep 01:06 UTC, `unmatched_count=0`. Every import since 0071 carrying ≥1 unmatched row is still `previewed` and never completed: `d4dac576` (5), `e16d3bfc` (5), `de133ddc` (5), `5530afac` (1), `310dfaef` (1). Those five are **the only `previewed` rows in the table's entire history** — 42 `completed`, 9 `reverted`, and before 16-Sep 11:09 UTC not one stranded preview. Last `add_as_new` to reach the database: `a03e5c9e`, 16-Sep 03:08 UTC — pre-0071. No `members` or `member_aliases` row created by an import since. Confirms Problem 2 is live and dates its onset to 0071's apply. Caveat: `csv_imports.error` is null on all 56 rows ever and no row has ever held `status='failed'`, so a stranded preview is consistent with a failed commit but is not itself proof of an attempt — see new row T-109. |
 | T-008 | Re-run 0073 duplicate-group count at apply time | RV-01, FR | Guard will pass | ☐ |
 | T-009 | `get_advisors(type:'performance')` | C:§20-4 | Confirms T-047; surfaces index gaps | ☐ |
 | T-010 | SES console — sandbox?, send rate, 24h quota, config set, bounce/complaint rates | C:§3 `[U]` | Sizes Gate 4 rate limiter | ☐ |
@@ -112,6 +114,7 @@ Already settled by FR (record, don't re-read): RV-39 — `member_aliases_unique`
 | T-046 | 32 reads discard `error` → false zeros incl. inside a sent email; `fetchRules` silently applies global threshold | RV-18, A:F-13 | 3 | Spec: no un-annotated discard remains | ☐ |
 | T-047 | `upload.tsx:963` renders `err.message` raw; `ENGINE_WORDING` misses `42P10` wording | FR §9 | 3 | Spec: `42P10` text → translated sentence | ☐ |
 | T-048 | `v_present_ids` `array_append` + `= any()` O(n²) in `commit_csv_import` | C:RF-01-C | 3 (if T-062 timing says so) | Timing at 2,000 rows under 8s | ☐ |
+| T-109 | A failed `commit_csv_import` leaves no server-side trace: the `status='failed'` / `error` write sits inside the transaction that aborts, so it rolls back with it. `csv_imports.error` is null on all 56 rows ever written and no row has ever held `status='failed'`. A stranded `previewed` row is the only evidence a commit was attempted, and it cannot be distinguished from a preview the operator abandoned | T-007 read 17-Sep-2026 | new — placed in Gate 3, move if it belongs elsewhere | Harness: a commit that raises inside the transaction still leaves a durable `failed` row naming the SQLSTATE (written by the caller after the rollback, or from an autonomous transaction) | ☐ |
 
 ## Gate 4 — Durable, idempotent bulk send (introduces `pg_cron`)
 

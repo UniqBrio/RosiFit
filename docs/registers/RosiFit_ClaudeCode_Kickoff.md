@@ -2,6 +2,10 @@
 
 ## Before the first session (you, by hand, once)
 
+> **Done 17-Sep-2026.** Steps 1–4 landed in one commit. The two files were moved with `git mv`, not copied,
+> so `RosiFit_Remediation_Work_Order_v2.md` and `RosiFit_Issue_Tracker.md` no longer exist — the old names below
+> are kept as the record of where the documents came from.
+
 1. Copy `RosiFit_Remediation_Work_Order_v2.md` → `docs/registers/REMEDIATION_WORK_ORDER.md`
 2. Copy `RosiFit_Issue_Tracker.md` → `docs/registers/ISSUE_TRACKER.md`
 3. Commit both on `main` with message `docs: remediation work order v2 + issue tracker (17-Sep-2026)`. This commit is exempt from the freeze; it is the freeze.
