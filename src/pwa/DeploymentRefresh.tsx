@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { isWriteInFlight } from '../data/inFlight';
 
 import {
   ATTEMPT_KEY,
@@ -81,7 +82,16 @@ export function DeploymentRefresh(): null {
 
     const reloadWhenIdle = (served: readonly string[]): void => {
       if (stopped) return;
-      if (!safeToReload(document.visibilityState === 'hidden', Date.now() - lastTouch)) {
+      /* A WRITE IN FLIGHT OUTRANKS BOTH HALVES of the idle rule (T-021).
+         `hidden` is the dangerous one: it permits a reload with no waiting at
+         all, so switching tabs while a send runs is the fastest way to lose
+         it. The idle half is no better -- a send to 456 recipients is minutes
+         during which nobody touches the screen, because there is nothing left
+         to touch. What is lost is not the render but the answer: the batch id
+         and the result (RV-30, C:RF-20, RV-12). So this sits OUTSIDE
+         `safeToReload` rather than inside its idle branch. */
+      if (isWriteInFlight()
+        || !safeToReload(document.visibilityState === 'hidden', Date.now() - lastTouch)) {
         waiting = setTimeout(() => reloadWhenIdle(served), RETRY_MS);
         return;
       }

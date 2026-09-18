@@ -2,6 +2,69 @@
 ## Gate run - 2026-09-18 - VERDICT: FAIL
 
 Steps: 7 pass, 5 fail, 1 blocked.
+Time: 1m 01s total - slowest G7 Unit + pure specs (28.8s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (224ms)
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\AppData\Local\Temp\claude\C--Users-shazi-Downloads-RosiFit-Custom-App-RosiFit\8e6f5436-1f5e-4f1b-a16c-bd0c1b94d0cf\scratchpad\wt-main\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (209ms)
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\AppData\Local\Temp\claude\C--Users-shazi-Downloads-RosiFit-Custom-App-RosiFit\8e6f5436-1f5e-4f1b-a16c-bd0c1b94d0cf\scratchpad\wt-main\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (270ms)
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\AppData\Local\Temp\claude\C--Users-shazi-Downloads-RosiFit-Custom-App-RosiFit\8e6f5436-1f5e-4f1b-a16c-bd0c1b94d0cf\scratchpad\wt-main\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (455ms)
+- **G5 Types** - PASS (27.9s)
+- **G6 Lint** - BLOCKED (-) - no local "eslint" in . - not fetched from the registry on purpose. Run `npm install` in . (provides eslint), or state why this class is unverified. - **143 consecutive runs**: a verdict that never changes is not a signal; make this class runnable or accept it in writing
+- **G7 Unit + pure specs** - FAIL (28.8s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (1.2s)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (261ms)
+- **G10 Backward compatibility (fixtures)** - PASS (402ms)
+- **G11 Wide tables are configurable** - PASS (241ms)
+- **G12 Installable as an application** - PASS (306ms)
+- **G13 Approved design still being built** - PASS (209ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-18 - VERDICT: FAIL
+
+Steps: 7 pass, 5 fail, 1 blocked.
 Time: 58.0s total - slowest G5 Types (27.7s).
 Application steps ran in .
 
