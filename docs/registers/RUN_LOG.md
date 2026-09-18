@@ -88,6 +88,7 @@ should start by reading this table rather than by guessing which part felt slow.
 
 | ID | Action | Type | Scale | Started | Ended | Total | Stages | Gate | Verdict | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
+| R-005 | T-035: install eslint, wire lint into check, correct both CI files | CHANGE | n/a | 2026-09-18 17:31 | 2026-09-18 17:45 | 14m elapsed · active: no marks | - | 46m 13s | BLOCKED | gate BLOCKED on pre-existing G8 (courses.tsx filter, T-023); G6 lint now runs - eslint installed by this change |
 | R-004 | T-038: config.toml pins verify_jwt for all eleven Edge Functions | CHANGE | n/a | 2026-09-18 16:36 | 2026-09-18 16:37 | 1m elapsed · active: no marks | - | 43.2s | BLOCKED | gate BLOCKED on pre-existing G6 (ESLint uninstalled, T-035) and G8 (courses.tsx filter, T-023); check:functions green, 11 functions declared |
 | R-003 | T-020: a refused email_messages insert fails that recipient, not the batch | CHANGE | n/a | 2026-09-18 16:27 | 2026-09-18 16:27 | 9s elapsed · active: no marks | - | 22.3s | BLOCKED | gate BLOCKED on pre-existing G6 (ESLint uninstalled, T-035) and G8 (courses.tsx filter, T-023); Edge Function specs 3/3 green in CI run 35333793846 |
 | R-002 | apply db part as well + Build pop up as well | CHANGE | scoped | 2026-09-16 15:20 | 2026-09-16 15:20 | 7s active · 7s elapsed | build 7s | 22.2s | - | - |

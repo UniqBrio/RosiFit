@@ -1,6 +1,190 @@
 
 ## Gate run - 2026-09-18 - VERDICT: FAIL
 
+Steps: 6 pass, 4 fail, 3 blocked.
+Time: 46m 13s total - slowest G5 Types (46m 09s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (72ms)
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\AppData\Local\Temp\claude\C--Users-shazi-Downloads-RosiFit-Custom-App-RosiFit\fb715c00-8d4a-469c-b0bb-76890c10c5c0\scratchpad\wt-C\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (71ms)
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\AppData\Local\Temp\claude\C--Users-shazi-Downloads-RosiFit-Custom-App-RosiFit\fb715c00-8d4a-469c-b0bb-76890c10c5c0\scratchpad\wt-C\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (69ms)
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\AppData\Local\Temp\claude\C--Users-shazi-Downloads-RosiFit-Custom-App-RosiFit\fb715c00-8d4a-469c-b0bb-76890c10c5c0\scratchpad\wt-C\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (132ms)
+- **G5 Types** - FAIL (46m 09s)
+
+```
+timed out after 15 minutes
+```
+
+- **G6 Lint** - BLOCKED (-) - prerequisite G5 did not pass
+- **G7 Unit + pure specs** - BLOCKED (-) - prerequisite G5 did not pass
+- **G8 Functional / integration** - BLOCKED (-) - prerequisite G5 did not pass
+- **G9 Automation addressability** - PASS (888ms)
+- **G10 Backward compatibility (fixtures)** - PASS (1.0s)
+- **G11 Wide tables are configurable** - PASS (679ms)
+- **G12 Installable as an application** - PASS (738ms)
+- **G13 Approved design still being built** - PASS (191ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-18 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 22.2s total - slowest G7 Unit + pure specs (10.4s).
+Application steps ran in .
+
+> **This run was avoidable.** The tree is byte-identical to the previous gate run, so this verdict was already known. The gate verifies a TREE, not a change: corrections landing in one commit share one verification, and only the last run describes what ships. Corrections in SEPARATE commits each need their own, so every commit is independently bisectable.
+
+- **G1 Theme artifacts in sync** - FAIL (65ms)
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\AppData\Local\Temp\claude\C--Users-shazi-Downloads-RosiFit-Custom-App-RosiFit\fb715c00-8d4a-469c-b0bb-76890c10c5c0\scratchpad\wt-C\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (66ms)
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\AppData\Local\Temp\claude\C--Users-shazi-Downloads-RosiFit-Custom-App-RosiFit\fb715c00-8d4a-469c-b0bb-76890c10c5c0\scratchpad\wt-C\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (66ms)
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\AppData\Local\Temp\claude\C--Users-shazi-Downloads-RosiFit-Custom-App-RosiFit\fb715c00-8d4a-469c-b0bb-76890c10c5c0\scratchpad\wt-C\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (122ms)
+- **G5 Types** - PASS (7.4s)
+- **G6 Lint** - FAIL (3.3s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (10.4s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (341ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (94ms)
+- **G10 Backward compatibility (fixtures)** - PASS (127ms)
+- **G11 Wide tables are configurable** - PASS (86ms)
+- **G12 Installable as an application** - PASS (169ms)
+- **G13 Approved design still being built** - PASS (89ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-18 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 25.1s total - slowest G7 Unit + pure specs (11.3s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (69ms)
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\AppData\Local\Temp\claude\C--Users-shazi-Downloads-RosiFit-Custom-App-RosiFit\fb715c00-8d4a-469c-b0bb-76890c10c5c0\scratchpad\wt-C\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (77ms)
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\AppData\Local\Temp\claude\C--Users-shazi-Downloads-RosiFit-Custom-App-RosiFit\fb715c00-8d4a-469c-b0bb-76890c10c5c0\scratchpad\wt-C\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (64ms)
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\AppData\Local\Temp\claude\C--Users-shazi-Downloads-RosiFit-Custom-App-RosiFit\fb715c00-8d4a-469c-b0bb-76890c10c5c0\scratchpad\wt-C\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (124ms)
+- **G5 Types** - PASS (8.3s)
+- **G6 Lint** - FAIL (4.2s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (11.3s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (407ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (85ms)
+- **G10 Backward compatibility (fixtures)** - PASS (119ms)
+- **G11 Wide tables are configurable** - PASS (81ms)
+- **G12 Installable as an application** - PASS (202ms)
+- **G13 Approved design still being built** - PASS (67ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-18 - VERDICT: FAIL
+
 Steps: 7 pass, 5 fail, 1 blocked.
 Time: 30.7s total - slowest G7 Unit + pure specs (18.9s).
 Application steps ran in .
