@@ -294,6 +294,35 @@ Four of the eleven — `pin-issue`, `pin-reset`, `csv-import`, `send-followups` 
 **Guard** — `npm run check` now fails if any function directory is undeclared. The check deliberately makes **no judgement about which posture is right** — it cannot know whether a new function should be public. It refuses only to let one ship with the question unanswered, because unanswered resolves to `true` at deploy time.
 
 **Recurrence risk** — Low for the enumerated class once this merges, since the gate is not a ratchet and there is no backlog. Two gaps remain open and are tracked rather than closed here: the live `pin-reset-request` divergence needs a deliberate deploy, which is a production write and needs the owner's go-ahead; and nothing yet compares `config.toml` against the deployed state, so a manual dashboard change would drift again unnoticed. A periodic read of `list_edge_functions` against this file would close that, and is not written.
+## RC-102 — the lint gate reported BLOCKED for one reason while CI gave another, and both were wrong          Tracker: T-035 · Sources: RV-22, A:F-10
+**Date:** 18-Sep-2026  ·  **Severity:** S3 (no user-facing defect; a dead rung and two comments that misdescribed the repository's own test coverage)  ·  **Modules:** `eslint.config.mjs`, `package.json`, `.github/workflows/ci.yml`, `ci/github-actions-ci.yml`
+
+**Symptom** — The deterministic gate's G6 (Lint) reported BLOCKED on every run. Both CI files carried, in their list of steps deliberately not run: `lint — no ESLint configured in this project. TD-004`. Directly beneath it: `test:unit / test:functional — no JS test runner configured; these stay unrun. TD-005, TD-006`. The step immediately above both comments runs `npm run check`, which has been running the entire unit suite through `tsx --test` — 1,619 tests — for as long as the comment has been there.
+
+**Root cause** — Two different facts collapsed into one word. ESLint was **configured** — `eslint.config.mjs` has been in the repository root all along, carrying the `src/data` boundary rule — and was never **installed**, so there was no binary to run. G6 reported the missing binary; the CI comment reported a missing configuration. Neither description was accurate, and because they disagreed, reading either one told you nothing about which of the two was actually missing. The `test:unit` line had no such subtlety: it was simply describing a state that had been false for months, and nothing rereads a comment once it is written.
+
+**Why it shipped** — Comments are not executed, so nothing can notice when one stops being true. The same root shape as RC-101 one file over: state that must hold, recorded only in prose. It is worse here than an ordinary stale comment, because these sit in the file whose whole purpose is to say what this repository verifies. A reader deciding whether to trust CI reads exactly this list. Two of its entries understated the coverage and one of them misnamed the reason for a genuinely dead rung, so the list was simultaneously too pessimistic about tests and too vague about lint. `eslint.config.mjs`'s own header was the only accurate account anywhere, and it explained why nobody had installed the toolchain: doing so would "turn a BLOCKED step into a few hundred findings that have nothing to do with this work."
+
+**Class** — comments in CI and gate configuration that assert what does or does not run. Swept both CI files for every claim of that kind:
+- `lint … no ESLint configured` — wrong in the way described. Fixed by installing, so the entry leaves the list.
+- `test:unit … no JS test runner configured; these stay unrun` — false; `npm run check` runs it. Entry leaves the list.
+- `test:functional … stays unrun` — still true. Kept, narrowed to itself.
+- `The 135 assertions under supabase/tests/ are the ONLY automated suite this repository has` — wrong twice: the count had moved through 776 and past 790, and the unit suite in the job above means it was never the only one at the time of writing. Rewritten without a number.
+- `- name: Migrations replay clean, and all 135 assertions pass` — same count, in a step name.
+- `theme:check`, `theme:assets`, `audit:compat`, `conformance`, `gate` — each re-read against the tree; all still accurate, left untouched.
+The wider class — every register and document that states production or pipeline state in prose — is not closed here and cannot be by one row. T-124 is one instance found the same day.
+
+**Fix** — `eslint@10.10.0`, `typescript-eslint@8.70.0`, `eslint-plugin-react-hooks@7.1.1`, all verified against the registry for name and peer range before installing, and all pinned exactly. `"lint": "eslint app src --max-warnings 0"` at the front of `npm run check`, so it runs in the gate job without a second CI step invoking ESLint twice. `eslint.config.mjs` gains a TypeScript parser and a registered-but-disabled `react-hooks` plugin, and **keeps its single rule with no `extends`** — the old header's worry about burying real findings under cosmetic ones still stands and is now written into the file as the reason. **Deliberately not changed:** `exhaustive-deps` is not enabled; `scripts/audits/check-data-layer-boundary.mjs` is kept alongside rather than replaced, because the text scan and the syntax-tree rule have different blind spots; the db-harness step name drops its count rather than carrying a new one.
+
+**Files** — `eslint.config.mjs`, `package.json`, `package-lock.json`, `.github/workflows/ci.yml`, `ci/github-actions-ci.yml`.
+
+**How to verify** — `npm run lint` exits 0 on the tree as committed. Write `supabase.from('members').select('id')` into any file under `src/` outside `src/data/` and it exits 1, naming RC-039. Both were run here before this was written, not inferred.
+
+**Proof** — the failing case is the probe above; the passing case is the clean tree. Two intermediate states are worth recording because each produced a red run that had nothing to do with the rule: without `languageOptions.parser` ESLint reported a parse error per TypeScript file, and without the `react-hooks` plugin registered it reported two errors for disable directives naming a rule it could not find.
+
+**Guard** — `npm run check` now fails on any lint error or warning. The gate's G6 can report something other than BLOCKED for the first time. What is **not** guarded is the class this entry is about: nothing checks that a comment in a CI file still describes the job it sits in. That would need a rung that reads the claims and tests them, which does not exist and is not written here.
+
+**Recurrence risk** — The specific comments are corrected and the count is gone rather than refreshed, which removes the thing that drifts. The general risk is unchanged and high: both CI files are maintained by hand as copies of each other, kept identical by a header instruction and nothing else. This entry's own PR is evidence — the T-020 branch added a Deno step to `.github/workflows/ci.yml` and not to the template, and that was caught by reading, not by a check.
 
 ---
 
