@@ -43,17 +43,13 @@
 --   lhpzhkzbnquwjljmbylo, after 0073 was applied (17-Sep 12:58 UTC) and
 --   before 0074.
 
-select t.eq((select md5(p.prosrc) from pg_proc p
-               join pg_namespace n on n.oid = p.pronamespace
-              where n.nspname = 'public' and p.proname = 'commit_csv_import'),
-            'ff61afadd104c0d507dfa9731e756a51',
-  'commit_csv_import: the replayed body is byte-identical to production (18-Sep-2026, post-0073)');
-
-select t.eq((select length(p.prosrc) from pg_proc p
-               join pg_namespace n on n.oid = p.pronamespace
-              where n.nspname = 'public' and p.proname = 'commit_csv_import'),
-            18521,
-  'commit_csv_import: and the same length, so a hash mismatch is a real difference, not an encoding one');
+-- ORDER: update_member first, deliberately.
+--   commit_csv_import is KNOWN to differ -- 0045_import_change_counts is
+--   replayed here and is not live, so this file's first run (db-harness
+--   #129) told us only what the marker evidence already had, and stopped
+--   there: t.eq raises, ON_ERROR_STOP=1, and update_member's verdict -- the
+--   one nobody knew -- never ran. The unknown goes first, so a known failure
+--   cannot hide it. Reordered 18-Sep-2026.
 
 select t.eq((select md5(p.prosrc) from pg_proc p
                join pg_namespace n on n.oid = p.pronamespace
@@ -66,6 +62,18 @@ select t.eq((select length(p.prosrc) from pg_proc p
               where n.nspname = 'public' and p.proname = 'update_member'),
             9625,
   'update_member: and the same length');
+
+select t.eq((select md5(p.prosrc) from pg_proc p
+               join pg_namespace n on n.oid = p.pronamespace
+              where n.nspname = 'public' and p.proname = 'commit_csv_import'),
+            'ff61afadd104c0d507dfa9731e756a51',
+  'commit_csv_import: the replayed body is byte-identical to production (18-Sep-2026, post-0073)');
+
+select t.eq((select length(p.prosrc) from pg_proc p
+               join pg_namespace n on n.oid = p.pronamespace
+              where n.nspname = 'public' and p.proname = 'commit_csv_import'),
+            18521,
+  'commit_csv_import: and the same length, so a hash mismatch is a real difference, not an encoding one');
 
 -- The finding that prompted this file, asserted so it cannot quietly go away.
 -- 0045 is in the repository and is replayed here, so the harness body DOES
