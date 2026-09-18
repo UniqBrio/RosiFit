@@ -211,13 +211,23 @@ test('the key is minted once per draft, not once per attempt', () => {
   assert.equal(store.size(), 1);
 });
 
-test('api.ts requires client_batch_id — an omitted key is a typecheck failure', () => {
-  const src = code('src/data/api.ts');
-  const signature = src.slice(src.indexOf('export function sendFollowUps'));
-  const body = signature.slice(0, signature.indexOf('}'));
+test('the send input requires client_batch_id — an omitted key is a typecheck failure', () => {
+  const src = code('src/data/sendBatch.ts');
+  const start = src.indexOf('export type SendFollowUpsInput');
+  const block = src.slice(start, src.indexOf('};', start));
 
-  // Optional is what shipped: two call sites omitted it and nothing said so.
-  assert.match(body, /client_batch_id\s*:\s*string/);
+  // `client_batch_id?: string` is what shipped: two call sites omitted it and
+  // every check stayed green. The `?` is the whole defect, so it is the
+  // character this assertion is here to refuse.
+  assert.match(block, /client_batch_id\s*:\s*string\s*;/);
+});
+
+test('the required input is the one the api function takes', () => {
+  // The type can only make an omission a build failure if the exported
+  // function actually uses it -- a second, looser inline shape beside it
+  // would put the rule back where it was.
+  assert.match(code('src/data/api.ts'),
+    /export function sendFollowUps\(input:\s*SendFollowUpsInput\)/);
 });
 
 test('the send draft mints its key when the draft opens and passes it', () => {

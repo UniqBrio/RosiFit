@@ -8,7 +8,7 @@ import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, STATUS, statusSurface } from '../../src/theme/tokens';
 import { flaggedMembers, hasEmail } from '../../src/data/mock';
-import { peekSendResult } from '../../src/data/pending';
+import { peekSendAlready, peekSendResult } from '../../src/data/pending';
 
 /**
  * The last step: RESULT, per member. "Sent" is claimed per address, never for
@@ -28,6 +28,10 @@ function SendResultBody() {
   // The real per-recipient outcome when a send just ran; the fixtures'
   // three states otherwise, so the screen is still reviewable offline.
   const [result] = useState(() => peekSendResult());
+  /* A send the server refused as ALREADY SUBMITTED (T-017): this attempt
+     carried a key that had already written a batch, so what is shown is what
+     THAT batch did. Read once on mount, like the result beside it. */
+  const [already] = useState(() => peekSendAlready());
 
   const fallbackFlagged = flaggedMembers();
   const fallbackRecipients = fallbackFlagged.filter(hasEmail);
@@ -47,6 +51,66 @@ function SendResultBody() {
   const ink = (k: keyof typeof STATUS) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
   const okInk = ink('present'); const badInk = ink('absent');
   const close = () => router.back();
+
+  /**
+   * ALREADY SUBMITTED (T-017). The attempt carried a key that had already
+   * written a batch, so it wrote nothing and sent nothing -- and this screen
+   * owes the operator the FIRST attempt's figures, not a failure.
+   *
+   * Its own body rather than a banner over the list below: there are no
+   * per-recipient rows for this attempt, and borrowing the fixtures' three
+   * would be inventing an outcome. The icon and the words both say it, never
+   * the colour alone (guardrail 3).
+   */
+  if (already) {
+    const batch = already.batch;
+    return (
+      <FormDialog
+        title="Already submitted"
+        subtitle="This send had already reached the academy"
+        onClose={close}
+        footer={(
+          <View style={{
+            padding: SPACE.lg, borderTopWidth: 1, borderTopColor: theme.line,
+            backgroundColor: theme.shell,
+          }}>
+            <Button testID="result-done" label="Done" onPress={close} />
+          </View>
+        )}
+      >
+        <View testID="result-already" style={{
+          flexDirection: 'row', alignItems: 'flex-start', gap: SPACE.md, padding: SPACE.lg,
+          borderRadius: RADIUS.lg, backgroundColor: theme.surface,
+          borderWidth: 1, borderColor: theme.line,
+        }}>
+          <Icon name="history" size={20} color={theme.muted} />
+          <Text style={{ flex: 1, fontSize: 13.5, lineHeight: 20, color: theme.fgStrong }}>
+            {batch
+              ? 'This send is already in progress — it was submitted once and the answer did '
+                + 'not reach this screen. Nothing was sent a second time. What the first '
+                + 'attempt did is below.'
+              : 'This send is already in progress — it was submitted once and the answer did '
+                + 'not reach this screen. Nothing was sent a second time. Its figures could '
+                + 'not be read just now; the notification tray carries the batch.'}
+          </Text>
+        </View>
+
+        {batch ? (
+          <>
+            <View style={{ flexDirection: 'row', marginTop: SPACE.lg, gap: SPACE.md }}>
+              <Count n={batch.sent} label="Sent" color={okInk} />
+              <Count n={batch.failed} label="Failed" color={badInk} />
+              <Count n={batch.excluded} label="Excluded" color={theme.muted} />
+            </View>
+            <Muted style={{ marginTop: SPACE.lg }}>
+              {`${batch.requested} asked for · ${batch.status}`}
+              {batch.createdAt ? ` · ${new Date(batch.createdAt).toLocaleString()}` : ''}
+            </Muted>
+          </>
+        ) : null}
+      </FormDialog>
+    );
+  }
 
   return (
     <FormDialog

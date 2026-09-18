@@ -21,6 +21,7 @@ import { iso, joinedLabel, type Period } from './period';
 import { SUBJECT_MIN, SUBJECT_MAX, BODY_MIN, COURSE_NAME_MIN, COURSE_NAME_MAX } from './message';
 import { bucketFixture, type BucketMetrics } from './buckets';
 import type { SentMap } from './sent';
+import type { BatchSummary } from './sendBatch';
 import { currentSchedules, today } from './schedule';
 import { inactiveFromProblem, activeAgainFromProblem } from './inactiveFrom';
 import { activeFromProblem } from './joined';
@@ -2220,6 +2221,38 @@ export async function fetchSentForPeriod(period: Period): Promise<SentMap> {
     if (!out[id] || out[id] < at) out[id] = at;
   }
   return out;
+}
+
+/**
+ * The batch an idempotency key already wrote, so a refused second attempt can
+ * say what the first one DID rather than only that it happened (T-017).
+ *
+ * One row by a unique key -- `client_batch_id` is `text not null unique`
+ * (0009:168) -- so there is nothing here to page: this is the "single id"
+ * half of the reason `from('email_batches')` is exempt in
+ * `pagedReads.test.ts`.
+ *
+ * It THROWS rather than answering null on a read error. The caller
+ * (`attemptSend`) is the one place that decides a failed lookup costs the
+ * figures and not the answer, and it says so there. A discard here would be
+ * another of the 32 silent ones RV-18 / T-046 is a sweep for.
+ */
+export async function fetchBatchByClientKey(clientBatchId: string): Promise<BatchSummary | null> {
+  if (!isConfigured) return null;
+  const { data, error } = await supabase.from('email_batches')
+    .select('id, requested_count, sent_count, failed_count, excluded_count, status, created_at')
+    .eq('client_batch_id', clientBatchId).maybeSingle();
+  if (error) fail('The send already recorded under this attempt could not be read', error);
+  if (!data) return null;
+  return {
+    id: data.id as string,
+    requested: (data.requested_count as number | null) ?? 0,
+    sent: (data.sent_count as number | null) ?? 0,
+    failed: (data.failed_count as number | null) ?? 0,
+    excluded: (data.excluded_count as number | null) ?? 0,
+    status: (data.status as string | null) ?? 'processing',
+    createdAt: (data.created_at as string | null) ?? null,
+  };
 }
 
 export type Preferences = { theme_mode: 'light' | 'dark' | 'system'; accent_key: string; accent_hue: number };

@@ -10,6 +10,7 @@
 import { supabase } from '../lib/supabase';
 import type { OverrideCounts } from './uploadOverride';
 import type { AlreadyImported, ImportChanges } from './uploadOutcome';
+import { FunctionError, type SendFollowUpsInput, type SendResult } from './sendBatch';
 
 async function callFn<T>(name: string, body: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.functions.invoke(name, { body });
@@ -17,18 +18,24 @@ async function callFn<T>(name: string, body: Record<string, unknown>): Promise<T
     // supabase-js keeps the response on FunctionsHttpError; the function's
     // own message is far more useful than "Edge Function returned 400".
     const res = (error as { context?: Response }).context;
+    /* THE STATUS IS CARRIED, not just the sentence (T-017). A 409 from
+       send-followups means the unique index on `client_batch_id` refused a
+       second batch for one attempt, and that is not a failure -- it is an
+       answer. Telling it apart by matching the function's wording would tie
+       every caller to a sentence the function is free to rewrite. */
+    const status = res && typeof res.status === 'number' ? res.status : undefined;
     if (res && typeof res.json === 'function') {
       try {
         const payload = await res.json();
-        if (payload?.error?.message) throw new Error(payload.error.message);
+        if (payload?.error?.message) throw new FunctionError(payload.error.message, status);
       } catch (parsed) {
         if (parsed instanceof Error && parsed.message) throw parsed;
       }
     }
-    throw new Error(error.message ?? 'Something went wrong. Please try again.');
+    throw new FunctionError(error.message ?? 'Something went wrong. Please try again.', status);
   }
   const payload = data as { error?: { message?: string } } | null;
-  if (payload && payload.error?.message) throw new Error(payload.error.message);
+  if (payload && payload.error?.message) throw new FunctionError(payload.error.message);
   return data as T;
 }
 
@@ -257,16 +264,22 @@ export function csvCommit(importId: string, decisions: ImportDecision[]):
 }
 
 // ------------------------------------------------------------------- send
-export type SendResult = {
-  batch_id: string; requested: number; sent: number; failed: number; excluded: number;
-  results: { member_id: string; name: string; status: 'sent' | 'failed' | 'excluded'; reason?: string }[];
-};
+/* The send's types live in `sendBatch.ts`, with the idempotency key they are
+   inseparable from, because that module imports nothing and can therefore be
+   specced under plain node. Re-exported here so every existing caller reads
+   `SendResult` from the place it always has. */
+export type { SendResult, SendFollowUpsInput } from './sendBatch';
 
-/** Template only. There is no subject or body parameter here, and adding one
- *  would be the API half of the free-form compose that C-68 removed. */
-export function sendFollowUps(input: {
-  member_ids: string[]; template_id: string; period_from: string; period_to: string;
-  client_batch_id?: string;
-}): Promise<SendResult> {
-  return callFn<SendResult>('send-followups', input);
+/**
+ * Template only. There is no subject or body parameter here, and adding one
+ * would be the API half of the free-form compose that C-68 removed.
+ *
+ * `client_batch_id` is REQUIRED (T-017). Optional is what shipped, and both
+ * call sites omitted it: the function then minted a UUID of its own, so the
+ * unique index on `email_batches.client_batch_id` had nothing to catch and
+ * every retry was a second set of emails. Required makes an omission a
+ * typecheck failure rather than a duplicate send.
+ */
+export function sendFollowUps(input: SendFollowUpsInput): Promise<SendResult> {
+  return callFn<SendResult>('send-followups', { ...input });
 }

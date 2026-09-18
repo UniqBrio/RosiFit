@@ -38,9 +38,35 @@ let sendResult: import('./api').SendResult | null = null;
 /** The per-recipient outcome of a send, on its way to the result screen.
  *  Kept whole: "sent" is claimed per address, never for the batch, and an
  *  excluded member is named with her reason rather than dropped. */
-export const setSendResult = (r: import('./api').SendResult) => { sendResult = r; };
+export const setSendResult = (r: import('./api').SendResult) => {
+  sendResult = r;
+  // A send either ran or was refused as already submitted; it is never both.
+  // Clearing the other here is what stops a 409 from an earlier attempt
+  // leaving its banner over a result that really did just send.
+  sendAlready = null;
+};
 export const peekSendResult = (): import('./api').SendResult | null => sendResult;
 export const clearSendResult = () => { sendResult = null; };
+
+/**
+ * A send the server REFUSED as already submitted, on its way to the same
+ * result screen (T-017).
+ *
+ * It travels beside the per-recipient result rather than as one, because
+ * there are no per-recipient rows to show: the batch the key already wrote
+ * was made by an earlier attempt, and its figures are all this attempt can
+ * honestly report. `batch` is null when the lookup itself failed -- the
+ * screen then says the send was already submitted and that the figures could
+ * not be read, which is the truth and is still not "nothing was sent".
+ */
+let sendAlready: { batch: import('./sendBatch').BatchSummary | null } | null = null;
+
+export const setSendAlready = (batch: import('./sendBatch').BatchSummary | null) => {
+  sendAlready = { batch };
+  sendResult = null;
+};
+export const peekSendAlready = () => sendAlready;
+export const clearSendAlready = () => { sendAlready = null; };
 
 export const setIssuedPin = (p: IssuedPinHandoff) => { issuedPin = p; };
 export const takeIssuedPin = (): IssuedPinHandoff | null => {

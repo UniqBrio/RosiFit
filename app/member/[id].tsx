@@ -10,7 +10,9 @@ import {
 import { readTrigger } from '../../src/data/followupTrigger';
 import { enrolledIn } from '../../src/data/course';
 import { sendFollowUps } from '../../src/data/api';
-import { setSendResult } from '../../src/data/pending';
+import { fetchBatchByClientKey } from '../../src/data/repository';
+import { attemptSend, closeSendBatchKey, openSendBatchKey, sendBatchName } from '../../src/data/sendBatch';
+import { setSendAlready, setSendResult } from '../../src/data/pending';
 import { FormDialog } from '../../src/components/FormDialog';
 import { ConfirmDialog } from '../../src/components/Sheet';
 import { Muted, Label, Button, Skeleton, ErrorState } from '../../src/components/ui';
@@ -130,6 +132,12 @@ export default function MemberDetail() {
      out. */
   const [sending, setSending] = useState(false);
   const [sendFailure, setSendFailure] = useState<string | null>(null);
+  /* ONE KEY FOR THIS RECORD'S SEND, carried by every attempt from it (T-017).
+     Held in `sessionStorage` under this member and this period, so a refresh
+     or the PWA's auto-reload mid-send finds it again instead of minting a
+     second one and writing a second batch (C:RF-05, RV-30, C:RF-20). */
+  const [batchName] = useState(() => sendBatchName(`member:${id}`, week));
+  const [clientBatchId] = useState(() => openSendBatchKey(batchName));
   /* The question, asked in front of the send rather than only sitting on the
      card: "on clicking ... reach out show message of follow up triggere of
      that course and ask ... and send communication." */
@@ -275,17 +283,31 @@ export default function MemberDetail() {
     setSending(true);
     setSendFailure(null);
     try {
-      const result = await sendFollowUps({
-        member_ids: ids,
-        template_id: message.data.template_id,
-        period_from: week.from, period_to: week.to,
-      });
-      // What the send REPORTED as sent, never what it was asked to send.
-      recordSent(week, result.results.filter(r => r.status === 'sent').map(r => r.member_id));
-      setSendResult(result);
+      const outcome = await attemptSend(
+        { send: sendFollowUps, readBatch: fetchBatchByClientKey },
+        {
+          member_ids: ids,
+          template_id: message.data.template_id,
+          period_from: week.from, period_to: week.to,
+          client_batch_id: clientBatchId,
+        },
+      );
+      /* ALREADY SUBMITTED is a result, not a failure -- see the same branch in
+         app/send/index.tsx. This prompt is the likelier of the two to meet it:
+         it stays open on failure, so the retry is one press away. */
+      if (outcome.kind === 'already') {
+        setSendAlready(outcome.batch);
+      } else {
+        // What the send REPORTED as sent, never what it was asked to send.
+        recordSent(week, outcome.result.results.filter(r => r.status === 'sent').map(r => r.member_id));
+        setSendResult(outcome.result);
+      }
+      closeSendBatchKey(batchName);
       setTriggerPrompt(false);
       router.replace('/send/result');
     } catch (err) {
+      // Key deliberately kept: the outcome is unknown and the retry must
+      // carry the same one.
       setSendFailure(err instanceof Error ? err.message : 'Nothing has been sent.');
     } finally {
       setSending(false);

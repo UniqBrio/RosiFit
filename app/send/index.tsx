@@ -17,7 +17,9 @@ import { FollowUpTriggerPanel } from '../../src/components/FollowUpTriggerPanel'
 import { readTrigger } from '../../src/data/followupTrigger';
 import { currentWeek } from '../../src/data/period';
 import { sendFollowUps } from '../../src/data/api';
-import { setSendResult } from '../../src/data/pending';
+import { fetchBatchByClientKey } from '../../src/data/repository';
+import { attemptSend, closeSendBatchKey, openSendBatchKey, sendBatchName } from '../../src/data/sendBatch';
+import { setSendAlready, setSendResult } from '../../src/data/pending';
 
 /**
  * ONE draft, for ONE course: WHO it goes to, and nothing else.
@@ -106,6 +108,19 @@ function SendDraftBody() {
   const [confirming, setConfirming] = useState(false);
   const [sending, setSending] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  /* ONE KEY FOR THIS DRAFT, and every attempt from it carries the same one
+     (T-017). `email_batches.client_batch_id` is unique, so the second attempt
+     is refused by the database rather than turned into a second set of emails
+     nobody can recall.
+
+     It is opened from `sessionStorage` rather than minted here, because the
+     attempts that need it most are the ones this component does not survive:
+     a refresh, and the PWA's own auto-reload on 60s idle or `hidden`, which
+     can fire mid-send (C:RF-05, RV-30, C:RF-20). Named by THIS draft and THIS
+     period, so next week's send and the next course's send are their own. */
+  const [batchName] = useState(() =>
+    sendBatchName(`draft:${courseId ?? 'all'}:${onlyMemberId ?? 'all'}`, week));
+  const [clientBatchId] = useState(() => openSendBatchKey(batchName));
   /* WHAT IS ON SCREEN, not what is selected and not what is sent: a real
      week put 456 flagged members in this list, and finding one of them meant
      scrolling all of it ("Enable search bar to select and deselect easily").
@@ -243,20 +258,41 @@ function SendDraftBody() {
     setSending(true);
     setFailure(null);
     try {
-      const result = await sendFollowUps({
-        member_ids: picked,
-        template_id: message.data.template_id,
-        period_from: week.from, period_to: week.to,
-      });
-      // What the send REPORTED as sent, never what it was asked to send: the
-      // mark on her row has to mean an email left, not that one was tried.
-      recordSent(week, result.results.filter(r => r.status === 'sent').map(r => r.member_id));
-      setSendResult(result);
+      const outcome = await attemptSend(
+        { send: sendFollowUps, readBatch: fetchBatchByClientKey },
+        {
+          member_ids: picked,
+          template_id: message.data.template_id,
+          period_from: week.from, period_to: week.to,
+          client_batch_id: clientBatchId,
+        },
+      );
+      /* ALREADY SUBMITTED is a result, not a failure. This exact attempt had
+         already reached the server -- the response was lost, or the tab
+         reloaded -- so the honest answer is what that attempt DID, and the
+         one answer it must never give is "nothing has been sent", which is
+         the sentence that sends everything twice (T-054, RV-12). */
+      if (outcome.kind === 'already') {
+        setSendAlready(outcome.batch);
+      } else {
+        // What the send REPORTED as sent, never what it was asked to send: the
+        // mark on the member's row has to mean an email left, not that one was
+        // tried.
+        recordSent(week, outcome.result.results.filter(r => r.status === 'sent').map(r => r.member_id));
+        setSendResult(outcome.result);
+      }
+      // Both of these are terminal and both are SHOWN, so the key is released:
+      // holding it would refuse every later send for this period while the tab
+      // lives. A deliberate second send is a new batch, guarded by the
+      // already-sent mark and by D-6's server-side refusal (T-055).
+      closeSendBatchKey(batchName);
       // REPLACE, not push: the result takes this dialog's place over the SAME
       // screen underneath, so closing it returns to the register or the
       // course rather than stepping back through a draft that has been sent.
       router.replace('/send/result');
     } catch (err) {
+      // The key is deliberately NOT released here. The outcome is unknown, so
+      // the retry this failure invites must carry the same key.
       setFailure(err instanceof Error ? err.message : 'Nothing has been sent.');
     } finally {
       setSending(false);
