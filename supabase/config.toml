@@ -1,0 +1,115 @@
+# Supabase CLI configuration — RosiFit
+#
+# THIS FILE EXISTS FOR ONE REASON: to stop `verify_jwt` being decided by whatever
+# the CLI defaults to on the day somebody redeploys (T-038, RV-17, A:F-20).
+#
+# Until now the posture of all eleven functions lived only in header comments and
+# in `supabase/SETUP.md`. A comment does not survive `supabase functions deploy`.
+# The CLI defaults `verify_jwt` to TRUE, so a redeploy that forgets
+# `--no-verify-jwt` silently turns a public function into a 401 — and this has
+# already happened to this project once (SETUP.md:180). When it happens to
+# `auth-login` or `auth-lookup`, sign-in stops working for everybody; when it
+# happens to `ses-feedback`, every SNS notification 401s and bounces stop being
+# recorded, silently, which is the worst kind because nothing looks broken.
+#
+# Deliberately NOT declared here: [api], [db], [auth], [storage], [studio] and
+# every other section. This project has no local Supabase stack — there is no
+# docker on the dev machine, migrations are rehearsed in `db/harness/` against a
+# plain Postgres, and production is reached with `supabase db query --linked`
+# (D-3). Declaring a [db] major_version here would be inventing a local
+# environment nobody runs, and getting it wrong would be worse than silence:
+# production is Postgres 17.6 while the harness replays on 16.
+#
+# ── BEFORE YOU DEPLOY FROM THIS FILE ────────────────────────────────────────────
+# One entry below does NOT match what is deployed today. `pin-reset-request` is
+# live with verify_jwt = true, and its own source says it must be public. This
+# file records the source's posture, which means a deploy of that function WILL
+# change production behaviour. That change is almost certainly the right one — a
+# person calling it is there precisely because they cannot sign in, so there is no
+# session to verify, and today the recovery path refuses the people it exists for
+# — but it is a security-relevant change to an auth endpoint and it is not
+# T-038's to make. See the tracker row before deploying it.
+#
+# Measured against production 18-Sep-2026, read-only via the Supabase API. Every
+# other entry below matches the deployed state exactly.
+
+project_id = "lhpzhkzbnquwjljmbylo"
+
+# ── PUBLIC (verify_jwt = false) ─────────────────────────────────────────────────
+# Each of these is called BEFORE a session exists, or by something that cannot
+# carry a Supabase auth header at all. Turning any of them on breaks a user
+# journey outright rather than degrading it.
+
+# Sign-in itself. Nobody has a session yet; that is the point of the call.
+# Deployed v11, verify_jwt = false. Matches.
+[functions.auth-login]
+verify_jwt = false
+
+# First-account registration. Runs before any account exists at all.
+# Deployed v12, verify_jwt = false. Matches.
+[functions.auth-bootstrap]
+verify_jwt = false
+
+# "Is this number registered?", asked by the sign-in screen's Continue button
+# before anybody has proved anything. A deliberate, owner-accepted staff
+# enumeration oracle — ADR 016 (docs/decisions/008), cost recorded as TD-017.
+# With verify_jwt on, Continue answers "could not be reached" for every number.
+# Deployed v5, verify_jwt = false. Matches.
+[functions.auth-lookup]
+verify_jwt = false
+
+# PIN recovery questions. Answered by someone who cannot sign in.
+# Deployed v11, verify_jwt = false. Matches.
+[functions.recovery-check]
+verify_jwt = false
+
+# SNS bounce and complaint notifications. AWS SNS cannot send a Supabase auth
+# header, so verify_jwt on means every notification 401s and the subscription
+# never confirms — silently. Its own door is a constant-time shared secret in
+# `?s=` AND TopicArn equality, checked in the function.
+# Deployed v4, verify_jwt = false. Matches.
+[functions.ses-feedback]
+verify_jwt = false
+
+# One-click unsubscribe from an email. The person clicking has no session and
+# never will; RFC 8058 List-Unsubscribe-Post depends on this answering POST.
+# Deployed v4, verify_jwt = false. Matches.
+[functions.unsubscribe]
+verify_jwt = false
+
+# ── DIVERGENT — READ THE HEADER OF THIS FILE ────────────────────────────────────
+
+# Requests a PIN reset. Its source header states it must be public, in the same
+# terms as recovery-check: the caller is there BECAUSE they cannot sign in.
+# DEPLOYED v5 WITH verify_jwt = true, measured 18-Sep-2026. The divergence was
+# first noticed in ENVIRONMENTS.md ("Noticed in passing, NOT changed") and is
+# still live. Recorded here as the source intends; deploying this function
+# changes production. Do not do it as a side effect of deploying something else.
+[functions.pin-reset-request]
+verify_jwt = false
+
+# ── AUTHENTICATED (verify_jwt = true) ───────────────────────────────────────────
+# These four have no header comment stating a posture. Their value is taken from
+# the deployed state and from ENVIRONMENTS.md, and each is recorded here so the
+# silence cannot be mistaken for a decision. Flagged in T-038's row.
+
+# Issues a PIN to a staff account. Caller must already be an authenticated admin.
+# Deployed v13, verify_jwt = true. Matches. Source header silent.
+[functions.pin-issue]
+verify_jwt = true
+
+# Resets a PIN after recovery. Deployed v13, verify_jwt = true. Matches.
+# Source header silent.
+[functions.pin-reset]
+verify_jwt = true
+
+# Attendance CSV import. Must never be public: it writes members and attendance.
+# Deployed v17, verify_jwt = true. Matches. Source header silent.
+[functions.csv-import]
+verify_jwt = true
+
+# Sends follow-up email to members. Must never be public: it spends the academy's
+# SES reputation and writes to members' inboxes.
+# Deployed v18, verify_jwt = true. Matches. Source header silent.
+[functions.send-followups]
+verify_jwt = true

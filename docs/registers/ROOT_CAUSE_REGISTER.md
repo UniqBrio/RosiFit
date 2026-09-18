@@ -268,6 +268,32 @@ The wider class — **discarded error results**, with or without an assertion �
 **Recurrence risk** — Moderate and narrowing. The assertion class is closed and now has a runner that can catch a regression. The surrounding discarded-error class is wide open and tracked (T-041, T-046). The deeper shape — a loop that writes terminal state only at the end, so any mid-loop failure leaves a batch in `processing` — is untouched here and is exactly what Gate 4's claim-and-drain (T-049) replaces. Until then a crash anywhere else in this loop has the same consequence.
 
 **Not verified locally** — Deno is not installed on the machine this was written on, so the spec has not been executed here. The CI run on the PR is its first execution anywhere. Stated rather than glossed.
+## RC-101 — the JWT posture of eleven Edge Functions lived only in comments, and a comment does not survive a deploy          Tracker: T-038 · Sources: RV-17, A:F-20
+**Date:** 18-Sep-2026  ·  **Severity:** S2 (one divergence already live and unnoticed since 09-Sep; the class breaks sign-in outright when it fires)  ·  **Modules:** `supabase/config.toml`, `scripts/audits/check-function-jwt.mjs`, `package.json`
+
+**Symptom** — No operator report. The shape was recorded twice and acted on neither time: `SETUP.md:180` notes a redeploy that lost a function's public-ness, and `ENVIRONMENTS.md` has a section headed *"Noticed in passing, NOT changed"* saying `pin-reset-request` is deployed with `verify_jwt: true` while its own source says it must be public. A read of the live project on 18-Sep-2026 confirms that is **still true today**: `pin-reset-request` v5, `verify_jwt: true`. The function exists to let somebody who cannot sign in ask for a PIN reset, and it is refusing exactly those callers.
+
+**Root cause** — `supabase functions deploy` takes `verify_jwt` from the CLI default, which is **true**, unless `supabase/config.toml` says otherwise. There was no `config.toml` in this repository at all. The posture of all eleven functions was recorded in header comments and in `supabase/SETUP.md` — neither of which the CLI reads. So the correct value survived only as long as whoever ran the deploy remembered `--no-verify-jwt`, per function, every time.
+
+**Why it shipped** — The knowledge was written down, repeatedly and well, in the one format that has no effect. Three separate documents state the posture correctly (`SETUP.md`, `ENVIRONMENTS.md`, `RBAC_MATRIX.md`) and a fourth, ADR 016, explains why `auth-lookup` must be public. None of them is executable. The failure is also silent and asymmetric: flipping a public function to `verify_jwt=true` produces no deploy error and no log line, just 401s to callers who have no session and never will. When it happened to `pin-reset-request` the only people affected were locked-out staff, who by definition cannot report it through the app.
+
+**Class** — *state that must hold in production, recorded only in prose*. Enumerated for the deploy-time posture of every function, measured against the live project on 18-Sep-2026:
+- Public and correct, matching source: `auth-login` v11, `auth-bootstrap` v12, `auth-lookup` v5, `recovery-check` v11, `ses-feedback` v4, `unsubscribe` v4. Worth recording that `auth-lookup`, `ses-feedback` and `unsubscribe` have all been redeployed since `ENVIRONMENTS.md` last read them (v1 → v5/v4/v4) and their `verify_jwt=false` survived each time.
+- Authenticated and correct: `pin-issue` v13, `pin-reset` v13, `csv-import` v17, `send-followups` v18.
+- **Divergent: `pin-reset-request` v5 is `true`, its source says public.** One of eleven.
+Four of the eleven — `pin-issue`, `pin-reset`, `csv-import`, `send-followups` — have **no header comment stating a posture at all**, so their value was inferred from the deployed state rather than from an intention anyone wrote down. That silence is recorded in `config.toml` next to each one.
+
+**Fix** — `supabase/config.toml` with a `[functions.<name>] verify_jwt` entry for all eleven, each carrying the reason and the deployed version it was checked against. `scripts/audits/check-function-jwt.mjs` refuses a directory under `supabase/functions/` with no entry, an entry with no `verify_jwt` value, and an entry naming a directory that does not exist — the last because a misspelt section leaves the real function undeclared and therefore deploying as `true`. Wired into `npm run check`, so it runs in the `gate` job. **Deliberately not changed:** nothing is deployed by this PR, and `pin-reset-request` is not flipped. The file records the source's intent, which means deploying that one function will change production behaviour — called out in the file header, in the tracker row, and in the PR.
+
+**Files** — `supabase/config.toml` (new), `scripts/audits/check-function-jwt.mjs` (new), `package.json`.
+
+**How to verify** — `npm run check:functions`. Expect `OK [FUNCTION JWT] 11 function(s), all declared - 7 public (verify_jwt=false), 4 authenticated.` The 7 counts `pin-reset-request` as the source intends it, not as it is deployed.
+
+**Proof** — the check was run against four deliberately broken trees and refused each: a new function directory with no entry; `config.toml` absent; a section present with its `verify_jwt` line removed; a section name misspelt, which correctly reported both the orphan and the now-undeclared real function. It passes on the tree as committed.
+
+**Guard** — `npm run check` now fails if any function directory is undeclared. The check deliberately makes **no judgement about which posture is right** — it cannot know whether a new function should be public. It refuses only to let one ship with the question unanswered, because unanswered resolves to `true` at deploy time.
+
+**Recurrence risk** — Low for the enumerated class once this merges, since the gate is not a ratchet and there is no backlog. Two gaps remain open and are tracked rather than closed here: the live `pin-reset-request` divergence needs a deliberate deploy, which is a production write and needs the owner's go-ahead; and nothing yet compares `config.toml` against the deployed state, so a manual dashboard change would drift again unnoticed. A periodic read of `list_edge_functions` against this file would close that, and is not written.
 
 ---
 
