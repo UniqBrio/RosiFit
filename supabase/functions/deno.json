@@ -1,0 +1,12 @@
+{
+  "//": "Deno config for the Edge Function tree. Introduced by T-020, which needed somewhere to run its spec: there was no Deno config, no Deno test and no Deno step in CI, so the row's proof had nowhere to execute. T-027 widens this to `deno check supabase/functions/**/*.ts` wired into `npm run check`; until then CI runs `deno test --no-check` here, so a red run means the behaviour under test broke and nothing else.",
+  "lock": false,
+  "tasks": {
+    "test": "deno test --no-check --allow-none"
+  },
+  "fmt": {
+    "useTabs": false,
+    "lineWidth": 100,
+    "singleQuote": true
+  }
+}

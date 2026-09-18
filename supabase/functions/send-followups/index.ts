@@ -9,6 +9,7 @@ import { requireCaller } from '../_shared/authz.ts';
 import { resolveEmailProvider } from './email.ts';
 import { chooseFromAddress, unquoteSecret } from '../_shared/from-address.ts';
 import { buildUnsubscribeUrl } from '../_shared/unsubscribe-token.ts';
+import { runSendLoop, type AdminLike, type PreparedRecipient } from './send-loop.ts';
 
 /** The mailbox a mail client offers when it cannot use the URL. Named here
  *  rather than derived from the sender, because the sender now varies per
@@ -185,17 +186,21 @@ Deno.serve(async (req) => {
       throw new HttpError(500, 'Could not start the send.');
     }
 
-    const results: Array<{ member_id: string; name: string; status: string; reason?: string }> = [];
-    let sent = 0, failed = 0, excluded = 0;
+    // PREPARE every recipient, then run the loop. The split is what lets a
+    // fake admin client drive the write-send-record loop in a spec (T-020):
+    // what a member is TOLD is decided here, what is RECORDED is decided in
+    // send-loop.ts. Nothing about the rendering below changed.
+    const prepared: PreparedRecipient[] = [];
 
     for (const id of memberIds) {
       const member = memberById.get(id);
       if (!member) {
-        results.push({ member_id: id, name: '(unknown)', status: 'excluded', reason: 'Member not found' });
-        excluded++;
+        prepared.push({
+          kind: 'excluded', memberId: id, name: '(unknown)', toEmail: null,
+          subject: '', vars: {}, reason: 'Member not found',
+        });
         continue;
       }
-
       const enroll = enrollByMember.get(id);
       const offering = enroll ? offeringById.get(enroll.offering_id as string) : undefined;
       const courseName = offering ? (courseNameById.get(offering.course_id as string) ?? '—') : '—';
@@ -203,26 +208,32 @@ Deno.serve(async (req) => {
       const fromChoice = chooseFromAddress(
         offering ? fromByCourse.get(offering.course_id as string) : null, defaultFrom);
       // Pulled out of the union here rather than read through `fromChoice`
-      // below: the recipient is excluded via `exclusionReason`, which narrows
-      // nothing about this value, and `undefined` is the honest answer for
-      // both an unusable address and the dev provider's absent one.
+      // below: the recipient is excluded via `fate`, which narrows nothing
+      // about this value, and `undefined` is the honest answer for both an
+      // unusable address and the dev provider's absent one.
       const fromAddress = fromChoice.ok ? fromChoice.from : undefined;
       const metric = metricsByMember.get(id) ?? { expected: 0, attended: 0, missed: 0, attendance_pct: null };
       const stat = statsByMember.get(id);
       const emailRow = emailByMember.get(id);
 
-      let exclusionReason: string | null = null;
-      // The SENDER is checked before the recipient is: a course whose stored
-      // from-address is not an address cannot mail anybody, and saying so names
-      // the course to fix rather than the member.
-      if (!fromChoice.ok) {
-        exclusionReason =
-          `${courseName} sends from "${fromChoice.badValue}", which is not an email address. `
-          + 'Set a valid From Email ID on the course.';
-      } else if (!emailRow) exclusionReason = 'No email on file';
-      else if (emailRow.status === 'bounced') exclusionReason = 'Primary email has bounced';
-      else if (emailRow.status === 'unsubscribed') exclusionReason = 'Unsubscribed';
-      else if (emailRow.status === 'complained') exclusionReason = 'Marked as spam previously';
+      // The recipient's fate, decided once, carrying the address WITH the
+      // decision. This replaced `emailRow!` at the two send sites (T-020,
+      // RV-10): the send branch now holds a `string` the compiler can see,
+      // so there is nothing left to assert. The order is unchanged -- the
+      // SENDER is still checked before the recipient, because a course whose
+      // stored from-address is not an address cannot mail anybody, and saying
+      // so names the course to fix rather than the member.
+      type Fate = { ok: true; email: string } | { ok: false; reason: string };
+      const fate: Fate =
+        !fromChoice.ok
+          ? { ok: false, reason:
+              `${courseName} sends from "${fromChoice.badValue}", which is not an email address. `
+              + 'Set a valid From Email ID on the course.' }
+        : !emailRow ? { ok: false, reason: 'No email on file' }
+        : emailRow.status === 'bounced' ? { ok: false, reason: 'Primary email has bounced' }
+        : emailRow.status === 'unsubscribed' ? { ok: false, reason: 'Unsubscribed' }
+        : emailRow.status === 'complained' ? { ok: false, reason: 'Marked as spam previously' }
+        : { ok: true, email: emailRow.email as string };
 
       // Signed per ADDRESS, so it is built per recipient and never once for
       // the batch -- a link shared between members would opt out whichever of
@@ -268,27 +279,18 @@ Deno.serve(async (req) => {
       const subject = renderTemplate(template.subject, vars);
       const text = renderTemplate(template.body_text, vars);
 
-      if (exclusionReason) {
-        await admin.from('email_messages').insert({
-          batch_id: batch.id, member_id: id, to_email: emailRow?.email ?? null,
-          subject, variables: vars, status: 'excluded', exclusion_reason: exclusionReason,
-          from_email: fromAddress ?? null,
+      if (!fate.ok) {
+        prepared.push({
+          kind: 'excluded', memberId: id, name: member.full_name,
+          toEmail: emailRow?.email ?? null, subject, vars, reason: fate.reason,
+          fromAddress: fromAddress ?? undefined,
         });
-        results.push({ member_id: id, name: member.full_name, status: 'excluded', reason: exclusionReason });
-        excluded++;
         continue;
       }
 
-      const { data: msgRow } = await admin.from('email_messages').insert({
-        batch_id: batch.id, member_id: id, to_email: emailRow!.email, subject, variables: vars, status: 'sending',
-        // RECORDED, not inferred. The sender now varies per course, so "which
-        // address did this go out as" stops being answerable from the current
-        // value of a secret and has to be written down per message.
-        from_email: fromAddress ?? null,
-      }).select('id').single();
-
-      const result = await provider.send({
-        to: emailRow!.email as string, subject, text, from: fromAddress,
+      prepared.push({
+        kind: 'send', memberId: id, name: member.full_name, toEmail: fate.email,
+        subject, text, vars, fromAddress: fromAddress ?? undefined,
         // RFC 8058. The mailto is the fallback for a client that will not use
         // the URL; the URL is this member's own signed link, the same one the
         // body carries.
@@ -302,29 +304,10 @@ Deno.serve(async (req) => {
           { name: 'List-Unsubscribe-Post', value: 'List-Unsubscribe=One-Click' },
         ],
       });
-
-      if (result.ok) {
-        await admin.from('email_messages').update({
-          status: 'sent', provider: provider.name, provider_message_id: result.providerMessageId,
-          sent_at: new Date().toISOString(), attempt_count: 1,
-        }).eq('id', msgRow!.id);
-        await admin.from('member_stats').update({ last_emailed_at: new Date().toISOString() }).eq('member_id', id);
-        results.push({ member_id: id, name: member.full_name, status: 'sent' });
-        sent++;
-      } else {
-        await admin.from('email_messages').update({
-          status: 'failed', provider: provider.name, failure_reason: result.error, attempt_count: 1,
-        }).eq('id', msgRow!.id);
-        results.push({ member_id: id, name: member.full_name, status: 'failed', reason: result.error });
-        failed++;
-      }
     }
 
-    const finalStatus = failed > 0 ? 'completed_with_failures' : 'completed';
-    await admin.from('email_batches').update({
-      sent_count: sent, failed_count: failed, excluded_count: excluded,
-      status: finalStatus, completed_at: new Date().toISOString(),
-    }).eq('id', batch.id);
+    const { results, sent, failed, excluded } = await runSendLoop(
+      admin as unknown as AdminLike, provider, batch.id as string, prepared);
 
     // Attributed (0023). On the service-role client audit_log() records no
     // actor at all, so every batch this academy has ever sent reads as
