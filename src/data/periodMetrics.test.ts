@@ -122,16 +122,15 @@ test('all three call sites route the RPC through the guard', () => {
 test('no call site reads the RPC rows straight out of the response any more', () => {
   const src = code('src/data/repository.ts');
 
-  // `data ?? []` and `metricsRes.data ?? []` are the exact shapes that turned
-  // a cut-off read into zeroes. Neither may survive next to this RPC.
-  const metricsLines = src.split('\n')
-    .map((line, i) => ({ line, i }))
-    .filter(({ line }) => /member_period_metrics/.test(line));
-  for (const { i } of metricsLines) {
-    const window = src.split('\n').slice(i, i + 12).join('\n');
-    assert.ok(!/\bdata \?\? \[\]/.test(window),
-      `a member_period_metrics read near line ${i + 1} still falls back to an empty list`);
-  }
+  // The two exact shapes that turned a cut-off read into zeroes:
+  // `metricsRes.data ?? []` in fetchMembers, and `(data ?? []) as MetricRow[]`
+  // in fetchBucketMetrics. Named literally rather than by a window around the
+  // RPC, because repository.ts reads other tables within a few lines of it
+  // and their own `?? []` is none of this rule's business.
+  assert.ok(
+    !/metricsRes\.data/.test(src) && !/\(data \?\? \[\]\) as MetricRow\[\]/.test(src),
+    'a member_period_metrics response is still read straight out of `.data`',
+  );
 });
 
 test('the guard is routed through fail(), so the sentence reaches the screen', () => {

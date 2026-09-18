@@ -22,6 +22,7 @@ import { SUBJECT_MIN, SUBJECT_MAX, BODY_MIN, COURSE_NAME_MIN, COURSE_NAME_MAX } 
 import { bucketFixture, type BucketMetrics } from './buckets';
 import type { SentMap } from './sent';
 import type { BatchSummary } from './sendBatch';
+import { readPeriodMetrics, PERIOD_METRICS_CONTEXT } from './periodMetrics';
 import { currentSchedules, today } from './schedule';
 import { inactiveFromProblem, activeAgainFromProblem } from './inactiveFrom';
 import { activeFromProblem } from './joined';
@@ -124,6 +125,26 @@ async function paged<T extends Record<string, unknown> = Record<string, unknown>
  */
 function checked<T>(what: string, res: { data: T[] | null }): T[] {
   return guardUntruncated(res.data ?? [], what);
+}
+
+/**
+ * `member_period_metrics`, guarded, for all three of its callers (T-016).
+ *
+ * The rule itself is in `./periodMetrics` so a spec can drive it; this is the
+ * half that cannot live there, because `fail()` is this file's one way of
+ * turning a read failure into a sentence an operator can act on.
+ *
+ * Routing the throw through `fail()` is the point. `TruncatedReadError`'s own
+ * message ends "Read it through pageAllByKey or readBounded" -- correct, and
+ * addressed to somebody who is not in the room (A:F-25, T-045). What reaches
+ * the screen is "The attendance figures for this period could not be read."
+ */
+function periodMetrics<T>(res: { data: T[] | null; error?: { message?: string } | null }): T[] {
+  try {
+    return readPeriodMetrics(res);
+  } catch (err) {
+    fail(PERIOD_METRICS_CONTEXT, { message: err instanceof Error ? err.message : String(err) });
+  }
 }
 
 /**
@@ -274,7 +295,11 @@ export async function fetchMembers(period: Period): Promise<Member[]> {
       effective_from: sc.effective_from as string,
       effective_to: (sc.effective_to as string | null) ?? null,
     })), today());
-  const metricByMember = new Map(((metricsRes.data ?? []) as MetricRow[]).map(m => [m.member_id, m]));
+  /* GUARDED, because `?? 0` below is what a short list turns into (T-016).
+     At 1,000 rows this throws instead of building a map that is missing
+     everybody past the ceiling -- who would otherwise read 0 expected, 0
+     attended, 0 missed, and never be flagged for follow-up again. */
+  const metricByMember = new Map(periodMetrics<MetricRow>(metricsRes).map(m => [m.member_id, m]));
   const statByMember = new Map(statsRes.map(s => [s.member_id as string, s]));
 
   const aliasesByMember = new Map<string, string[]>();
@@ -1951,14 +1976,15 @@ export async function fetchBucketMetrics(buckets: Period[]): Promise<BucketMetri
   if (!isConfigured) return bucketFixture(buckets, MEMBERS);
 
   return Promise.all(buckets.map(async b => {
-    const { data, error } = await supabase.rpc('member_period_metrics', { p_from: b.from, p_to: b.to });
+    const res = await supabase.rpc('member_period_metrics', { p_from: b.from, p_to: b.to });
     // A bucket that failed silently would draw as a zero bar -- an academy
     // that attended nothing that week, which is a different fact from a
-    // query that did not answer.
-    if (error) fail('Could not load the period breakdown', error);
+    // query that did not answer. A bucket TRUNCATED at 1,000 members is a
+    // third fact again, and it drew as a shorter bar (T-016).
+    const rows = periodMetrics<MetricRow>(res);
     return {
       label: b.label, from: b.from, to: b.to,
-      metrics: ((data ?? []) as MetricRow[]).map(m => ({
+      metrics: rows.map(m => ({
         member_id: m.member_id, expected: m.expected ?? 0, attended: m.attended ?? 0,
       })),
     };
@@ -1975,8 +2001,11 @@ export async function fetchWeekRows(weeks: Period[]): Promise<WeekRow[]> {
   if (!isConfigured) return WEEK_ROWS;
 
   const rows = await Promise.all(weeks.map(async (w, i) => {
-    const { data } = await supabase.rpc('member_period_metrics', { p_from: w.from, p_to: w.to });
-    const list = (data ?? []) as { expected: number; attended: number }[];
+    const res = await supabase.rpc('member_period_metrics', { p_from: w.from, p_to: w.to });
+    /* This one discarded `error` outright (RV-18): a read that never answered
+       summed to zero and drew as a week the academy attended nothing. Now
+       both a failure and a truncation refuse (T-016). */
+    const list = periodMetrics<{ expected: number; attended: number }>(res);
     return {
       label: w.label,
       expected: list.reduce((n, m) => n + (m.expected ?? 0), 0),
