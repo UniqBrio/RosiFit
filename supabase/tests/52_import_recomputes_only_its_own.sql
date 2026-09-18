@@ -86,40 +86,20 @@ select public.commit_csv_import(:'import_id'::uuid,
 select t.eq((select status from public.csv_imports where id = :'import_id'::uuid), 'completed',
   'the import completed');
 
--- ============================================================ T-014
+-- ORDER OF THE TWO BLOCKS, and why it is not alphabetical.
+--   The T-015 block comes FIRST. Its assertions are neutrality guards, not
+--   fail-first assertions: they describe what 0074 must NOT change, so they
+--   pass against today's code and must still pass after. The T-014 block
+--   below is the one that fails today.
 --
--- THE SENTINEL. She is in offering B. No row of this file names her, the
--- sweep for offering A never expects her, and nothing about her attendance
--- changed. An import that rewrites her stats row rewrote every stats row in
--- the academy -- which is what `recompute_member_stats()` with no argument
--- does, and what this assertion exists to refuse.
-select t.eq((select updated_at from public.member_stats
-              where member_id = '0e5d0000-0000-0000-0000-0000000000aa'),
-            '2001-01-01 00:00:00+00'::timestamptz,
-  'a member in ANOTHER offering, named in no file, is not recomputed by this import');
-
--- The other half of the same claim: the members it DID touch must all move.
--- A scope that is too narrow is a different defect with the same shape, and
--- a fixture that only watched the sentinel would ship it.
-select t.eq((select count(*)::int from public.member_stats s
-              join named_members n on n.member_id = s.member_id
-             where s.updated_at = '2001-01-01 00:00:00+00'), 0,
-  'every member the file named was recomputed');
-
-select t.ok((select s.updated_at > '2001-01-01 00:00:00+00'
-               from public.member_stats s
-               join public.members m on m.id = s.member_id
-              where m.full_name = 'Brand New Person'),
-  'and so was the member the file created');
-
--- The sweep marks everybody else absent, so their stats moved too -- which is
--- why the scope is v_present_ids || v_expected_ids and not v_present_ids.
-select t.eq((select count(*)::int
-               from public.member_enrollments e
-               join public.member_stats s on s.member_id = e.member_id
-              where e.offering_id = '0e5d0000-0000-0000-0000-0000000000f1'
-                and s.updated_at = '2001-01-01 00:00:00+00'), 0,
-  'everyone the sweep marked absent was recomputed as well -- expected, not just present');
+--   t.eq raises, and the harness runs with ON_ERROR_STOP=1, so a file stops
+--   at its first failure. With T-014 first, the T-015 guards never ran at
+--   all on the pre-fix run -- they were hidden behind the very defect they
+--   exist to survive, and their first evidence would have been the run that
+--   also changed the code. A guard observed for the first time AFTER the
+--   change it guards against is not a guard; it is a hope. Reordered
+--   18-Sep-2026 so the pre-fix run shows them green (db-harness #125) and
+--   the post-fix run shows them still green.
 
 -- ============================================================ T-015
 --
@@ -167,6 +147,68 @@ select t.eq(((:'result')::jsonb->>'present_or_extra')::int, 13,
 select t.eq(((:'result')::jsonb->'changes'->>'absent_added')::int, 488,
   'the result reports 488 marked absent by the sweep');
 
+-- (a) THE SWEEP IS STILL LIVE, and this is the assertion that says so.
+--   The absentee sweep runs AFTER the row loop and reads
+--   expected_members_for_session(v_session_id) itself -- not a hoisted array.
+--   So a member created by add_as_new, enrolled by the same commit effective
+--   the session date, is expected by the time the sweep runs and already has
+--   a present row, which `on conflict do nothing` leaves alone. She is never
+--   swept absent. A fix that hoisted the sweep's own call as well would turn
+--   this green-to-red, which is the point of asserting it separately from her
+--   status above.
+select t.eq((select count(*)::int from public.attendance_records a
+               join public.members m on m.id = a.member_id
+              where m.full_name = 'Brand New Person'), 1,
+  'the member add_as_new created has exactly ONE row for the day -- the sweep did not add a second');
+select t.eq((select count(*)::int from public.attendance_records a
+               join public.members m on m.id = a.member_id
+              where m.full_name = 'Brand New Person' and a.status = 'absent'), 0,
+  'and the sweep never marked her absent -- it reads the expected set live, after the loop that created her');
+
+-- (b) and she is in the recompute's scope: v_present_ids || v_expected_ids
+--   carries her twice over -- present because the file named her, expected
+--   because the enrolment landed before the sweep read the set.
+select t.ok((select s.updated_at > '2001-01-01 00:00:00+00'
+               from public.member_stats s
+               join public.members m on m.id = s.member_id
+              where m.full_name = 'Brand New Person'),
+  'and her stats were recomputed -- she is in v_present_ids || v_expected_ids, not outside both');
+
+-- ============================================================ T-014
+--
+-- THE SENTINEL. She is in offering B. No row of this file names her, the
+-- sweep for offering A never expects her, and nothing about her attendance
+-- changed. An import that rewrites her stats row rewrote every stats row in
+-- the academy -- which is what `recompute_member_stats()` with no argument
+-- does, and what this assertion exists to refuse.
+select t.eq((select updated_at from public.member_stats
+              where member_id = '0e5d0000-0000-0000-0000-0000000000aa'),
+            '2001-01-01 00:00:00+00'::timestamptz,
+  'a member in ANOTHER offering, named in no file, is not recomputed by this import');
+
+-- The other half of the same claim: the members it DID touch must all move.
+-- A scope that is too narrow is a different defect with the same shape, and
+-- a fixture that only watched the sentinel would ship it.
+select t.eq((select count(*)::int from public.member_stats s
+              join named_members n on n.member_id = s.member_id
+             where s.updated_at = '2001-01-01 00:00:00+00'), 0,
+  'every member the file named was recomputed');
+
+select t.ok((select s.updated_at > '2001-01-01 00:00:00+00'
+               from public.member_stats s
+               join public.members m on m.id = s.member_id
+              where m.full_name = 'Brand New Person'),
+  'and so was the member the file created');
+
+-- The sweep marks everybody else absent, so their stats moved too -- which is
+-- why the scope is v_present_ids || v_expected_ids and not v_present_ids.
+select t.eq((select count(*)::int
+               from public.member_enrollments e
+               join public.member_stats s on s.member_id = e.member_id
+              where e.offering_id = '0e5d0000-0000-0000-0000-0000000000f1'
+                and s.updated_at = '2001-01-01 00:00:00+00'), 0,
+  'everyone the sweep marked absent was recomputed as well -- expected, not just present');
+
 -- ============================================================ T-014, the second site
 --
 -- update_member ends with the same unscoped call (0027:304). One member's
@@ -195,30 +237,3 @@ select t.eq((select updated_at from public.member_stats
 select t.eq((select count(*)::int from public.member_stats
               where updated_at > '2001-01-01 00:00:00+00'), 1,
   'editing one member recomputes exactly one stats row');
-
--- (a) THE SWEEP IS STILL LIVE, and this is the assertion that says so.
---   The absentee sweep runs AFTER the row loop and reads
---   expected_members_for_session(v_session_id) itself -- not a hoisted array.
---   So a member created by add_as_new, enrolled by the same commit effective
---   the session date, is expected by the time the sweep runs and already has
---   a present row, which `on conflict do nothing` leaves alone. She is never
---   swept absent. A fix that hoisted the sweep's own call as well would turn
---   this green-to-red, which is the point of asserting it separately from her
---   status above.
-select t.eq((select count(*)::int from public.attendance_records a
-               join public.members m on m.id = a.member_id
-              where m.full_name = 'Brand New Person'), 1,
-  'the member add_as_new created has exactly ONE row for the day -- the sweep did not add a second');
-select t.eq((select count(*)::int from public.attendance_records a
-               join public.members m on m.id = a.member_id
-              where m.full_name = 'Brand New Person' and a.status = 'absent'), 0,
-  'and the sweep never marked her absent -- it reads the expected set live, after the loop that created her');
-
--- (b) and she is in the recompute's scope: v_present_ids || v_expected_ids
---   carries her twice over -- present because the file named her, expected
---   because the enrolment landed before the sweep read the set.
-select t.ok((select s.updated_at > '2001-01-01 00:00:00+00'
-               from public.member_stats s
-               join public.members m on m.id = s.member_id
-              where m.full_name = 'Brand New Person'),
-  'and her stats were recomputed -- she is in v_present_ids || v_expected_ids, not outside both');
