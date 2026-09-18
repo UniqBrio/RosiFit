@@ -48,11 +48,71 @@ try {
 const command = String(payload?.tool_input?.command ?? '');
 if (!command) process.exit(ALLOW);
 
+/**
+ * The subcommand of every `git` invocation in the command, skipping global options AND the
+ * values they consume.
+ *
+ * The regex this replaced was `git\s+(?:-[^\s]+\s+)*push` — it allowed options but not their
+ * arguments, so `git -C /path push` matched nothing and passed the hook untouched. A guard
+ * with a one-flag bypass is decoration, and this one had a two-token bypass nobody knew about
+ * (T-401).
+ */
+function gitSubcommands(cmd) {
+  const TAKES_VALUE = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path']);
+  const found = [];
+  // Split on shell separators so `git add -A && git commit …` is seen as two invocations,
+  // not one — the old whole-string test caught the commit by luck of substring matching.
+  for (const segment of cmd.split(/&&|\|\||;|\n/)) {
+    const m = /\bgit\s+([\s\S]*)/.exec(segment);
+    if (!m) continue;
+    const toks = m[1].trim().split(/\s+/);
+    for (let i = 0; i < toks.length; i++) {
+      const t = toks[i];
+      if (TAKES_VALUE.has(t)) { i++; continue; }        // skip the option AND its value
+      if (t.startsWith('-')) continue;                   // a flag with no value
+      found.push(t);
+      break;                                             // first non-option is the subcommand
+    }
+  }
+  return found;
+}
+
 // Only git commit and git push are governed. Everything else passes untouched — a hook that
 // inspects every command is a hook that gets disabled for being slow.
-const isCommit = /\bgit\s+(?:-[^\s]+\s+)*commit\b/.test(command);
-const isPush = /\bgit\s+(?:-[^\s]+\s+)*push\b/.test(command);
+const subcommands = gitSubcommands(command);
+const isCommit = subcommands.includes('commit');
+const isPush = subcommands.includes('push');
 if (!isCommit && !isPush) process.exit(ALLOW);
+
+/**
+ * WHERE the command will run. Not where this hook happens to be.
+ *
+ * D-9b gives every session its own worktree, and this hook's cwd is the Claude Code session's
+ * PRIMARY working directory regardless of which worktree the command targets. Resolving the
+ * repository from process cwd therefore judged whichever branch the primary tree happened to
+ * hold, and applied that verdict to a push from somewhere else.
+ *
+ * Measured 18-Sep-2026 (T-401), in both directions. A docs-only push carrying `CASES-NA` was
+ * refused because the primary tree sat five commits behind `main` on another branch, where the
+ * range holds no commits to carry an escape token but a non-empty reversed diff — unescapable
+ * by anything the pushing session could write. And the mirror, which is worse: with the primary
+ * tree clean, an unjustified code change in the target worktree sailed through, because the
+ * guard was handed an empty range and found nothing to object to. A guard that reads the wrong
+ * repository does not fail closed; it reports on a change nobody made.
+ */
+function targetCwd(cmd) {
+  // `git -C <path>` names the repository outright, so it wins over any `cd`.
+  const dashC = /\bgit\s+(?:-(?!C\b)\S+\s+)*-C\s+(?:"([^"]+)"|'([^']+)'|([^\s;&|]+))/.exec(cmd);
+  if (dashC) return dashC[1] ?? dashC[2] ?? dashC[3];
+  // Otherwise the shell's own `cd` is what decides, so read the last one before the git call.
+  let dir = null;
+  const cd = /(?:^|[;&|]\s*)cd\s+(?:"([^"]+)"|'([^']+)'|([^\s;&|]+))/g;
+  for (const m of cmd.matchAll(cd)) dir = m[1] ?? m[2] ?? m[3];
+  return dir;
+}
+
+const declaredCwd = targetCwd(command);
+const gitCwd = declaredCwd && fs.existsSync(declaredCwd) ? declaredCwd : process.cwd();
 
 // `--no-verify` bypasses git's own hooks. It must not also bypass this one, or the guards are
 // one flag away from being decorative.
@@ -60,7 +120,7 @@ const noVerify = /(^|\s)(--no-verify|-n)(\s|$)/.test(command);
 
 const repoRoot = (() => {
   try {
-    return execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim();
+    return execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: gitCwd, encoding: 'utf8' }).trim();
   } catch {
     return null;
   }

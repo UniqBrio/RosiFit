@@ -54,7 +54,8 @@
     "audit:boundary": "node scripts/audits/check-data-layer-boundary.mjs",
     "audit:auditactor:test": "bash scripts/audits/check-audit-attribution.test.sh",
     "audit:all": "npm run audit:colors && npm run audit:testids && npm run audit:rules && npm run audit:columns && npm run audit:deadweight && npm run audit:auditactor && npm run audit:boundary",
-    "guard:test": "bash scripts/hooks/guard-reachability.test.sh",
+    "guard:test": "bash scripts/hooks/guard-reachability.test.sh && npm run guard:adapter",
+    "guard:adapter": "node scripts/hooks/adapter-worktree.test.mjs",
     "db:start": "bash db/harness/start.sh",
     "test:db": "bash db/harness/start.sh && bash db/harness/test.sh",
     "guard:install": "ln -sf ../../scripts/hooks/pre-commit-guard.sh .git/hooks/pre-commit"
