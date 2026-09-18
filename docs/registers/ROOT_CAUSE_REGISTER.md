@@ -59,6 +59,29 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-052 — a new SECURITY DEFINER function shipped executable by `anon`, for the second time          Tracker: T-042 · Sources: RC-042 (the first time), `src/data/migrationGrants.test.ts:102`, D-12a
+**Date:** 18-Sep-2026  ·  **Severity:** S1 by exposure class, S3 by outcome — nothing was read  ·  **Modules:** `supabase/migrations/0075_member_period_metrics_page.sql`, `supabase/migrations/0077_page_fn_revoke_anon.sql`
+
+**Symptom** — not observed by anyone; found by comparing PR #22's `gate` job against `main`'s. `main` failed 13 tests, the PR failed 14, and the extra one was `migrationGrants.test.ts:102`: *"These functions are granted to `authenticated` but never revoked from `anon`: public.member_period_metrics_page"*. Confirmed against production at 10:26 UTC: `has_function_privilege('anon', …, 'execute')` returned **true** for the new function and **false** for the original it was derived from.
+
+**Root cause** — Supabase grants `EXECUTE` on every new function in `public` **directly to `anon`**, through a default privilege that fires when the object is created. 0075 wrote `revoke all on function … from public, anon` immediately after the `create` in the same file, which reads as covering it and does not: the direct grant is applied to the created object and `revoke all … from public` addresses the PUBLIC pseudo-role, not `anon`'s own entry. The function is `SECURITY DEFINER`, so an unauthenticated caller holding only the public anon key would have executed it with the definer's rights and read every member's attendance figures for any period. Migration 0012 exists solely to undo this default for the functions that existed then; **RC-042 is the same mechanism, recorded the first time it happened.**
+
+**Why it shipped** — The guard worked. `migrationGrants.test.ts:102` failed on the PR's own CI run at 07:45 UTC, naming the function and quoting the correct statement, nearly two hours before the apply. I read the `db-harness` job, saw spec 56 green and the red-file set unchanged, and applied at 09:46 without opening the `gate` job at all — reasoning that a migration's evidence is the DB harness and the gate is the client suite's business. That reasoning is wrong for exactly this class: `migrationGrants.test.ts` lives under `src/` and reads `supabase/migrations/*.sql`, so the only place a migration's grants are checked is the job I did not read. Nothing about the tooling failed. The verdict existed, was correct, was addressed to me, and I did not look at it.
+
+**Class** — every `create function` in `public` whose migration does not carry a standalone `revoke execute … from anon`. The rule is 0012's; the rung is `migrationGrants.test.ts:102`, which enumerates them from the migration files on every `npm run check` and has been doing so since RC-042. It caught this one immediately. The gap is not coverage, it is that the rung reports into a job the migration workflow was not reading — so the sweep here is procedural, not a code sweep: **D-12b**. Checked at 10:28 UTC: `member_period_metrics_page` was the only function in `public` in that state; every other function granted to `authenticated` carries its direct anon revoke.
+
+**Fix** — `revoke execute on function public.member_period_metrics_page(date, date, uuid, int) from anon;` applied to production at **10:28:15 UTC**, ahead of any file, because the exposure was live and a file is not a fix until it runs. `0077_page_fn_revoke_anon.sql` carries that statement, applied 10:29:37 UTC and ledgered as `20260918102937` the same day (D-10). 0077 also guards in both directions — `anon` cannot execute afterwards, and `authenticated` and `service_role` still can, because a revoke that over-reaches is a different outage. **Deliberately not changed:** 0075 itself. It is applied and ledgered; its grant lines stay as the record of what was done, and 0077 is the correction on top, in the in-place spirit rather than a rewrite.
+
+**Proof** — three reads, all pasted into T-042's row with timestamps. `has_function_privilege('anon', …)` = **false** at 10:28:34, with the ACL reading `postgres=X/postgres | service_role=X/postgres | authenticated=X/postgres`. An unauthenticated `POST /rest/v1/rpc/member_period_metrics_page` with the public anon key at 10:28:47 returned **HTTP 401 / 42501 permission denied for function member_period_metrics_page**, matching the control call to the original function exactly. And `migrationGrants.test.ts` returns the gate to 13 failures, identical to `main`'s set.
+
+**Exposure** — 09:46:15 UTC (0075 applied) to 10:28:15 UTC (revoke), **42 minutes**. `edge_logs` filtered to the path over 09:46:00–10:29:30 holds exactly **one** request: the verification probe at 10:28:47, after the revoke, answering 401. No other caller reached the function, authenticated or otherwise. **Nothing was read.**
+
+**Guard** — **D-12b**: a production apply requires both the `gate` and `db-harness` jobs of the PR's latest run to have been read, including the gate's failure diff against `main`, and both pasted, before `db query` runs. The apply is not authorised until they are. That is the only new thing here; the technical rung already existed and already worked.
+
+**Process check** — Yes, a correctly functioning process would have caught this, and it did. The failure was between the verdict and the person. D-12b closes it.
+
+---
+
 ## RC-051 — the member cards read "attended nothing" for everyone past row 1,000          Tracker: T-042 (with T-016) · Sources: A:F-02, B:F-02, RV-34
 **Date:** 18-Sep-2026  ·  **Severity:** S2  ·  **Modules:** `supabase/migrations/0075_member_period_metrics_page.sql`, `src/data/repository.ts`
 
