@@ -1,6 +1,88 @@
 
 ## Gate run - 2026-09-18 - VERDICT: FAIL
 
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 38.4s total - slowest G7 Unit + pure specs (15.5s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (72ms)
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\AppData\Local\Temp\claude\C--Users-shazi-Downloads-RosiFit-Custom-App-RosiFit\fb715c00-8d4a-469c-b0bb-76890c10c5c0\scratchpad\wt-C\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (68ms)
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\AppData\Local\Temp\claude\C--Users-shazi-Downloads-RosiFit-Custom-App-RosiFit\fb715c00-8d4a-469c-b0bb-76890c10c5c0\scratchpad\wt-C\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (70ms)
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\AppData\Local\Temp\claude\C--Users-shazi-Downloads-RosiFit-Custom-App-RosiFit\fb715c00-8d4a-469c-b0bb-76890c10c5c0\scratchpad\wt-C\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (175ms)
+- **G5 Types** - PASS (13.5s)
+- **G6 Lint** - FAIL (8.0s)
+
+```
+  21:5  error  Parsing error: Unexpected token <
+  12:62  error  Parsing error: Unexpected token StatusKey
+  3:48  error  Parsing error: Unexpected token Href
+  17:27  error  Parsing error: Unexpected token ReportRow
+  13:68  error  Parsing error: Unexpected token Member
+  3:26  error  Parsing error: Unexpected token Href
+  13:35  error  Parsing error: Unexpected token PeriodChoice
+  15:6  error  Parsing error: Unexpected token Filter
+  12:71  error  Parsing error: Unexpected token !
+  35:3  error  Parsing error: Unexpected token as
+  7:37  error  Parsing error: Unexpected token ThemeMode
+  15:30  error  Parsing error: Unexpected token PeriodChoice
+  15:55  error  Parsing error: Unexpected token BranchUsage
+  30:12  error  Parsing error: Unexpected token <
+  13:62  error  Parsing error: Unexpected token StatusKey
+```
+
+- **G7 Unit + pure specs** - FAIL (15.5s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (386ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (96ms)
+- **G10 Backward compatibility (fixtures)** - PASS (146ms)
+- **G11 Wide tables are configurable** - PASS (100ms)
+- **G12 Installable as an application** - PASS (165ms)
+- **G13 Approved design still being built** - PASS (78ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-18 - VERDICT: FAIL
+
 Steps: 7 pass, 5 fail, 1 blocked.
 Time: 1m 01s total - slowest G7 Unit + pure specs (28.8s).
 Application steps ran in .
