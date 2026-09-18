@@ -47,14 +47,16 @@ select t.ok((select bool_and(ordered) from (
 create temp table page2 as
 select * from public.member_period_metrics_page(
   '2025-09-01','2026-08-31',
-  (select max(member_id) from page1),
+  -- Postgres has no max(uuid) aggregate; the cursor is the last row
+  -- of the page in the order the page came back.
+  (select member_id from page1 order by member_id desc limit 1),
   1000);
 
 select t.eq((select count(*)::int from page2), 1,
   'page two carries the remainder -- 1,001 rows over two pages of at most 1,000');
 
 select t.eq((select count(*)::int from public.member_period_metrics_page(
-               '2025-09-01','2026-08-31', (select max(member_id) from page2), 1000)), 0,
+               '2025-09-01','2026-08-31', (select member_id from page2 order by member_id desc limit 1), 1000)), 0,
   'and a third page is empty, so a caller knows when to stop');
 
 -- --------------------------------------------------- nobody twice, nobody lost
