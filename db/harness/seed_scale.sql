@@ -92,29 +92,36 @@ insert into public.offering_schedules (offering_id, effective_from, weekdays) va
 create temp table seed_names (i int primary key, full_name text);
 
 insert into seed_names (i, full_name)
-select i,
+select g.n,
        (array['Aarthi','Abirami','Anitha','Bhavani','Chitra','Deepa','Divya','Gayathri',
               'Hema','Indhu','Janani','Kalpana','Kavya','Lakshmi','Malathi','Meena',
               'Nandhini','Nithya','Padma','Priya','Radha','Ramya','Revathi','Sangeetha',
               'Saranya','Shazia','Shobana','Sridevi','Subha','Sumathi','Swetha','Thenmozhi',
               'Uma','Vaishali','Vanitha','Vasanthi','Vidya','Vijaya','Yamuna','Yazhini'
-             ])[(i % 40) + 1]
+             ])[(g.n % 40) + 1]
        || ' ' ||
        (array['Albert','Balaji','Chandran','Dhanraj','Elangovan','Ganesan','Hariharan',
               'Iyer','Jayaraman','Karthik','Kumar','Lingam','Mani','Nadar','Ottakoothar',
               'Pandian','Quadir','Raman','Sundaram','Thangaraj','Udhayakumar','Velayutham',
               'Wilson','Xavier','Yogeswaran','Zachariah','Prakash','Sham','Farheen','Raj'
-             ])[((i / 40) % 30) + 1]
-       || case when i >= 1200 then ' ' || ((i / 1200) + 1)::text else '' end
-  from generate_series(1, :members) i;
+             ])[((g.n / 40) % 30) + 1]
+       || case when g.n >= 1200 then ' ' || ((g.n / 1200) + 1)::text else '' end
+  from generate_series(1, :members) g(n);
 
 insert into public.members (id, full_name, joined_on, status, created_by)
-select ('0e5d0001-0000-0000-0000-' || lpad(i::text, 12, '0'))::uuid,
-       -- every 80th member answers to the name the one before her holds
-       (select n.full_name from seed_names n
-         where n.i = case when i % 80 = 0 and i > 1 then i - 1 else i end),
+select ('0e5d0001-0000-0000-0000-' || lpad(g.n::text, 12, '0'))::uuid,
+       -- Every 80th member answers to the name the one before it holds.
+       -- `g.n`, never a bare `i`: seed_names HAS a column called i, and an
+       -- unqualified name inside a correlated subquery binds to the INNER
+       -- scope first. `where n.i = case when i % 80 = 0 ...` therefore read
+       -- as `n.i = case when n.i % 80 = 0 ...`, which is true of every row
+       -- that is not a multiple of 80, so the subquery returned 500 rows:
+       --   ERROR: more than one row returned by a subquery used as an expression
+       -- (db-harness run #123, 18-Sep-2026). The generator now has its own name.
+       (select sn.full_name from seed_names sn
+         where sn.i = case when g.n % 80 = 0 and g.n > 1 then g.n - 1 else g.n end),
        '2025-09-01', 'active', '0e5d0000-0000-0000-0000-00000000000a'
-  from generate_series(1, :members) i;
+  from generate_series(1, :members) g(n);
 
 -- The Meet display name: given name plus the surname's initial, which is the
 -- shape the attendance CSV actually carries and what the matcher works on.
