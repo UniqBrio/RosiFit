@@ -92,7 +92,7 @@ jobs:
       # These are the SUBSTITUTE RUNGS for the framework's G1-G3 (ADR 001) and they are
       # stronger than the steps they replace, not weaker.
 
-      - name: Types, contrast (2,800 pairs) and icons (71 glyphs)
+      - name: Lint, types, contrast (2,800 pairs) and icons (71 glyphs)
         run: npm run check
 
       # ---- Ratcheted audits ---------------------------------------------------------------
@@ -115,10 +115,20 @@ jobs:
       #                               and here it exits 0 while printing "INERT" - a false
       #                               green, so running it would be worse than not.      TD-007
       #   conformance                 same: framework self-test, needs fixtures/.
-      #   lint                        no ESLint configured in this project.              TD-004
-      #   test:unit / test:functional no JS test runner configured; these stay unrun.  TD-005, TD-006
-      #                               The SQL suite is no longer among them - it runs in the
-      #                               db-harness job below, against a real Postgres 16.
+      #   test:functional             no functional runner exists; this one stays unrun.     TD-006
+      #                               Two former entries have left this list, and both had
+      #                               gone stale long before T-035 removed them (RV-22):
+      #                               `lint` said "no ESLint configured in this project"
+      #                               while eslint.config.mjs sat in the repository root
+      #                               carrying the src/data boundary rule - configured is
+      #                               exactly what it was; INSTALLED is what it was not.
+      #                               `test:unit` said "no JS test runner configured" while
+      #                               `npm run check` above was already running the whole
+      #                               unit suite through `tsx --test`. A comment that names
+      #                               a step as unrun while the step above runs it is worse
+      #                               than no comment: it is read as a statement of scope.
+      #                               The SQL suite left this list earlier - it runs in the
+      #                               db-harness job below.
       #   gate                        under-covers this repo (src/ only) and exits 2 on the
       #                               five steps whose input does not exist.      ADR 004, TD-008
       #
@@ -127,8 +137,14 @@ jobs:
       # names the condition.
 
   # ---- The SQL suite ---------------------------------------------------------------------
-  # The 135 assertions under supabase/tests/ are the ONLY automated suite this repository
-  # has, and until now nothing ran them: TD-010 recorded the harness as unreachable because
+  # The assertions under supabase/tests/ are no longer the only automated suite this
+  # repository has - `npm run check` in the gate job above runs the unit suite, and the
+  # count here used to say 135, which it has not been for a long time. Neither claim is
+  # restated with a fresh number, because a hand-maintained count in a comment is the
+  # thing that went stale (RV-22, T-012). The suite reports its own totals; read them
+  # in the job output.
+  #
+  # Nothing ran these at all until CI did: TD-010 recorded the harness as unreachable because
   # the adopting machine had neither psql nor Docker on PATH. A job here depends on no one
   # machine, which is why TECH_DEBT itself named CI the more durable fix.
   #
@@ -171,5 +187,9 @@ jobs:
 
       # The same command a developer runs. start.sh sees a TCP PGHOST, confirms the service
       # container is reachable and steps aside; test.sh then runs the suite unchanged.
-      - name: Migrations replay clean, and all 135 assertions pass
+      # NOT "and all N assertions pass". The name said 135 for months while the real figure
+      # moved through 776 and past 790, so the name was not a check on anything - it was a
+      # number nobody updated, on the one job whose verdict was already going unread (T-012).
+      # A step name cannot go stale if it does not carry a count.
+      - name: Migrations replay clean and the spec suite runs
         run: npm run test:db
