@@ -22,7 +22,7 @@ import { SUBJECT_MIN, SUBJECT_MAX, BODY_MIN, COURSE_NAME_MIN, COURSE_NAME_MAX } 
 import { bucketFixture, type BucketMetrics } from './buckets';
 import type { SentMap } from './sent';
 import type { BatchSummary } from './sendBatch';
-import { readPeriodMetrics, PERIOD_METRICS_CONTEXT } from './periodMetrics';
+import { metricsPage } from './periodMetrics';
 import { duringWrite } from './inFlight';
 import { currentSchedules, today } from './schedule';
 import { inactiveFromProblem, activeAgainFromProblem } from './inactiveFrom';
@@ -128,25 +128,6 @@ function checked<T>(what: string, res: { data: T[] | null }): T[] {
   return guardUntruncated(res.data ?? [], what);
 }
 
-/**
- * `member_period_metrics`, guarded, for all three of its callers (T-016).
- *
- * The rule itself is in `./periodMetrics` so a spec can drive it; this is the
- * half that cannot live there, because `fail()` is this file's one way of
- * turning a read failure into a sentence an operator can act on.
- *
- * Routing the throw through `fail()` is the point. `TruncatedReadError`'s own
- * message ends "Read it through pageAllByKey or readBounded" -- correct, and
- * addressed to somebody who is not in the room (A:F-25, T-045). What reaches
- * the screen is "The attendance figures for this period could not be read."
- */
-function periodMetrics<T>(res: { data: T[] | null; error?: { message?: string } | null }): T[] {
-  try {
-    return readPeriodMetrics(res);
-  } catch (err) {
-    fail(PERIOD_METRICS_CONTEXT, { message: err instanceof Error ? err.message : String(err) });
-  }
-}
 
 /**
  * The engine-wording guard lives in `./engineWording` (CP-003, RC-023).
@@ -249,7 +230,13 @@ export async function fetchMembers(period: Period): Promise<Member[]> {
     paged('member figures', () => supabase.from('member_stats').select('member_id, current_streak, last_present_date, last_emailed_at'), 'member_id'),
     paged('member enrolments', () => supabase.from('member_enrollments').select('id, member_id, offering_id').eq('status', 'active'), 'id'),
     paged('the days members have of their own', () => supabase.from('member_schedules').select('id, member_id, weekdays, effective_from, effective_to'), 'id'),
-    supabase.rpc('member_period_metrics', { p_from: period.from, p_to: period.to }),
+    /* PAGED like the six above it (T-042). It was the one read in this block
+       that was not, and at 1,087 members it was the one that decided whether
+       anybody past row 1,000 had figures at all. */
+    paged('the attendance figures for this period', () => metricsPage(
+      (after, limit) => supabase.rpc('member_period_metrics_page', {
+        p_from: period.from, p_to: period.to, p_after_member_id: after, p_limit: limit,
+      })), 'member_id'),
   ]);
   /*
    * NO `if (res.error)` LINE SURVIVES HERE, and that is the point of the
@@ -296,11 +283,12 @@ export async function fetchMembers(period: Period): Promise<Member[]> {
       effective_from: sc.effective_from as string,
       effective_to: (sc.effective_to as string | null) ?? null,
     })), today());
-  /* GUARDED, because `?? 0` below is what a short list turns into (T-016).
-     At 1,000 rows this throws instead of building a map that is missing
-     everybody past the ceiling -- who would otherwise read 0 expected, 0
-     attended, 0 missed, and never be flagged for follow-up again. */
-  const metricByMember = new Map(periodMetrics<MetricRow>(metricsRes).map(m => [m.member_id, m]));
+  /* `metricsRes` is now the WHOLE list, paged (T-042), so `?? 0` below is
+     reached only by a member the RPC genuinely has no row for -- which is the
+     honest zero it was always meant to be. T-016's guard is what stood here
+     while the read was unpaged; it survives in `readPeriodMetrics` as the
+     rule any future unpaged read must obey. */
+  const metricByMember = new Map(metricsRes.map(m => [m.member_id as string, m as MetricRow]));
   const statByMember = new Map(statsRes.map(s => [s.member_id as string, s]));
 
   const aliasesByMember = new Map<string, string[]>();
@@ -1977,12 +1965,15 @@ export async function fetchBucketMetrics(buckets: Period[]): Promise<BucketMetri
   if (!isConfigured) return bucketFixture(buckets, MEMBERS);
 
   return Promise.all(buckets.map(async b => {
-    const res = await supabase.rpc('member_period_metrics', { p_from: b.from, p_to: b.to });
     // A bucket that failed silently would draw as a zero bar -- an academy
     // that attended nothing that week, which is a different fact from a
-    // query that did not answer. A bucket TRUNCATED at 1,000 members is a
-    // third fact again, and it drew as a shorter bar (T-016).
-    const rows = periodMetrics<MetricRow>(res);
+    // query that did not answer. A bucket TRUNCATED at 1,000 members was a
+    // third fact again, and it drew as a shorter bar (T-016); paging removes
+    // it rather than refusing it (T-042).
+    const rows = await paged<MetricRow>('the attendance figures for this period', () => metricsPage(
+      (after, limit) => supabase.rpc('member_period_metrics_page', {
+        p_from: b.from, p_to: b.to, p_after_member_id: after, p_limit: limit,
+      })), 'member_id');
     return {
       label: b.label, from: b.from, to: b.to,
       metrics: rows.map(m => ({
@@ -2002,11 +1993,14 @@ export async function fetchWeekRows(weeks: Period[]): Promise<WeekRow[]> {
   if (!isConfigured) return WEEK_ROWS;
 
   const rows = await Promise.all(weeks.map(async (w, i) => {
-    const res = await supabase.rpc('member_period_metrics', { p_from: w.from, p_to: w.to });
     /* This one discarded `error` outright (RV-18): a read that never answered
-       summed to zero and drew as a week the academy attended nothing. Now
-       both a failure and a truncation refuse (T-016). */
-    const list = periodMetrics<{ expected: number; attended: number }>(res);
+       summed to zero and drew as a week the academy attended nothing. Paging
+       throws on a page error, so neither a failure nor a short list can be
+       summed any more (T-016, T-042). */
+    const list = await paged<MetricRow>('the attendance figures for this period', () => metricsPage(
+      (after, limit) => supabase.rpc('member_period_metrics_page', {
+        p_from: w.from, p_to: w.to, p_after_member_id: after, p_limit: limit,
+      })), 'member_id');
     return {
       label: w.label,
       expected: list.reduce((n, m) => n + (m.expected ?? 0), 0),

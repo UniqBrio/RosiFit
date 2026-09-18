@@ -112,7 +112,12 @@ test('the refusal an operator reads names the figures, not the mechanism', () =>
 
 test('all three call sites route the RPC through the guard', () => {
   const src = code('src/data/repository.ts');
-  const calls = src.split('\n').filter(l => l.includes("supabase.rpc('member_period_metrics'"));
+  // Matched on the PREFIX, so both the unpaged `member_period_metrics` and
+  // the keyset `member_period_metrics_page` are counted. T-042 moved all
+  // three sites onto the paged one in the same stack as this spec; counting
+  // only the old name would have made this assertion silently vacuous the
+  // moment they moved, which is the failure mode it exists to prevent.
+  const calls = src.split('\n').filter(l => l.includes("supabase.rpc('member_period_metrics"));
 
   // Three sites: fetchMembers, fetchBucketMetrics, fetchWeekRows. A fourth
   // added later must come through here too, which is why this counts them.
@@ -135,11 +140,22 @@ test('no call site reads the RPC rows straight out of the response any more', ()
 
 test('the guard is routed through fail(), so the sentence reaches the screen', () => {
   const src = code('src/data/repository.ts');
-  const helper = src.slice(src.indexOf('function periodMetrics'));
+  const helper = src.slice(src.indexOf('async function paged'));
   const body = helper.slice(0, helper.indexOf('\n}'));
 
-  // TruncatedReadError carries a developer sentence ("Read it through
-  // pageAllByKey") that must never reach an operator (A:F-25, T-045).
-  assert.ok(/fail\(/.test(body) && /readPeriodMetrics\(/.test(body),
-    'repository.ts must wrap readPeriodMetrics and route its throw through fail()');
+  // The claim is unchanged and so is the assertion: a machine sentence must
+  // never reach an operator (A:F-25, T-045). What CARRIES it changed in the
+  // same stack -- T-042 replaced the unpaged read, and with it the
+  // `periodMetrics` wrapper this used to name, so the guard is now `paged()`
+  // turning a PagedReadError into a person-readable refusal.
+  assert.ok(/fail\(/.test(body) && /PagedReadError/.test(body),
+    'repository.ts must route the paged read failure through fail()');
+});
+
+test('the unpaged guard is still there for an unpaged read', () => {
+  // T-016's rule did not stop being true when T-042 removed its last
+  // caller. `PAGE_SIZE` is `SUPABASE_MAX_ROWS`, so `guardUntruncated`
+  // cannot wrap a paged read without throwing on every full page; it stays
+  // as the rule an UNPAGED read of these figures must obey.
+  assert.match(code('src/data/periodMetrics.ts'), /export function readPeriodMetrics/);
 });
