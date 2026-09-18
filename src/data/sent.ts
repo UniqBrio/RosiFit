@@ -86,10 +86,19 @@ export function mergeSent(a: SentMap, b: SentMap): SentMap {
  * This is the "minimal steps" half of the ask made specific. The common send
  * is "everyone who still needs it", and that is one tap — no ticking. A
  * second message to somebody already contacted is possible and stays
- * possible, but it is a deliberate act: her box starts empty and somebody has
+ * possible, but it is a deliberate act: the box starts empty and somebody has
  * to tick it.
+ *
+ * `null` IS NOT `{}` (T-018). `{}` means the read answered and nobody has had
+ * this week's message, which is the ordinary Monday and still ticks everyone.
+ * `null` means the read did not answer at all, and the two were the same
+ * value until now: a failed `fetchSentForPeriod` arrived here as "nobody has
+ * been written to" and pre-ticked the whole list, so one tap sent a second
+ * identical email to everybody who already had one. Unknown ticks nobody.
+ * Failing safe here means ticking nobody, not everybody (B:F-06, C:RF-08).
  */
-export function defaultSelection(memberIds: string[], sent: SentMap): string[] {
+export function defaultSelection(memberIds: string[], sent: SentMap | null): string[] {
+  if (sent === null) return [];
   return memberIds.filter(id => !sent[id]);
 }
 

@@ -87,9 +87,12 @@ test('the refusal is what renders, not the list', () => {
 
 test('the draft passes the unknown map through rather than flattening it', () => {
   const src = code('app/send/index.tsx');
+  const declaration = src.slice(src.indexOf('const sent ='), src.indexOf('const recipientIds'));
 
-  // `already.data ?? {}` is the line that turned "did not answer" into
-  // "nobody has been written to". If it comes back, so does the defect.
-  assert.ok(!/mergeSent\(already\.data \?\? \{\}/.test(src),
-    'app/send/index.tsx still flattens an unknown sent-map to {}');
+  // `already.data ?? {}` is still right once the error case has been taken
+  // out of its way -- `data` is briefly undefined while loading, and that is
+  // a genuine empty. What must not come back is the version with no error
+  // case at all, which turned "did not answer" into "nobody has been written
+  // to". So the rule pinned here is the branch, not the `?? {}`.
+  assert.match(declaration, /already\.state === 'error'[\s\S]*?null/);
 });

@@ -81,6 +81,28 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 **Guard** — none added, and that is deliberate: the guard for this class is the harness assertion in 51, which already exists and already runs in `db-harness`. Adding a second source-reading check here would be the same mistake with a different name.
 
 **Verify** — no production read. `bash db/harness/test.sh` continues to carry the claim; it is Session A's job and this change does not touch it.
+## RC-072 — "nobody has been written to" and "the read did not answer" were the same value, so a failed read pre-ticked everyone          Tracker: T-018 · Sources: B:F-06, C:RF-08
+**Date:** 18-Sep-2026  ·  **Severity:** S2 (one tap from a duplicate mass mail; no occurrence recorded, and nothing but luck prevented one)  ·  **Modules:** `src/data/sent.ts`, `app/send/index.tsx`
+
+**Symptom** — none observed, and it would not have been observed as a bug if it had fired: the operator would have seen an ordinary draft with every box ticked, which is what an ordinary Monday looks like. The first sign would have been members receiving this week's follow-up twice, and the second email cannot be recalled. Found by reading (B:F-06), and modelled as a scale failure by C:RF-08, which notes the read is also the one that throws at 1,000 messages.
+
+**Root cause** — the draft's "who has already had this week's message" read is `useSentForPeriod`. Its failure was representable only as the absence of data: `already.data ?? {}` turned a rejected read into an empty `SentMap`, and `defaultSelection(memberIds, sent)` reads an empty map as "nobody has been written to yet" and ticks every recipient. `{}` and "unknown" were the same value, and the function had no way to tell them apart. The screen could have caught it one layer up and did not: `already.state === 'error'` was missing from the `failed` gate (`app/send/index.tsx:206-207`), which listed `courses`, `followUp` and `message` but not the read whose whole job is to prevent a second send.
+
+**Why it shipped** — the gate was written as "can the draft be drawn?", and by that test `already` is optional: the list still renders without it. The question it should have been written as is "is the draft safe to act on?", and by that test `already` is the load-bearing one. Nothing else could have caught it: `defaultSelection` had three specs (`sent.test.ts:64, :68, :72`) and all three pass a map that was genuinely read, because at the time there was no other possibility; the failure mode was introduced by the caller, not by the function. `fetchSentForPeriod` itself is documented as "a failure here costs the mark and nothing else" (`repository.ts:2186`), which was true of the mark and false of the selection built from it — the comment is the assumption, written down, one layer away from the code that broke it.
+
+**Class** — every screen that derives a default action from a read that can fail:
+- The send draft's tick boxes — **this fix**.
+- **The member record's Reach out prompt is the same defect, unfixed.** `app/member/[id].tsx` also does `mergeSent(already.data ?? {}, …)`, and `FollowUpTriggerPanel` rebuilds the map from each recipient row's `sentAt` (`sentMapOf`, `:618`, read at `:403`), which cannot express "unknown" at all — an absent `sentAt` means "not sent". So a failed read there still pre-ticks everyone. It needs the panel's props to carry the unknown, which is a change to a shared component and its own row rather than a widening of this PR. Filed as **T-122**.
+- `defaultSelection` itself is now the chokepoint for both, which is why the fix is in the function's type and not only in the screen: the screen refuses first, and the function refuses anyway.
+- Not this class: `fetchNotifications`, `fetchAudit` and the other read-only lists derive no default action from their result — a short or failed list is a worse screen, not a wrong write.
+
+**Fix** — `defaultSelection(memberIds, sent: SentMap | null)`; `null` returns `[]`. `{}` is untouched and still ticks everyone, because that is the ordinary Monday and failing closed must not cost the one-tap send it exists for. `app/send/index.tsx` adds `already.state === 'error'` to `failed`, so the draft refuses with a retry instead of rendering, and passes `null` rather than `{}` when the read errored. The type change then surfaced three more places that had quietly assumed the map was known — the re-send count, the "everyone already had it" banner, and each row's "Sent 3 Sep" mark — all three now claim nothing when it is unknown; an absent mark must not read as "not sent yet". **Deliberately not changed:** the member record's prompt (T-122); the 1,000-message ceiling on `fetchSentForPeriod` itself, which is T-045.
+
+**Proof** — `src/data/sendFailsClosed.test.ts`, 6 cases, first commit on the branch with 3 red and 3 green. The three that were already green are the controls that matter as much as the fix: a known-empty map still ticks everyone, and a known map still leaves out the member already written to. Failing closed is only correct if it costs nothing on the ordinary path.
+
+**Guard** — the `SentMap | null` type makes the distinction unrepresentable-by-accident: a caller that has an unknown map can no longer pass `{}` without writing `?? {}` deliberately, and the spec pins the screen's error branch by source-reading, since `app/` cannot be imported in the runner.
+
+**Verify** — no production read. Reproducible locally by making `fetchSentForPeriod` reject: before, the draft renders with every box ticked; after, it renders the refusal with a retry.
 
 ---
 

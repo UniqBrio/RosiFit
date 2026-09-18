@@ -136,7 +136,16 @@ function SendDraftBody() {
   // The server's history plus this session's own sends, so the mark is right
   // the moment a send returns rather than at the next refetch -- and is the
   // only source at all on fixtures.
-  const sent = mergeSent(already.data ?? {}, sentThisSession(week));
+  /* `null` when the already-sent read did not answer, and NOT `{}` (T-018).
+     `{}` says "nobody has had this week's message", which pre-ticks the whole
+     list -- correct on an ordinary Monday, and a second identical email to
+     every recipient when it is really "the read failed". The marks on the
+     rows go with it: an unknown map must not draw as "not yet sent" either.
+     The `failed` gate below refuses the draft outright in this case; this is
+     the same answer one layer down, so no later caller can reintroduce it. */
+  const sent = already.state === 'error'
+    ? null
+    : mergeSent(already.data ?? {}, sentThisSession(week));
 
   const recipientIds = recipients.map(m => m.id);
   // Filtered against the CURRENT list: a member who stopped being flagged
@@ -179,8 +188,14 @@ function SendDraftBody() {
     : [...picked, ...shownIds.filter(id => !picked.includes(id))]);
 
   const skipped = recipients.length - picked.length;
-  const resending = picked.filter(pid => sent[pid]).length;
-  const everyoneAlreadySent = recipients.length > 0 && recipients.every(m => sent[m.id]);
+  /* Unknown claims nothing (T-018): nobody is "being written to again" and
+     nobody "has already had it" when the read that would say so never
+     answered. Both of these are unreachable while `failed` refuses the draft;
+     they are written this way so the null keeps its meaning if another path
+     ever reaches them. */
+  const resending = picked.filter(pid => sent?.[pid]).length;
+  const everyoneAlreadySent = sent !== null
+    && recipients.length > 0 && recipients.every(m => sent[m.id]);
 
   /* THE MESSAGE HOOK LAGS ONE COMMIT BEHIND A CHANGE OF COURSE ID, and
      without this the member path PAINTS the very error card this change was
@@ -205,7 +220,13 @@ function SendDraftBody() {
 
   const loading = courses.state === 'loading' || followUp.state === 'loading'
     || message.state === 'loading' || already.state === 'loading' || messageBehind;
-  const failed = courses.state === 'error' || followUp.state === 'error' || message.state === 'error';
+  /* `already` IS a load-bearing read, not a decoration (T-018). It is the
+     only thing that knows who has had this week's message, and a draft drawn
+     without it invites one tap that writes to everybody twice. It was left
+     out of this gate, so the failure rendered as a perfectly ordinary list.
+     Fail closed: refuse the draft and offer the retry (B:F-06, C:RF-08). */
+  const failed = courses.state === 'error' || followUp.state === 'error'
+    || message.state === 'error' || already.state === 'error';
 
   /* A member whose course has no row to resolve — renamed, removed, or an
      ended enrolment, which leaves `course` as '—' (repository.ts). Her
@@ -510,7 +531,9 @@ function SendDraftBody() {
           <View style={{ gap: SPACE.sm, marginTop: SPACE.md }}>
             {shown.map(m => {
               const on = isPicked(m.id);
-              const at = sent[m.id];
+              // No mark at all when the sent-map is unknown: a missing "Sent
+              // 3 Sep" must not be read as "not sent yet" (T-018).
+              const at = sent?.[m.id];
               return (
                 <Pressable key={m.id} testID={`send-pick-${m.id}`}
                   accessibilityRole="checkbox"
