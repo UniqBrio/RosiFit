@@ -59,6 +59,31 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-073 — a guard that asked a migration file what the database runs, and was wrong five times over          Tracker: T-121 · Sources: T-111, RC-047, D-2b
+**Date:** 18-Sep-2026  ·  **Severity:** S3 (a spec, not a user-facing defect — but it was five of the fourteen red cases hiding the nine that matter)  ·  **Modules:** `src/data/aliasConflictTarget.test.ts` (deleted)
+
+**Symptom** — five failures in `npm run check`, every run since 0073 changed shape: the live `commit_csv_import` and `merge_member_into` "do not infer the index 0071 dropped", their alias-remembering pair, and "no migration after 0071 reintroduces the dropped conflict target". They were counted in Session B's 14 and are the difference between that 14 and the 9 the register has recorded since RV-03.
+
+**Root cause** — the spec resolved a function's body by reading the migration **files** and scanning the text for `ON CONFLICT` targets. RC-047 established that a file is not what the database runs: 0073 was rewritten as an in-place edit precisely because restating a body from an older file silently reverts every edit made to it since (0061's two de-gendered refusals, in that case). Once 0073 stopped restating bodies, the file-scan had nothing to find in the shape it expected, and failed — while the database it was meant to be describing was correct. The guard was not broken; **its premise was.** It asked the wrong source, and a spec that asks the wrong source cannot be repaired by adjusting what it looks for.
+
+**Why it shipped** — it was written when no Postgres could be reached from the test runner (ADR 005), which made a source scan the only available approximation, and the approximation was sound for as long as migrations restated whole bodies. The thing that invalidated it was a change in migration *technique*, two rows away, with no link between them: nothing in the repo connected "0073 becomes an in-place edit" to "the spec that reads migration files now asks a question about a shape that no longer exists". The harness suite that CAN answer the question in-database (`51_alias_unique_per_member.sql`) landed separately and nobody compared their coverage.
+
+**Class** — every check that infers the database's behaviour from migration text rather than from the database:
+- `aliasConflictTarget.test.ts` — **retired here**.
+- `migrationGrants.test.ts` and the other `src/data/*.test.ts` migration scanners — same technique, still sound, because they assert what a migration *declares* (grants, prefixes, ordering) rather than what the database *ends up running*. The distinction is the test: a scanner is honest about a file's contents and dishonest about a live function's body.
+- **T-112** is the general rung for the underlying hazard (a migration restating a body edited in place since), and it belongs in the harness, not in a source scan.
+- **T-031**'s Proof column named this file; it now names `51_alias_unique_per_member.sql:60-63` instead, so the rule it wants generalised points somewhere that exists.
+
+**Fix** — the file is deleted, under **D-2b**: a spec whose premise the register has disproved is not a protected lock, and the append-only rule exists to protect specs that still assert something true. The class it covered is asserted in-database by `51_alias_unique_per_member.sql:60-63`, which counts rows of `pg_proc` whose `pg_get_functiondef` still matches `on conflict (alias_type, alias_normalized)` and requires **0**, after a full replay from scratch. That is the same question asked of what the database runs, which is strictly stronger than asking a file. **Deliberately not changed:** nothing else. No assertion was moved into another file, because the assertion already existed in 51 before this deletion — that is what made retirement rather than repair the right call, and it was verified before deleting rather than taken on trust.
+
+**Proof** — `npm run test:unit` on this branch: **1,619 cases, 9 failures**, down from 14. The nine are exactly the RV-03 set the register has always named — `formDropdownMenu` (T-023), `memberJoinedOn` (T-024), `message.test.ts` ×5 and `rosterFilter.test.ts` ×2 (T-025) — so the count in the register and the count on the machine now agree for the first time since 0073.
+
+**Guard** — none added, and that is deliberate: the guard for this class is the harness assertion in 51, which already exists and already runs in `db-harness`. Adding a second source-reading check here would be the same mistake with a different name.
+
+**Verify** — no production read. `bash db/harness/test.sh` continues to carry the claim; it is Session A's job and this change does not touch it.
+
+---
+
 ## RC-048 — 04_members.sql pinned the academy-wide uniqueness 0071 removed, and the harness could not be run to say so          Tracker: T-011 · Sources: RV-02, FR §11, D-2, D-2a
 **Date:** 17-Sep-2026  ·  **Severity:** S3 (a spec, not a user-facing defect; but it is the spec that made `db-harness` red on the 0071 commit)  ·  **Modules:** `supabase/tests/04_members.sql`
 
