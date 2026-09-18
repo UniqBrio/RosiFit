@@ -122,11 +122,21 @@ test('the send and the import commit are both wrapped', () => {
 test('the bulk importers are wrapped too', () => {
   const src = code('src/data/repository.ts');
 
-  for (const fn of ['bulkImportMembers', 'bulkSetMemberDates', 'bulkDeleteMembers']) {
+  /* THE WHOLE FUNCTION, not a fixed window of characters. These three open
+     with a fixture branch that runs to fifty lines before the live request,
+     so a window measured in characters reads the offline path and stops. It
+     is also the more honest assertion: the claim is that the function holds
+     the flag, not that it holds it in its first few lines. */
+  const bodyOf = (fn: string): string => {
     const at = src.indexOf(`export async function ${fn}`);
     assert.notEqual(at, -1, `${fn} is not in repository.ts`);
-    const body = src.slice(at, at + 900);
-    assert.match(body, /duringWrite\(/, `${fn} does not hold the in-flight flag`);
+    const rest = src.slice(at + 1);
+    const end = rest.search(/\nexport (async )?function /);
+    return end === -1 ? rest : rest.slice(0, end);
+  };
+
+  for (const fn of ['bulkImportMembers', 'bulkSetMemberDates', 'bulkDeleteMembers']) {
+    assert.match(bodyOf(fn), /duringWrite\(/, `${fn} does not hold the in-flight flag`);
   }
 });
 

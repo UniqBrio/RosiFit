@@ -8,6 +8,7 @@
  * callFn turns that into a thrown Error carrying that same sentence.
  */
 import { supabase } from '../lib/supabase';
+import { duringWrite } from './inFlight';
 import type { OverrideCounts } from './uploadOverride';
 import type { AlreadyImported, ImportChanges } from './uploadOutcome';
 import { FunctionError, type SendFollowUpsInput, type SendResult } from './sendBatch';
@@ -231,7 +232,11 @@ export function csvPreview(input: {
   meeting_started_at?: string | null;
   rows: { full_name: string; first_seen?: string; minutes_in_call: number }[];
 }): Promise<PreviewResult> {
-  return callFn<PreviewResult>('csv-import', { action: 'preview', ...input });
+  /* Staging is held IN FLIGHT too, not just the commit (T-021). It is the
+     long half -- the whole file goes up and every row is matched against the
+     register -- so it is where an auto-reload is likeliest to land, and
+     losing it costs the operator the entire upload wizard. */
+  return duringWrite(() => callFn<PreviewResult>('csv-import', { action: 'preview', ...input }));
 }
 
 export type ImportDecision = {
@@ -260,7 +265,12 @@ export function csvCommit(importId: string, decisions: ImportDecision[]):
      */
     changes?: ImportChanges | null;
   }> {
-  return callFn('csv-import', { action: 'commit', import_id: importId, decisions });
+  /* ONE TRANSACTION that either landed or did not, and the client's only way
+     of finding out is this response (T-021, T-109: a failed commit leaves no
+     server-side trace). A reload here loses the answer to a question the
+     database can no longer be asked. */
+  return duringWrite(() =>
+    callFn('csv-import', { action: 'commit', import_id: importId, decisions }));
 }
 
 // ------------------------------------------------------------------- send
@@ -281,5 +291,12 @@ export type { SendResult, SendFollowUpsInput } from './sendBatch';
  * typecheck failure rather than a duplicate send.
  */
 export function sendFollowUps(input: SendFollowUpsInput): Promise<SendResult> {
-  return callFn<SendResult>('send-followups', { ...input });
+  /* HELD IN FLIGHT (T-021). A serial send is minutes of wall clock (RV-07)
+     during which nobody touches the screen, because there is nothing left to
+     touch -- so the idle rule is satisfied and the tab is thrown away
+     mid-send. What is lost is the batch id and the result, not the emails,
+     which is worse rather than better: the operator is left deciding whether
+     to send again with nothing to go on (RV-12, RV-30). T-017 makes that
+     second attempt safe; this stops the app causing it. */
+  return duringWrite(() => callFn<SendResult>('send-followups', { ...input }));
 }

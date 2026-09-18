@@ -23,6 +23,7 @@ import { bucketFixture, type BucketMetrics } from './buckets';
 import type { SentMap } from './sent';
 import type { BatchSummary } from './sendBatch';
 import { readPeriodMetrics, PERIOD_METRICS_CONTEXT } from './periodMetrics';
+import { duringWrite } from './inFlight';
 import { currentSchedules, today } from './schedule';
 import { inactiveFromProblem, activeAgainFromProblem } from './inactiveFrom';
 import { activeFromProblem } from './joined';
@@ -3076,7 +3077,9 @@ export async function bulkImportMembers(input: {
     return result;
   }
 
-  const { data, error } = await supabase.rpc('bulk_import_members', {
+  // Held in flight for the request (T-021): a file of members is one act, and
+  // a reload during it loses the only report of which rows landed.
+  const { data, error } = await duringWrite(async () => supabase.rpc('bulk_import_members', {
     p_members: input.rows.map(r => ({
       row: r.row, full_name: r.full_name, email: r.email || null,
       course: r.course || null, branch: r.branch || null,
@@ -3090,7 +3093,7 @@ export async function bulkImportMembers(input: {
     })),
     p_default_offering_id: input.default_offering_id,
     p_file_name: input.file_name,
-  });
+  }));
   if (error || !data) {
     console.error('bulkImportMembers:', error?.message ?? 'no row returned');
     throw new Error(memberWriteError(error));
@@ -3192,10 +3195,11 @@ export async function bulkSetMemberDates(input: StatusImportInput): Promise<Stat
     return { total: input.rows.length, updated, unchanged, failed, rows };
   }
 
-  const { data, error } = await supabase.rpc('bulk_set_member_dates', {
+  // Same act, same guard (T-021).
+  const { data, error } = await duringWrite(async () => supabase.rpc('bulk_set_member_dates', {
     p_rows: input.rows,
     p_file_name: input.file_name,
-  });
+  }));
   if (error || !data) {
     console.error('bulkSetMemberDates:', error?.message ?? 'no row returned');
     throw new Error(memberWriteError(error));
@@ -3899,14 +3903,18 @@ export async function bulkDeleteMembers(
 ): Promise<{ deleted: number; failed: { id: string; reason: string }[] }> {
   const failed: { id: string; reason: string }[] = [];
   let deleted = 0;
-  for (const id of ids) {
-    try {
-      await deleteMember(id);
-      deleted += 1;
-    } catch (err) {
-      failed.push({ id, reason: err instanceof Error ? err.message : 'could not be deleted' });
+  // The WHOLE loop, not each member (T-021): a flag released between members
+  // leaves a gap after every one of them for the reload to land in.
+  await duringWrite(async () => {
+    for (const id of ids) {
+      try {
+        await deleteMember(id);
+        deleted += 1;
+      } catch (err) {
+        failed.push({ id, reason: err instanceof Error ? err.message : 'could not be deleted' });
+      }
     }
-  }
+  });
   // Once, after the loop, not once per member: forty writes are one act to
   // every screen reading the register.
   membersChanged();
