@@ -67,6 +67,25 @@ jobs:
       - name: Commit guards are reachable
         run: npm run guard:test
 
+      # ---- Edge Function specs -------------------------------------------------------------
+      # The Deno tree has never had a runner. `npm run check` is Node and scoped to src/, so
+      # nothing under supabase/functions/ was executed by any job - which is why T-020's proof
+      # had nowhere to live until this step existed (T-012 precedent: build the proof surface
+      # before the fix that needs it).
+      #
+      # --no-check is deliberate and temporary. Type checking the Edge tree is T-027, which
+      # wires `deno check supabase/functions/**/*.ts` into `npm run check` and owns the
+      # tsconfig work. Until then a red run here means a spec failed, not that an unrelated
+      # file does not typecheck.
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Edge Function specs
+        working-directory: supabase/functions
+        run: deno test --no-check
+
       # ---- The app's own gates ------------------------------------------------------------
       # `npm run check` is the definition of done for this repository: types, then 2,800
       # contrast pairs across all 360 custom hues in both themes, then all 71 canvas glyphs.
