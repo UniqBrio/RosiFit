@@ -59,6 +59,27 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-051 — the member cards read "attended nothing" for everyone past row 1,000          Tracker: T-042 (with T-016) · Sources: A:F-02, B:F-02, RV-34
+**Date:** 18-Sep-2026  ·  **Severity:** S2  ·  **Modules:** `supabase/migrations/0075_member_period_metrics_page.sql`, `src/data/repository.ts`
+
+**Symptom** — not reported by a person; found by audit and confirmed by arithmetic. The academy passed 1,000 live members on 12-Sep-2026 and holds 1,152 today. `member_period_metrics` returns one row per member with attendance in the period, so from the 12th onward every read of it has been returning 1,000 rows and stopping. On the member list the 152 members past the cap show expected 0, missed 0, and are never flagged for follow-up; the donut and the week strip under-report by the same members.
+
+**Root cause** — PostgREST caps a response at `db-max-rows` (1,000 by default) and does not say when it truncates: the reply is a valid 200 with fewer rows. `repository.ts` reads the function unpaged at three sites — `:229` `fetchMembers`, `:1953` `fetchBucketMetrics`, `:1977` `fetchWeekRows` — and `fetchMembers` then falls back to `metric?.expected ?? 0`. That fallback is the mechanism: a missing row and a row of zeroes are indistinguishable downstream, so "not loaded" is rendered as "attended nothing". The cap is in PostgREST; the silence is in the `??`.
+
+**Why it shipped** — RV-34 checked paging and returned FIXED, but its scope was `supabase.from(` table reads; `pageAll.ts` and `pagedReads.test.ts` enforce paging only for those. An RPC is a `supabase.rpc(` call and no guard has ever scanned for it — T-030 is the rung that would have. So the project had a paging rule, a spec enforcing it, and a whole class of reads outside both. The second reason is that the ceiling was invisible while the academy was under 1,000 members: the same code was correct for a year and became wrong on a Saturday without anything changing.
+
+**Class** — every set-returning RPC read without a cursor. Enumerated by grepping `supabase.rpc(` in `src/`: `member_period_metrics` ×3 (this fix), `course_week_day_status` (aggregates server-side, returns one row per weekday — bounded by 7, exempt), `commit_csv_import`, `set_attendance`, `set_member_status`, `audit_log_as`, `bulk_import_members`, `bulk_set_member_dates`, `reset_day_attendance`, `delete_course`, `purge_member` (all single-row or single-verdict returns, not set-returning). So `member_period_metrics` is the only unbounded one today — but "only one today" is exactly what was true of the table reads before RC-039. T-030 makes it a build failure rather than a grep.
+
+**Fix** — `0075` adds `member_period_metrics_page(p_from, p_to, p_after_member_id, p_limit)`: keyset by `member_id`, `limit` defaulting to 1,000. Keyset rather than OFFSET because a row inserted between two reads shifts every OFFSET page after it, and because page 900 costs what page 1 costs. The body is derived from `pg_get_functiondef` on the **live** function, not from a migration file (RC-047's rule), and differs from it in exactly three lines: the cursor predicate, `order by a.member_id`, `limit p_limit`. **Deliberately not changed:** the existing `member_period_metrics` is left in place, so callers move one at a time and the two can be compared; the four optional filters are not reproduced because no caller passes them.
+
+**Proof** — `supabase/tests/56_member_period_metrics_page.sql`. 1,001 seeded members with a year of attendance: two pages, 1,001 rows, 1,001 **distinct** members, nobody the unpaged function returns missing from the pages, an empty third page, every total equal, and every member's six numbers identical row for row — the last of which is what catches a pager that swaps two members' numbers while keeping the totals right.
+
+**Guard** — three inside the migration: refuse if the paged function already exists; refuse if `member_period_metrics`'s body hash has moved since the derivation (checked at apply time, not at authoring time); and after creating, call it over an empty period and assert the argument names PostgREST will resolve the client's call against. The class-level rung is **T-030** — `pagedReads.test.ts` scanning `supabase.rpc(` — which is not yet written and which this entry is the argument for.
+
+**Verify** — after apply: `select count(*) from member_period_metrics_page('<from>','<to>', null, 1000)` returns 1,000 on a period the academy's whole register falls in, and a second call with the last `member_id` returns the remainder. Compare `sum(expected)` across the pages against one unpaged call; they must be equal. Recorded with its timestamp in T-042's row.
+
+---
+
 ## RC-048 — 04_members.sql pinned the academy-wide uniqueness 0071 removed, and the harness could not be run to say so          Tracker: T-011 · Sources: RV-02, FR §11, D-2, D-2a
 **Date:** 17-Sep-2026  ·  **Severity:** S3 (a spec, not a user-facing defect; but it is the spec that made `db-harness` red on the 0071 commit)  ·  **Modules:** `supabase/tests/04_members.sql`
 
