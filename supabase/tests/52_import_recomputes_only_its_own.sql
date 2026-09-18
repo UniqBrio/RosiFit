@@ -195,3 +195,30 @@ select t.eq((select updated_at from public.member_stats
 select t.eq((select count(*)::int from public.member_stats
               where updated_at > '2001-01-01 00:00:00+00'), 1,
   'editing one member recomputes exactly one stats row');
+
+-- (a) THE SWEEP IS STILL LIVE, and this is the assertion that says so.
+--   The absentee sweep runs AFTER the row loop and reads
+--   expected_members_for_session(v_session_id) itself -- not a hoisted array.
+--   So a member created by add_as_new, enrolled by the same commit effective
+--   the session date, is expected by the time the sweep runs and already has
+--   a present row, which `on conflict do nothing` leaves alone. She is never
+--   swept absent. A fix that hoisted the sweep's own call as well would turn
+--   this green-to-red, which is the point of asserting it separately from her
+--   status above.
+select t.eq((select count(*)::int from public.attendance_records a
+               join public.members m on m.id = a.member_id
+              where m.full_name = 'Brand New Person'), 1,
+  'the member add_as_new created has exactly ONE row for the day -- the sweep did not add a second');
+select t.eq((select count(*)::int from public.attendance_records a
+               join public.members m on m.id = a.member_id
+              where m.full_name = 'Brand New Person' and a.status = 'absent'), 0,
+  'and the sweep never marked her absent -- it reads the expected set live, after the loop that created her');
+
+-- (b) and she is in the recompute's scope: v_present_ids || v_expected_ids
+--   carries her twice over -- present because the file named her, expected
+--   because the enrolment landed before the sweep read the set.
+select t.ok((select s.updated_at > '2001-01-01 00:00:00+00'
+               from public.member_stats s
+               join public.members m on m.id = s.member_id
+              where m.full_name = 'Brand New Person'),
+  'and her stats were recomputed -- she is in v_present_ids || v_expected_ids, not outside both');
