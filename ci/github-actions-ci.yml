@@ -52,6 +52,21 @@ jobs:
       # not testing what will ship.
       - run: npm ci
 
+      # ABOVE `npm run check`, DELIBERATELY (T-401, and see T-402).
+      # This step is where T-401's adapter spec runs, and a job stops at its first failed
+      # step. `npm run check` has been red on every run since CI first executed on 11-Sep,
+      # so this step has never once executed - which is how the adapter went five days
+      # judging the wrong repository with nothing to notice. Shipping the fix underneath a
+      # step that never runs would have repeated the defect it corrects.
+      #
+      # `audit:all` is still stranded below `check`. That is T-402, not this row.
+      # ---- The guards ---------------------------------------------------------------------
+      # EXECUTES every commit guard against scratch repositories. A source scan cannot tell a
+      # live guard from a commented-out one; only running it proves each can still fire.
+
+      - name: Commit guards are reachable
+        run: npm run guard:test
+
       # ---- The app's own gates ------------------------------------------------------------
       # `npm run check` is the definition of done for this repository: types, then 2,800
       # contrast pairs across all 360 custom hues in both themes, then all 71 canvas glyphs.
@@ -71,13 +86,6 @@ jobs:
 
       - name: All ratchets, both app/ and src/
         run: npm run audit:all
-
-      # ---- The guards ---------------------------------------------------------------------
-      # EXECUTES every commit guard against scratch repositories. A source scan cannot tell a
-      # live guard from a commented-out one; only running it proves each can still fire.
-
-      - name: Commit guards are reachable
-        run: npm run guard:test
 
       # ---- Deliberately NOT run here, each with its reason --------------------------------
       #
