@@ -27,13 +27,22 @@
  */
 import { guardUntruncated, PAGE_SIZE, type KeysetQuery, type PageResult } from './pageAll';
 
-/** One member's figures for a period. The shape both RPCs answer with. */
+/**
+ * One member's figures for a period. The shape both RPCs answer with.
+ *
+ * `attendance_pct` and `extra` are optional here because neither caller reads
+ * them: `repository.ts` takes these rows as its own narrower `MetricRow`
+ * (`member_id`, `expected`, `attended`, `missed`), and PostgREST returns what
+ * the function declares whether or not a type names it. Checked against the
+ * shipped `0075` on 18-Sep-2026, which returns all six columns.
+ */
 export type PeriodMetricRow = {
   member_id: string;
   expected: number | null;
   attended: number | null;
   missed: number | null;
-  attendance_pct: number | null;
+  attendance_pct?: number | null;
+  extra?: number | null;
 };
 
 /**
