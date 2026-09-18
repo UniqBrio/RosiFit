@@ -95,7 +95,15 @@ jobs:
       # These are the SUBSTITUTE RUNGS for the framework's G1-G3 (ADR 001) and they are
       # stronger than the steps they replace, not weaker.
 
-      - name: Lint, types, contrast (2,800 pairs) and icons (71 glyphs)
+      # NO COUNTS IN THIS NAME, deliberately (T-404, and T-035 before it). It read
+      # "contrast (2,800 pairs) and icons (71 glyphs)" while neither of those checks ran at
+      # all, and the icon figure was stale into the bargain - the check reports 75. A name
+      # carrying a number is a number nobody updates, on a step whose verdict was already
+      # going unread.
+      #
+      # `npm run check` now runs every check and collects the failures instead of stopping at
+      # the first, so this step reports what IS broken rather than what broke first.
+      - name: All checks - lint, types, unit specs, contrast, icons, Edge config
         run: npm run check
 
       # ---- Ratcheted audits ---------------------------------------------------------------
