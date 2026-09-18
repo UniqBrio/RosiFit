@@ -25,7 +25,25 @@
  * under node -- it reaches the Supabase client -- and a rule with no spec is
  * how the last one of these shipped.
  */
-import { guardUntruncated } from './pageAll';
+import { guardUntruncated, PAGE_SIZE, type KeysetQuery, type PageResult } from './pageAll';
+
+/**
+ * One member's figures for a period. The shape both RPCs answer with.
+ *
+ * `attendance_pct` and `extra` are optional here because neither caller reads
+ * them: `repository.ts` takes these rows as its own narrower `MetricRow`
+ * (`member_id`, `expected`, `attended`, `missed`), and PostgREST returns what
+ * the function declares whether or not a type names it. Checked against the
+ * shipped `0075` on 18-Sep-2026, which returns all six columns.
+ */
+export type PeriodMetricRow = {
+  member_id: string;
+  expected: number | null;
+  attended: number | null;
+  missed: number | null;
+  attendance_pct?: number | null;
+  extra?: number | null;
+};
 
 /**
  * The sentence the operator reads, and the reason it names figures rather
@@ -50,4 +68,54 @@ export function readPeriodMetrics<T>(
 ): T[] {
   if (res.error) throw new Error(res.error.message ?? 'the period metrics read did not answer');
   return guardUntruncated(res.data ?? [], 'the attendance figures for this period');
+}
+
+/**
+ * `member_period_metrics_page` as something `pageAllByKey` can drive (T-042).
+ *
+ * The RPC pages by ARGUMENT — `p_after_member_id` and `p_limit` — where every
+ * other read in `repository.ts` pages by PostgREST modifier, `.gt()` and
+ * `.limit()`. Rather than teach the pager a second shape, this turns the one
+ * into the other: `.gt(key, value)` becomes the id to start after, `.limit(n)`
+ * becomes the row count, and `.order()` is accepted and ignored because the
+ * function already returns its rows in `member_id` order and that ordering is
+ * the contract the keyset depends on.
+ *
+ * Nothing here decides anything. It records what the pager asks for and hands
+ * the RPC's own answer straight back, so the rules that matter — only an
+ * EMPTY page ends a read, a page error takes the whole read down, a partial
+ * list is never a success (RC-039) — stay in `pageAllByKey`, where they are
+ * already specced, and there is no second copy of them to drift.
+ *
+ * WHY THE T-016 GUARD IS NOT ALSO APPLIED HERE. `PAGE_SIZE` is
+ * `SUPABASE_MAX_ROWS`, so a full page and a truncated answer are the same
+ * 1,000 rows: `guardUntruncated` over a page would throw on every full page,
+ * and over the assembled result it would throw for an academy of exactly
+ * 1,000 members. `readPeriodMetrics` above stays as the rule an UNPAGED read
+ * must obey; this path is guarded by the pager instead.
+ */
+export function metricsPage<T extends Record<string, unknown> = PeriodMetricRow>(
+  call: (afterMemberId: string | null, limit: number) => PromiseLike<PageResult<T>>,
+): KeysetQuery<T> {
+  let after: string | null = null;
+  let limit = PAGE_SIZE;
+
+  const query: KeysetQuery<T> = {
+    gt(_column, value) {
+      after = value as string;
+      return query;
+    },
+    order() {
+      return query;
+    },
+    limit(count) {
+      limit = count;
+      return query;
+    },
+    then(onfulfilled) {
+      return call(after, limit).then(onfulfilled);
+    },
+  };
+
+  return query;
 }
