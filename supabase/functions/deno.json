@@ -1,6 +1,8 @@
 {
   "//": "Deno config for the Edge Function tree. Introduced by T-020, which needed somewhere to run its spec: there was no Deno config, no Deno test and no Deno step in CI. T-027 then turned type checking on - `npm run check` runs `check:edge`, which is `deno check` over every .ts in here, and the CI test step no longer passes --no-check. So this tree is now both executed and type checked, which it had never been until 18-Sep-2026. The client tsconfig still excludes supabase/ and that is correct: this is Deno, not React Native, and RV-21 is explicit that removing the exclude is not the fix. Deno checks Deno.",
+  "//2": "nodeModulesDir auto is required by check:edge, not by the functions themselves. Supabase deploys these with its own npm: resolution; a local deno check has none, so _shared/db.ts’s npm:@supabase/supabase-js import cannot be resolved without it and every file that reaches db.ts fails to check for a reason that has nothing to do with its types.",
   "lock": false,
+  "nodeModulesDir": "auto",
   "tasks": {
     "test": "deno test",
     "check": "deno check **/*.ts"
