@@ -78,7 +78,16 @@ if (targets.length === 0) {
   process.exit(0);
 }
 
-const res = spawnSync('deno', ['check', ...targets], {
+/* RUN FROM INSIDE THE TREE, not from the repository root.
+   Deno looks for deno.json from its cwd upwards. Invoked from the root it never finds
+   supabase/functions/deno.json, so `nodeModulesDir` is not applied and the npm: specifier in
+   _shared/db.ts cannot resolve - which fails every file whose graph reaches db.ts, for a
+   reason that has nothing to do with its types. That was CI runs 35346441309 and 35347901748:
+   the setting was right and simply never read. Paths go relative to the same directory. */
+const prefix = `${DIR.split(path.sep).join('/')}/`;
+const rel = targets.map((t) => (t.startsWith(prefix) ? t.slice(prefix.length) : t));
+const res = spawnSync('deno', ['check', ...rel], {
+  cwd: DIR,
   encoding: 'utf8',
   stdio: ['ignore', 'pipe', 'pipe'],
   shell: process.platform === 'win32',
