@@ -73,10 +73,13 @@ jobs:
       # had nowhere to live until this step existed (T-012 precedent: build the proof surface
       # before the fix that needs it).
       #
-      # --no-check is deliberate and temporary. Type checking the Edge tree is T-027, which
-      # wires `deno check supabase/functions/**/*.ts` into `npm run check` and owns the
-      # tsconfig work. Until then a red run here means a spec failed, not that an unrelated
-      # file does not typecheck.
+      # Type checking arrived with T-027 and runs inside `npm run check` as `check:edge`,
+      # which invokes `deno check` over every .ts under supabase/functions/. That is why
+      # setup-deno sits above the app's own gates: `npm run check` now needs Deno on PATH
+      # to do the Edge half of its job.
+      #
+      # This step stays `deno test` and drops --no-check, so a spec that no longer type
+      # checks fails here as well as in check:edge. Two rungs, same tree, different reasons.
 
       - uses: denoland/setup-deno@v2
         with:
@@ -84,7 +87,7 @@ jobs:
 
       - name: Edge Function specs
         working-directory: supabase/functions
-        run: deno test --no-check
+        run: deno test
 
       # ---- The app's own gates ------------------------------------------------------------
       # `npm run check` is the definition of done for this repository: types, then 2,800

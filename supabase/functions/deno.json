@@ -1,8 +1,9 @@
 {
-  "//": "Deno config for the Edge Function tree. Introduced by T-020, which needed somewhere to run its spec: there was no Deno config, no Deno test and no Deno step in CI, so the row's proof had nowhere to execute. T-027 widens this to `deno check supabase/functions/**/*.ts` wired into `npm run check`; until then CI runs `deno test --no-check` here, so a red run means the behaviour under test broke and nothing else.",
+  "//": "Deno config for the Edge Function tree. Introduced by T-020, which needed somewhere to run its spec: there was no Deno config, no Deno test and no Deno step in CI. T-027 then turned type checking on - `npm run check` runs `check:edge`, which is `deno check` over every .ts in here, and the CI test step no longer passes --no-check. So this tree is now both executed and type checked, which it had never been until 18-Sep-2026. The client tsconfig still excludes supabase/ and that is correct: this is Deno, not React Native, and RV-21 is explicit that removing the exclude is not the fix. Deno checks Deno.",
   "lock": false,
   "tasks": {
-    "test": "deno test --no-check --allow-none"
+    "test": "deno test",
+    "check": "deno check **/*.ts"
   },
   "fmt": {
     "useTabs": false,
