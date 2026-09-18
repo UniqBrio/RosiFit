@@ -92,7 +92,7 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 **Class** — every screen that derives a default action from a read that can fail:
 - The send draft's tick boxes — **this fix**.
-- **The member record's Reach out prompt is the same defect, unfixed.** `app/member/[id].tsx` also does `mergeSent(already.data ?? {}, …)`, and `FollowUpTriggerPanel` rebuilds the map from each recipient row's `sentAt` (`sentMapOf`, `:618`, read at `:403`), which cannot express "unknown" at all — an absent `sentAt` means "not sent". So a failed read there still pre-ticks everyone. It needs the panel's props to carry the unknown, which is a change to a shared component and its own row rather than a widening of this PR. Filed as **T-122**.
+- **The member record's Reach out prompt is the same defect, unfixed.** `app/member/[id].tsx` also does `mergeSent(already.data ?? {}, …)`, and `FollowUpTriggerPanel` rebuilds the map from each recipient row's `sentAt` (`sentMapOf`, `:618`, read at `:403`), which cannot express "unknown" at all — an absent `sentAt` means "not sent". So a failed read there still pre-ticks everyone. It needs the panel's props to carry the unknown, which is a change to a shared component and its own row rather than a widening of this PR. Filed as **T-300** (D-9c gives Session B the T-300-399 block; filed as T-122 before that decision landed).
 - `defaultSelection` itself is now the chokepoint for both, which is why the fix is in the function's type and not only in the screen: the screen refuses first, and the function refuses anyway.
 - Not this class: `fetchNotifications`, `fetchAudit` and the other read-only lists derive no default action from their result — a short or failed list is a worse screen, not a wrong write.
 
