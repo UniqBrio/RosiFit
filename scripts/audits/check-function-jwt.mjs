@@ -33,7 +33,15 @@ const FUNCTIONS_DIR = path.join('supabase', 'functions');
 const CONFIG = path.join('supabase', 'config.toml');
 
 /** Not a function: shared modules imported by the others, deployed with nothing. */
-const NOT_A_FUNCTION = new Set(['_shared']);
+/** Directories under supabase/functions/ that Supabase does not deploy as functions.
+ *
+ *  `_shared` is source. `node_modules` is a BUILD ARTEFACT and its presence is recent:
+ *  T-027 set `nodeModulesDir: "auto"` in supabase/functions/deno.json so `deno check` can
+ *  resolve `npm:@supabase/supabase-js`, and Deno then materialises node_modules right here.
+ *  Without this entry the gate demands a `verify_jwt` posture for a dependency directory and
+ *  blocks - which is exactly what it did on CI run 35426495335, the first run where both
+ *  rows were present and `check:functions` was reachable at all. */
+const NOT_A_FUNCTION = new Set(['_shared', 'node_modules']);
 
 function fail(lines) {
   console.log(`\nBLOCKED [FUNCTION JWT] - ${lines.title}\n`);
