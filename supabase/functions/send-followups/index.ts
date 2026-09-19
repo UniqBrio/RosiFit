@@ -10,6 +10,7 @@ import { resolveEmailProvider } from './email.ts';
 import { chooseFromAddress, unquoteSecret } from '../_shared/from-address.ts';
 import { buildUnsubscribeUrl } from '../_shared/unsubscribe-token.ts';
 import { runSendLoop, type AdminLike, type PreparedRecipient } from './send-loop.ts';
+import { loadSendData } from './load.ts';
 
 /** The mailbox a mail client offers when it cannot use the URL. Named here
  *  rather than derived from the sender, because the sender now varies per
@@ -105,56 +106,27 @@ Deno.serve(async (req) => {
     const { data: settingsRow } = await admin.from('app_settings').select('academy_name').eq('id', 1).single();
     const academyName = settingsRow?.academy_name ?? 'RosiFit Academy';
 
-    const { data: members, error: mErr } = await admin.from('members')
-      .select('id, full_name').in('id', memberIds).is('deleted_at', null);
-    if (mErr) throw new HttpError(500, 'Could not load members.');
-    const memberById = new Map((members ?? []).map(m => [m.id as string, m]));
-
-    const { data: enrollments } = await admin.from('member_enrollments')
-      .select('member_id, offering_id').in('member_id', memberIds).eq('status', 'active');
-    const enrollByMember = new Map((enrollments ?? []).map(e => [e.member_id as string, e]));
-    const offeringIds = [...new Set((enrollments ?? []).map(e => e.offering_id as string))];
-
-    const zeroUuid = '00000000-0000-0000-0000-000000000000';
-    const { data: offerings } = await admin.from('course_offerings')
-      .select('id, course_id, branch_id').in('id', offeringIds.length ? offeringIds : [zeroUuid]);
-    const offeringById = new Map((offerings ?? []).map(o => [o.id as string, o]));
-    const courseIds = [...new Set((offerings ?? []).map(o => o.course_id as string))];
-    const branchIds = [...new Set((offerings ?? []).map(o => o.branch_id as string))];
-
-    const { data: courses } = await admin.from('courses').select('id, name')
-      .in('id', courseIds.length ? courseIds : [zeroUuid]);
-    const { data: branches } = await admin.from('branches').select('id, name')
-      .in('id', branchIds.length ? branchIds : [zeroUuid]);
-    const courseNameById = new Map((courses ?? []).map(c => [c.id as string, c.name as string]));
-    const branchNameById = new Map((branches ?? []).map(b => [b.id as string, b.name as string]));
-
-    // THE COURSE'S OWN SENDER (07-Sep-2026). course_communication.from_email is
-    // what the From Email ID picker in the course form writes, and until now
-    // nothing read it back: every message went out as SES_FROM_ADDRESS whatever
-    // the course said. Read here, per course, in one query -- not per member,
-    // which would be one round trip per recipient for a value shared by all of
-    // them. A course with no row keeps the deployment's address.
-    const { data: courseComms, error: ccErr } = await admin.from('course_communication')
-      .select('course_id, from_email').in('course_id', courseIds.length ? courseIds : [zeroUuid]);
-    // Loud, not silent. A failed read here is indistinguishable from "no course
-    // has its own sender", and that reads as success while sending every
-    // message from the wrong address -- the same shape as the discarded
-    // destructure that made fetchSenders always fall back (TD-016).
-    if (ccErr) throw new HttpError(500, "Could not load the courses' sender addresses, so nothing was sent.");
-    const fromByCourse = new Map((courseComms ?? []).map(c => [c.course_id as string, c.from_email as string]));
-
-    // `id` is selected for the unsubscribe link, which is signed per ADDRESS
-    // -- member_emails.id is what the token commits to, and what `unsubscribe`
-    // looks up. email_messages.member_email_id is not used for this: it is
-    // frequently null, and a link built from a null is a link that cannot be
-    // honoured.
-    const { data: emails } = await admin.from('member_emails')
-      .select('id, member_id, email, status').eq('is_primary', true).in('member_id', memberIds).is('deleted_at', null);
-    const emailByMember = new Map((emails ?? []).map(e => [e.member_id as string, e]));
-
-    const { data: stats } = await admin.from('member_stats').select('*').in('member_id', memberIds);
-    const statsByMember = new Map((stats ?? []).map(s => [s.member_id as string, s]));
+    /*
+     * EVERY READ CHUNKED, PAGED, AND THROWING (T-041, RV-05, B:F-03, C:RF-03).
+     *
+     * These eight `.in()` reads used to sit here inline: none chunked, none
+     * paged, and six of the eight discarding their error. The request ceiling
+     * refuses an over-long `.in()` with a bare 400 (640 ids through, 660
+     * refused, measured 16-Sep-2026, RC-045); the reply ceiling truncates at
+     * 1,000 rows with a 200 and no error at all. A discarded error turned
+     * either one into an empty map, and the loop below cannot tell an empty
+     * map from a member who is genuinely absent -- so it classified people
+     * from the gap.
+     *
+     * They moved to load.ts so a spec can drive them with a fake client;
+     * index.ts calls Deno.serve at module scope and cannot be imported.
+     */
+    const loaded = await loadSendData(admin, memberIds);
+    const {
+      memberById, enrollByMember, offeringById,
+      courseNameById, branchNameById, fromByCourse,
+      emailByMember, statsByMember, courseIds,
+    } = loaded;
 
     const metricsByMember = new Map<string, { expected: number; attended: number; missed: number; attendance_pct: number | null }>();
     for (const id of memberIds) {

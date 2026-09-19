@@ -64,9 +64,18 @@ const version = (probe.stdout || '').split('\n')[0].trim();
 /* Type check every .ts under the tree. `deno check` follows imports, so the entrypoints and
    _shared modules are all reached; naming them explicitly keeps a file that nothing imports
    from going unchecked. */
+/** Directories that are not source. `node_modules` is the one that matters and it is
+ *  RECENT: T-027 set `nodeModulesDir: "auto"` so `deno check` can resolve the npm
+ *  specifier, and Deno then materialises the dependency tree right here. Walking into
+ *  it turned 25 files into 333 and the invocation into "The command line is too long" -
+ *  a red that says nothing about this repository's types. Deno checks the dependency
+ *  graph it actually reaches; it does not need to be handed node_modules. */
+const NOT_SOURCE = new Set(['node_modules']);
+
 const targets = [];
 (function walk(dir) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (e.isDirectory() && (NOT_SOURCE.has(e.name) || e.name.startsWith('.'))) continue;
     const full = path.join(dir, e.name);
     if (e.isDirectory()) walk(full);
     else if (e.name.endsWith('.ts')) targets.push(full.split(path.sep).join('/'));
