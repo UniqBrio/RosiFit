@@ -393,6 +393,54 @@ Two consequences worth naming rather than filing: Guardrail 2 of `CLAUDE.md` ("c
 
 ---
 
+## RC-106 — eight unchunked reads in the send path, six of them discarding the error that would have said so          Tracker: T-041 · Sources: RV-05, A:K-02 (KL-009), B:F-03, C:RF-03
+**Date:** 19-Sep-2026  ·  **Severity:** S1 (the academy passed 1,000 members on 12-Sep; every send since has been reading past a ceiling that answers `200`)  ·  **Modules:** `supabase/functions/send-followups/load.ts`, `supabase/functions/_shared/pageAll.ts`, `supabase/functions/send-followups/index.ts`, `scripts/audits/check-edge-types.mjs`
+
+**Symptom** — Not reported by an operator, and that is the point: there is no symptom to report. A send completes, the result screen lists every recipient, and some of them read `Member not found` or go out from the deployment address instead of the course's own. Nothing errors. RV-05 measured the mechanism directly on 16-Sep-2026: 640 ids through the gateway, 660 refused.
+
+**Root cause** — Two independent ceilings, and a discarded error that converted both into the same silent wrong answer.
+
+The **request** ceiling: an `.in(ids)` filter travels in the query string, where supabase-js percent-encodes each separator, so a UUID costs 39 bytes. The gateway in front of PostgREST refuses an over-long request head with a bare `400 Bad Request` — no rows, no PostgREST error body, nothing naming the limit.
+
+The **reply** ceiling: PostgREST wraps every request in `LIMIT db-max-rows`, 1,000 on this project, and a request that hits it is not an error. It answers `200` with a thousand rows and `error: null`.
+
+Six of the eight reads then destructured `data` and dropped `error`. Both ceilings arrive as a short or empty array, which is indistinguishable from "no such row" — and the send loop downstream has no way to tell them apart, so it classifies the recipient from the gap.
+
+**Why it shipped** — The client half of the app learned all of this on 10-Sep-2026 (RC-039) and again on 16-Sep (RC-045), and `src/data/pageAll.ts` carries both the pager and the chunker with the reasoning written out at length. The Edge half was never swept. `csv-import` was, in RC-043, and the header of `supabase/functions/_shared/pageAll.ts` says exactly why the others were not: *"the csv-import function was never swept, because it runs on the service-role client and 'the service role bypasses RLS' was read as 'the service role bypasses the cap'."* That sentence was written about `csv-import` and left `send-followups` untouched — the fix went to the file where the defect was found rather than to the class. RV-05 then named `send-followups` explicitly on 16-Sep, and it still took this row.
+
+**Class** — *an `.in()` or list read that is unchunked, unpaged, or discards its error*. Enumerated for `send-followups`, all eight fixed here:
+
+| line | table | ids scale with | error before |
+|---|---|---|---|
+| 109 | `members` | recipients | checked |
+| 114 | `member_enrollments` | recipients | discarded |
+| 120 | `course_offerings` | recipients, via enrolments | discarded |
+| 126 | `courses` | course count | discarded |
+| 128 | `branches` | branch count | discarded |
+| 139 | `course_communication` | course count | checked |
+| 153 | `member_emails` | recipients | discarded |
+| 156 | `member_stats` | recipients | discarded |
+
+The three bounded by course and branch counts are fixed too, deliberately. A bounded list that discards its error is the same defect; "it is small today" is a fact about this academy's data, not a property the type system or the next migration knows about. Outside this file the class is open and tracked: `csv-import:297-303` is T-032, and RV-18's 32 discarded read errors are T-046.
+
+**Fix** — `inChunks`, `MAX_IDS_PER_REQUEST = 150` and `ChunkedSource` ported clause-for-clause from `src/data/pageAll.ts`, comments included, and `pageAllByKey` gained the chunked branch. The reads moved to `load.ts` so a spec can drive them: `index.ts` calls `Deno.serve` at module scope and cannot be imported — the same split as `send-loop.ts` in T-020, for the same reason.
+
+**The `zeroUuid` sentinel is gone, and that is a behaviour change worth naming.** Six reads previously passed `ids.length ? ids : ['00000000-…']` so that an empty list still produced a syntactically valid query returning nothing. That is a query issued to guarantee an empty answer the caller already knows. `inChunks` produces **no chunks** for an empty list, so the read simply does not happen — one fewer round trip, and no fake id in the logs to mistake for real data. Anything asserting that a query is always issued would notice; nothing does.
+
+**Deliberately not changed:** the serial per-recipient loop and its wall clock (RV-07, T-049, Gate 4); the metrics RPC still called once per recipient (T-050); `src/` untouched, so the guard specs that pin this contract are unmodified.
+
+**Files** — `supabase/functions/send-followups/load.ts` (new), `supabase/functions/send-followups/load.test.ts` (new), `supabase/functions/_shared/pageAll.ts`, `supabase/functions/send-followups/index.ts`, `scripts/audits/check-edge-types.mjs`.
+
+**How to verify** — `cd supabase/functions && deno test send-followups/load.test.ts`. Five cases at 1,001 recipients, which is one past the reply cap and seven chunks of 150 on the request side, so one fixture exercises both ceilings.
+
+**Proof** — `load.test.ts`. The fake PostgREST enforces both real ceilings: a chunk carrying more than 660 ids is refused with a bare error and no rows, and any reply is truncated at 1,000 with `error: null`. Red first, recorded at the head of `TEST_SUMMARY.md`: **4 of 5 failed** against `readAll` reverted to one unchunked request whose error is discarded — `"AssertionError: a failed members read must throw"`, and the 1,001-member count coming back 1,000. Restored: 5 passed.
+
+**Guard** — the contract between the two pager files is pinned by `src/data/edgeFunctionPagedReads.test.ts`, which reads both sources; verified 16/16 on this branch, alongside `requestSize` 9/9 and `pagedReads` 9/9. `check:edge` (T-027) now type checks the Edge tree on every run, and earned itself here by reporting `TS2322` on `StatsRow`'s untyped fields in this row's own new code.
+
+**Recurrence risk** — Closed for `send-followups` and pinned by a spec that fails on the pre-fix shape. The wider class is open: T-032 for `csv-import`, T-046 for the 32 discarded reads elsewhere. The structural risk is the **two-file duplication** — `MAX_IDS_PER_REQUEST` now exists in `src/data/pageAll.ts` and `supabase/functions/_shared/pageAll.ts`, and the only thing keeping them equal is a spec that reads both. That is deliberate and unavoidable while one tree is bundled by the Supabase CLI and the other is checked under node, but it is a place two numbers can drift.
+
+---
+
 ## RC-048 — 04_members.sql pinned the academy-wide uniqueness 0071 removed, and the harness could not be run to say so          Tracker: T-011 · Sources: RV-02, FR §11, D-2, D-2a
 **Date:** 17-Sep-2026  ·  **Severity:** S3 (a spec, not a user-facing defect; but it is the spec that made `db-harness` red on the 0071 commit)  ·  **Modules:** `supabase/tests/04_members.sql`
 
