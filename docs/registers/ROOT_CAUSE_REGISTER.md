@@ -326,6 +326,41 @@ The wider class — every register and document that states production or pipeli
 
 ---
 
+## RC-104 — the Edge Function tree had never been type checked, and the reason the specs "weren't" was wrong          Tracker: T-027 · Sources: RV-21, A:F-11
+**Date:** 18-Sep-2026  ·  **Severity:** S3 (no defect found once it ran; eleven production functions had simply never been checked)  ·  **Modules:** `scripts/audits/check-edge-types.mjs`, `supabase/functions/deno.json`, `package.json`, `.github/workflows/ci.yml`, `ci/github-actions-ci.yml`
+
+**Symptom** — RV-21 and A:F-11 report that `tsconfig.json` excludes `supabase/`, `scripts/` and `**/*.test.ts`, so "every Edge Function and every spec" is untypechecked. Nothing had ever run `tsc` or `deno check` over `supabase/functions/`, and `T-020`'s CI step ran `deno test --no-check`.
+
+**Root cause** — Two different things, and only one of them was real.
+
+The **specs** were never unchecked. `scripts/tsconfig.json` includes `../src/**/*.test.ts`; `--listFiles` resolves **130 spec files**; that project is the second half of `npm run typecheck` and passes. `app/` and `scripts/` contain no specs at all. The audits read the *client* config's `exclude` and concluded from it, without checking whether a second project picked the files up — which it does, and whose header says why.
+
+The **Edge tree** was genuinely unchecked, and correctly so under the client config: it is Deno, not React Native. `tsconfig.json` sets `customConditions: ["react-native"]` through `expo/tsconfig.base`. Nothing in the Node or Deno world resolves under that condition. There was no second project for it, so nothing checked it at all.
+
+**Why it shipped** — The finding was written from configuration rather than from behaviour. "The exclude list contains `**/*.test.ts`, therefore specs are unchecked" is a reasonable-sounding inference and it is wrong, and it stayed wrong through three audits because nobody ran `tsc --listFiles` to ask which files are actually in the program. The Edge half went unnoticed for the opposite reason: it is invisible from the client config, so an audit reading `exclude` lists would not think to look for the project that *should* exist and does not.
+
+**Class** — *a verification claim derived from configuration instead of from execution*. Enumerated, by asking each tree what actually checks it:
+- `src/**/*.ts(x)` — the client project. Checked.
+- `src/**/*.test.ts` — `scripts/tsconfig.json`, 130 files. Checked all along; the audits were wrong.
+- `scripts/*.ts` — the same project. Checked.
+- `supabase/functions/**/*.ts` — **nothing**. The real gap. Now `check:edge`.
+- `supabase/migrations`, `supabase/tests` — SQL; the harness is their check, and that is A's surface.
+Same shape as T-402 and T-404 one layer out, where the steps existed and did not run. Here the project existed and the tree did not belong to it.
+
+**Fix** — `check-edge-types.mjs` enumerates every `.ts` under `supabase/functions/` and runs `deno check` over them, wired into `npm run check` as `check:edge`. It enumerates rather than relying on import-following, so a module nothing imports is still checked — `send-loop.test.ts` reaches only `send-loop.ts`, which is why the specs step stayed green while ten functions went unlooked-at. The CI test step drops `--no-check`, so the tree is checked twice for different reasons. **Deliberately not changed:** `**/*.test.ts` and `supabase/` both stay excluded from the client config. Removing the first produces 435 errors, 385 of them `TS2591`, and removing the second is what RV-21 explicitly says is not the fix.
+
+**Files** — `scripts/audits/check-edge-types.mjs` (new), `supabase/functions/deno.json`, `package.json`, `.github/workflows/ci.yml`, `ci/github-actions-ci.yml`.
+
+**How to verify** — `npm run check:edge`. With Deno present: `OK [EDGE TYPES] 25 file(s) in supabase/functions type check clean`. Without it, an audible SKIP that names what was not checked.
+
+**Proof** — CI run `35348917170`: `OK [EDGE TYPES] 25 file(s) in supabase/functions type check clean (deno 2.9.7)`. **The tree typechecks. Nothing was wrong with it — it had simply never been asked.** Three runs were needed to get there and all three failures were in the check, not the code: `check:edge` sat behind the red `test:unit` in an `&&` chain and never executed (run `35345932542`); then `nodeModulesDir` was missing so `npm:@supabase/supabase-js` would not resolve (`35346441309`); then the setting was present and never read, because `deno check` ran from the repository root and Deno looks for `deno.json` from its cwd upwards (`35347901748`).
+
+**Guard** — `npm run check` fails if any file under `supabase/functions/` stops type checking. On a machine without Deno it skips loudly rather than passing quietly, because `npm run check` is the definition of done and is run by hand; a bare `deno check` there turns "I lack a tool" into "your change is broken", which is how a check gets deleted.
+
+**Recurrence risk** — Low for the enumerated trees, which now all have an owner. The open half is the reasoning habit: three audits asserted a coverage gap from an `exclude` list and none of them ran the compiler to check. Nothing stops the fourth doing the same. The `customConditions` separation in particular reads like untidiness and is not — it is recorded in `scripts/tsconfig.json`'s header, in T-027's row and here, because the obvious "cleanup" reintroduces 435 errors.
+
+---
+
 ## RC-048 — 04_members.sql pinned the academy-wide uniqueness 0071 removed, and the harness could not be run to say so          Tracker: T-011 · Sources: RV-02, FR §11, D-2, D-2a
 **Date:** 17-Sep-2026  ·  **Severity:** S3 (a spec, not a user-facing defect; but it is the spec that made `db-harness` red on the 0071 commit)  ·  **Modules:** `supabase/tests/04_members.sql`
 
