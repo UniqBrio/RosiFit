@@ -361,6 +361,38 @@ Same shape as T-402 and T-404 one layer out, where the steps existed and did not
 
 ---
 
+## RC-105 — `npm run check` was an `&&` chain, so three of its six checks had never run in CI          Tracker: T-404 · Sources: T-402, RV-03, A:F-09
+**Date:** 18-Sep-2026  ·  **Severity:** S2 (no defect escaped through it that we know of; but the colour guardrail and the Edge-config gate were both unenforced in CI for the whole life of the pipeline)  ·  **Modules:** `package.json`, `scripts/check-all.mjs`, `scripts/check-all.test.mjs`, `.github/workflows/ci.yml`, `ci/github-actions-ci.yml`
+
+**Symptom** — CI run `35345932542`, and every run before it: the gate step named *"Lint, types, contrast (2,800 pairs) and icons (71 glyphs)"* fails, and its log contains no `OK [CONTRAST]`, no `OK [ICONS]` and no `OK [FUNCTION JWT]` line anywhere. Two of the four things the step is named after did not happen.
+
+**Root cause** — `npm run check` was `lint && typecheck && test:unit && check:contrast && check:icons && check:functions`. `test:unit` sits in the middle and has been red on the 8 known RV-03 assertions since CI first executed on 11-Sep. `&&` stops at the first non-zero exit, so everything after `test:unit` never ran. Not rarely — never, not once, in the pipeline's entire history.
+
+**Why it shipped** — An `&&` chain is the obvious way to write "run all of these", and it is the wrong one for a gate. It answers *what broke first*; a gate needs to answer *what is broken*. The difference is invisible while everything passes and total once anything fails, and this repository's `check` has never fully passed. The shape was already solved correctly one directory away: `db/harness/test.sh` loops every spec file, remembers whether anything failed, prints a summary and exits non-zero at the end. Nobody carried that shape across.
+
+The second reason is that the step's **name** asserted the coverage. Reading `- name: Lint, types, contrast (2,800 pairs) and icons (71 glyphs)` in a green-looking job list is reassuring and is not evidence. The icon count in that name was stale as well: the check reports 75, not 71.
+
+**Class** — *a sequence where one failure suppresses later verdicts*. Enumerated:
+- `npm run check`'s six steps — this entry. Three were unreachable.
+- The `gate` **job**'s steps, where every step after `npm run check` is skipped by GitHub Actions for the same reason — that is **T-402**, found a day earlier, still open for `audit:all`.
+- `guard:test` chains three suites with `&&`; they pass today, so nothing is hidden, but the shape is identical and would hide the second and third the moment the first goes red. Not changed here; noted.
+- `db/harness/test.sh` — already correct, and the model for the fix.
+Two consequences worth naming rather than filing: Guardrail 2 of `CLAUDE.md` ("colour ships measured, never trusted", honoured in `scripts/check-contrast.ts`) was being honoured on developer machines and **nowhere else**; and T-038's `check:functions` was stranded from the hour it was added, so the Edge JWT posture gate never ran either.
+
+**Fix** — `scripts/check-all.mjs` runs every step, collects the failures, prints a per-step summary and exits non-zero at the end. Order still matters for feedback speed — cheap and broad first — but nothing is skipped because of anything before it. `package.json`'s `check` delegates to it. The CI step is renamed with **no counts in it**: a name carrying a number is a number nobody updates. **Deliberately not changed:** the 8 failing assertions themselves (T-022, T-023 and the copy-locks own those), and `guard:test`'s own chain.
+
+**Files** — `scripts/check-all.mjs` (new), `scripts/check-all.test.mjs` (new), `package.json`, `.github/workflows/ci.yml`, `ci/github-actions-ci.yml`.
+
+**How to verify** — `npm run check` on a tree where `test:unit` is red. Every other step must still report, and the summary must name `test:unit` as the failure while the rest read PASS.
+
+**Proof** — `scripts/check-all.test.mjs`, 5 cases, red on the parent commit. The load-bearing ones are that **all-green still exits zero** — without it, "always exit 1" would satisfy the failure cases — and that `package.json` delegates to the runner and chains no checks with `&&`, which is the assertion that pins the fix rather than the mechanism. A fifth case asserts every declared step is a real npm script, so a typo cannot quietly become a step that never runs; that case earned itself immediately, catching nothing but standing guard when `check:edge` was moved into `STEPS` during the T-027 rebase. Run on the real red tree: six PASS, `test:unit` FAIL, exit 1, and **contrast and icons executed for the first time in CI's lifetime** — icons reporting 75 glyphs against the 71 the step name had claimed.
+
+**Guard** — the spec runs in `guard:test`, which CI invokes above `npm run check`, so it cannot itself be hidden behind a red step. That placement is deliberate and is the same reasoning as T-401's adapter spec.
+
+**Recurrence risk** — Low for `npm run check`, which is now structurally incapable of it and has a spec pinning the structure. The class is not closed: T-402 still has `audit:all` stranded at the job level, and `guard:test` retains an `&&` chain that is only harmless because it is green. The deeper habit — trusting a step's name for what it covers — has no guard at all, and produced three of this session's findings on its own (T-402, T-404, and the stale counts corrected in T-035).
+
+---
+
 ## RC-048 — 04_members.sql pinned the academy-wide uniqueness 0071 removed, and the harness could not be run to say so          Tracker: T-011 · Sources: RV-02, FR §11, D-2, D-2a
 **Date:** 17-Sep-2026  ·  **Severity:** S3 (a spec, not a user-facing defect; but it is the spec that made `db-harness` red on the 0071 commit)  ·  **Modules:** `supabase/tests/04_members.sql`
 
