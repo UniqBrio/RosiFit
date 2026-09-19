@@ -48,7 +48,7 @@
     "check:functions": "node scripts/audits/check-function-jwt.mjs",
     "check:edge": "node scripts/audits/check-edge-types.mjs",
     "test:unit": "tsx --test src/**/*.test.ts",
-    "check": "npm run lint && npm run typecheck && npm run check:edge && npm run test:unit && npm run check:contrast && npm run check:icons && npm run check:functions",
+    "check": "node scripts/check-all.mjs",
     "gate": "node scripts/gate-runner.mjs",
     "theme:contrast": "npm run check:contrast",
     "audit:colors": "node scripts/audits/check-hardcoded-colors.mjs --dir src && node scripts/audits/check-hardcoded-colors.mjs --dir app --baseline .baselines/hardcoded-colors-app-baseline.txt",
@@ -60,11 +60,12 @@
     "audit:boundary": "node scripts/audits/check-data-layer-boundary.mjs",
     "audit:auditactor:test": "bash scripts/audits/check-audit-attribution.test.sh",
     "audit:all": "npm run audit:colors && npm run audit:testids && npm run audit:rules && npm run audit:columns && npm run audit:deadweight && npm run audit:auditactor && npm run audit:boundary",
-    "guard:test": "bash scripts/hooks/guard-reachability.test.sh && npm run guard:adapter",
+    "guard:test": "bash scripts/hooks/guard-reachability.test.sh && npm run guard:adapter && npm run check:selftest",
     "guard:adapter": "node scripts/hooks/adapter-worktree.test.mjs",
     "db:start": "bash db/harness/start.sh",
     "test:db": "bash db/harness/start.sh && bash db/harness/test.sh",
-    "guard:install": "ln -sf ../../scripts/hooks/pre-commit-guard.sh .git/hooks/pre-commit"
+    "guard:install": "ln -sf ../../scripts/hooks/pre-commit-guard.sh .git/hooks/pre-commit",
+    "check:selftest": "node scripts/check-all.test.mjs"
   },
   "private": true
 }
