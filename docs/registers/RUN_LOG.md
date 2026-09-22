@@ -88,6 +88,7 @@ should start by reading this table rather than by guessing which part felt slow.
 
 | ID | Action | Type | Scale | Started | Ended | Total | Stages | Gate | Verdict | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
+| R-011 | Dropdown panel shows four rows then scrolls | CHANGE | scoped | 2026-09-22 11:21 | 2026-09-22 11:22 | 26s elapsed · active: no marks | - | 46m 13s | PASS | typecheck, lint, unit at baseline; browser check by the requester |
 | R-010 | Dropdown panel shows five rows then scrolls | CHANGE | scoped | 2026-09-22 11:14 | 2026-09-22 11:15 | 39s elapsed · active: no marks | - | 46m 13s | PASS | typecheck, lint, unit at the 8-failure RV-03 baseline; browser check by the requester |
 | R-009 | Dropdown panel: always-visible scrollbar on web | CHANGE | scoped | 2026-09-22 11:09 | 2026-09-22 11:10 | 37s elapsed · active: no marks | - | 46m 13s | PASS | typecheck, lint, unit at the 8-failure RV-03 baseline; browser check deferred to the requester by instruction |
 | R-008 | Close data freshness issue: stale-while-revalidate, lifecycle revalidation, missing bus subscriptions, honest upload progress, surface failed background refresh | CHANGE | n/a | 2026-09-22 07:29 | 2026-09-22 11:01 | 3h 32m elapsed · active: no marks | - | 46m 13s | PASS | back-filled start; gate exit 2 is the documented pre-existing state (G1-G3, G6-G8); unit suite at the 8-failure RV-03 baseline, no new failures; runtime-verified in the PWA against a stubbed backend; back-filled start |

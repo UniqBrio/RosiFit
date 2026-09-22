@@ -151,14 +151,16 @@ export function DropdownField({ label, value, open, highlight, onPress, testID, 
 /**
  * HOW MANY ROWS A PANEL SHOWS BEFORE IT SCROLLS.
  *
- * Five. The panel used to be capped at a flat 340px, which is more than half
+ * Four. The panel used to be capped at a flat 340px, which is more than half
  * a phone's height and, opened from a field low on a screen, ran straight off
  * the bottom of it with the rest of the list unreachable. The cap is derived
  * from the row's own dimensions -- `DropdownItem`/`DropdownCheckItem` are
  * TAP_MIN tall plus SPACE.sm above and below, with a 4px gap between them --
- * so it stays exactly five rows if either of those ever moves.
+ * so it stays exactly four rows if either of those ever moves. It was five
+ * first, and opened from the course screen's Show filter five still ran off
+ * the bottom of the viewport, with Inactive unreachable.
  */
-const VISIBLE_ROWS = 5;
+const VISIBLE_ROWS = 4;
 const ROW_GAP = 4;
 const ROW_HEIGHT = TAP_MIN + SPACE.sm * 2;
 export const PANEL_MAX_HEIGHT = VISIBLE_ROWS * ROW_HEIGHT + (VISIBLE_ROWS - 1) * ROW_GAP;
