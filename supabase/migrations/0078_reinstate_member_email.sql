@@ -47,18 +47,31 @@
 --     else in the schema moves.
 --
 -- WHAT MAY BE REINSTATED, AND WHAT MAY NOT
---   'bounced'    -- yes. Frequently a typo the academy can correct.
---   'complained' -- yes. A judgement SES made about a message, not a statement
---                   by the member.
---   'unsubscribed' -- NEVER. The member said something deliberate. This is the
---                   same rule `ses-feedback` already enforces with
---                   `.neq('status','unsubscribed')` and that
---                   47_unsubscribe_and_ses_feedback.sql already pins; stating
---                   it here too means a screen cannot get it wrong, because the
---                   screen is not what enforces it.
---   'unknown' / 'valid' -- nothing to do. Answered as a refusal rather than
---                   silently, because a no-op that reports success is the whole
---                   defect this file exists to end.
+--   'bounced'    -- YES, and it is the only one. A bounce is the mail system
+--                   reporting that the address does not accept mail, which is
+--                   most often a typo somebody at the academy can correct.
+--   'complained' -- NO. A complaint is the member clicking "report spam" in
+--                   their own mail client. It is the member's act, not a
+--                   mistake the academy made, and clearing it would put the
+--                   academy back in front of somebody who said stop. AWS acts
+--                   on complaint rates at 0.1%, so guessing here is expensive
+--                   as well as wrong.
+--   'unsubscribed' -- NEVER, for the same reason one rung up: the member said
+--                   something deliberate. This is the rule `ses-feedback`
+--                   already enforces with `.neq('status','unsubscribed')` and
+--                   that 47_unsubscribe_and_ses_feedback.sql already pins;
+--                   stating it here too means a screen cannot get it wrong,
+--                   because the screen is not what enforces it.
+--   'unknown' / 'valid' -- nothing to clear; refused rather than no-oped.
+--
+--   NOTE ON THE NARROWING (22-Sep-2026). The first draft of this file allowed
+--   'complained' through as well, on the reading that a complaint is a
+--   judgement SES made about a message. That was a NEW POLICY invented by this
+--   bug fix, and nothing in the product asked for it: before this change the
+--   send path had no complaint rule at all (`send-followups` refuses only
+--   bounced and unsubscribed), so a complained address was simply SENDABLE. It
+--   is suppressed now -- that part is the conservative half and stays -- but it
+--   is not the academy's to lift.
 --
 -- WHAT IT RESETS TO
 --   'unknown', not 'valid'. 'unknown' is what `create_member` (0016) and
@@ -74,9 +87,11 @@
 --   time. It cannot fail on live data.
 --
 -- REHEARSAL
---   supabase/tests/57_reinstate_member_email.sql -- a bounce is cleared, an
---   opt-out is refused in words, a soft-deleted row is refused, the audit row
---   names the acting user rather than System, and `anon` cannot execute it.
+--   supabase/tests/57_reinstate_member_email.sql -- a bounce is cleared; an
+--   opt-out AND a complaint are each refused in their own words; an address
+--   that is not suppressed is refused rather than no-oped; a soft-deleted row
+--   is refused; the audit row names the acting user rather than System; and
+--   `anon` cannot execute it.
 
 -- ---------------------------------------------------------------- the function
 create or replace function public.reinstate_member_email(
@@ -114,16 +129,29 @@ begin
       using errcode = 'P0002';
   end if;
 
-  -- THE ONE REFUSAL THIS FUNCTION EXISTS TO MAKE. The member opted out; the
-  -- academy may not put them back. Worded, because the operator reads it.
+  -- THE REFUSALS THIS FUNCTION EXISTS TO MAKE, and there are two of them.
+  --
+  -- Both are the MEMBER'S OWN ACT, which is the line this function draws. An
+  -- opt-out is a click on the unsubscribe link; a complaint is a click on
+  -- "report spam" in the member's own mail client. Neither is a mistake the
+  -- academy made and neither is the academy's to undo -- only a BOUNCE is,
+  -- because a bounce is the mail system saying the address does not accept
+  -- mail, which is usually a typo somebody here can correct.
+  --
+  -- Worded separately, because they are different facts and the operator reads
+  -- the sentence.
   if v_row.status = 'unsubscribed' then
     raise exception 'the member unsubscribed from this address, and only the member can undo that'
+      using errcode = '55000';
+  end if;
+  if v_row.status = 'complained' then
+    raise exception 'that address reported a message as spam, so only the member can ask to be written to again'
       using errcode = '55000';
   end if;
 
   -- Nothing to clear. Said rather than swallowed -- a call that reports success
   -- having changed nothing is the defect this whole change is about.
-  if v_row.status not in ('bounced', 'complained') then
+  if v_row.status <> 'bounced' then
     raise exception 'that address is not suppressed, so there is nothing to reinstate'
       using errcode = '55000';
   end if;
@@ -145,7 +173,7 @@ begin
 end $$;
 
 comment on function public.reinstate_member_email(uuid) is
-  'Clears a bounce or a spam complaint on one address, back to ''unknown'' -- the only route back a suppression has ever had (0078). REFUSES ''unsubscribed'': the member said something deliberate and only the member can undo it, the same rule ses-feedback enforces with .neq(''status'',''unsubscribed''). Deliberately NOT a parameter on update_member: that RPC is sent the whole address list on every save, so folding this in would un-suppress an address as a side effect of an unrelated edit -- and update_member is one of the fifteen bodies T-120 measured as divergent on production, which a restatement would revert.';
+  'Clears a BOUNCE on one address, back to ''unknown'' -- the only route back a suppression has ever had (0078). A bounce is the mail system reporting the address does not accept mail, usually a typo. REFUSES ''unsubscribed'' AND ''complained'', both of which are the member''s own act and only the member''s to undo: the member said something deliberate and only the member can undo it, the same rule ses-feedback enforces with .neq(''status'',''unsubscribed''). Deliberately NOT a parameter on update_member: that RPC is sent the whole address list on every save, so folding this in would un-suppress an address as a side effect of an unrelated edit -- and update_member is one of the fifteen bodies T-120 measured as divergent on production, which a restatement would revert.';
 
 -- ------------------------------------------------------------------ the grants
 -- RC-042 and RC-052 are THIS grant, shipped twice: a new SECURITY DEFINER

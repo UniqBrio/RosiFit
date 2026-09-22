@@ -1,3 +1,99 @@
+## COMPLETION RUN — RC-106 taken through to the DB/apply boundary, 22-Sep-2026
+
+A second pass over the shipped fix (commit `4557595`): review the migration, correct the one
+policy it got wrong, re-verify, and take it as far towards production as this environment
+allows. What follows is only what was actually observed in this run.
+
+### The correction: `complained` is no longer reinstatable
+
+The shipped `0078` allowed `complained -> unknown`. That was a policy INVENTED BY THE BUG FIX
+and nothing in the product had asked for it — before this change `send-followups` had no
+complaint rule at all (`index.ts:233-234` refuses only bounced and unsubscribed), so a
+complained address was simply **sendable**. The line now drawn is whose act the suppression
+was: a BOUNCE is the mail system reporting a dead address (the academy's to correct), while a
+COMPLAINT and an OPT-OUT are both the member's own click (not the academy's to undo).
+
+`complained` stays SUPPRESSED — that half is the conservative fix and is unchanged. Only the
+lifting was withdrawn. Narrowed in `0078`, `emailStatus.ts` (`suppressionLiftable`), and the
+two specs written alongside them.
+
+MUTATION-TESTED IN BOTH DIRECTIONS, because a narrowing that cannot be observed failing is not
+a rule:
+  - restore `|| status === 'complained'` to `suppressionLiftable` → **4 assertions fire**
+    across both JS specs;
+  - let `emailUsable` accept `'bounced'` (the original defect, re-injected) → **5 fire**,
+    including `THE ORIGINAL BUG: the whole reported journey, step by step`.
+  Both reverted and re-verified green afterwards.
+
+FAIL-FIRST: src/data/memberEmailJourney.test.ts - "# fail 5" of 9, incl. "THE ORIGINAL BUG: the whole reported journey, step by step" - injected `|| e.status === 'bounced'` into `emailUsable` (the original defect, put back). The other four that fired were
+"B - a BOUNCED address stays visible, is not sendable, and offers Reinstate", "B - after an
+explicit Reinstate, the same member becomes reachable", "the four states are distinguishable
+from one another, in both directions", "an unrelated save can never be what un-suppresses an
+address", and "THE ORIGINAL BUG: the whole reported journey, step by step". Injection reverted
+and the file re-run green (9/9). A second injection - restoring `|| status === 'complained'`
+to `suppressionLiftable` - fired 2 more of its cases ("C(ii)" and the four-states table), and
+2 in memberEmailStatus.test.ts, for 4 across both specs.
+
+FAIL-FIRST: supabase/tests/57_reinstate_member_email.sql - "ERROR: FAIL a spam complaint is REFUSED, in its own words -- it is the member's click, not the academy's mistake -- statement was ACCEPTED and should not have been" - the pre-narrowing function injected back into 0078 (complaint refusal removed, guard widened to `not in ('bounced','complained')`) and the harness replayed from scratch.
+
+HOW THAT EVIDENCE CAME TO BE TAKEN, recorded because the process nearly failed here. The
+migration was narrowed BEFORE the spec was rewritten, so that ordering produced no observed
+failure at all - and the first draft of this summary CLAIMED one anyway ("run against the
+pre-narrowing 0078 still in the tree"). It had not been. The injection above was then actually
+performed to make the claim true. A fail-first line nobody watched fail is the exact thing
+these lines exist to prevent, and writing one is worse than writing none.
+
+Injection reverted, harness replayed again, 16/16 PASS. The
+soft-delete case was moved onto its own bounced member in the same edit - hung on the
+complained address it would now have passed for the WRONG REASON, and a test that cannot fail
+for the reason it names is not a test.
+
+### New: the journey spec
+
+`src/data/memberEmailJourney.test.ts`, 9 cases. Walks ONE member through all four address
+states and the single legal transition, then replays the reported journey step by step. It
+drives `flagged` + `recipientSplit` — the send's own recipient split, not a copy of it
+(CP-011) — so "the send recognises it" is asserted against the real decision, not a stand-in.
+
+WHAT IT DOES NOT PROVE, stated rather than implied: it renders no screen and calls no
+database. `src/data/repository.ts` cannot be imported under `node --test` at all (it reaches
+react-native transitively, which esbuild will not transform), which is why no spec in this
+project imports it. The RPC's own behaviour is proven separately against a real Postgres.
+
+### Measured this run
+
+| Check | Result |
+|---|---|
+| `supabase/tests/57_reinstate_member_email.sql` on a from-scratch replay | **16/16 PASS** |
+| `db/harness/reset.sh` (every migration, 0078 included) | **exit 0** |
+| `supabase/tests/47_unsubscribe_and_ses_feedback.sql` (opt-out protection) | **17/17 PASS**, incl. "a permanent bounce does not overwrite a member's own opt-out" |
+| targeted JS (status, journey, grants, audit coverage, audit wording, unsubscribe token, followup) | **80/80 PASS** |
+| `npx tsc --noEmit -p tsconfig.json` | **0 errors** |
+| `npm run test:unit` | **1865 pass / 8 fail** vs clean-tree baseline **1842 / 8** — the same eight, name for name |
+| `npm run gate` | **FAIL — 7 pass / 6 fail**, step for step IDENTICAL to the clean-tree baseline |
+
+The six gate failures are all infrastructure and all pre-existing: G1/G2/G3 cannot find
+`design/tokens.json`, G6 carries one pre-existing lint warning, G7 is the eight unit failures
+above, and G8 fails because **`test:functional` is not a script in `package.json` at all**.
+None was introduced here and none is this defect's.
+
+### NOT DONE, and it is the honest headline
+
+**The migration has NOT been applied to production.** Not deferred by choice — blocked by the
+environment, verified three ways: no credentials anywhere (`env`, `~/.supabase`, `~/.netrc`,
+no `.env`), `supabase projects list` → `LegacyPlatformAuthRequiredError`, and the agent proxy
+rejecting the host outright: `connect_rejected  lhpzhkzbnquwjljmbylo.supabase.co:443`. The
+production Supabase project was never contacted in this run, for reading or for writing.
+
+Consequently **no production verification was performed**, and none is claimed. The apply
+commands, the safety argument, the post-apply read-only checks and the standing
+`update_member` body read are written up in `supabase/APPLY_0078.md` for whoever holds access.
+
+The full `bash db/harness/test.sh` again did not complete — it replays every migration once
+per spec file, ~45 times. The targeted replay above is what was observed.
+
+---
+
 ## FAIL-FIRST — a suppressed address is invisible (RC-106), 22-Sep-2026
 
 Spec: `src/data/memberEmailStatus.test.ts`, 22 cases. Run against the PRE-FIX tree first; the
@@ -54,6 +150,75 @@ them. Every figure below was taken in this session, clean tree vs. changed tree:
   T-120's production drift pinned as a test, and the direct reason this change adds a function
   rather than restating that body. What is NOT claimed: a completed full-suite run on the
   changed tree. The targeted replay above is what was actually observed.
+
+---
+
+## Gate run - 2026-09-22 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 29.1s total - slowest G7 Unit + pure specs (16.2s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (70ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (49ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (50ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (68ms)
+- **G5 Types** - PASS (6.2s)
+- **G6 Lint** - FAIL (5.9s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (16.2s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (126ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (59ms)
+- **G10 Backward compatibility (fixtures)** - PASS (121ms)
+- **G11 Wide tables are configurable** - PASS (56ms)
+- **G12 Installable as an application** - PASS (74ms)
+- **G13 Approved design still being built** - PASS (49ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

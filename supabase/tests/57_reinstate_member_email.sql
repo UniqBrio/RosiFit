@@ -86,16 +86,24 @@ select t.eq((select count(*)::int from public.member_emails
               where email = 'bounced.one@example.com'), 1,
   'exactly one row -- reinstating did not insert a second copy of the address');
 
--- ============================================ a complaint is cleared too
-begin;
+-- ======================================= A COMPLAINT IS REFUSED TOO
+-- NARROWED 22-Sep-2026. The first draft of 0078 cleared a complaint as well,
+-- on the reading that it is a judgement SES made about a message. It is not:
+-- a complaint is the member clicking "report spam" in their own mail client,
+-- which is the member's act exactly as an opt-out is. Nothing in the product
+-- ever asked for complaint reinstatement -- before this change `send-followups`
+-- had no complaint rule at all -- so allowing it would have been a new policy
+-- invented by a bug fix. It stays SUPPRESSED (the conservative half) and is
+-- not the academy's to lift.
+select t.rejects($$
   set local role authenticated;
   set local request.jwt.claim.sub = 'eeeeeeee-0000-0000-0000-000000000001';
   select public.reinstate_member_email(
     (select id from public.member_emails where email = 'complained.one@example.com'));
-commit;
+$$, 'a spam complaint is REFUSED, in its own words -- it is the member''s click, not the academy''s mistake', 'only the member can ask to be written to again');
 
 select t.eq((select status from public.member_emails where email = 'complained.one@example.com'),
-  'unknown', 'a spam complaint is a judgement about a message, not a statement by the member, so it clears');
+  'complained', 'and the refusal changed nothing');
 
 -- ================================================ AN OPT-OUT NEVER CLEARS
 -- The one refusal this function exists to make.
@@ -120,23 +128,36 @@ select t.rejects($$
 $$, 'a healthy address is refused rather than quietly no-oped', 'not suppressed, so there is nothing to reinstate');
 
 -- ============================================== a removed address is not one
+-- On its OWN member, and bounced, so the only reason it can be refused is that
+-- it has been removed. Hung on the complained address before the narrowing
+-- above, which would now pass for the wrong reason -- a test that cannot fail
+-- for the reason it names is not a test.
 begin;
-  update public.member_emails set deleted_at = now()
-   where email = 'complained.one@example.com';
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'eeeeeeee-0000-0000-0000-000000000001';
+  select public.create_member('Removed Address Member',
+    (select o.id from public.course_offerings o join public.courses c on c.id = o.course_id
+      where c.name = 'Reinstate Flow'),
+    current_date - 30, array[]::text[], array['removed.one@example.com']::text[], null);
+commit;
+begin;
+  update public.member_emails set status = 'bounced', deleted_at = now()
+   where email = 'removed.one@example.com';
 commit;
 
 select t.rejects($$
   set local role authenticated;
   set local request.jwt.claim.sub = 'eeeeeeee-0000-0000-0000-000000000001';
   select public.reinstate_member_email(
-    (select id from public.member_emails where email = 'complained.one@example.com'));
+    (select id from public.member_emails where email = 'removed.one@example.com'));
 $$, 'a soft-deleted address cannot be reinstated -- it is not on the record any more', 'not on the member');
 
 -- ============================================================ the audit row
 -- CP-2: the row names the acting user, never System or Anonymous.
 select t.eq((select count(*)::int from public.audit_logs
-              where action = 'member_email.reinstated'), 2,
-  'both reinstatements are audited as the ACT, beside the column trigger''s own row');
+              where action = 'member_email.reinstated'), 1,
+  'the ONE reinstatement is audited as the ACT, beside the column trigger''s own row -- '
+  'and the three refusals wrote no audit row at all, because nothing happened');
 
 select t.eq((select actor_app_user_id from public.audit_logs
               where action = 'member_email.reinstated' order by id desc limit 1),

@@ -233,13 +233,28 @@ test('the member card no longer claims there is no address when there is one', (
     + 'again — two copies of the wording is how the card and the form drift apart.');
 });
 
-test('a bounce is liftable and an opt-out is not — the rule, in one place', () => {
+test('ONLY a bounce is liftable — the rule, in one place', () => {
+  // The line is whose act the suppression was. A bounce is the mail system
+  // reporting a dead address, usually a typo the academy can correct. A
+  // complaint and an opt-out are both the MEMBER'S OWN CLICK, and clearing
+  // either would put the academy back in front of somebody who said stop.
   assert.equal(suppressionLiftable('bounced'), true);
-  assert.equal(suppressionLiftable('complained'), true);
+  assert.equal(suppressionLiftable('complained'), false,
+    'a complaint is the member clicking "report spam"; it is not the academy\'s to lift. '
+    + 'This was widened by mistake in the first draft of this change and narrowed on review.');
   assert.equal(suppressionLiftable('unsubscribed'), false,
     'the member said something deliberate; the app offers no way to undo it.');
   assert.equal(suppressionLiftable('unknown'), false);
   assert.equal(suppressionLiftable(undefined), false);
+});
+
+test('a complaint stays SUPPRESSED even though it cannot be lifted', () => {
+  // The two halves are independent and both matter: not sendable (the
+  // conservative fix, which stays) and not reinstatable (the narrowing).
+  const m = member([{ address: 'a@b.com', primary: true, status: 'complained' }]);
+  assert.equal(mock.hasEmailOnFile(m), true, 'the address is still on the record and still shown');
+  assert.equal(followup.isReachable(m), false, 'and nothing may be sent to it');
+  assert.equal(suppressionLiftable('complained'), false, 'and no screen may offer to clear it');
 });
 
 test('the card copy is about the member, never gendered', () => {

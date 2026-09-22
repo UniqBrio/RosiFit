@@ -57,18 +57,29 @@ export const emailUsable = (e: { status?: EmailStatus }): boolean =>
 /**
  * Whether a suppression is one the academy may lift.
  *
- * A bounce is frequently a typo the academy can fix, and a complaint is a
- * judgement SES made about a message rather than a statement by the member --
- * both are reinstatable by an operator who knows the address is good.
+ * A BOUNCE AND NOTHING ELSE. The line is whose act the suppression was:
  *
- * AN OPT-OUT IS NOT. The member said something deliberate and the app offers no
- * way to undo it: the same rule `ses-feedback` already enforces with
- * `.neq('status','unsubscribed')` and `47_unsubscribe_and_ses_feedback.sql`
- * already pins. `reinstate_member_email` (0078) refuses it in the database too,
- * so this is a screen deciding what to OFFER, never the thing that enforces it.
+ *   - a BOUNCE is the mail system reporting that the address does not accept
+ *     mail, which is most often a typo somebody at the academy can correct, so
+ *     it is the academy's to lift;
+ *   - a COMPLAINT is the member clicking "report spam" in their own mail
+ *     client, and an OPT-OUT is the member clicking the unsubscribe link.
+ *     Neither is a mistake the academy made, and clearing either would put the
+ *     academy back in front of somebody who said stop.
+ *
+ * NARROWED 22-Sep-2026. The first draft of this module let a complaint be
+ * lifted too. That was a policy this bug fix INVENTED, and nothing in the
+ * product asked for it -- before this change `send-followups` had no complaint
+ * rule at all (it refuses only bounced and unsubscribed), so a complained
+ * address was simply sendable. It is suppressed now, which is the conservative
+ * half and stays; it is not the academy's to lift.
+ *
+ * `reinstate_member_email` (0078) refuses both in the database, each in its own
+ * words, so this is a screen deciding what to OFFER and never the thing that
+ * enforces it.
  */
 export const suppressionLiftable = (status?: EmailStatus): boolean =>
-  status === 'bounced' || status === 'complained';
+  status === 'bounced';
 
 /**
  * The word for a state, for a screen that must name it.
