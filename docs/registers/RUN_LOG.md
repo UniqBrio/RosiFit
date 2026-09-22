@@ -88,6 +88,7 @@ should start by reading this table rather than by guessing which part felt slow.
 
 | ID | Action | Type | Scale | Started | Ended | Total | Stages | Gate | Verdict | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
+| R-015 | Attendance import multiplies a namesake: ambiguous rows auto-added as new members | BUG | micro | 2026-09-22 19:32 | 2026-09-22 19:41 | 9m elapsed · active: no marks | - | 27.8s | FAIL | RC-107 import decisions: change-scoped checks green (types both programs, lint app+src, spec 18/18, unit 1860 pass / 8 known); gate FAIL on pre-existing G1-G3 (design/tokens.json absent), G6 (scripts/conformance.mjs warning), G7 (known 8), G8 (no environment) |
 | R-014 | aplly to db | BUG | scoped | 2026-09-22 20:03 | 2026-09-22 20:03 | 0s active · 0s elapsed | verify 0s | 26.3s | FAIL | - |
 | R-013 | take the suppressed-email fix through the remaining DB/application completion steps | BUG | scoped | 2026-09-22 19:44 | 2026-09-22 19:45 | 4s active · 4s elapsed | verify 0s | 29.1s | FAIL | - |
 | R-012 | What is the root cause. I clicked on Edit button and then added email and then saved but its not reflecting why? | BUG | scoped | 2026-09-22 17:45 | 2026-09-22 18:38 | 23m active · 53m elapsed | ground 24m · build 26m | 28.4s | FAIL | - |

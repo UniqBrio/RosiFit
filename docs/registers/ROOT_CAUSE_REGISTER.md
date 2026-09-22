@@ -454,6 +454,29 @@ Two consequences worth naming rather than filing: Guardrail 2 of `CLAUDE.md` ("c
 
 ---
 
+## RC-107 — the upload filed an `ambiguous` name as somebody new, so one person became three members          Tracker: — · Sources: requests/2026-09-22-import-multiplies-a-namesake.md
+**Date:** 22-Sep-2026  ·  **Severity:** S2  ·  **Modules:** `app/upload.tsx`, `src/data/importDecisions.ts`
+
+**Numbering note** — written as RC-106 on its branch; main took RC-106 for the suppressed-address fix first, so this is RC-107. The branch's commit messages and PR title still say RC-106 for that reason.
+
+**Symptom** — "What is this issue is it a logic missed issue or technical issue. Same display name appearing thrice?" — the course register's No email section showed three live cards for "vishnu priya", each keyed by its own member id, each with its own missed streak, the oldest the longest.
+
+**Root cause** — When the row-by-row review was removed, `autoDecisions` in `app/upload.tsx` filed every preview row that was not a clean match as `add_as_new`, including `ambiguous` — the one kind whose meaning is "two or more members of this course already hold this name". So a second namesake became a third on the next upload, and every later file naming that person added one more, with the present mark landing on the newest record and the older ones swept absent. The fixtures had stated the rule since the review screen existed (`src/data/mock.ts`, `MATCH_OUTCOMES.ambiguous`: "Pick one explicitly — the import will not guess"); the auto-decision guessed. Not a rendering fault: the register drew three records faithfully.
+
+**Fix** — The decision moved to `src/data/importDecisions.ts`, where a spec can run it. An `ambiguous` row is now HELD: the decision is `skip`, which `commit_csv_import` audits as skipped (0024), so nothing is created and nobody is marked present on a guess. The result screen names the held names (`upload-ambiguous`) with the two taps that resolve them — fold the duplicates with "Add display name to existing member", then upload the file again — and the batch row carries the same fact in one sentence. `unmatched` and `possible` rows are unchanged: still somebody new, still acknowledged (C-79, C-80). The `no_email` count no longer includes ambiguous rows, because a held row lands nowhere.
+
+**Files** — `src/data/importDecisions.ts` (new), `src/data/importDecisions.test.ts` (new), `app/upload.tsx`, `requests/2026-09-22-import-multiplies-a-namesake.md`.
+
+**How to verify** — `npx tsx --test src/data/importDecisions.test.ts`: an `ambiguous` row with two candidates must come back `skip`, never `add_as_new`; the screen must import `autoDecisions` from the module and keep no private copy. On a live project: two members named alike in one course, upload a file naming that person — the member count must not move, the result screen must show the held-back note, and the audit log must carry `csv_import.row_skipped` for the row.
+
+**Recurrence risk** — Two sites, both closed in this change: the single-file commit and the batch commit in `app/upload.tsx` both call `autoDecisions`, and both counted `c.ambiguous` as landed (search: `grep -n "autoDecisions\|c\.ambiguous" app/upload.tsx`). The class remains open one layer down: `commit_csv_import` accepts `add_as_new` on an `ambiguous` row from any client, and a server-side refusal belongs in a migration — not written here because production's copy of that function already differs from the harness (T-120). The three existing "vishnu priya" records are reported, not touched. How the FIRST pair was born is not established: the pre-12-Sep 1,000-row cap (RC-043), a namesake at another branch (`splitByCourse` scopes by offering while `is_in_course` scopes by course, and the 0071 comment says they agree), or two genuine people.
+
+**Prevention** — `rung: src/data/importDecisions.test.ts` — the decision, the other kinds, the screen's wiring and the operator's words, 18 assertions, 11 observed failing against the pre-fix behaviour.
+
+**Process check** — Yes. The rule was written in the fixtures and the review screen, and the change that removed the review ("no stop between the rows") re-implemented the decisions without reading it. A test that runs each kind through the decision would have caught it on that day; it exists now. No framework change: the gap is the missing spec, not the process that asks for one.
+
+---
+
 ## RC-052 — a new SECURITY DEFINER function shipped executable by `anon`, for the second time          Tracker: T-042 · Sources: RC-042 (the first time), `src/data/migrationGrants.test.ts:102`, D-12a
 **Date:** 18-Sep-2026  ·  **Severity:** S1 by exposure class, S3 by outcome — nothing was read  ·  **Modules:** `supabase/migrations/0075_member_period_metrics_page.sql`, `supabase/migrations/0077_page_fn_revoke_anon.sql`
 
