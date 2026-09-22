@@ -1,118 +1,88 @@
-# Applying 0078 — `reinstate_member_email`
+# 0078 — `reinstate_member_email` · APPLIED TO PRODUCTION
 
-> **Status: NOT APPLIED to production.** Prepared and rehearsed on 22-Sep-2026; the
-> apply itself could not be performed from the session that wrote it. Everything
-> below is what that session verified, plus the exact commands for whoever has
-> access.
+> **Status: APPLIED, 22-Sep-2026 19:57 UTC.** Project `lhpzhkzbnquwjljmbylo` ("Rosifit"),
+> ap-southeast-1, Postgres 17.6.1.166, `ACTIVE_HEALTHY`. Applied through the Supabase MCP
+> connector's `apply_migration`, which recorded the ledger row itself.
 
-## Why it was not applied here
+Ledger row: **`20260922195737` / `reinstate_member_email`** — a timestamp version, not the
+literal `0078`, which is what SETUP.md requires (two local files sharing a number has bitten
+this project before). `supabase db push` was NOT used and must not be: SETUP.md:75 records that
+the local ledger has no overlap with the remote one, so a push would try to replay from `0001`.
 
-Three independent blocks, each verified rather than assumed:
+## Verified on production AFTER applying
 
 | Check | Result |
 |---|---|
-| `env \| grep -icE "supabase\|service_role\|pgpassword\|database_url"` | `0` |
-| `~/.supabase` auth, `~/.netrc`, `.env` | none — only `.env.example` |
-| `npx supabase projects list` | `LegacyPlatformAuthRequiredError — Access token not provided` |
-| `npx supabase migration list --linked` | `LegacyProjectNotLinkedError — Cannot find project ref` |
-| `curl https://lhpzhkzbnquwjljmbylo.supabase.co/rest/v1/` | `HTTP 000` |
-| agent proxy relay log | `connect_rejected  lhpzhkzbnquwjljmbylo.supabase.co:443` |
+| function exists | **1** |
+| `has_function_privilege('anon', …, 'execute')` | **false** |
+| `has_function_privilege('authenticated', …, 'execute')` | **true** |
+| `prosecdef` (SECURITY DEFINER) | **true** |
+| deployed body refuses `'unsubscribed'` | **true** |
+| deployed body refuses `'complained'` | **true** |
+| deployed body clears only `<> 'bounced'` | **true** |
+| deployed body writes the audit row | **true** |
+| `update_member` still present, bytes | **1 / 9958 — UNCHANGED by this apply** |
 
-The last line is the decisive one: the execution environment's **network policy
-rejects the production host outright**, so this is not a credentials problem that
-a token would solve from that container.
+The `anon` line is the one that has gone wrong twice before (RC-042, RC-052). It is false.
 
-## DO NOT use `supabase db push`
+### Live gate test, run without touching a member's record
 
-`SETUP.md` lines 75–80 are binding here and the reason is measured, not theoretical:
+`reinstate_member_email` was called on production twice through a `pg_temp` probe: once with a
+uuid matching no row at all, and once with a REAL unsubscribed row id. Both returned:
 
-> **The local ledger mapping is broken and `supabase db push` is DANGEROUS here.**
-> `supabase migration list --linked` shows 46 local files and 37 remote timestamp
-> versions with **no overlap at all** — every local reads as unapplied. A `db push`
-> would try to replay the schema from `0001`.
+    REFUSED: only a signed-in, active user can reinstate an address [42501]
 
-Apply through `supabase db query --linked -f <file>` or the dashboard SQL editor,
-and add the ledger row by hand — the same route `0045` and `0036`/`0038` took.
+The MCP connection is not a signed-in app user, so the auth gate fires first and the status
+checks are never reached — which is why the real row was safe to name. Confirmed afterwards:
+that row is still `unsubscribed`, and the live counts are unchanged at 6 bounced / 6
+unsubscribed. `audit_logs` holds **0** `member_email.reinstated` rows, as it should — nothing
+has been reinstated yet.
 
-## The apply
+The status refusals themselves are proven by execution against a real Postgres in
+`supabase/tests/57_reinstate_member_email.sql` (16/16 on a from-scratch replay of every
+migration), against a body identical to the one deployed.
 
-```bash
-# 1. Link (project ref from SETUP.md:354)
-supabase link --project-ref lhpzhkzbnquwjljmbylo
+## What production actually holds
 
-# 2. READ FIRST — confirm the function does not already exist.
-#    If it does, read its body rather than re-running this blindly.
-supabase db query --linked \
-  "select proname, pg_get_functiondef(p.oid)
-     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname='public' and p.proname='reinstate_member_email';"
+    unknown       1223
+    valid            9
+    unsubscribed     6
+    bounced          6
+    complained       0
 
-# 3. Apply. One CREATE FUNCTION, one COMMENT, three grant/revoke.
-supabase db query --linked -f supabase/migrations/0078_reinstate_member_email.sql
+**Twelve live members** were showing "No usable email" over an address that exists. Six of them
+(the bounced) become fixable from the Edit form the moment the app deploys. The other six
+unsubscribed, and are correctly not fixable — the app will now say so instead of pretending
+there is no address.
 
-# 4. Ledger row BY HAND, timestamp version (not the literal 0078 — two local
-#    files sharing a number has bitten this project before; see SETUP.md).
-supabase db query --linked \
-  "insert into supabase_migrations.schema_migrations (version, name)
-   values ('20260922000000', 'reinstate_member_email');"
-```
+## Rollback
 
-## Why this is safe to apply
+    drop function public.reinstate_member_email(uuid);
+    delete from supabase_migrations.schema_migrations where version = '20260922195737';
 
-- **Additive only.** 6 statements: 1 `create function`, 1 `comment`, 3 grant/revoke.
-  No `alter`, `drop`, `insert`, `delete`, `truncate`. No column, constraint or index.
-- **Not data-dependent.** Nothing is read from or written to any row at apply time.
-  The one `update public.member_emails` is inside the function body and runs only
-  when an operator presses Reinstate. It therefore **cannot fail on live data**, which
-  is the specific hazard CLAUDE.md warns about for a migration that builds an index or
-  adds a constraint over existing rows.
-- **`update_member` is NOT restated.** It appears in this file only inside comment
-  text. That is deliberate: T-120 measured its production body at 9,625 bytes against
-  11,213 in the harness replay, and `53_harness_body_matches_production.sql` is red on
-  it. Restating a divergent body would push this tree over production — RC-047's
-  mechanism, T-125's warning.
-- **Reversible in one statement:** `drop function public.reinstate_member_email(uuid);`
-  Nothing else to undo — no data is migrated and no other object is touched.
+Nothing else to undo: no data was migrated and no other object was touched.
 
-## Verify after applying (read-only first)
+## The outstanding read — DONE, and it confirms the diagnosis
+
+`update_member`'s production body was read. Its email loop is exactly what RC-106 described:
 
 ```sql
--- 1. It exists, exactly once.
-select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
- where n.nspname='public' and p.proname='reinstate_member_email';          -- expect 1
-
--- 2. Grants match the security model (RC-042 and RC-052 are this grant, twice).
-select has_function_privilege('anon','public.reinstate_member_email(uuid)','execute'),
-       has_function_privilege('authenticated','public.reinstate_member_email(uuid)','execute');
-                                                                           -- expect f, t
-
--- 3. The body is the one in this repo.
-select pg_get_functiondef(p.oid) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
- where n.nspname='public' and p.proname='reinstate_member_email';
-
--- 4. What the academy actually holds — this is also the read that settles
---    whether the reported member's address was bounced or unsubscribed.
-select status, count(*) from public.member_emails
- where deleted_at is null group by status order by 2 desc;
+if exists (select 1 from public.member_emails
+            where member_id = p_member_id and deleted_at is null
+              and lower(email::text) = v_email) then
+  update public.member_emails set is_primary = v_first, updated_at = now()
+   where member_id = p_member_id and deleted_at is null
+     and lower(email::text) = v_email;        -- status is NOT in this SET
+else
+  insert into public.member_emails (member_id, email, is_primary, status, source, created_by)
+  values (p_member_id, v_email, v_first, 'unknown', 'member_form', v_actor);
+end if;
 ```
 
-**Do not test the refusals on a real member's row.** The behaviour is already proven
-against a real Postgres by `supabase/tests/57_reinstate_member_email.sql` (16/16 on a
-full from-scratch replay). If a live check is wanted, create a throwaway member through
-the app, suppress its address by hand, exercise it, then delete the member.
+Re-entering an address that is already live sets `is_primary` and `updated_at` and nothing else.
+**Piece 3 of RC-106 is confirmed against production rather than derived from source**, and the
+T-400 caveat on it is discharged.
 
-## Still open, and it is a READ not a write
-
-`update_member`'s production body has never been read. Piece 3 of RC-106's root cause —
-that its `exists` branch sets `is_primary` and never `status` — is derived from
-`0027_update_member.sql` in this repository, and T-400 says plainly that "the function
-does X, because the source says so" is unfounded for the fifteen divergent bodies.
-
-```sql
-select pg_get_functiondef(p.oid) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
- where n.nspname='public' and p.proname='update_member';
-```
-
-It changes **no line of code** — 0078 is additive precisely so that nothing depends on
-the answer. It changes whether RC-106's third paragraph reads as *confirmed* or as
-*the best reading of a body nobody has looked at*.
+The body remains divergent from the repo — **9,958 bytes live against 11,213 in the harness
+replay** (T-120 measured 9,625 on 18-Sep, so it has also moved since that reading). That
+divergence is untouched by this migration and is still T-120/T-400's to resolve.

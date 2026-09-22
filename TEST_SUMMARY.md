@@ -1,3 +1,133 @@
+## PRODUCTION APPLY — 0078, 22-Sep-2026 19:57 UTC
+
+The Supabase connector was completed mid-session, so the migration this repository had prepared
+was applied and verified against the live project rather than left at the boundary. Everything
+below was observed against `lhpzhkzbnquwjljmbylo` ("Rosifit", ap-southeast-1, Postgres
+17.6.1.166, ACTIVE_HEALTHY). No member's email address is reproduced here: production PII does
+not belong in a repository, and an earlier draft of this entry was refused for exactly that.
+
+APPLIED: `apply_migration` returned success. Ledger row **`20260922195737` /
+`reinstate_member_email`**, recorded by the tool itself — a timestamp version, not the literal
+`0078`, which is what SETUP.md requires. `supabase db push` was NOT used (SETUP.md:75: the local
+ledger has no overlap with the remote one, so a push would replay from `0001`).
+
+VERIFIED AFTER APPLYING, by querying production rather than trusting the success flag:
+  function exists = 1 · `anon` execute = **false** · `authenticated` execute = **true** ·
+  SECURITY DEFINER = true · deployed body refuses 'unsubscribed' = true · refuses 'complained'
+  = true · clears only `<> 'bounced'` = true · writes the audit row = true ·
+  **`update_member` still present and still 9958 bytes — unchanged by this apply.**
+
+LIVE GATE TEST, without touching a member's record. The function was called on production
+through a `pg_temp` probe with (a) a uuid matching no row and (b) a real suppressed row id.
+Both returned verbatim:
+
+    REFUSED: only a signed-in, active user can reinstate an address [42501]
+
+The connector is not a signed-in app user, so the auth gate fires before the status checks —
+which is why probing a real row was safe. Re-read afterwards: that row's status is unchanged,
+the counts are unchanged, and `audit_logs` holds **0** `member_email.reinstated` rows. The
+status refusals themselves remain proven by EXECUTION in 57_reinstate_member_email.sql (16/16),
+against a body identical to the deployed one.
+
+### THE OUTSTANDING READ IS DONE, and it confirms the diagnosis
+
+`update_member`'s live body was read. Its `exists` branch is
+`set is_primary = v_first, updated_at = now()` — `status` is not in that SET. Piece 3 of RC-106
+is confirmed against production rather than derived from source; T-400's caveat on it is
+discharged. The body is still divergent from the repo (9,958 live vs 11,213 replayed), which is
+untouched here and remains T-120/T-400's.
+
+### A CORRECTION TO THE DIAGNOSIS, about the reported member specifically
+
+The defect is real and confirmed. **The reported member's own case was not the one diagnosed.**
+Production holds two rows for her: the original address, `unsubscribed`, soft-deleted
+2026-09-22 16:32:59 UTC; and a second, different address, `unknown`, primary and live, created
+at that same moment. She was given a DIFFERENT address, not the same one retyped — so it fell
+outside `v_wanted`, the opt-out was soft-deleted and the new address inserted cleanly. That
+save WORKED, about an hour before the question was asked. The screenshot was the state before
+it: one unsubscribed address, filtered out by `repository.ts:302`, drawn as "No usable email".
+Pieces 1 and 2 exactly; piece 3 was never reached for her.
+
+MEASURED IMPACT, rather than inferred: 1,223 `unknown`, 9 `valid`, 6 `unsubscribed`,
+6 `bounced`, 0 `complained`. **Twelve live members** read as having no address at all. Six
+become fixable from Edit once the app deploys; six correctly do not, and the app will now name
+which is which.
+
+NOT DONE: the app itself is not deployed. The migration is live; the client that uses it is on
+`claude/relaxed-ride-0g6u4p` and unmerged. Until it ships, the twelve still read as "No usable
+email" and no Reinstate button exists — the function has no caller yet.
+
+---
+
+## Gate run - 2026-09-22 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 26.3s total - slowest G7 Unit + pure specs (16.4s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (51ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (51ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (75ms)
+- **G5 Types** - PASS (5.7s)
+- **G6 Lint** - FAIL (3.5s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (16.4s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (136ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (57ms)
+- **G10 Backward compatibility (fixtures)** - PASS (128ms)
+- **G11 Wide tables are configurable** - PASS (59ms)
+- **G12 Installable as an application** - PASS (78ms)
+- **G13 Approved design still being built** - PASS (59ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
 ## COMPLETION RUN — RC-106 taken through to the DB/apply boundary, 22-Sep-2026
 
 A second pass over the shipped fix (commit `4557595`): review the migration, correct the one
