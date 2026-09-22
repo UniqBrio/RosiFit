@@ -1,3 +1,131 @@
+## FAIL-FIRST — a suppressed address is invisible (RC-106), 22-Sep-2026
+
+Spec: `src/data/memberEmailStatus.test.ts`, 22 cases. Run against the PRE-FIX tree first; the
+whole file was watched failing before a line of the fix was written.
+
+FAIL-FIRST: src/data/memberEmailStatus.test.ts — **17 of 20 failing** against the pre-fix tree.
+`hasEmailOnFile` did not exist; a bounced, unsubscribed and complained address each answered
+`isReachable` **true** (the read had already stripped them, so the predicate never saw one);
+`repository.ts` still carried `if (e.status === 'bounced' || e.status === 'unsubscribed') continue;`;
+the Edit form named no suppressed state and offered no reinstatement; the card still said
+"No usable email"; and `supabase/migrations/0078_reinstate_member_email.sql` did not exist.
+After the fix: **22/22 pass** (the file grew by two cases while the copy-lock moved to the
+shared wording module).
+
+NOT OBSERVED FAILING, and said rather than left silent — two of the twenty passed vacuously
+pre-fix and are not evidence from that run:
+  - "a member holding one dead address and one live one is still reachable" — passed because the
+    pre-fix predicate tested only that an address was non-blank, which the live one satisfied.
+    It is a real assertion post-fix (it stops `isReachable` being narrowed to the primary) and
+    was mutation-tested: `emails.every` in place of `emails.some` → fails.
+  - "the card copy is about the member, never gendered" — its anchor string did not exist
+    pre-fix, so the slice it searched was meaningless. Re-pointed at `src/data/emailStatus.ts`,
+    where the wording now lives, and mutation-tested: "she" in the state words → fails.
+
+THREE RUNGS FIRED ON THIS CHANGE, each catching a real defect in it:
+  - `src/data/migrationGrants.test.ts` — 0078 revoked from `public, anon` in one statement, which
+    the guard does not accept: Supabase grants EXECUTE to `anon` DIRECTLY on every new public
+    function, so `anon` needs naming in its own `revoke` (0012 exists for this; RC-042, RC-052).
+  - `src/data/memberEmailStatus.test.ts`'s own "every address record the repository builds carries
+    its status" — found **three** writers building one without it (both offline writers and the
+    bulk-import writer). Absent reads as usable, so each was a silent un-suppression.
+  - `src/data/auditActionCoverage.test.ts` — `member_email.reinstated` had no written wording, so
+    it would have reached the academy owner as a prettified code.
+
+BASELINES MEASURED, because nothing on this tree is green and a delta is worthless without
+them. Every figure below was taken in this session, clean tree vs. changed tree:
+
+  - `npm run test:unit`, clean tree: **1842 pass / 8 fail**. With this change:
+    **1864 pass / 8 fail** — the SAME EIGHT, name for name (a `courses.tsx` filter spec,
+    message tokens ×5, recipient options ×2). None is in a file this change touches.
+  - `npm run gate`, clean tree: **7 pass / 6 fail / 0 blocked**. With this change: **identical**,
+    step for step — G1/G2/G3 cannot find `design/tokens.json`, G6 Lint carries one pre-existing
+    warning, G7 is the eight above, and G8 fails because `test:functional` is not a script in
+    `package.json` at all. Six infrastructure gaps, none of them this defect's.
+  - `db/harness/reset.sh`: every migration replays from scratch, **0078 included, exit 0**.
+  - `supabase/tests/57_reinstate_member_email.sql` against that fresh replay: **15/15 PASS**,
+    including the opt-out refusal and the audit row naming the actor.
+
+  HONEST GAP: the FULL `bash db/harness/test.sh` did not complete in the time available on this
+  machine — it replays every migration once per spec file, ~45 times. Four attempts stopped at
+  different points (465, 547, 768 and 884 assertions). The clean-tree run that got furthest read
+  **884 pass / 12 fail**; every failure seen in every changed-tree run was already in that list.
+  The twelfth is `53_harness_body_matches_production.sql` failing on **`update_member`** —
+  T-120's production drift pinned as a test, and the direct reason this change adds a function
+  rather than restating that body. What is NOT claimed: a completed full-suite run on the
+  changed tree. The targeted replay above is what was actually observed.
+
+---
+
+## Gate run - 2026-09-22 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 28.4s total - slowest G7 Unit + pure specs (17.7s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (54ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (50ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (75ms)
+- **G5 Types** - PASS (6.3s)
+- **G6 Lint** - FAIL (3.6s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (17.7s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (128ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (59ms)
+- **G10 Backward compatibility (fixtures)** - PASS (120ms)
+- **G11 Wide tables are configurable** - PASS (61ms)
+- **G12 Installable as an application** - PASS (79ms)
+- **G13 Approved design still being built** - PASS (50ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
 ## FAIL-FIRST — data freshness change, 22-Sep-2026
 
 Observed in this session, in the order the specs were written. Mutation = the defect was injected

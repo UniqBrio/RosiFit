@@ -3,9 +3,10 @@ import { useTheme } from '../theme/ThemeProvider';
 import { RADIUS, SPACE, STATUS, statusSurface } from '../theme/tokens';
 import { Icon } from './Icon';
 import {
-  attendancePct, isEligible, reasonFor, primaryEmail, hasEmail,
+  attendancePct, isEligible, reasonFor, primaryEmail, hasEmailOnFile,
   AVATAR_TINTS, initials, GLOBAL_RULE, type Member, type FollowUpRule,
 } from '../data/mock';
+import { isReachable } from '../data/followup';
 
 /**
  * The weekly-review row. Everything on it is derived from the member and the
@@ -20,7 +21,13 @@ export function MemberRow({ member, index, onPress, rule = GLOBAL_RULE }:
 
   const pct = attendancePct(member);
   const flagged = isEligible(member, rule);
-  const noMail = !hasEmail(member);
+  // Whether a follow-up can LEAVE, not whether an address exists: a member
+  // whose only address has bounced or opted out is unreachable and still has
+  // an address on the record, so the wording below says "no usable email"
+  // rather than claiming the record is empty (RC entry for
+  // requests/2026-09-22-saved-email-not-reflecting.md). The member card is
+  // where the exact state is named; a roster row summarises.
+  const noMail = !isReachable(member);
 
   // Four different situations, four different sentences. Collapsing them
   // would tell an academy that a member with nothing scheduled is doing
@@ -31,7 +38,7 @@ export function MemberRow({ member, index, onPress, rule = GLOBAL_RULE }:
       : flagged
       ? { text: reasonFor(member, rule), color: theme.accentInk, icon: 'favorite' }
       : noMail
-      ? { text: 'Below the rule · no email on file', color: ink('absent'), icon: 'mail_off' }
+      ? { text: 'Below the rule · no usable email', color: ink('absent'), icon: 'mail_off' }
       : { text: 'Below the follow-up rule', color: theme.dim, icon: 'check_circle' };
 
   const pctColor = pct === null ? theme.muted
@@ -48,7 +55,8 @@ export function MemberRow({ member, index, onPress, rule = GLOBAL_RULE }:
         `${member.expected} expected, ${member.attended} attended, ${member.missed} missed, ` +
         `${pct === null ? 'no attendance figure' : `${pct} percent`}. ` +
         `${note.text}. Current streak ${member.streak}. ` +
-        `${noMail ? 'No email on file.' : `Email ${primaryEmail(member)}.`}`}
+        `${noMail ? (hasEmailOnFile(member) ? 'No usable email.' : 'No email on file.')
+            : `Email ${primaryEmail(member)}.`}`}
       style={({ pressed }) => ({
         borderRadius: RADIUS.lg, backgroundColor: theme.surface,
         borderWidth: 1, borderColor: flagged ? theme.accent : theme.line,
