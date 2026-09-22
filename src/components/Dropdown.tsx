@@ -170,7 +170,21 @@ export function DropdownPanel({ children, maxHeight = 340, inset = 0, flow = fal
       ...(menu ? { padding: 0, overflow: 'hidden' as const } : { padding: SPACE.sm }),
       elevation: 8,
     }}>
-      <ScrollView style={{ maxHeight }} contentContainerStyle={menu ? undefined : { gap: 4 }}
+      {/* A VISIBLE SCROLLBAR, always, on the web. The list is capped at
+          `maxHeight` and has always scrolled past it, but nothing said so: a
+          long filter list looked like it ended where the panel did. On the
+          web the track is forced on and kept thin, with a stable gutter so
+          rows do not shift when it appears; native keeps its own indicator. */}
+      <ScrollView
+        style={{
+          maxHeight,
+          ...(Platform.OS === 'web'
+            ? ({ overflowY: 'scroll', scrollbarWidth: 'thin', scrollbarGutter: 'stable' } as unknown as ViewStyle)
+            : null),
+        }}
+        contentContainerStyle={menu ? undefined : { gap: 4 }}
+        showsVerticalScrollIndicator
+        persistentScrollbar
         keyboardShouldPersistTaps="handled">
         {children}
       </ScrollView>
