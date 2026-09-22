@@ -16,6 +16,7 @@ import { ConfirmDialog } from '../../src/components/Sheet';
 import { deleteCourse, courseDeletionPreview, dataSource } from '../../src/data/repository';
 import { deletionWarning, deletionOutcome, type PreviewState } from '../../src/data/courseDeletion';
 import type { Course } from '../../src/data/mock';
+import { FreshnessLine } from '../../src/components/FreshnessLine';
 
 /** '06:00' -> '6:00 AM', for reading out a course's default time */
 const ampm = (t: string) => {
@@ -204,6 +205,9 @@ export default function Courses() {
         right={compact ? undefined : actions} />
       {compact ? <View style={{ marginTop: -SPACE.xs, marginBottom: SPACE.md }}>{actions}</View> : null}
     </>}>
+      {/* How old this data is, and whether the last attempt to bring it up
+          to date got through — src/components/FreshnessLine.tsx. */}
+      <FreshnessLine read={courses} testID="courses-freshness" />
 
       {all.length === 0 && (
         <EmptyState

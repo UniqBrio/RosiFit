@@ -27,9 +27,19 @@ what the user reads is a product decision, and they are allowed to differ.
 
 | Concept | **Approved term** | Not this | Status | Occurrences | Decided |
 |---|---|---|---|---|---|
+| When the data on screen was last fetched | `Updated just now` · `Updated at <h:mm AM/PM>` | Last refreshed, Last synced, As of, Fetched | PROVISIONAL | 2 (`src/data/freshness.ts`, drawn on Attendance) | 2026-09-22 |
+| A fetch is open over data already on screen | `Updating…` | Refreshing, Syncing, Loading | PROVISIONAL | 1 (`src/data/freshness.ts`) | 2026-09-22 |
+| A refresh failed, but the last good data is still shown | `Last updated <h:mm AM/PM> · Couldn’t refresh` | Offline, Out of date, Stale, could not refresh | PROVISIONAL | 2 (`src/data/freshness.ts`; drawn on Attendance and in the app-wide banner) | 2026-09-22 |
+| A wait that has gone on long enough to say so | `Still processing` · `Still writing the register` | Please wait, Hang tight, Almost there | PROVISIONAL | 2 (`src/data/uploadProgress.ts`) | 2026-09-22 |
 
-_No entries. The product's vocabulary has not been frozen yet; until it is, the copy freeze rule
-has nothing to enforce against._
+_The stale wording was `Updated at <time> · could not refresh` when these rows were first
+written; it is `Last updated <time> · Couldn’t refresh` as shipped, set by the requester when the
+indicator was extended from Attendance to the whole app. The row records the term that ships._
+
+_The first four entries. They were added by the data-freshness change of 22-Sep-2026, which is the
+first time the product has had to name these states at all — a screen that refreshes itself in the
+background has to say how fresh it is, and an import that shows its progress has to say what it is
+doing without promising when it will stop. `PROVISIONAL` because none of it has shipped yet._
 
 - **Approved term** — exactly as it appears in the interface, including capitalisation.
 - **Not this** — the synonyms that have actually appeared, or that people reach for. This column

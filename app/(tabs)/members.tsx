@@ -16,6 +16,7 @@ import { useFollowUp, useFilterOptions } from '../../src/data/hooks';
 import { rosterScope } from '../../src/data/course';
 import { ConfirmDialog } from '../../src/components/Sheet';
 import { deleteMember, memberDeletionPreview, dataSource } from '../../src/data/repository';
+import { FreshnessLine } from '../../src/components/FreshnessLine';
 import {
   removalOutcome, removalFailure, deletionWarning, type PreviewState,
 } from '../../src/data/memberRemoval';
@@ -40,7 +41,11 @@ export default function Members() {
   const [searching, setSearching] = useState(false);
   // ONE fetch for the members AND the rule, so "needs follow-up" here is the
   // same derivation the dashboard and the send flow use -- not a second list.
-  const { state, data, error, retry } = useFollowUp(forced);
+  /* The read is kept whole as well as destructured: FreshnessLine needs the
+     whole of it (state, error, isRevalidating, fetchedAt, retry) to tell the
+     four freshness states apart. */
+  const followUp = useFollowUp(forced);
+  const { state, data, error, retry } = followUp;
   const filters = useFilterOptions(forced);
   /**
    * The roster of ONE course, when the chevron on a course card opened this.
@@ -180,6 +185,9 @@ export default function Members() {
         right={<Button label="Add" onPress={() => router.push(scopedTo && courseId
           ? { pathname: '/member/edit', params: { courseId } }
           : { pathname: '/member/edit' })} />} />}>
+      {/* How old this data is, and whether the last attempt to bring it up
+          to date got through — src/components/FreshnessLine.tsx. */}
+      <FreshnessLine read={followUp} testID="members-freshness" />
 
       {/* A filtered list that does not say it is filtered is a list that has
           silently lost rows -- so the narrowing is stated AND escapable, the

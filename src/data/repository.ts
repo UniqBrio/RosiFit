@@ -1488,6 +1488,43 @@ function accessOf(u: { is_active: boolean; pin_set_at: string | null; last_login
   return 'active';
 }
 
+/**
+ * THE STAFF LIST MOVED.
+ *
+ * Every other write in this app announces itself from inside this file,
+ * because this file is where the writes are. The staff writes are the
+ * exception: `pinIssue`, `pinReset`, `staffCreate`, `staffDelete` and
+ * `staffReenable` are Edge Functions called through `src/data/api.ts`, which
+ * by design holds no notifications at all — so they are RC-034's class
+ * exactly, and RC-034's own note says so ("the PIN and staff writes call
+ * their own screen's `retry()` at the call site, which covers that screen and
+ * only that screen").
+ *
+ * That was true and it was not enough. `app/staff/add.tsx` is a DIALOG over
+ * the staff list (`DIALOG_SCREEN` in app/_layout.tsx), so the list stays
+ * mounted underneath while a staff member is created on top of it, and it
+ * cannot call the list's `retry()`. The More tab shows a staff COUNT and
+ * stays mounted for the life of the app. Both went on showing the roster
+ * they read before the change — a person added and then missing from the
+ * list she was added to, which is the complaint this whole mechanism exists
+ * to answer.
+ *
+ * So the staff writes announce, the way the CSV import does through
+ * `attendanceImported()`: the caller says it, because the caller is the only
+ * one who knows the Edge Function returned.
+ */
+const staffListeners = new Set<() => void>();
+
+export function onStaffChanged(listener: () => void): () => void {
+  staffListeners.add(listener);
+  return () => { staffListeners.delete(listener); };
+}
+
+/** A staff account was created, removed, re-enabled, or had its PIN issued. */
+export function staffChanged(): void {
+  for (const listener of staffListeners) listener();
+}
+
 export async function fetchStaff(): Promise<Staff[]> {
   // A COPY, exactly as fetchMembers returns one. Handing the fixture array
   // back by reference means a screen that removes a row calls setState with

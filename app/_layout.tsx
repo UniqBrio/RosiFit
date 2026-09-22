@@ -7,6 +7,7 @@ import { ToastProvider } from '../src/components/Toast';
 import { AcademyProvider } from '../src/state/academy';
 import { AdminRouteGuard } from '../src/components/AdminOnly';
 import { DeploymentRefresh } from '../src/pwa/DeploymentRefresh';
+import { DataRefresh } from '../src/pwa/DataRefresh';
 
 /**
  * EVERY FORM IS A DIALOG -- and it takes THREE things, not the two this file
@@ -164,6 +165,16 @@ export default function RootLayout() {
           (requests/2026-09-09-refresh-on-every-deployment.md). It renders
           nothing, and on native and during the export it does nothing. */}
       <DeploymentRefresh />
+      {/* Its sibling, and deliberately NOT part of it. DeploymentRefresh
+          watches for a newer BUILD and answers by throwing the document
+          away, so its rule is about never doing that under somebody's
+          fingers. This watches the same four events and answers by asking
+          the mounted readers to fetch again, with their existing answers
+          staying on screen -- no reload, nothing discarded, and therefore a
+          different safety rule (src/pwa/DataRefresh.tsx). Without it, a
+          change made on another device is invisible to a tab that stays
+          open, which for an installed PWA is forever. */}
+      <DataRefresh />
       <ThemeProvider>
         <AcademyProvider>
           <ToastProvider><Nav /></ToastProvider>
