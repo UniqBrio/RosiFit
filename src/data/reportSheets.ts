@@ -21,8 +21,8 @@
  * is drawing (guardrail 1). The detail sheets add columns; they never add a
  * second count, so sheet 2's Expected column sums to sheet 1's.
  */
-import { DAY_NAMES, hasEmail, type Member, type FollowUpRule } from './mock';
-import { ruleSentence } from './followup';
+import { DAY_NAMES, hasEmailOnFile, type Member, type FollowUpRule } from './mock';
+import { ruleSentence, isReachable } from './followup';
 import { statusOn } from './inactiveFrom';
 import { formatDate } from './memberDate';
 import {
@@ -153,7 +153,15 @@ export function memberDetailSheet(
         own,
         // No usable address is a stated fact with its consequence, never a
         // blank cell that reads as "not filled in yet" (C-76).
-        hasEmail(m) ? (addresses[0]?.address ?? '') : 'None on file — excluded from every send',
+        //
+        // THREE OUTCOMES, not two. The address the academy HOLDS is printed
+        // whether or not it can be written to -- printing "None on file" over
+        // an address sitting in the table is the defect this column would
+        // otherwise repeat. Whether the send will reach it is the next cell's
+        // job and the group sheet's `withMail` count.
+        hasEmailOnFile(m)
+          ? `${addresses[0]?.address ?? ''}${isReachable(m) ? '' : ' — excluded from every send'}`
+          : 'None on file — excluded from every send',
         addresses.map(e => e.address).join(', '),
         m.aliases.join(', '),
         String(m.expected),
@@ -199,7 +207,10 @@ export function courseDetailSheet(
       const days = course ? courseDayNames(course) : [];
       const expected = g.members.reduce((n, m) => n + m.expected, 0);
       const attended = g.members.reduce((n, m) => n + m.attended, 0);
-      const withMail = g.members.filter(hasEmail).length;
+      // What the send can actually REACH, not what is written down: an
+      // address that bounced or was opted out of is on the record and is not
+      // a recipient, and this column is read as "how many will be written to".
+      const withMail = g.members.filter(isReachable).length;
       const rule = rules.byCourseName[g.label] ?? rules.global;
       return [
         g.label,

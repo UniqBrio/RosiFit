@@ -16,7 +16,10 @@ import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../../src/theme/t
 import { DAY_NAMES, type MemberStatus } from '../../src/data/mock';
 import { memberWeekdays, openingDays } from '../../src/data/memberDays';
 import { useCourses, useMembers } from '../../src/data/hooks';
-import { createMember, updateMember, setMemberStatus, setMemberActiveFrom } from '../../src/data/repository';
+import {
+  createMember, updateMember, setMemberStatus, setMemberActiveFrom, reinstateMemberEmail,
+} from '../../src/data/repository';
+import { emailUsable, emailStateWord, suppressionLiftable } from '../../src/data/emailStatus';
 import { namesADisplayName } from '../../src/data/refusalCase';
 import { inactiveFromProblem, dateInWords, dayBefore } from '../../src/data/inactiveFrom';
 import { activeFromProblem } from '../../src/data/joined';
@@ -188,6 +191,9 @@ export default function MemberEdit() {
   const [seeded, setSeeded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
+  /** The address currently being reinstated, by row id -- so one row says
+   *  "Reinstating…" rather than every row saying it at once. */
+  const [reinstating, setReinstating] = useState<string | null>(null);
 
   /**
    * Her record arrives AFTER the first render, so the fields cannot be seeded
@@ -369,6 +375,12 @@ export default function MemberEdit() {
   const valid = name.trim().length > 0 && !!offering && emails.length > 0
     && !inactiveFromError && !activeFromError;
 
+  /** Whether anything on this form can actually be WRITTEN to. Distinct from
+   *  `emails.length`, which is what `valid` gates on: an address that bounced
+   *  or was opted out of is on the record and is not a way to reach anybody,
+   *  and the two lines under the list have to tell those apart. */
+  const anyUsableEmail = emails.some(emailUsable);
+
   // days she may pick are only days her course's offerings actually run
   const courseDays = useMemo(() => {
     const set = new Set<string>();
@@ -482,9 +494,46 @@ export default function MemberEdit() {
     const e = emailDraft.trim().toLowerCase();
     if (!e) return;
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) { flash('That does not look like an address', 'warn'); return; }
-    // the FIRST address becomes primary; there is always exactly one
-    setEmails(p => [...p, { address: e, primary: p.length === 0 }]);
+    // the FIRST address becomes primary; there is always exactly one.
+    // 'unknown' is what create_member (0016) and update_member (0027) insert,
+    // so the row this form draws says the same thing the database will hold.
+    setEmails(p => [...p, { address: e, primary: p.length === 0, status: 'unknown' }]);
     setEmailDraft('');
+  };
+
+  /**
+   * CLEAR A BOUNCE, so follow-ups reach the member again.
+   *
+   * Its own write, NOT part of Save, and that is deliberate. Save sends the
+   * whole address list, so folding reinstatement into it would clear a
+   * suppression whenever anybody corrected an unrelated field -- and the
+   * member whose address bounced is usually being edited for some other
+   * reason entirely. This is a decision somebody takes on purpose, so it is
+   * a button they press on purpose (0078's own reasoning, and 0057's).
+   *
+   * The refusal comes from the DATABASE and is shown as it is written: 0078
+   * refuses an opt-out in a sentence for a person, and the form does not
+   * restate that rule -- a second copy is how a form starts offering what the
+   * database will refuse (RC-023).
+   */
+  const reinstate = async (memberEmailId: string, address: string) => {
+    if (reinstating) return;
+    setReinstating(memberEmailId);
+    setRefusal(null);
+    try {
+      await reinstateMemberEmail(memberEmailId);
+      // The row on THIS form moves too. `existing` will refresh from the
+      // roster, but the seeding effect is once-only by design -- a refetch
+      // landing behind a keystroke must not overwrite it -- so a form that
+      // waited for that would go on showing a bounce it had just cleared.
+      setEmails(p => p.map(x => x.id === memberEmailId ? { ...x, status: 'unknown' } : x));
+      flash(`${address} reinstated — follow-ups will be sent here again`);
+    } catch (err) {
+      setRefusal(err instanceof Error ? err.message
+        : 'That address could not be reinstated. Nothing has been saved.');
+    } finally {
+      setReinstating(null);
+    }
   };
 
   /**
@@ -627,6 +676,11 @@ export default function MemberEdit() {
       : !course ? 'Choose the course to join'
       : !offering ? `Choose the branch — ${course} runs at ${branchOptions.length || 'no'} of them`
       : !emails.length ? 'Add an email address — follow-ups are sent there'
+      // Save is NOT blocked on this: a member whose only address was opted
+      // out of still has a name, a course and days somebody may need to
+      // correct, and a form that refused to save them would be unusable for
+      // exactly the member this change is about. It is stated, not enforced.
+      : !anyUsableEmail ? 'No address here can be written to — follow-ups will not reach this member'
       // The Save is disabled for this too, so the line under it has to say
       // which field is holding it -- a dead button with "Prenatal Flow ·
       // Coimbatore" under it explains nothing.
@@ -968,29 +1022,70 @@ export default function MemberEdit() {
       {/* -------------------------------------------------- emails (C-73) */}
       <Label required style={{ marginTop: SPACE.xl }}>Email addresses</Label>
       <View style={{ gap: SPACE.sm, marginTop: SPACE.md }}>
-        {emails.map(e => (
+        {emails.map(e => {
+          /* A SUPPRESSED ADDRESS IS DRAWN, and that is the point of this change.
+             This list used to be seeded from a member record the repository had
+             already stripped of every bounced and opted-out row, so the form
+             opened EMPTY over a member who has an address. The operator typed
+             the one the academy holds, `update_member` found it still live and
+             changed nothing but `is_primary`, and the save reported success
+             (requests/2026-09-22-saved-email-not-reflecting.md).
+
+             Three consequences here: the row says which state it is in, it
+             cannot be made primary while nothing can be sent to it, and a
+             BOUNCE carries a way back. An opt-out carries none -- the member
+             said something deliberate, and 0078 refuses it in the database too,
+             so this is a form deciding what to OFFER rather than the thing
+             that enforces it. */
+          const suppressed = !emailUsable(e);
+          const liftable = suppressionLiftable(e.status);
+          return (
           <View key={e.address} style={{
             flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
             padding: SPACE.md, borderRadius: RADIUS.md, backgroundColor: theme.surface,
-            borderWidth: 1, borderColor: e.primary ? theme.accent : theme.line,
+            borderWidth: 1,
+            borderColor: suppressed ? ink('absent') : e.primary ? theme.accent : theme.line,
           }}>
             <Pressable
               testID={`member-email-primary-${e.address}`}
+              disabled={suppressed}
               onPress={() => setEmails(p => p.map(x => ({ ...x, primary: x.address === e.address })))}
-              accessibilityRole="radio" accessibilityState={{ selected: e.primary }}
-              accessibilityLabel={`Make ${e.address} the primary address`}
-              style={{ minHeight: TAP_MIN / 2, justifyContent: 'center' }}>
-              <Icon name={e.primary ? 'radio_button_checked' : 'radio_button_unchecked'}
-                size={19} color={e.primary ? theme.accentInk : theme.dim} />
+              accessibilityRole="radio" accessibilityState={{ selected: e.primary, disabled: suppressed }}
+              accessibilityLabel={suppressed
+                ? `${e.address} cannot be the primary address: ${emailStateWord(e.status).toLowerCase()}`
+                : `Make ${e.address} the primary address`}
+              style={{ minHeight: TAP_MIN / 2, justifyContent: 'center', opacity: suppressed ? 0.45 : 1 }}>
+              <Icon name={suppressed ? 'block'
+                : e.primary ? 'radio_button_checked' : 'radio_button_unchecked'}
+                size={19} color={suppressed ? ink('absent') : e.primary ? theme.accentInk : theme.dim} />
             </Pressable>
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 13, fontWeight: '700', color: theme.fgStrong, fontVariant: ['tabular-nums'] }}>
                 {e.address}
               </Text>
-              <Text style={{ fontSize: 10.5, color: e.primary ? theme.accentInk : theme.muted, marginTop: 2 }}>
-                {e.primary ? 'PRIMARY — sends go here' : 'kept on file'}
+              {/* The word, always -- colour is never the only carrier
+                  (guardrail 3, CP-010). */}
+              <Text style={{ fontSize: 10.5, marginTop: 2,
+                color: suppressed ? ink('absent') : e.primary ? theme.accentInk : theme.muted }}>
+                {suppressed
+                  ? `${emailStateWord(e.status).toUpperCase()} — nothing can be sent here`
+                  : e.primary ? 'PRIMARY — sends go here' : 'kept on file'}
               </Text>
             </View>
+            {suppressed && liftable && e.id ? (
+              <Pressable
+                testID={`member-email-reinstate-${e.address}`}
+                disabled={reinstating !== null}
+                onPress={() => void reinstate(e.id as string, e.address)}
+                accessibilityRole="button"
+                accessibilityLabel={`Reinstate ${e.address}`}
+                accessibilityHint="Clears the bounce so follow-ups are sent to this address again"
+                style={{ minHeight: TAP_MIN / 2, justifyContent: 'center', paddingHorizontal: SPACE.sm }}>
+                <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.accentInk }}>
+                  {reinstating === e.id ? 'Reinstating…' : 'Reinstate'}
+                </Text>
+              </Pressable>
+            ) : null}
             <Pressable
               testID={`member-email-remove-${e.address}`}
               onPress={() => setEmails(p => {
@@ -1005,17 +1100,24 @@ export default function MemberEdit() {
               <Icon name="close" size={17} color={theme.muted} />
             </Pressable>
           </View>
-        ))}
+          );
+        })}
       </View>
       <AddRow testID="member-email" value={emailDraft} onChange={setEmailDraft}
         placeholder="anitha@gmail.com" onAdd={addEmail} />
       <View style={{ flexDirection: 'row', gap: SPACE.sm, alignItems: 'flex-start', marginTop: SPACE.sm }}>
-        <Icon name={emails.length ? 'mark_email_read' : 'mail_off'} size={15}
-          color={emails.length ? ink('present') : ink('absent')} />
+        {/* THREE THINGS THIS CAN SAY, not two. "Follow-up emails go to the
+            primary address only" over a list where every address is suppressed
+            is the same false reassurance the member card used to give -- the
+            form has to say that nothing is going anywhere. */}
+        <Icon name={anyUsableEmail ? 'mark_email_read' : 'mail_off'} size={15}
+          color={anyUsableEmail ? ink('present') : ink('absent')} />
         <Muted style={{ flex: 1 }}>
-          {emails.length
+          {anyUsableEmail
             ? 'Follow-up emails go to the primary address only.'
-            : `Add an email address — it is where every follow-up is sent, and the member cannot be ${editing ? 'saved' : 'added'} without one.`}
+            : emails.length
+              ? 'No follow-up can be sent to this member. Correct an address, or reinstate one that bounced.'
+              : `Add an email address — it is where every follow-up is sent, and the member cannot be ${editing ? 'saved' : 'added'} without one.`}
         </Muted>
       </View>
 

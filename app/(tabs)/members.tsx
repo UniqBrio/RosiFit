@@ -10,8 +10,9 @@ import { useAutoFocus } from '../../src/components/openingFocus';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../../src/theme/tokens';
 import {
-  isEligible, hasEmail, primaryEmail, AVATAR_TINTS, initials, type Member,
+  isEligible, hasEmailOnFile, primaryEmail, AVATAR_TINTS, initials, type Member,
 } from '../../src/data/mock';
+import { isReachable, emailExclusionReason } from '../../src/data/followup';
 import { useFollowUp, useFilterOptions } from '../../src/data/hooks';
 import { rosterScope } from '../../src/data/course';
 import { ConfirmDialog } from '../../src/components/Sheet';
@@ -155,7 +156,10 @@ export default function Members() {
       const inScope = !scopedTo || inCourse(m);
       const passes =
         filter === 'all' ? true
-        : filter === 'nomail' ? !hasEmail(m)
+        // Whoever the academy cannot WRITE TO -- which includes an address
+        // that bounced or was opted out of, not only a member who gave none.
+        // The chip is worded "No usable email" for exactly that reason.
+        : filter === 'nomail' ? !isReachable(m)
         : filter === 'follow'
           ? (rules ? isEligible(m, rules.byCourseName[m.course] ?? rules.global) : false)
         : m.branch === 'Coimbatore';
@@ -166,7 +170,7 @@ export default function Members() {
 
   const chips: { key: Filter; label: string; icon: string }[] = [
     { key: 'all',        label: 'All',             icon: 'group' },
-    { key: 'nomail',     label: 'No email',        icon: 'mail_off' },
+    { key: 'nomail',     label: 'No usable email', icon: 'mail_off' },
     { key: 'follow',     label: 'Needs follow-up', icon: 'favorite' },
     { key: 'coimbatore', label: 'Coimbatore',      icon: 'apartment' },
   ];
@@ -318,7 +322,7 @@ export default function Members() {
 function MemberCard({ member, index, onOpen, onEdit, onRemove }:
   { member: Member; index: number; onOpen: () => void; onEdit: () => void; onRemove: () => void }) {
   const { theme } = useTheme();
-  const noMail = !hasEmail(member);
+  const noMail = !isReachable(member);
   const ink = noMail
     ? (theme.isDark ? STATUS.absent.fgDark : STATUS.absent.fgLight)
     : (theme.isDark ? STATUS.present.fgDark : STATUS.present.fgLight);
@@ -367,7 +371,15 @@ function MemberCard({ member, index, onOpen, onEdit, onRemove }:
               for anyone with no address. Her course and branch already sit
               above; what belongs here is how she can be reached, or that she
               cannot be. */}
-          {noMail ? 'No address on file' : primaryEmail(member)}
+          {noMail
+            ? (hasEmailOnFile(member)
+                // The address IS on the record and the row says so, with the
+                // reason beside it -- a word, never colour alone (guardrail 3).
+                // Printing "No address on file" over one that exists is what
+                // sent the operator to Edit to retype it.
+                ? `${primaryEmail(member)} · ${emailExclusionReason(member)}`
+                : 'No address on file')
+            : primaryEmail(member)}
         </Text>
         <Pressable onPress={onOpen} accessibilityRole="button"
           accessibilityLabel={`Attendance for ${member.name}`}>

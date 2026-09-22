@@ -46,6 +46,7 @@ import {
   type StaffAccess, type AuditEntry, type Remark, type SessionDay, type WeekRow,
   type AttendanceRow, type AttendanceStatus, type Holiday, type MemberSession,
 } from './mock';
+import { type EmailStatus } from './emailStatus';
 import { memberWeek, NO_SESSIONS_ROW, type MemberWeekSession } from './memberWeek';
 // Every read below that is unbounded BY CONSTRUCTION -- a whole table, or an
 // id list of member scale -- goes through this. PostgREST stops at 1000 rows
@@ -297,11 +298,45 @@ export async function fetchMembers(period: Period): Promise<Member[]> {
     list.push(a.alias_display as string);
     aliasesByMember.set(a.member_id as string, list);
   }
-  const emailsByMember = new Map<string, { address: string; primary: boolean }[]>();
+  /*
+   * THE STATE IS CARRIED, NOT USED TO DROP THE ROW.
+   *
+   * This loop used to begin `if (e.status === 'bounced' || e.status ===
+   * 'unsubscribed') continue;`, and that one line was the first of the three
+   * pieces of a defect the academy reported as "I added email and then saved
+   * but its not reflecting"
+   * (requests/2026-09-22-saved-email-not-reflecting.md).
+   *
+   * Dropping the row left the record carrying NO TRACE of an address that
+   * exists. So the member card drew its no-address branch -- "No usable email"
+   * over an address sitting in the table -- and the Edit form, which seeds its
+   * list from this same record, opened blank. The operator did the only thing
+   * that screen invited: typed the address the academy holds. `update_member`
+   * (0027) found that row still live, set `is_primary`, never touched `status`,
+   * and reported success having changed nothing. Nothing anywhere in this
+   * repository has ever cleared a suppression.
+   *
+   * Carrying it is RC-031's standing rule applied to this column -- carry the
+   * stored value and derive the label from it, never the reverse -- and it is
+   * what the line below this loop already does for `members.status`, where an
+   * unrecognised value is MAPPED rather than discarded.
+   *
+   * What decides whether an address may be written to is now `emailUsable`
+   * (src/data/emailStatus.ts), asked at the point of use by `isReachable`. One
+   * copy of the rule, reached by every caller, rather than a filter here that
+   * silently censored the record every other question was answered from.
+   */
+  const emailsByMember = new Map<string, Member['emails']>();
   for (const e of emailsRes) {
-    if (e.status === 'bounced' || e.status === 'unsubscribed') continue;
     const list = emailsByMember.get(e.member_id as string) ?? [];
-    list.push({ address: e.email as string, primary: Boolean(e.is_primary) });
+    list.push({
+      address: e.email as string,
+      primary: Boolean(e.is_primary),
+      status: (e.status ?? 'unknown') as EmailStatus,
+      // The row's identity, so reinstatement can name it. Already in the
+      // SELECT -- it is the keyset cursor -- and was being thrown away.
+      id: e.id as string,
+    });
     emailsByMember.set(e.member_id as string, list);
   }
 
@@ -3016,7 +3051,11 @@ export async function createMember(input: MemberInput): Promise<{ id: string }> 
       // says the same, and says it once -- the label is derived from the date.
       joinedOn: input.joined_on ?? iso(new Date()),
       joined: joinedLabel(input.joined_on ?? iso(new Date())),
-      emails: input.emails.map((address, i) => ({ address, primary: i === 0 })),
+      // 'unknown' is what create_member (0016) and update_member (0027) write
+      // on every address they insert, so the offline store holds what the
+      // live one would. Never left absent: absent reads as usable and a
+      // writer that omits it silently un-suppresses (memberEmailStatus.test.ts).
+      emails: input.emails.map((address, i) => ({ address, primary: i === 0, status: 'unknown' as const })),
       // create_member (0016) inserts 'active' explicitly; offline says the same.
       status: 'active',
       expected: 0, attended: 0, missed: 0, streak: 0, last: '\u2014',
@@ -3090,7 +3129,11 @@ export async function bulkImportMembers(input: {
       MEMBERS.push({
         id, code: '', name: r.full_name, course: course.name, course_id: course.id,
         branch: offering.branch,
-        aliases: r.aliases, emails: r.email ? [{ address: r.email, primary: true }] : [],
+        aliases: r.aliases,
+        // Same rule as the two writers above: an imported address is 'unknown',
+        // never absent. T-105 tracks that nothing validates it before the first
+        // send -- which is a different gap, and not this one.
+        emails: r.email ? [{ address: r.email, primary: true, status: 'unknown' as const }] : [],
         // the import gives nobody days of her own; every row follows its course
         weekdays: null,
         status: 'active',
@@ -3288,7 +3331,11 @@ export async function updateMember(input: MemberUpdate): Promise<{ moved: boolea
       course: course?.name ?? MEMBERS[i].course,
       branch: offering?.branch ?? MEMBERS[i].branch,
       aliases: input.aliases,
-      emails: input.emails.map((address, n) => ({ address, primary: n === 0 })),
+      // 'unknown' is what create_member (0016) and update_member (0027) write
+      // on every address they insert, so the offline store holds what the
+      // live one would. Never left absent: absent reads as usable and a
+      // writer that omits it silently un-suppresses (memberEmailStatus.test.ts).
+      emails: input.emails.map((address, n) => ({ address, primary: n === 0, status: 'unknown' as const })),
       // `joinedOn` and `joined` are NOT among the fields written here, and
       // the spread above is what keeps them: saving a member without touching
       // her joining date must leave the date she actually joined on alone.
@@ -3337,6 +3384,62 @@ export async function updateMember(input: MemberUpdate): Promise<{ moved: boolea
  * `alias_normalized` is not supplied: the `member_aliases_normalize` trigger
  * computes it, and duplicating that here is how the two would drift.
  */
+/**
+ * CLEAR A SUPPRESSION on one address, so follow-ups can reach the member again.
+ *
+ * DELIBERATELY NOT `updateMember`. That RPC is sent the WHOLE address list on
+ * every save, so resetting `status` inside it would un-suppress an address as a
+ * side effect of correcting a display name or moving somebody's course. And
+ * `update_member` is one of the fifteen function bodies T-120 measured as
+ * divergent on production (9,625 bytes live against 11,213 in the harness
+ * replay), so restating it from this repository would push whatever this tree
+ * holds over whatever is actually running -- RC-047's mechanism. 0078 adds a
+ * function beside it and restates nothing.
+ *
+ * BY ROW ID, never by the address text: an address has not been unique across
+ * the register since 0071, so a write keyed on the string could reach a
+ * different member's row entirely.
+ *
+ * The REFUSALS are the database's, not this function's -- an opt-out may not be
+ * cleared by anybody, and 0078 says so in a sentence the operator reads. They
+ * are not restated here, because a second copy of the rule is how the form
+ * starts offering something the database will refuse (RC-023).
+ */
+export async function reinstateMemberEmail(memberEmailId: string): Promise<void> {
+  if (!isConfigured) {
+    // Offline the fixture list IS the store. No fixture carries a suppression,
+    // so this is unreachable by construction -- it is written out rather than
+    // stubbed because an offline branch that quietly does nothing and returns
+    // is the exact defect this whole change exists to end (RC-008).
+    for (const m of MEMBERS) {
+      const hit = m.emails.find(e => e.id === memberEmailId);
+      if (!hit) continue;
+      if (hit.status === 'unsubscribed') {
+        throw new Error('The member unsubscribed from this address, and only the member can undo that. Nothing has been saved.');
+      }
+      if (hit.status !== 'bounced' && hit.status !== 'complained') {
+        throw new Error('That address is not suppressed, so there is nothing to reinstate. Nothing has been saved.');
+      }
+      hit.status = 'unknown';
+      membersChanged();
+      return;
+    }
+    throw new Error('That address is not on the member\'s record. Nothing has been saved.');
+  }
+
+  const { error } = await supabase.rpc('reinstate_member_email', {
+    p_member_email_id: memberEmailId,
+  });
+  if (error) {
+    console.error('reinstateMemberEmail:', error.message);
+    throw new Error(memberWriteError(error));
+  }
+  // The roster the whole app derives from carries the status now, so one
+  // notification moves the card, the roster row and the follow-up counts
+  // together (guardrail 1).
+  membersChanged();
+}
+
 export async function addMemberAlias(memberId: string, alias: string): Promise<void> {
   const display = cleanAlias(alias);
 
