@@ -7,7 +7,8 @@ import { Icon } from '../../src/components/Icon';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, STATUS, statusSurface } from '../../src/theme/tokens';
-import { flaggedMembers, hasEmail } from '../../src/data/mock';
+import { flaggedMembers } from '../../src/data/mock';
+import { isReachable, emailExclusionReason } from '../../src/data/followup';
 import { peekSendAlready, peekSendResult } from '../../src/data/pending';
 
 /**
@@ -34,7 +35,7 @@ function SendResultBody() {
   const [already] = useState(() => peekSendAlready());
 
   const fallbackFlagged = flaggedMembers();
-  const fallbackRecipients = fallbackFlagged.filter(hasEmail);
+  const fallbackRecipients = fallbackFlagged.filter(isReachable);
 
   type Row = { id: string; name: string; reason?: string };
   const sent: Row[] = result
@@ -46,7 +47,8 @@ function SendResultBody() {
   // C-76: an excluded member is NAMED with her reason, never dropped.
   const excluded: Row[] = result
     ? result.results.filter(r => r.status === 'excluded').map(r => ({ id: r.member_id, name: r.name, reason: r.reason }))
-    : fallbackFlagged.filter(m => !hasEmail(m)).map(m => ({ id: m.id, name: m.name, reason: 'No email on file' }));
+    : fallbackFlagged.filter(m => !isReachable(m))
+        .map(m => ({ id: m.id, name: m.name, reason: emailExclusionReason(m) }));
 
   const ink = (k: keyof typeof STATUS) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
   const okInk = ink('present'); const badInk = ink('absent');

@@ -17,8 +17,8 @@
  * to the global one, and guardrail 1 says the follow-up set is DERIVED from
  * the member list by that rule in exactly one place.
  */
-import { hasEmail, type Member, type FollowUpRule } from './mock';
-import { isEligible } from './followup';
+import { type Member, type FollowUpRule } from './mock';
+import { isEligible, isReachable } from './followup';
 
 export type CourseSummary = {
   /** "3 days/week · 3 members", or "No days set · 1 member" */
@@ -100,12 +100,16 @@ export function courseSummary(
   members: Member[], weekdayCount: number, rule: FollowUpRule,
 ): CourseSummary {
   const noDays = weekdayCount === 0;
-  const noMail = members.filter(m => !hasEmail(m)).length;
+  const noMail = members.filter(m => !isReachable(m)).length;
 
-  // A member with no address cannot be followed up even when she is over the
-  // threshold, so she is counted in `noMail` and not in `flagged` -- the card
-  // would otherwise promise a send that has nowhere to go (C-76).
-  const flagged = members.filter(m => hasEmail(m) && isEligible(m, rule)).length;
+  // A member the academy cannot write to is not followed up even when over
+  // the threshold, so they are counted in `noMail` and not in `flagged` -- the
+  // card would otherwise promise a send that has nowhere to go (C-76).
+  //
+  // `isReachable`, not "has an address": an address that bounced or was opted
+  // out of is on the record and cannot be sent to, and this count exists to
+  // say what the send will actually do.
+  const flagged = members.filter(m => isReachable(m) && isEligible(m, rule)).length;
 
   const freq = noDays
     ? 'No days set'

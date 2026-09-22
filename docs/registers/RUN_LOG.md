@@ -88,6 +88,9 @@ should start by reading this table rather than by guessing which part felt slow.
 
 | ID | Action | Type | Scale | Started | Ended | Total | Stages | Gate | Verdict | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
+| R-014 | aplly to db | BUG | scoped | 2026-09-22 20:03 | 2026-09-22 20:03 | 0s active · 0s elapsed | verify 0s | 26.3s | FAIL | - |
+| R-013 | take the suppressed-email fix through the remaining DB/application completion steps | BUG | scoped | 2026-09-22 19:44 | 2026-09-22 19:45 | 4s active · 4s elapsed | verify 0s | 29.1s | FAIL | - |
+| R-012 | What is the root cause. I clicked on Edit button and then added email and then saved but its not reflecting why? | BUG | scoped | 2026-09-22 17:45 | 2026-09-22 18:38 | 23m active · 53m elapsed | ground 24m · build 26m | 28.4s | FAIL | - |
 | R-011 | Dropdown panel shows four rows then scrolls | CHANGE | scoped | 2026-09-22 11:21 | 2026-09-22 11:22 | 26s elapsed · active: no marks | - | 46m 13s | PASS | typecheck, lint, unit at baseline; browser check by the requester |
 | R-010 | Dropdown panel shows five rows then scrolls | CHANGE | scoped | 2026-09-22 11:14 | 2026-09-22 11:15 | 39s elapsed · active: no marks | - | 46m 13s | PASS | typecheck, lint, unit at the 8-failure RV-03 baseline; browser check by the requester |
 | R-009 | Dropdown panel: always-visible scrollbar on web | CHANGE | scoped | 2026-09-22 11:09 | 2026-09-22 11:10 | 37s elapsed · active: no marks | - | 46m 13s | PASS | typecheck, lint, unit at the 8-failure RV-03 baseline; browser check deferred to the requester by instruction |

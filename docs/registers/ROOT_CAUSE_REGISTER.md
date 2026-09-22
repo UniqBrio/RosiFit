@@ -59,6 +59,67 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-106 — a suppressed address was dropped on the way out of the read, so saving it again changed nothing          Tracker: none (reported by the academy) · Sources: requests/2026-09-22-saved-email-not-reflecting.md, RC-023, RC-031, RC-008
+**Date:** 22-Sep-2026 · **Severity:** S2 · **Modules:** `src/data/repository.ts`, `src/data/mock.ts`, `src/data/followup.ts`, `src/data/emailStatus.ts`, `app/member/[id].tsx`, `app/member/edit.tsx`, `supabase/migrations/0078_reinstate_member_email.sql`
+
+**Symptom** — reported as *"I clicked on Edit button and then added email and then saved but its not reflecting why?"*, over a member card reading **"No usable email"**, *"The member is shown and counted as excluded from every send, never quietly dropped"*, **"Last contacted 9/19/2026"**, and under it **"Rule is not met, No email to send"**. The save flashed *"<name> saved"* and the card did not move.
+
+**Root cause** — A member's address that carries a suppression was dropped on the way out of the read, so the app had no way to show it and no way to ask for it to be changed — and the update path treats "a row for this address already exists" as "there is nothing to do".
+
+Three pieces, and only together are they a defect:
+
+1. `fetchMembers` began its address loop with `if (e.status === 'bounced' || e.status === 'unsubscribed') continue;`. The record the entire app derives from carried **no trace** of an address that exists in the table.
+2. `hasEmail(m)` was `primaryEmail(m) !== ''` over that censored list, so the member card drew its no-address branch. The Edit form seeds its address list from the same record, so it opened **blank**.
+3. The operator did the only thing that screen invited: typed the address the academy holds. `update_member` (0027) found the row still live, took its `exists` branch, set `is_primary`, and never touched `status`. **Nothing anywhere in this repository had ever cleared a suppression** — `ses-feedback` writes 'bounced' and 'complained', `unsubscribe` (0066) writes 'unsubscribed', and no function writes any of them back. `supabase/tests/47_unsubscribe_and_ses_feedback.sql:143` says in as many words that *"'bounced' is a state the academy could decide to clear"*; it was never given anything to clear it with.
+
+The card's own "Last contacted 9/19/2026" was the evidence: a follow-up had gone to that address three days earlier, so it existed and was usable then.
+
+This is **RC-023's shape** — a rule that lives in exactly one place, invisible from where it has to be obeyed — and **RC-031's prevention read backwards**: *carry the stored value and derive the label from it, never the reverse*. Under C2b it is also the **claimed success** class (RC-008, RC-017): the toast asserted the act and nothing asserted the effect.
+
+**CONFIRMED AGAINST PRODUCTION, 22-Sep-2026 19:57 UTC.** `update_member`'s live body was read through the Supabase connector. Its email loop is exactly as described above: the `exists` branch is `set is_primary = v_first, updated_at = now()` and `status` is not in that SET. Piece 3 is no longer derived from source, and T-400's caveat on it is discharged. The body is still DIVERGENT from the repo (9,958 bytes live against 11,213 in the harness replay; T-120 measured 9,625 on 18-Sep, so it has moved since) — that is untouched here and remains T-120/T-400's.
+
+**THE REPORTED MEMBER'S OWN CASE WAS NOT THE ONE DIAGNOSED, and this is recorded because the diagnosis was right about the defect and wrong about her.** Production holds two address rows for the reported member: her original address, status `unsubscribed`, soft-deleted at **2026-09-22 16:32:59 UTC**; and a second, different address, status `unknown`, primary, live, created at that same moment. So the operator did not retype the address already on file — they entered a DIFFERENT one, which put it outside `v_wanted`, soft-deleted the opt-out and inserted the new address cleanly. **That save worked.** The screen she photographed was the state BEFORE it: one unsubscribed address, filtered out of the record by `repository.ts:302`, drawn as "No usable email" over a row sitting in the table. Piece 1 and piece 2, exactly; piece 3 was never reached for this member.
+
+What the defect actually costs, measured rather than inferred: **twelve live members** carry a suppressed address — 6 `bounced`, 6 `unsubscribed`, 0 `complained`, against 1,223 `unknown` and 9 `valid` — and every one of them reads as having no address at all. The six bounced become fixable from the Edit form; the six who opted out are correctly not fixable, and the app will now say which is which instead of flattening both into "No usable email".
+
+**A CONSENT QUESTION THIS SURFACED, for the academy rather than for the code:** the member above opted out of her original address, and a second address for the same person was added twenty minutes later. Nothing in the schema prevents that and this change does not alter it — `update_member` has always accepted a new address, and the opt-out was recorded against the ADDRESS, not the person. It is named here because a bug fix about suppression that left it unsaid would be hiding it.
+
+**What was NOT the cause, and is worth recording** — the refresh wiring is sound. `useMembers` subscribes to `onMembersChanged`, `updateMember` calls `membersChanged()`, and `useAsync` holds no cache. The screen refetched correctly every time and re-applied the same filter to the same row.
+
+**Fix** — Four parts.
+
+*The state is carried.* `Member.emails` entries gain `status` (and `id`, so an address can be acted on by identity rather than by the text in it — an address has not been unique across the register since 0071). The `continue` is gone.
+
+*One question is split into two, and the compiler enforces the sweep.* `hasEmail` answered "is there an address" and "can we send" at once, which is how one question ended up with two answers. It is **deleted**, not widened, and replaced by `hasEmailOnFile` (anything on the record) and `isReachable` (something sendable — already the predicate the send splits on, now status-aware). All 38 references had to pick.
+
+*The screens name the state.* The member card has four states where it had two, each with its own word and its own glyph. The Edit form draws a suppressed address instead of opening blank, will not let it be made primary, and carries **Reinstate** where the suppression is liftable.
+
+*A route back exists, for one state only.* `reinstate_member_email` (0078) clears a **bounce** to 'unknown' and refuses everything else in its own words. The line it draws is *whose act the suppression was*: a bounce is the mail system reporting a dead address, usually a typo the academy can correct; a complaint is the member clicking "report spam" and an opt-out is the member clicking unsubscribe, and neither is the academy's to undo.
+
+**NARROWED ON REVIEW, 22-Sep-2026, and recorded because it was a defect in the fix.** The first draft cleared a *complaint* as well, reasoning that a complaint is a judgement SES made about a message. That was a **new policy invented by a bug fix**, and nothing in the product had asked for it — before this change `send-followups` had no complaint rule at all (`index.ts:233-234` refuses only bounced and unsubscribed), so a complained address was simply **sendable**. Suppressing it is the conservative half and stays; lifting it is not the academy's to do. The narrowing touched `0078`, `emailStatus.ts` (`suppressionLiftable`), and the two specs written with them. Mutation-tested in both directions: restoring `|| status === 'complained'` fires 4 assertions, and letting a bounce read as usable fires 5, including the whole-journey test.
+
+**Deliberately NOT done: `update_member` is untouched.** Two reasons, and the second decided it. The Edit form sends the whole address list on every save, so resetting `status` there would un-suppress an address as a side effect of an unrelated edit. And `update_member` is one of the **fifteen bodies T-120 measured as divergent on production** — 9,625 bytes live against 11,213 in the harness replay — so a `create or replace` from this tree would push whatever the repo holds over whatever is running (RC-047's mechanism, T-125's warning). 0078 restates nothing.
+
+**Files** — `src/data/emailStatus.ts` (new), `src/data/mock.ts`, `src/data/repository.ts`, `src/data/followup.ts`, `src/data/course.ts`, `src/data/reportSheets.ts`, `src/components/MemberRow.tsx`, `app/member/[id].tsx`, `app/member/edit.tsx`, `app/(tabs)/members.tsx`, `app/(tabs)/weekly.tsx`, `app/send/result.tsx`, `src/data/auditPlain.ts`, `supabase/migrations/0078_reinstate_member_email.sql` (new), `supabase/tests/57_reinstate_member_email.sql` (new), `src/data/memberEmailStatus.test.ts` (new).
+
+**How to verify** — `npx tsx --test src/data/memberEmailStatus.test.ts src/data/memberEmailJourney.test.ts` — 32 cases. The status spec was run against the pre-fix tree and 17 of its 20 then-cases fired. The journey spec walks one member through all four states and the single legal transition, using `flagged` + `recipientSplit` — the send's own split, not a copy of it — and ends by replaying the reported journey step by step.
+
+Against a real Postgres: `bash db/harness/reset.sh` then `supabase/tests/57_reinstate_member_email.sql` — **16/16**, covering bounce cleared, complaint refused, opt-out refused, healthy address refused, soft-deleted row refused, one audit row naming the actor, and `anon` unable to execute. In the app: open a member whose address has bounced. The card reads **"Address bounced"** with the address and the reason beside it, not "No usable email". Open Edit: the address is drawn, marked, cannot be made primary, and carries **Reinstate**. Press it — the card reads "Email on file". For an opt-out, no Reinstate is offered, and calling the RPC directly is refused with *"the member unsubscribed from this address, and only the member can undo that"*.
+
+**Recurrence risk** — Two classes, both swept.
+
+(1) *A stored fact discarded on the way out of a read.* `grep -n "continue;" src/data/repository.ts` → 10 hits; nine are null-guards and loop bookkeeping. Every `.filter(` / `.neq(` / `status ===` in the file (40 hits) scopes or counts. **One site, and it was this one.** Two lines below it, `repository.ts:348` already did it the blessed way — an unrecognised `members.status` is *mapped*, not dropped.
+
+(2) *An optional field a future read forgets to map.* This is the hazard `status?` creates: absent reads as usable, which is this defect returning, and there is no type error for it. `memberEmailStatus.test.ts` fails the build on any address record `repository.ts` builds without one — it caught three on the first run (both offline writers and the import writer).
+
+**Recorded, not fixed** (outside the reported defect): `follow_up_candidates` still computes `has_email` as `me.status <> 'bounced'` (`0009:107`, `0045:138`, `0072:165`), so an *unsubscribed* address counts as reachable server-side while the client and `send-followups` both refuse it. Changing it changes who the send selects, which is a second PR. `attendanceResetPreview`'s offline branch derives `has_email` from the member record while the live RPC counts a bounced address as an address on purpose (`0056:157`, `0057:121`); fixtures hold no suppression so the two cannot disagree today.
+
+**Prevention** — The standing rule is RC-031's, and this is its second sighting: **carry the stored value and derive the answer from it, never filter the record on the way out.** A read that drops a row removes the evidence every screen downstream needs to explain itself. Rung: `src/data/memberEmailStatus.test.ts`, which holds both the carrying and the two-predicate split as executable claims.
+
+**Process check** — **No, with one qualification.** No gate could have caught this: every layer was internally consistent and the suite was green. What would have caught it is the question C2b's "claimed success" row already asks — *assert the effect, never the message about it* — and no automated rung can ask that of a path where the effect is "a column the read then hides". The qualification: this defect's diagnosis was **limited by T-400/T-120**, and that is a process gap already filed. Piece 3 above is derived from repository source for a function whose production body has never been read.
+
+---
+
 ## RC-073 — a guard that asked a migration file what the database runs, and was wrong five times over          Tracker: T-121 · Sources: T-111, RC-047, D-2b
 **Date:** 18-Sep-2026  ·  **Severity:** S3 (a spec, not a user-facing defect — but it was five of the fourteen red cases hiding the nine that matter)  ·  **Modules:** `src/data/aliasConflictTarget.test.ts` (deleted)
 
