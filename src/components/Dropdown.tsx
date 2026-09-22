@@ -148,7 +148,22 @@ export function DropdownField({ label, value, open, highlight, onPress, testID, 
  * by the screen, so a floating panel can be clipped at the header's edge,
  * and a dropdown nobody can reach is worse than one that moves the page.
  */
-export function DropdownPanel({ children, maxHeight = 340, inset = 0, flow = false, menu = false }:
+/**
+ * HOW MANY ROWS A PANEL SHOWS BEFORE IT SCROLLS.
+ *
+ * Five. The panel used to be capped at a flat 340px, which is more than half
+ * a phone's height and, opened from a field low on a screen, ran straight off
+ * the bottom of it with the rest of the list unreachable. The cap is derived
+ * from the row's own dimensions -- `DropdownItem`/`DropdownCheckItem` are
+ * TAP_MIN tall plus SPACE.sm above and below, with a 4px gap between them --
+ * so it stays exactly five rows if either of those ever moves.
+ */
+const VISIBLE_ROWS = 5;
+const ROW_GAP = 4;
+const ROW_HEIGHT = TAP_MIN + SPACE.sm * 2;
+export const PANEL_MAX_HEIGHT = VISIBLE_ROWS * ROW_HEIGHT + (VISIBLE_ROWS - 1) * ROW_GAP;
+
+export function DropdownPanel({ children, maxHeight = PANEL_MAX_HEIGHT, inset = 0, flow = false, menu = false }:
   { children: React.ReactNode; maxHeight?: number;
     /** pulls the panel in from the row's edges, to line it up with a
      *  padded header rather than with the screen */
@@ -182,7 +197,7 @@ export function DropdownPanel({ children, maxHeight = 340, inset = 0, flow = fal
             ? ({ overflowY: 'scroll', scrollbarWidth: 'thin', scrollbarGutter: 'stable' } as unknown as ViewStyle)
             : null),
         }}
-        contentContainerStyle={menu ? undefined : { gap: 4 }}
+        contentContainerStyle={menu ? undefined : { gap: ROW_GAP }}
         showsVerticalScrollIndicator
         persistentScrollbar
         keyboardShouldPersistTaps="handled">
