@@ -88,6 +88,7 @@ should start by reading this table rather than by guessing which part felt slow.
 
 | ID | Action | Type | Scale | Started | Ended | Total | Stages | Gate | Verdict | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
+| R-012 | Attendance import multiplies a namesake: ambiguous rows auto-added as new members | BUG | micro | 2026-09-22 19:32 | 2026-09-22 19:41 | 9m elapsed · active: no marks | - | 27.8s | FAIL | RC-106 import decisions: change-scoped checks green (types both programs, lint app+src, spec 18/18, unit 1860 pass / 8 known); gate FAIL on pre-existing G1-G3 (design/tokens.json absent), G6 (scripts/conformance.mjs warning), G7 (known 8), G8 (no environment) |
 | R-011 | Dropdown panel shows four rows then scrolls | CHANGE | scoped | 2026-09-22 11:21 | 2026-09-22 11:22 | 26s elapsed · active: no marks | - | 46m 13s | PASS | typecheck, lint, unit at baseline; browser check by the requester |
 | R-010 | Dropdown panel shows five rows then scrolls | CHANGE | scoped | 2026-09-22 11:14 | 2026-09-22 11:15 | 39s elapsed · active: no marks | - | 46m 13s | PASS | typecheck, lint, unit at the 8-failure RV-03 baseline; browser check by the requester |
 | R-009 | Dropdown panel: always-visible scrollbar on web | CHANGE | scoped | 2026-09-22 11:09 | 2026-09-22 11:10 | 37s elapsed · active: no marks | - | 46m 13s | PASS | typecheck, lint, unit at the 8-failure RV-03 baseline; browser check deferred to the requester by instruction |

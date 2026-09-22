@@ -29,6 +29,7 @@ import {
   planBatch, batchAskWords, batchHeading, mergedFileName, mergedNote,
 } from '../src/data/uploadBatch';
 import { iso } from '../src/data/period';
+import { autoDecisions, heldNames, heldWords, heldSentence } from '../src/data/importDecisions';
 import {
   alreadyImportedWords, nothingChanged, noChangeWords, changeSummary,
   type ImportChanges, type OutcomeWords,
@@ -71,42 +72,10 @@ import {
  */
 type Phase = 'choose' | 'pick' | 'course' | 'confirm' | 'working' | 'done';
 
-/**
- * WHAT THE IMPORT DOES WITH A ROW NOBODY WAS ASKED ABOUT.
- *
- * An exact match -- her canonical name, or a display name already confirmed
- * for her -- is her, and her attendance is marked. Everything else becomes a
- * NEW MEMBER WITH NO EMAIL, which is what puts her in the No email group on
- * the course, next to the two buttons that resolve her.
- *
- * WHY CREATE RATHER THAN LINK, for a fuzzy hit the matcher is 90% sure of,
- * or for a name two members share: because the two mistakes are not the same
- * size. A wrong LINK marks the wrong woman present and looks exactly like a
- * right one -- nothing on any screen says it happened. A wrong CREATE puts a
- * name you recognise in the No email group, where "add display name to
- * existing member" folds her into the real member and carries her attendance
- * across with her (0032). Visible and two taps to undo beats invisible and
- * permanent. Confirmed by the requester on 06-Sep-2026.
- *
- * This is what C-79's "a fuzzy hit is never auto-accepted" becomes: it is
- * still never accepted AS a match. It is filed as somebody new until a person
- * says otherwise.
- *
- * The instructor is not in here at all: csv-import sets staff names aside
- * before matching, so she never reaches this function as an unmatched row.
- */
-function autoDecisions(rows: { row: number; kind: string; candidates: unknown[] }[]): ImportDecision[] {
-  return rows
-    .filter(r => r.kind !== 'matched' && r.kind !== 'noEmail')
-    .map(r => ({
-      row: r.row,
-      action: 'add_as_new' as const,
-      // C-80 wants an acknowledgement that this is a different person from
-      // the candidate shown. Nobody was shown one, and this IS the
-      // acknowledgement: the row is deliberately filed as somebody new.
-      confirm_different_person: r.candidates.length > 0,
-    }));
-}
+/* The decision for each row is made in src/data/importDecisions.ts, where a
+   spec can run it. What it decides, and the row it used to get wrong -- an
+   ambiguous name filed as somebody new, a third record for one person --
+   is written there. */
 
 /**
  * What the import did, in the terms the requester asked to see it in:
@@ -132,6 +101,9 @@ type Outcome = {
   /** names whose only member of that name is enrolled in ANOTHER course, so
    *  they were added here as somebody new rather than marking that woman */
   other_course: string[];
+  /** names two or more members of this course already hold, HELD BACK:
+   *  nobody created, nobody marked on a guess (src/data/importDecisions.ts) */
+  ambiguous: string[];
   /** names Meet wrote more than once, counted once */
   duplicates: string[];
   /** the file this one corrected, when the day already had one */
@@ -765,13 +737,15 @@ function UploadBody() {
       setOutcome({
         session_date: staged.day,
         with_email: c.matched ?? 0,
-        no_email: (c.noEmail ?? 0) + (c.possible ?? 0) + (c.ambiguous ?? 0) + (c.unmatched ?? 0),
+        // Not `ambiguous`: a held row lands nowhere, so it is counted nowhere.
+        no_email: (c.noEmail ?? 0) + (c.possible ?? 0) + (c.unmatched ?? 0),
         imported: result.present_or_extra,
         dropped: preview.dropped_names ?? [],
         staff: preview.staff_names ?? [],
         // Absent from a project still on the older function, and read as
         // "nothing to say" rather than "none": the note simply does not draw.
         other_course: preview.other_course_names ?? [],
+        ambiguous: heldNames(preview.rows),
         duplicates: staged.duplicates,
         supersedes: staged.supersedes?.file_name ?? null,
         // Absent until the migration that returns it is applied, which is why
@@ -1038,11 +1012,12 @@ function UploadBody() {
                 changeSummary(result.changes ?? null),
                 st.supersedes ? `Replaced ${st.supersedes.file_name}.` : null,
                 overrideSummary(result.overridden ?? null),
+                heldSentence(heldNames(preview.rows)),
                 merged,
               ].filter(Boolean).join(' '),
           files: source.fileNames.length,
           withEmail: c.matched ?? 0,
-          noEmail: (c.noEmail ?? 0) + (c.possible ?? 0) + (c.ambiguous ?? 0) + (c.unmatched ?? 0),
+          noEmail: (c.noEmail ?? 0) + (c.possible ?? 0) + (c.unmatched ?? 0),
         });
       } catch (err) {
         /* Same distinction as the single-file commit, said on this file's own
@@ -1659,6 +1634,16 @@ function UploadBody() {
               body={`${outcome.other_course.join(', ')} ${outcome.other_course.length === 1 ? 'matches a member' : 'match members'} enrolled elsewhere, and a member is in one course at a time — so ${outcome.other_course.length === 1 ? 'they were added to this course as somebody new' : 'they were added to this course as new members'}, not marked present on the other register. If it is the same member, “Add display name to existing member” on the course folds them in and carries their attendance across.`} />
           ) : null}
 
+          {/* A NAME TWO MEMBERS OF THIS COURSE ALREADY HOLD. The import will not
+              guess which one attended, and it will not invent a third -- the
+              row is held back, and this is where that is said, with the two
+              taps that resolve it. The words are in src/data/importDecisions.ts. */}
+          {outcome.ambiguous.length > 0 ? (
+            <Note testID="upload-ambiguous" ink={warnInk} icon="group"
+              title={heldWords(outcome.ambiguous).title}
+              body={heldWords(outcome.ambiguous).body} />
+          ) : null}
+
           {/* WHO RAN THE CLASS. Named, because leaving the instructor off the
               register silently is how somebody concludes the import missed
               her. */}
@@ -1920,7 +1905,8 @@ function Note({ testID, ink, icon, title, body }: {
 function fixtureOutcome(day: string, source: { text: string }, supersedes: Supersedes): Outcome {
   const kinds = MATCH_ROWS.map(r => r.kind);
   const withEmail = kinds.filter(k => k === 'matched').length;
-  const newMembers = kinds.filter(k => k === 'possible' || k === 'ambiguous' || k === 'unmatched').length;
+  // An ambiguous row is held, not landed, so it is in neither count.
+  const newMembers = kinds.filter(k => k === 'possible' || k === 'unmatched').length;
   const noEmail = kinds.filter(k => k === 'noEmail').length + newMembers;
   return {
     session_date: day,
@@ -1930,6 +1916,7 @@ function fixtureOutcome(day: string, source: { text: string }, supersedes: Super
     dropped: [],
     staff: [],
     other_course: [],
+    ambiguous: heldNames(MATCH_ROWS.map(r => ({ row: r.row, kind: r.kind, raw_name: r.raw, candidates: [] }))),
     duplicates: [...new Set(dedupeRows(parseMeetCsv(source.text).rows).duplicates)],
     supersedes: supersedes?.file_name ?? null,
     // The fixtures describe a register being replaced; they do not invent
