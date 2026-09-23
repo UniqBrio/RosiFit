@@ -3387,6 +3387,19 @@ export async function updateMember(input: MemberUpdate): Promise<{ moved: boolea
 /**
  * CLEAR A SUPPRESSION on one address, so follow-ups can reach the member again.
  *
+ * DELIBERATELY UNCALLED SINCE 23-Sep-2026, and kept rather than deleted.
+ * The Edit form no longer offers Reinstate: re-using an address the mail system
+ * has already rejected sends the next follow-up into the same hole, so the form
+ * asks for a DIFFERENT address instead
+ * (requests/2026-09-23-bounced-address-asks-for-a-different-one.md).
+ *
+ * `reinstate_member_email` is applied and live on production (0078, ledger row
+ * 20260922195737) and its refusals are proven in
+ * `supabase/tests/57_reinstate_member_email.sql`. This wrapper is the correct,
+ * tested way to reach it if a reinstatement surface is ever wanted somewhere
+ * else; it is not dead by accident, and a future reader should not "tidy" it
+ * away without reading that request first.
+ *
  * DELIBERATELY NOT `updateMember`. That RPC is sent the WHOLE address list on
  * every save, so resetting `status` inside it would un-suppress an address as a
  * side effect of correcting a display name or moving somebody's course. And

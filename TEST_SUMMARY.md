@@ -1,3 +1,114 @@
+## A BOUNCED ADDRESS ASKS FOR A DIFFERENT ONE — 23-Sep-2026
+
+Track B over RC-106. The academy asked for the opposite answer to the one shipped the day
+before, and it is the better one: an address the mail system has already rejected is not
+repaired by marking it un-rejected, so the form now REFUSES the re-entry and asks for a
+different address. The Reinstate action is withdrawn;
+`requests/2026-09-23-bounced-address-asks-for-a-different-one.md` records the reversal.
+
+FAIL-FIRST, by injection, both reverted and re-verified green afterwards:
+
+FAIL-FIRST: src/data/bouncedReentry.test.ts - "not ok 3 - it is matched the way the DATABASE
+matches it, not the way a form might" - replaced `normalizeEmail(e.address) === want` with a
+raw `e.address === draft`, which is the form and the database disagreeing about what "the same
+address" means for a trailing space or a capital letter. 1 of 19 fired, and it is the one that
+names the rule.
+
+FAIL-FIRST: src/data/bouncedReentry.test.ts - "not ok 12 - Save is blocked while the box holds
+a bounced address" - removed `&& !bouncedDraft` from the form's `valid` expression. 1 of 19
+fired. That is the assertion standing between this change and the original RC-106 defect: a
+form that accepts the address and then shows nothing new.
+
+MEASURED THIS RUN, clean tree vs changed tree:
+  - targeted (bouncedReentry, memberEmailStatus, memberEmailJourney): **52/52 PASS**
+  - `npx tsc --noEmit -p tsconfig.json`: **0 errors**
+  - `npm run test:unit`: **1894 pass / 8 fail** against a clean-tree baseline of 1842 / 8 —
+    the SAME EIGHT, name for name. +52 tests, +0 failures.
+  - `npm run audit:all`: the same 3 pre-existing RULE COVERAGE violations (RC-073, RC-047,
+    RC-048), verified earlier as byte-identical with this branch's register entries stashed.
+  - `git diff supabase/`: **EMPTY**. No migration, no DB spec, and `update_member` untouched —
+    this change is entirely client-side, as the request required.
+  - `supabase/tests/57_reinstate_member_email.sql` on a from-scratch replay: **16/16 PASS**.
+    The RPC is unchanged and still live on production; it is simply no longer called.
+
+WHAT IS PROVEN, AND WHAT IS NOT. The rule, the wording and the form's wiring are pinned —
+`bouncedReentry.test.ts` reads `app/member/edit.tsx` for the branch it takes, the inline block
+it renders and the absence of any Reinstate control, the way this project's other specs do.
+Nothing here RENDERS the form: there is no component harness in this repository, so "the ⓘ
+block appears under the field" is asserted structurally, not visually. Opening the running app
+remains the only proof of that, and the Vercel preview on PR #37 is where it would be done.
+
+---
+
+## Gate run - 2026-09-23 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 37.1s total - slowest G7 Unit + pure specs (20.4s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (61ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (63ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (64ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (92ms)
+- **G5 Types** - PASS (8.3s)
+- **G6 Lint** - FAIL (7.4s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (20.4s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (152ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (73ms)
+- **G10 Backward compatibility (fixtures)** - PASS (143ms)
+- **G11 Wide tables are configurable** - PASS (77ms)
+- **G12 Installable as an application** - PASS (97ms)
+- **G13 Approved design still being built** - PASS (63ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
 ## PRODUCTION APPLY — 0078, 22-Sep-2026 19:57 UTC
 
 The Supabase connector was completed mid-session, so the migration this repository had prepared

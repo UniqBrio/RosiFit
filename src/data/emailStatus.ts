@@ -55,31 +55,79 @@ export const emailUsable = (e: { status?: EmailStatus }): boolean =>
   e.status === undefined || e.status === 'unknown' || e.status === 'valid';
 
 /**
- * Whether a suppression is one the academy may lift.
- *
- * A BOUNCE AND NOTHING ELSE. The line is whose act the suppression was:
+ * Whether the suppression is the MAIL SYSTEM's verdict on the address, rather
+ * than the member's own decision.
  *
  *   - a BOUNCE is the mail system reporting that the address does not accept
- *     mail, which is most often a typo somebody at the academy can correct, so
- *     it is the academy's to lift;
+ *     mail. Nobody chose it, and the address itself is the thing that is wrong;
  *   - a COMPLAINT is the member clicking "report spam" in their own mail
- *     client, and an OPT-OUT is the member clicking the unsubscribe link.
- *     Neither is a mistake the academy made, and clearing either would put the
- *     academy back in front of somebody who said stop.
+ *     client, and an OPT-OUT is the member clicking the unsubscribe link. Both
+ *     are the member saying stop.
  *
- * NARROWED 22-Sep-2026. The first draft of this module let a complaint be
- * lifted too. That was a policy this bug fix INVENTED, and nothing in the
- * product asked for it -- before this change `send-followups` had no complaint
- * rule at all (it refuses only bounced and unsubscribed), so a complained
- * address was simply sendable. It is suppressed now, which is the conservative
- * half and stays; it is not the academy's to lift.
+ * This decides WHAT A SCREEN ADVISES, and nothing else. For a bounce the answer
+ * is "this address does not work -- use a different one"; for the other two it
+ * is "the academy may not write here at all". Neither answer is a licence to
+ * change the stored status: no screen in this app reinstates an address.
  *
- * `reinstate_member_email` (0078) refuses both in the database, each in its own
- * words, so this is a screen deciding what to OFFER and never the thing that
- * enforces it.
+ * HISTORY, because this line has moved twice and the reasons matter. It began
+ * as `suppressionLiftable`, gating a Reinstate action that cleared a bounce
+ * through `reinstate_member_email` (0078). It briefly included 'complained',
+ * which was a policy this app INVENTED and which was withdrawn on review. Then
+ * the Reinstate action itself was withdrawn
+ * (requests/2026-09-23-bounced-address-asks-for-a-different-one.md): re-using
+ * an address the mail system has already rejected is not a fix, so the form now
+ * asks for a DIFFERENT address instead of offering to un-suppress the dead one.
+ * The RPC still exists in the database and is deliberately no longer called.
  */
-export const suppressionLiftable = (status?: EmailStatus): boolean =>
+export const isDeliveryFailure = (status?: EmailStatus): boolean =>
   status === 'bounced';
+
+/**
+ * An address as the database stores it, trimmed and lower-cased.
+ *
+ * THE SAME NORMALISATION THE WRITE PATH APPLIES, which is the only reason this
+ * function exists rather than two `.trim().toLowerCase()` calls. `update_member`
+ * (0027) and `create_member` (0016) both compare and store
+ * `btrim(lower(v_email))`, and `member_emails.email` is `citext` on top of that.
+ * A form that decided "is this address already on the record" by a different
+ * rule than the database uses would answer differently from the database for
+ * exactly the inputs that matter -- a trailing space, a capital letter.
+ */
+export const normalizeEmail = (raw: string): string => raw.trim().toLowerCase();
+
+/**
+ * THE WORDING for an address the mail system has already rejected, kept beside
+ * the rule rather than inside a screen so the form and its spec quote one
+ * source. Two parts: what is true, and what to do about it.
+ */
+export const BOUNCED_ENTRY_TITLE = 'Email address is not active';
+export const BOUNCED_ENTRY_DETAIL =
+  'An email was previously sent to this address but could not be delivered. '
+  + 'The address may be inactive or invalid. Please try adding a different email address.';
+
+/** The shape this module needs of a stored address; structural so that nothing
+ *  here has to import `Member` and close a cycle back through mock.ts. */
+export type StoredAddress = { address: string; status?: EmailStatus };
+
+/**
+ * The member's own record already holds this address, and it BOUNCED.
+ *
+ * Answered from the record the app has already loaded -- `Member.emails` carries
+ * `status` since RC-106 -- so typing costs no query. Returns the stored row, so
+ * a caller can name the address it matched rather than echo what was typed.
+ *
+ * Deliberately narrow: only 'bounced'. An opt-out or a complaint on the record
+ * is a different conversation and keeps its own wording (`emailStateWord`); an
+ * address at 'unknown' or 'valid' is simply already there and is not an error
+ * at all.
+ */
+export function bouncedOnRecord<T extends StoredAddress>(
+  draft: string, onRecord: readonly T[],
+): T | undefined {
+  const want = normalizeEmail(draft);
+  if (!want) return undefined;
+  return onRecord.find(e => normalizeEmail(e.address) === want && isDeliveryFailure(e.status));
+}
 
 /**
  * The word for a state, for a screen that must name it.

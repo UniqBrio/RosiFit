@@ -57,7 +57,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import * as mock from './mock';
 import * as followup from './followup';
-import { emailStateWord, suppressionLiftable, type EmailStatus } from './emailStatus';
+import { emailStateWord, isDeliveryFailure, type EmailStatus } from './emailStatus';
 import type { Member } from './mock';
 
 const ROOT = process.env.MEMBER_EMAIL_STATUS_SPEC_ROOT ?? process.cwd();
@@ -191,20 +191,23 @@ test('the Edit form draws a suppressed address instead of opening blank', () => 
   assert.match(src, /suppressed|SUPPRESSED/,
     'app/member/edit.tsx does not distinguish a suppressed address. It opened blank over a '
     + 'member who HAS one, which is what made the operator retype the address already on file.');
-  assert.match(src, /reinstate|Reinstate/,
-    'there is no way to reinstate a bounced address from the form, so the operator still '
-    + 'cannot fix the member the defect was reported against.');
+  // The way FORWARD, which replaced the Reinstate action on 23-Sep-2026: the
+  // form refuses the re-entry and asks for a different address instead.
+  // Pinned in full by src/data/bouncedReentry.test.ts.
+  assert.match(src, /bouncedOnRecord/,
+    'the form does not detect a re-entered address that has already bounced.');
 });
 
-test('the form decides what to OFFER through the shared rule, not its own copy', () => {
+test('the form classifies a suppression through the shared rule, not its own copy', () => {
   const src = read(FORM);
-  assert.match(src, /suppressionLiftable/,
-    'the form must gate Reinstate on suppressionLiftable. A form carrying its own list of '
-    + 'which states may be cleared is a second copy of the rule, and the copies drift — '
-    + 'which is RC-023, the class this whole defect belongs to.');
+  assert.match(src, /isDeliveryFailure/,
+    'the form must ask the shared rule whether a suppression is the mail system\'s verdict '
+    + 'on the address or the member\'s own decision. A form carrying its own list of states '
+    + 'is a second copy of the rule, and the copies drift — RC-023, the class this whole '
+    + 'defect belongs to.');
   assert.ok(!/status\s*===\s*'unsubscribed'/.test(src),
-    'the form is testing the opt-out state by hand. That decision lives in emailStatus.ts '
-    + 'and is enforced by reinstate_member_email (0078); a third copy here can only drift.');
+    'the form is testing the opt-out state by hand. That decision lives in emailStatus.ts; '
+    + 'a second copy here can only drift.');
 });
 
 /* --------------------------------------------- 4. the card names the state */
@@ -233,19 +236,18 @@ test('the member card no longer claims there is no address when there is one', (
     + 'again — two copies of the wording is how the card and the form drift apart.');
 });
 
-test('ONLY a bounce is liftable — the rule, in one place', () => {
+test('ONLY a bounce is the mail system\'s verdict — the rule, in one place', () => {
   // The line is whose act the suppression was. A bounce is the mail system
-  // reporting a dead address, usually a typo the academy can correct. A
-  // complaint and an opt-out are both the MEMBER'S OWN CLICK, and clearing
-  // either would put the academy back in front of somebody who said stop.
-  assert.equal(suppressionLiftable('bounced'), true);
-  assert.equal(suppressionLiftable('complained'), false,
-    'a complaint is the member clicking "report spam"; it is not the academy\'s to lift. '
-    + 'This was widened by mistake in the first draft of this change and narrowed on review.');
-  assert.equal(suppressionLiftable('unsubscribed'), false,
-    'the member said something deliberate; the app offers no way to undo it.');
-  assert.equal(suppressionLiftable('unknown'), false);
-  assert.equal(suppressionLiftable(undefined), false);
+  // reporting a dead address; a complaint and an opt-out are the MEMBER'S OWN
+  // CLICK. It decides what a screen ADVISES and nothing else: since
+  // 23-Sep-2026 no screen in this app reinstates an address at all.
+  assert.equal(isDeliveryFailure('bounced'), true);
+  assert.equal(isDeliveryFailure('complained'), false,
+    'a complaint is the member clicking "report spam", not a dead address.');
+  assert.equal(isDeliveryFailure('unsubscribed'), false,
+    'the member said something deliberate; the address itself may be perfectly fine.');
+  assert.equal(isDeliveryFailure('unknown'), false);
+  assert.equal(isDeliveryFailure(undefined), false);
 });
 
 test('a complaint stays SUPPRESSED even though it cannot be lifted', () => {
@@ -254,7 +256,7 @@ test('a complaint stays SUPPRESSED even though it cannot be lifted', () => {
   const m = member([{ address: 'a@b.com', primary: true, status: 'complained' }]);
   assert.equal(mock.hasEmailOnFile(m), true, 'the address is still on the record and still shown');
   assert.equal(followup.isReachable(m), false, 'and nothing may be sent to it');
-  assert.equal(suppressionLiftable('complained'), false, 'and no screen may offer to clear it');
+  assert.equal(isDeliveryFailure('complained'), false, 'and it is not a delivery failure');
 });
 
 test('the card copy is about the member, never gendered', () => {
