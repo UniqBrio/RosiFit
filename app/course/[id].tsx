@@ -38,6 +38,9 @@ import {
 import { fieldValue, toggle } from '../../src/data/overview';
 import { streakReading, missLine } from '../../src/data/streak';
 import { enrolledIn } from '../../src/data/course';
+import {
+  emailIssueGroups, emailIssueCount, issueBadge, ISSUE_READING,
+} from '../../src/data/emailIssues';
 import { offersUpload } from '../../src/data/uploadWindow';
 // The RC-039 rule, pure and specced next door: "not uploaded" is a claim
 // only a COMPLETED read may make (src/data/dayLoad.ts).
@@ -557,6 +560,18 @@ function CourseDetailBody() {
 
   const withEmail = shown.filter(m => m.emails.length > 0);
   const withoutEmail = shown.filter(m => m.emails.length === 0);
+
+  /* WHOSE EMAIL CANNOT BE USED, AND WHY (the section below "No email").
+     Derived from `shown` -- the same array the roster above is drawing -- so
+     the count and the rows come from one pass and cannot drift, and so a
+     member of another course cannot reach it: `shown` is already
+     enrolledIn(members, course), narrowed by branch, by the search box and by
+     the reading filters, exactly as "No email" is.
+     No read of its own: `Member.emails` and `Member.suppressedBefore` both
+     arrive with the roster (src/data/emailIssues.ts). */
+  const issueGroups = useMemo(() => emailIssueGroups(shown), [shown]);
+  const issueTotal = emailIssueCount(issueGroups);
+  const [issuesOpen, setIssuesOpen] = useState(false);
 
   /* ------------------------------------------------ resetting the day
    *
@@ -1781,6 +1796,122 @@ function CourseDetailBody() {
                         onToggleSelect={() => toggleSelected(m.id)} />
                     ))}
                   </View>
+                </View>
+              ) : null}
+
+              {/* ------------------------------------------- EMAIL ISSUES
+                  IMMEDIATELY BELOW "No email", and deliberately NOT merged
+                  into it: the two answer different questions and have
+                  different answers. "No email" is no address on file, and the
+                  way out is to add one. This is an address that exists and
+                  cannot be used, and what to do depends entirely on WHY --
+                  which is why the rows are grouped by the reason.
+
+                  Drawn only when there is something to say. A collapsed
+                  heading over an empty list is a section that costs a reader
+                  attention and gives nothing back. */}
+              {issueTotal > 0 ? (
+                <View testID="course-email-issues" style={{ marginTop: SPACE.xl }}>
+                  <Pressable
+                    testID="course-email-issues-toggle"
+                    onPress={() => setIssuesOpen(o => !o)}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: issuesOpen }}
+                    accessibilityLabel={`Email issues, ${issueTotal} ${issueTotal === 1 ? 'member' : 'members'}`}
+                    accessibilityHint={issuesOpen ? 'Hides the list' : 'Shows the list, grouped by reason'}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 7, minHeight: TAP_MIN }}>
+                    <Icon name="error" size={16} color={dangerInk} />
+                    <Label style={{ flex: 1, color: dangerInk }}>Email issues</Label>
+                    <Text style={{ fontSize: 11.5, color: theme.muted, fontVariant: ['tabular-nums'] }}>
+                      {`${issueTotal} of ${shown.length}`}
+                    </Text>
+                    <Icon name={issuesOpen ? 'expand_less' : 'expand_more'} size={18} color={theme.muted} />
+                  </Pressable>
+
+                  {issuesOpen ? (
+                    <View style={{ gap: SPACE.md, marginTop: 9 }}>
+                      {issueGroups.map(group => (
+                        <View key={group.kind}>
+                          {/* The reason, with its own count. The word carries
+                              it as well as the colour (guardrail 3, CP-010). */}
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text style={{ fontSize: 11.5, fontWeight: '800', color: dangerInk }}>
+                              {group.label}
+                            </Text>
+                            <Text style={{ fontSize: 11.5, color: theme.muted, fontVariant: ['tabular-nums'] }}>
+                              {`· ${group.rows.length}`}
+                            </Text>
+                          </View>
+
+                          <View style={{ gap: SPACE.sm, marginTop: 6 }}>
+                            {group.rows.map(row => {
+                              const reading = ISSUE_READING[row.kind];
+                              return (
+                                <View key={row.member.id}
+                                  testID={`course-email-issue-${row.member.id}`}
+                                  accessible
+                                  accessibilityLabel={`${row.member.name}. ${row.address}. ${issueBadge(row.kind)}. ${reading.title}. ${reading.detail}`}
+                                  style={{
+                                    padding: 12, borderRadius: RADIUS.md,
+                                    backgroundColor: statusSurface(dangerInk).bg,
+                                    borderWidth: 1, borderColor: statusSurface(dangerInk).border,
+                                  }}>
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }}>
+                                    <Text numberOfLines={1} style={{
+                                      flex: 1, fontSize: 13, fontWeight: '700', color: theme.fgStrong }}>
+                                      {row.member.name}
+                                    </Text>
+                                    {/* The badge is the app's existing word for
+                                        the state, not a second vocabulary. */}
+                                    <Text style={{
+                                      fontSize: 10.5, fontWeight: '800', color: dangerInk,
+                                      paddingHorizontal: 7, paddingVertical: 2,
+                                      borderRadius: RADIUS.sm,
+                                      backgroundColor: statusSurface(dangerInk).border,
+                                    }}>
+                                      {issueBadge(row.kind)}
+                                    </Text>
+                                  </View>
+                                  <Text numberOfLines={1} style={{
+                                    fontSize: 12, color: theme.muted, marginTop: 2,
+                                    fontVariant: ['tabular-nums'] }}>
+                                    {row.address}
+                                  </Text>
+                                  <Text style={{ fontSize: 12, fontWeight: '700', color: dangerInk, marginTop: 5 }}>
+                                    {reading.title}
+                                  </Text>
+                                  <Muted style={{ fontSize: 12, lineHeight: 17, marginTop: 1 }}>
+                                    {reading.detail}
+                                  </Muted>
+
+                                  {/* ONLY a bounce carries an action, and it is
+                                      the Edit form the app already has: the
+                                      address is wrong and the answer is to
+                                      change it. An opt-out and a spam report
+                                      are the member's own decision, so nothing
+                                      is offered that could override them --
+                                      no send, no reinstatement. */}
+                                  {reading.action === 'edit' ? (
+                                    <Pressable
+                                      testID={`course-email-issue-edit-${row.member.id}`}
+                                      onPress={() => router.push({
+                                        pathname: '/member/edit', params: { id: row.member.id } })}
+                                      accessibilityRole="button"
+                                      accessibilityLabel={`Update the email address for ${row.member.name}`}
+                                      style={{ marginTop: 8, minHeight: TAP_MIN / 2, justifyContent: 'center' }}>
+                                      <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.accentInk }}>
+                                        Update email
+                                      </Text>
+                                    </Pressable>
+                                  ) : null}
+                                </View>
+                              );
+                            })}
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
                 </View>
               ) : null}
             </>

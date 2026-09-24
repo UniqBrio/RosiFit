@@ -1,3 +1,62 @@
+## EMAIL ISSUES — a course's unusable addresses, grouped by why, 24-Sep-2026
+
+A visibility section on the course screen, immediately below "No email" and deliberately not
+merged with it. `requests/2026-09-24-email-issues-section.md` is the binding record.
+
+DATA SOURCE: none added. The section derives from `shown` — the array the roster above it is
+already rendering, which is `enrolledIn(members, course)` narrowed by branch, by the search box
+and by the reading filters. `Member.emails` and `Member.suppressedBefore` both arrive with the
+single `useFollowUp` load, so there is no query per member and no second count that can drift
+from the rows (guardrail 1, CP-011).
+
+FAIL-FIRST. The module and its spec were written together, so the evidence is mutation, plus
+two UI guards that were genuinely red before the section existed:
+
+FAIL-FIRST: src/data/emailIssues.test.ts — "# fail 2" of 23 against the tree before the course
+screen was touched: "the section is rendered immediately BELOW No email" and "it reads the
+roster the screen is already drawing — no second query". The other 21 are the derivation and
+passed from the start, which is why they are mutation-tested below rather than counted as
+red-first.
+
+MUTATION M1 — stop folding suppression history in (`status: e.status` instead of
+`effectiveStatus(...)`), which is the RC-107 blind spot put back: **4 fired**, including all
+three soft-deleted cases and the normalisation case.
+
+MUTATION M3 — give an opt-out the Edit action: **1 fired**, "an opt-out offers NO action".
+
+MUTATION M2 SURVIVED, and is recorded rather than quietly dropped. Removing the
+`if (m.emails.length === 0) return undefined;` guard changed nothing: a member with no
+addresses produces an empty `read`, so no usable address is found, no suppressed one either,
+and the function returns undefined by the ordinary route. The guard is therefore REDUNDANT
+against the current body. It is kept as an explicit statement of intent — "No email" and
+"Email issues" are different sections answering different questions — and the behaviour it
+describes is pinned by two tests that pass by that other route. A surviving mutant is
+information about the spec, not a thing to hide.
+
+MEASURED THIS RUN, clean tree vs changed tree:
+  - `npx tsx --test src/data/emailIssues.test.ts`: **23/23 PASS**
+  - email-status family (emailIssues, bouncedReentry, memberEmailStatus, memberEmailJourney):
+    **79/79 PASS**
+  - course / roster / attendance specs: 82/84 — the 2 failures are `rosterFilter.test.ts`,
+    both in the pre-existing eight
+  - `npx tsc --noEmit -p tsconfig.json`: **0 errors**
+  - `npm run test:unit`: **1921 pass / 8 fail** against a clean-tree baseline of 1842 / 8 —
+    the SAME EIGHT, name for name. +79 tests, +0 failures.
+  - `npm run audit:all`: the same 3 pre-existing RULE COVERAGE violations
+  - `npm run check:icons`: 75/75. The two new glyph names (`expand_less` / `expand_more`) are
+    already this app's expand/collapse idiom in four other screens and resolve through the
+    alias table; verified against the MaterialIcons glyphmap directly.
+  - `git diff supabase/`: **EMPTY**. No migration, no DB spec, `update_member` untouched, and
+    nothing about suppression, unsubscribe or sending was changed.
+
+WHAT IS STILL NOT PROVEN, for the third day running: no spec here renders a screen, so "the
+section appears below No email and its rows read correctly" is asserted by reading
+`app/course/[id].tsx` for the order, the testIDs and the absence of any send or reinstate
+control. preview-smoke-verifier remains unreachable — the network policy rejects the Vercel
+preview host. This is named in RC-107's process check and has not changed.
+
+---
+
 ## RC-107 — A SUPPRESSION ERASED BY REMOVE-THEN-RE-ADD, 24-Sep-2026
 
 Found by the academy using the app, one day after RC-106 shipped: a member's opted-out address
@@ -44,6 +103,75 @@ using the app, not by this suite. The standing answer — `preview-smoke-verifie
 stage that opens the running application — has not been reachable from any session in this
 run: the environment's network policy rejects the Vercel preview host, the same way it rejects
 the Supabase host. That gap is named in RC-107's process check.
+
+---
+
+## Gate run - 2026-09-24 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 28.3s total - slowest G7 Unit + pure specs (16.4s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (55ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (52ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (49ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (63ms)
+- **G5 Types** - PASS (6.1s)
+- **G6 Lint** - FAIL (5.1s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (16.4s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (123ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (54ms)
+- **G10 Backward compatibility (fixtures)** - PASS (107ms)
+- **G11 Wide tables are configurable** - PASS (53ms)
+- **G12 Installable as an application** - PASS (69ms)
+- **G13 Approved design still being built** - PASS (48ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
