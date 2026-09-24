@@ -88,6 +88,7 @@ should start by reading this table rather than by guessing which part felt slow.
 
 | ID | Action | Type | Scale | Started | Ended | Total | Stages | Gate | Verdict | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
+| R-016 | i added same email which was bounced earlier but it got added now instead of showing the message | BUG | scoped | 2026-09-24 04:45 | 2026-09-24 04:45 | 0s active · 0s elapsed | verify 0s | 29.5s | FAIL | - |
 | R-015 | bounced email re-entry: warn and ask for a different address, do not reinstate | CHANGE | scoped | 2026-09-23 11:07 | 2026-09-23 11:08 | 31s active · 31s elapsed | verify 0s | 37.1s | FAIL | - |
 | R-014 | aplly to db | BUG | scoped | 2026-09-22 20:03 | 2026-09-22 20:03 | 0s active · 0s elapsed | verify 0s | 26.3s | FAIL | - |
 | R-013 | take the suppressed-email fix through the remaining DB/application completion steps | BUG | scoped | 2026-09-22 19:44 | 2026-09-22 19:45 | 4s active · 4s elapsed | verify 0s | 29.1s | FAIL | - |

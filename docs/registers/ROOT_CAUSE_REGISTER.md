@@ -59,6 +59,35 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-107 — a suppression was erased by removing the address and typing it back in          Tracker: none (found in production during RC-106's follow-up) · Sources: RC-106, requests/2026-09-23-bounced-address-asks-for-a-different-one.md
+**Date:** 24-Sep-2026 · **Severity:** S1 (a member who opted out was returned to the send list) · **Modules:** `src/data/repository.ts`, `src/data/mock.ts`, `src/data/emailStatus.ts`, `app/member/edit.tsx`
+
+**Symptom** — reported as *"i added same email which was bounced earlier but it got added now instead of showing the message of it ws bounce why?"*, over a member card reading **"Email on file"** above an address that had been **unsubscribed**.
+
+**Root cause** — `update_member` (0027) SOFT-DELETES an address left out of a save, and `fetchMembers` filtered `deleted_at is null`. So the moment a suppressed address was removed from the record, every trace of the suppression became invisible to the app — and typing the same address back in took `update_member`'s INSERT branch, because its `exists` clause filters `deleted_at is null` too. A **brand-new row at `status = 'unknown'`** replaced a suppression nobody could see had existed.
+
+For a bounce that means the next follow-up goes to a dead address. **For an opt-out it means a member who asked not to be written to is back on the send list** — and because the unsubscribe token is signed on `member_emails.id` (0066), the new row carries a new id and the original opt-out is detached from it entirely.
+
+**Measured on production, 24-Sep-2026:** exactly **one** member, whose address was opted out on 08-Sep, removed 22-Sep 16:32:59, and re-added 23-Sep 12:04:45 as a live primary row at `unknown`. No bounced address had been re-added this way. 1,249 address rows in total, of which **4** are soft-deleted.
+
+**Why RC-106's fix did not catch it** — RC-106 made suppressed addresses visible and the 23-Sep change refused re-entry of a bounced one, but both read `Member.emails`, which is the LIVE list. A check over the live list stops seeing a suppression exactly when the row is removed, which is the case this defect is made of. The narrowing to `bounced` compounded it: the address here was `unsubscribed`, which that check deliberately ignored.
+
+**Fix** — The member read stops filtering `deleted_at is null` and partitions instead: live rows populate `Member.emails` exactly as before, and any row carrying a suppression — live or removed — populates the new `Member.suppressedBefore`. The Edit form checks a typed address against the history AND the live list, refuses every suppression rather than only a bounce, and says which in its own words: a bounce invites a different address, an opt-out and a spam report say the academy may not write there at all. Save stays blocked while the box holds one.
+
+**The data was repaired first**, with the requester's go-ahead: the re-added row was set back to `unsubscribed` (one UPDATE, one row, recorded by `member_emails`' own audit trigger from 0006). Re-measured afterwards — **0 members** now carry a suppression detached by a re-add.
+
+**Files** — `src/data/repository.ts` (the read and the partition), `src/data/mock.ts` (`Member.suppressedBefore`), `src/data/emailStatus.ts` (`suppressedOnRecord`, `entryRefusal`, the three message pairs), `app/member/edit.tsx`, `src/data/bouncedReentry.test.ts`.
+
+**How to verify** — `npx tsx --test src/data/bouncedReentry.test.ts` — 23 cases. The one that names this defect is *"a REMOVED suppression is still found"*: over the live list alone the address is not found, over the history it is. In the app: remove a suppressed address from a member, save, then type it back in — the form must refuse it.
+
+**Recurrence risk** — The hole is one line, and the cheapest way for it to come back is somebody restoring `.is('deleted_at', null)` to the addresses read while tidying. There is no type error for that: `suppressedBefore` would simply go empty. `bouncedReentry.test.ts` therefore reads `repository.ts` and fails the build on that filter returning to that query — watched failing by injecting it.
+
+**Prevention** — **A soft delete is not a delete. A read that hides removed rows hides the history every suppression decision depends on.** The standing rule from RC-106 extends: carry the stored value, and do not filter the record on the way out — including rows the record has retired.
+
+**Process check** — **Yes, and it is the same gap RC-106 named.** No spec in this repository renders a screen or drives the real repository against a database, so "the form refuses what the database would accept" is asserted structurally. What actually found this was the academy using the app. The standing answer — `preview-smoke-verifier`, the only stage that opens the running application — has not been reachable from any session in this run: the environment's network policy rejects the Vercel preview host. That is worth its own row.
+
+---
+
 ## RC-106 — a suppressed address was dropped on the way out of the read, so saving it again changed nothing          Tracker: none (reported by the academy) · Sources: requests/2026-09-22-saved-email-not-reflecting.md, RC-023, RC-031, RC-008
 **Date:** 22-Sep-2026 · **Severity:** S2 · **Modules:** `src/data/repository.ts`, `src/data/mock.ts`, `src/data/followup.ts`, `src/data/emailStatus.ts`, `app/member/[id].tsx`, `app/member/edit.tsx`, `supabase/migrations/0078_reinstate_member_email.sql`
 

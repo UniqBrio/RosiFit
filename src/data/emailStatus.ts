@@ -96,14 +96,39 @@ export const isDeliveryFailure = (status?: EmailStatus): boolean =>
 export const normalizeEmail = (raw: string): string => raw.trim().toLowerCase();
 
 /**
- * THE WORDING for an address the mail system has already rejected, kept beside
- * the rule rather than inside a screen so the form and its spec quote one
- * source. Two parts: what is true, and what to do about it.
+ * THE WORDING for an address that cannot be used, kept beside the rule rather
+ * than inside a screen so the form and its spec quote one source. Two parts
+ * each: what is true, and what to do about it.
+ *
+ * THREE MESSAGES, because they are three different facts and the operator acts
+ * on the difference. A bounce is the mail system's; an opt-out and a spam
+ * report are the member's, and saying "the address may be invalid" over a
+ * member who asked not to be written to would be untrue and would invite the
+ * operator to keep trying.
  */
 export const BOUNCED_ENTRY_TITLE = 'Email address is not active';
 export const BOUNCED_ENTRY_DETAIL =
   'An email was previously sent to this address but could not be delivered. '
   + 'The address may be inactive or invalid. Please try adding a different email address.';
+
+export const OPTED_OUT_ENTRY_TITLE = 'This address has opted out';
+export const OPTED_OUT_ENTRY_DETAIL =
+  'The member asked not to receive email at this address. Only the member can undo that, '
+  + 'so it cannot be added back here. Please use a different email address.';
+
+export const COMPLAINED_ENTRY_TITLE = 'This address reported spam';
+export const COMPLAINED_ENTRY_DETAIL =
+  'A message sent to this address was reported as spam, so the academy may not write to it '
+  + 'again. Please use a different email address.';
+
+/** The pair a screen should show for a suppression it has just refused. */
+export function entryRefusal(status?: EmailStatus): { title: string; detail: string } {
+  return status === 'unsubscribed'
+      ? { title: OPTED_OUT_ENTRY_TITLE, detail: OPTED_OUT_ENTRY_DETAIL }
+    : status === 'complained'
+      ? { title: COMPLAINED_ENTRY_TITLE, detail: COMPLAINED_ENTRY_DETAIL }
+      : { title: BOUNCED_ENTRY_TITLE, detail: BOUNCED_ENTRY_DETAIL };
+}
 
 /** The shape this module needs of a stored address; structural so that nothing
  *  here has to import `Member` and close a cycle back through mock.ts. */
@@ -124,9 +149,39 @@ export type StoredAddress = { address: string; status?: EmailStatus };
 export function bouncedOnRecord<T extends StoredAddress>(
   draft: string, onRecord: readonly T[],
 ): T | undefined {
+  const hit = suppressedOnRecord(draft, onRecord);
+  return hit && isDeliveryFailure(hit.status) ? hit : undefined;
+}
+
+/**
+ * THE MEMBER'S RECORD ALREADY HOLDS THIS ADDRESS, AND IT CANNOT BE USED.
+ *
+ * Any suppression, not only a bounce, and over the member's HISTORY rather
+ * than the addresses currently on the record. That widening is RC-107: the
+ * member read filtered out soft-deleted rows, and `update_member` soft-deletes
+ * an address left out of a save -- so removing a suppressed address and typing
+ * it back in produced a brand new row at 'unknown'. The suppression was erased
+ * with no trace, and for an OPT-OUT that is a member put back on the send list
+ * after asking not to be. It happened once in production, to one member.
+ *
+ * An opt-out outranks a complaint outranks a bounce, the same order
+ * `suppressedAddress` uses, so a screen leads with the state that most
+ * constrains what the academy may do.
+ *
+ * Answered from data already in memory -- `Member.emails` and
+ * `Member.suppressedBefore` both arrive with the roster -- so typing costs no
+ * query. Normalised with the same rule the write path applies.
+ */
+export function suppressedOnRecord<T extends StoredAddress>(
+  draft: string, onRecord: readonly T[],
+): T | undefined {
   const want = normalizeEmail(draft);
   if (!want) return undefined;
-  return onRecord.find(e => normalizeEmail(e.address) === want && isDeliveryFailure(e.status));
+  const matches = onRecord.filter(
+    e => normalizeEmail(e.address) === want && !emailUsable(e));
+  return matches.find(e => e.status === 'unsubscribed')
+    ?? matches.find(e => e.status === 'complained')
+    ?? matches[0];
 }
 
 /**

@@ -37,8 +37,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  bouncedOnRecord, normalizeEmail, isDeliveryFailure, emailUsable,
-  BOUNCED_ENTRY_TITLE, BOUNCED_ENTRY_DETAIL, type EmailStatus,
+  bouncedOnRecord, suppressedOnRecord, normalizeEmail, isDeliveryFailure, emailUsable,
+  entryRefusal, BOUNCED_ENTRY_TITLE, BOUNCED_ENTRY_DETAIL, type EmailStatus,
 } from './emailStatus';
 
 const ROOT = process.env.BOUNCED_REENTRY_SPEC_ROOT ?? process.cwd();
@@ -134,18 +134,20 @@ test('the wording is about the member, and leaks nothing technical', () => {
 
 test('the form asks the shared rule, rather than carrying its own copy', () => {
   const src = read(FORM);
-  assert.match(src, /bouncedOnRecord/,
+  assert.match(src, /suppressedOnRecord/,
     'the form must use the shared check; a second copy of "is this the same address" '
     + 'would answer differently from the database (RC-023).');
-  assert.match(src, /existing\.emails/,
-    'and it must ask the STORED record, not the list it is editing — an operator who '
-    + 'removes the bounced row and retypes it is doing exactly the thing this refuses.');
+  assert.match(src, /existing\.suppressedBefore/,
+    'and it must ask the HISTORY, not only the addresses currently on the record. '
+    + 'update_member soft-deletes an address left out of a save, so a check over the live '
+    + 'list alone stops seeing a suppression the moment the row is removed — which is how '
+    + 'an opt-out was erased in production (RC-107).');
 });
 
 test('Save is blocked while the box holds a bounced address', () => {
   const src = read(FORM);
   const valid = src.slice(src.indexOf('const valid = '), src.indexOf('const valid = ') + 700);
-  assert.match(valid, /!bouncedDraft/,
+  assert.match(valid, /!refusedDraft/,
     'Save must be disabled. A form that accepted it and then showed no new address is '
     + 'the defect this whole line of work began with (RC-106).');
 });
@@ -164,8 +166,8 @@ test('the message is rendered inline, not flashed as a toast', () => {
   const at = src.indexOf('member-email-bounced');
   assert.ok(at > 0, 'the inline block is missing from the form.');
   const block = src.slice(at - 400, at + 1400);
-  assert.match(block, /BOUNCED_ENTRY_TITLE/, 'it must show the title');
-  assert.match(block, /BOUNCED_ENTRY_DETAIL/, 'and the explanation');
+  assert.match(block, /draftRefusal\.title/, 'it must show the title');
+  assert.match(block, /draftRefusal\.detail/, 'and the explanation');
   assert.ok(!/flash\(/.test(block),
     'this must not be a toast: the answer is an instruction about the field the caret '
     + 'is in, and a toast leaves before it has been read.');
@@ -173,8 +175,50 @@ test('the message is rendered inline, not flashed as a toast', () => {
 
 test('the field itself reads as unusable, and not by colour alone', () => {
   const src = read(FORM);
-  assert.match(src, /invalid=\{!!bouncedDraft\}/, 'the input must take the invalid state');
+  assert.match(src, /invalid=\{!!refusedDraft\}/, 'the input must take the invalid state');
   assert.match(src, /aria-invalid/, 'and expose it, not just colour it');
+});
+
+test('RC-107 · every suppression is refused, not only a bounce', () => {
+  // An opt-out and a spam report are refused too, each in its own words. The
+  // bounce message must NOT be shown over a member who asked not to be written
+  // to: "the address may be invalid" would be untrue and would invite another
+  // attempt.
+  for (const [status, title] of [
+    ['bounced', BOUNCED_ENTRY_TITLE],
+    ['unsubscribed', 'This address has opted out'],
+    ['complained', 'This address reported spam'],
+  ] as [EmailStatus, string][]) {
+    const on = record(['abc@example.com', status]);
+    assert.ok(suppressedOnRecord('abc@example.com', on), `${status} must be refused`);
+    assert.equal(entryRefusal(status).title, title, `${status} gets its own words`);
+  }
+  // And a usable address is still not an error.
+  for (const status of ['unknown', 'valid'] as EmailStatus[]) {
+    assert.equal(suppressedOnRecord('abc@example.com', record(['abc@example.com', status])), undefined);
+  }
+});
+
+test('RC-107 · an opt-out outranks a complaint outranks a bounce', () => {
+  // The same order `suppressedAddress` uses: a screen leads with the state
+  // that most constrains what the academy may do.
+  const on = record(['a@example.com', 'bounced'], ['a@example.com', 'unsubscribed']);
+  assert.equal(suppressedOnRecord('a@example.com', on)?.status, 'unsubscribed');
+});
+
+test('RC-107 · a REMOVED suppression is still found — the hole that let an opt-out be erased', () => {
+  /* This is the whole point of carrying history. In production one member's
+     opted-out address was removed by a save (update_member soft-deletes an
+     address left out of the list), then typed back in -- and because the
+     member read filtered soft-deleted rows out, nothing in the app could see
+     that it had ever been suppressed. A brand-new row was inserted at
+     'unknown' and the member was back on the send list. */
+  const history = [{ address: 'gone@example.com', status: 'unsubscribed' as EmailStatus }];
+  const liveList: typeof history = [];   // removed from the record entirely
+  assert.equal(suppressedOnRecord('gone@example.com', liveList), undefined,
+    'the live list alone cannot see it — this is the defect');
+  assert.equal(suppressedOnRecord('gone@example.com', [...history, ...liveList])?.status,
+    'unsubscribed', 'and the history is what closes it');
 });
 
 test('the form no longer reinstates anything', () => {
@@ -192,6 +236,23 @@ test('the card points at the same answer as the form', () => {
     'the member card must send the reader to the thing that works.');
   assert.ok(!/reinstate it/i.test(src),
     'and must not advertise a Reinstate action that no longer exists.');
+});
+
+test('RC-107 · the member read must keep reading soft-deleted rows', () => {
+  /* The rung for the hole. `suppressedBefore` is only as good as the read that
+     fills it, and the cheapest way for this defect to come back is somebody
+     restoring `.is('deleted_at', null)` to the addresses query while tidying.
+     There is no type error for that -- the field would just quietly go empty. */
+  const src = read('src/data/repository.ts');
+  const at = src.indexOf("paged('member addresses'");
+  assert.ok(at > 0, 'the member addresses read has moved; this guard needs re-pointing.');
+  const line = src.slice(at, src.indexOf('\n', at));
+  assert.ok(!/is\('deleted_at', null\)/.test(line),
+    'the addresses read filters out soft-deleted rows again. That erases the suppression '
+    + 'history `suppressedBefore` is built from, and an opt-out becomes re-addable (RC-107).');
+  assert.match(line, /deleted_at/,
+    'and it must SELECT deleted_at, or the live list cannot be partitioned out of it.');
+  assert.match(src, /suppressedBefore:/, 'the record must carry the history it reads.');
 });
 
 /* -------------------------------------------- 4. the record is not written */
@@ -216,7 +277,7 @@ test('the whole sentence is reachable without hovering anything', () => {
   const block = src.slice(at - 400, at + 1400);
   assert.match(block, /accessibilityRole="alert"/,
     'the message must announce itself when it appears.');
-  assert.match(block, /accessibilityLabel=\{`\$\{BOUNCED_ENTRY_TITLE\}\. \$\{BOUNCED_ENTRY_DETAIL\}`\}/,
+  assert.match(block, /accessibilityLabel=\{`\$\{draftRefusal\.title\}\. \$\{draftRefusal\.detail\}`\}/,
     'and carry BOTH halves as its label — a title alone does not say what to do.');
   assert.ok(!/title=|onHover|hoverText/.test(block),
     'nothing here may depend on hover (constraint 7).');

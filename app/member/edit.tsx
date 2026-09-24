@@ -20,8 +20,8 @@ import {
   createMember, updateMember, setMemberStatus, setMemberActiveFrom,
 } from '../../src/data/repository';
 import {
-  emailUsable, emailStateWord, isDeliveryFailure, bouncedOnRecord, normalizeEmail,
-  BOUNCED_ENTRY_TITLE, BOUNCED_ENTRY_DETAIL,
+  emailUsable, emailStateWord, isDeliveryFailure, suppressedOnRecord, normalizeEmail,
+  entryRefusal,
 } from '../../src/data/emailStatus';
 import { namesADisplayName } from '../../src/data/refusalCase';
 import { inactiveFromProblem, dateInWords, dayBefore } from '../../src/data/inactiveFrom';
@@ -380,12 +380,26 @@ export default function MemberEdit() {
    * against the form's own list would have stopped seeing it the moment the row
    * was removed.
    *
+   * BOTH THE HISTORY AND THE LIVE LIST. `suppressedBefore` carries addresses
+   * that have since been REMOVED from the record, which is the hole RC-107
+   * found: `update_member` soft-deletes an address left out of a save, the
+   * member read filtered those rows out, and so removing a suppressed address
+   * and typing it back in produced a fresh row at 'unknown' -- the suppression
+   * erased. For an opt-out that put a member back on the send list after they
+   * had asked not to be. It happened once, in production, to one member.
+   *
    * Only on the EDIT form, because only an existing member has a record to have
-   * bounced. `bouncedOnRecord` normalises with the same rule update_member
-   * applies, so the form and the database agree about what "the same address"
-   * means (requests/2026-09-23-bounced-address-asks-for-a-different-one.md).
+   * been suppressed on. `suppressedOnRecord` normalises with the same rule
+   * update_member applies, so the form and the database agree about what "the
+   * same address" means
+   * (requests/2026-09-23-bounced-address-asks-for-a-different-one.md).
    */
-  const bouncedDraft = existing ? bouncedOnRecord(emailDraft, existing.emails) : undefined;
+  const refusedDraft = existing
+    ? suppressedOnRecord(emailDraft, [...(existing.suppressedBefore ?? []), ...existing.emails])
+    : undefined;
+  /** The words for it: a bounce, an opt-out and a spam report are three
+   *  different facts and the operator acts on the difference. */
+  const draftRefusal = refusedDraft ? entryRefusal(refusedDraft.status) : null;
 
   // Her name and an address are the fields of HERS the save needs (C-70/C-73;
   // requests/2026-09-06-add-member-email-required.md, both forms). A member
@@ -400,7 +414,7 @@ export default function MemberEdit() {
        (RC-106). Note this gates on the DRAFT, not on the list -- a bounced
        address already on the member's record does not stop her being saved,
        or the six members who have one could never be edited at all. */
-    && !bouncedDraft;
+    && !refusedDraft;
 
 
   /** Whether anything on this form can actually be WRITTEN to. Distinct from
@@ -530,7 +544,7 @@ export default function MemberEdit() {
 
        `addEmail` runs on blur as well as on the button (see AddRow), so this
        is the same refusal whichever way the operator leaves the field. */
-    if (existing && bouncedOnRecord(e, existing.emails)) return;
+    if (existing && suppressedOnRecord(e, [...(existing.suppressedBefore ?? []), ...existing.emails])) return;
     // Already on the form's list, whatever its state -- adding it twice would
     // send the same address to update_member twice and draw two rows.
     if (emails.some(x => normalizeEmail(x.address) === e)) { setEmailDraft(''); return; }
@@ -680,7 +694,7 @@ export default function MemberEdit() {
       ? 'Member name and an email address are required'
       : !course ? 'Choose the course to join'
       : !offering ? `Choose the branch — ${course} runs at ${branchOptions.length || 'no'} of them`
-      : bouncedDraft ? BOUNCED_ENTRY_TITLE
+      : draftRefusal ? draftRefusal.title
       : !emails.length ? 'Add an email address — follow-ups are sent there'
       // Save is NOT blocked on this: a member whose only address was opted
       // out of still has a name, a course and days somebody may need to
@@ -1104,8 +1118,8 @@ export default function MemberEdit() {
         })}
       </View>
       <AddRow testID="member-email" value={emailDraft} onChange={setEmailDraft}
-        placeholder="anitha@gmail.com" onAdd={addEmail} invalid={!!bouncedDraft} />
-      {bouncedDraft ? (
+        placeholder="anitha@gmail.com" onAdd={addEmail} invalid={!!refusedDraft} />
+      {draftRefusal ? (
         /* DIRECTLY UNDER THE FIELD IT IS ABOUT, never a toast: the answer is
            "type a different address", which is an instruction about the box the
            caret is in, and a toast leaves the screen before the operator has
@@ -1117,7 +1131,7 @@ export default function MemberEdit() {
            pair for the theme that is on rather than a literal (CP-008). */
         <View testID="member-email-bounced" accessible
           accessibilityRole="alert"
-          accessibilityLabel={`${BOUNCED_ENTRY_TITLE}. ${BOUNCED_ENTRY_DETAIL}`}
+          accessibilityLabel={`${draftRefusal.title}. ${draftRefusal.detail}`}
           style={{
             flexDirection: 'row', gap: SPACE.sm, alignItems: 'flex-start',
             marginTop: SPACE.sm, padding: SPACE.md, borderRadius: RADIUS.md,
@@ -1132,10 +1146,10 @@ export default function MemberEdit() {
           <Icon name="info" size={15} color={ink('absent')} />
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={{ fontSize: 12.5, fontWeight: '700', color: ink('absent') }}>
-              {BOUNCED_ENTRY_TITLE}
+              {draftRefusal.title}
             </Text>
             <Muted style={{ fontSize: 12, lineHeight: 17, marginTop: 2 }}>
-              {BOUNCED_ENTRY_DETAIL}
+              {draftRefusal.detail}
             </Muted>
           </View>
         </View>

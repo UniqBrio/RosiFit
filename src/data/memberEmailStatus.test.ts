@@ -194,8 +194,8 @@ test('the Edit form draws a suppressed address instead of opening blank', () => 
   // The way FORWARD, which replaced the Reinstate action on 23-Sep-2026: the
   // form refuses the re-entry and asks for a different address instead.
   // Pinned in full by src/data/bouncedReentry.test.ts.
-  assert.match(src, /bouncedOnRecord/,
-    'the form does not detect a re-entered address that has already bounced.');
+  assert.match(src, /suppressedOnRecord/,
+    'the form does not detect a re-entered address that has already been suppressed.');
 });
 
 test('the form classifies a suppression through the shared rule, not its own copy', () => {

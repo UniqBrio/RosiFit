@@ -1,3 +1,52 @@
+## RC-107 — A SUPPRESSION ERASED BY REMOVE-THEN-RE-ADD, 24-Sep-2026
+
+Found by the academy using the app, one day after RC-106 shipped: a member's opted-out address
+was removed by a save and typed back in, and it was accepted. The 23-Sep re-entry check did not
+stop it for three independent reasons, all of which are now closed or explained.
+
+MEASURED ON PRODUCTION before touching anything:
+  - the member held three rows: the original address `unsubscribed` (soft-deleted 22-Sep
+    16:32:59), a second address (soft-deleted 23-Sep 12:04:45), and the ORIGINAL address again
+    as a fresh live primary row at `unknown`, created at that same moment;
+  - blast radius, by joining soft-deleted suppressed rows to live rows for the same address:
+    **1 member, and it was an opt-out.** No bounced address had been re-added this way;
+  - 1,249 address rows in total, of which **4** are soft-deleted — so widening the read to
+    include them costs nothing.
+
+THE DATA WAS REPAIRED FIRST, with the requester's go-ahead and the SQL shown before running:
+one UPDATE setting that row back to `unsubscribed`, recorded by `member_emails`' own audit
+trigger (0006). Verified after: the row reads `unsubscribed`, live unsubscribed went 6 → 7,
+live bounced unchanged at 6, and the detached-suppression join now returns **0**.
+
+FAIL-FIRST, by injection, reverted and re-verified:
+
+FAIL-FIRST: src/data/bouncedReentry.test.ts - "not ok 21 - RC-107 · the member read must keep
+reading soft-deleted rows" - restored `.is('deleted_at', null)` to the member addresses query,
+which is the defect itself put back. 1 of 22 fired. That rung exists because there is NO TYPE
+ERROR for this regression: `suppressedBefore` would simply go empty and every check over it
+would quietly start passing.
+
+MEASURED THIS RUN, clean tree vs changed tree:
+  - `npx tsx --test src/data/bouncedReentry.test.ts`: **23/23 PASS**
+  - `npx tsc --noEmit -p tsconfig.json`: **0 errors**
+  - `npm run test:unit`: **1898 pass / 8 fail** against a clean-tree baseline of 1842 / 8 —
+    the SAME EIGHT, name for name. One of mine failed mid-run (`memberEmailStatus.test.ts`
+    still pinned the old symbol name after the rename) and was fixed, not excused.
+  - `npm run gate`: **FAIL — 7 pass / 6 fail**, step for step identical to the clean-tree
+    baseline. G1/G2/G3 want a missing `design/tokens.json`, G6 one pre-existing lint warning,
+    G7 the eight above, G8 because `test:functional` is not a script in package.json.
+  - `git diff supabase/`: **EMPTY**. No migration, no DB spec, `update_member` untouched.
+
+WHAT IS STILL NOT PROVEN, and it is now twice in two days: no spec in this repository renders a
+screen or drives the real repository against a database. "The form refuses what the database
+would accept" is asserted by reading source. Both RC-106 and RC-107 were found by the academy
+using the app, not by this suite. The standing answer — `preview-smoke-verifier`, the only
+stage that opens the running application — has not been reachable from any session in this
+run: the environment's network policy rejects the Vercel preview host, the same way it rejects
+the Supabase host. That gap is named in RC-107's process check.
+
+---
+
 ## A BOUNCED ADDRESS ASKS FOR A DIFFERENT ONE — 23-Sep-2026
 
 Track B over RC-106. The academy asked for the opposite answer to the one shipped the day
@@ -37,6 +86,75 @@ it renders and the absence of any Reinstate control, the way this project's othe
 Nothing here RENDERS the form: there is no component harness in this repository, so "the ⓘ
 block appears under the field" is asserted structurally, not visually. Opening the running app
 remains the only proof of that, and the Vercel preview on PR #37 is where it would be done.
+
+---
+
+## Gate run - 2026-09-24 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 29.5s total - slowest G7 Unit + pure specs (16.4s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (56ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (79ms)
+- **G5 Types** - PASS (6.0s)
+- **G6 Lint** - FAIL (6.4s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (16.4s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (125ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (55ms)
+- **G10 Backward compatibility (fixtures)** - PASS (114ms)
+- **G11 Wide tables are configurable** - PASS (56ms)
+- **G12 Installable as an application** - PASS (71ms)
+- **G13 Approved design still being built** - PASS (52ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
