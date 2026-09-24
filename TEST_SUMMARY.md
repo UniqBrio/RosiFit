@@ -187,7 +187,7 @@ DEFINITION OF DONE — every item, or an explicit N/A with a reason.
 | Decision record | N/A: nothing hard to reverse. The two accepted-not-fixed calls are recorded above |
 | Changelog line | done · see below |
 | Tier stated | **T0** — a correction to a shipped screen, no new surface, no pricing, legal or support change |
-| Run closed out | done · two rows, one per cycle |
+| Run closed out | done · two rows, one per cycle (R-019 and R-020 after the merge with `main` renumbered them; `main` had already taken R-015) |
 
 CHANGELOG, in the language of the user: *A member who has unsubscribed or whose address has
 bounced now appears only under Email issues on the course screen, not also in the list of members
@@ -768,6 +768,12 @@ _Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
+## FAIL-FIRST — import decisions, 22-Sep-2026
+
+FAIL-FIRST: src/data/importDecisions.test.ts - run against the module carrying the pre-fix `autoDecisions` copied verbatim from app/upload.tsx: 11/18 failing — the three decision cases ("two namesakes already on the register: the upload does not create a third" et al.: `add_as_new` !== `skip`), the held-names and wording cases (empty placeholders), and the three wiring cases (screen still held its private copy, no `upload-ambiguous` note, `c.ambiguous` still counted). After the fix: 18/18.
+
+---
+
 ## PRODUCTION APPLY — 0078, 22-Sep-2026 19:57 UTC
 
 The Supabase connector was completed mid-session, so the migration this repository had prepared
@@ -1246,6 +1252,75 @@ timed out after 15 minutes
 - **G11 Wide tables are configurable** - PASS (679ms)
 - **G12 Installable as an application** - PASS (738ms)
 - **G13 Approved design still being built** - PASS (191ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-22 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 27.8s total - slowest G7 Unit + pure specs (17.2s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (52ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (50ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (49ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (69ms)
+- **G5 Types** - PASS (6.2s)
+- **G6 Lint** - FAIL (3.6s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (17.2s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (176ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (58ms)
+- **G10 Backward compatibility (fixtures)** - PASS (120ms)
+- **G11 Wide tables are configurable** - PASS (59ms)
+- **G12 Installable as an application** - PASS (82ms)
+- **G13 Approved design still being built** - PASS (61ms)
 
 _Merge blocked. Every FAIL above must resolve. No partial merges._
 
