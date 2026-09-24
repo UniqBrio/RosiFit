@@ -10352,3 +10352,25 @@ needs a signed-in session (mobile + PIN through the auth-login Edge Function) th
 did not have - so the defect and the fix are evidenced by the live request-size measurement in
 .evidence/request-size-fail-first.txt rather than by driving the UI. DB harness - N/A: no
 migration, no schema surface.
+
+## T-043 · 0079 RLS helpers once per statement · 24-Sep-2026 · RC-053
+FAIL-FIRST: supabase/tests/58_rls_rules_by_role.sql - "no policy calls a helper bare" failed
+naming all 62 policies on a harness replayed WITHOUT 0079 (psql run WITHOUT ON_ERROR_STOP so
+the rest of the file still ran); passes at 0 with it.
+UNCHANGED RULES: the file's other 26 behavioural assertions (per-role visibility of every
+seeded table incl. admin-or-self / admin-only / delete shapes; UPDATE, INSERT WITH CHECK and
+DELETE per role; app_users self-update; audit_remarks author check; suspended subscription)
+passed 26/26 on the pre-0079 tree and 26/26 after it. After 0079 the whole file is 28/28
+under test.sh (ON_ERROR_STOP): +1 catalogue, +1 policy count = 62.
+EQUIVALENCE, now executable: 0079's $verify$ un-wraps every "( SELECT f() AS f)" and compares
+with a pre-image taken in the same run; it raises on any difference. Observed firing on two
+injected defects, then restored: is_active_app_user -> is_super_admin in courses_read
+("not equivalent ... courses.courses_read"), and the 'previewed' literal dropped from
+csv_imports_insert ("... csv_imports.csv_imports_insert").
+DB HARNESS: bash db/harness/test.sh - THERE ARE FAILURES, the SAME set before and after
+(pre-existing, Gate 2): diff of per-file FAIL/ERROR lines is empty; the only new file, 58,
+has no FAIL or ERROR. PASS count 901 -> 929 (+28 = file 58). Postgres 16 harness vs 17.6
+production is T-124, open.
+PARITY: production pg_policies fingerprint = harness fingerprint (62, md5 4d21e86e...), read
+24-Sep-2026; 0079 refuses to run against any other.
+NOT RUN: npm run check / gate - no src/ or app/ change on this branch.
