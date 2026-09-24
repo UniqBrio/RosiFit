@@ -46,3 +46,26 @@ was run.
 3. **(#4)** Dedupe identical in-flight or fresh reads across hooks; stop fetching the empty trailing page.
 4. **(#5, later)** Route-level code splitting. Lower payoff than 1–3 and more invasive.
 5. **(#6, not recommended now)** Moving the project to `ap-south-1` (Mumbai) saves at most ~45–90 ms per sequential hop. It needs a project migration, and 1–3 cut far more.
+
+## Before / after — Fix 1 (T-043, migration 0079)
+
+Applied to production 24-Sep-2026 **09:14:28 UTC** (ledger `20260924091428 / 0079_rls_helpers_once_per_statement`),
+via the Supabase connector's `apply_migration` (one transaction). The in-migration guard (fingerprint `4d21e86e…`) and
+equivalence check passed. "Before" was re-measured at 09:10 UTC with the same method, so both columns are like for like.
+
+| Measure | Before | After | Method |
+|---|---|---|---|
+| 1,000-row read (`member_stats`, as `authenticated`) | **102 ms** (158 ms at 04:50) — `Filter: is_active_app_user()` per row | **2.7 ms** — `InitPlan 1`, evaluated once | `EXPLAIN ANALYZE`, read-only transaction, real owner JWT subject |
+| `course_week_day_status` RPC | **211 ms** (403 ms at 04:50) | **12.0 ms** | same |
+| Member-list page read, avg (5 tables, `limit=1000`, edge→origin) | **648 ms** (p50 312, p90 1,102; n = 2,986, prior 24 h) | **120 ms** (p50 91, p90 288; n = 60, first 10 min) | edge logs `response.origin_time` |
+| Requests inside a parallel data burst | 0.74–1.27 s each; member list + metrics complete **~1.28 s** after the burst starts | 0.28–0.41 s each; member list + metrics complete in **0.23–0.45 s** | edge-log traces, session 5a86… 02:14 vs session c249… 09:14–09:15 |
+| Home request count | ~116 per load | **unchanged by design** — fix 1 is database-side; T-406 (fix 3) owns the count | — |
+| Home time-to-data, cold start | ~3.8 s (2.4 s identity chain + ~1.3 s burst) | **not yet observed** — no cold start in the logs since 09:14; the 2.4 s identity chain is T-405 (fix 2) and fix 1 does not touch it | — |
+
+Rules unchanged, read in production after the apply: owner sees 1,625 members / 12,320 audit rows / 11 accounts;
+staff 1,625 / 0 / 1 (its own); an unknown account 0 / 0 / 0. `pg_policies`: 62, zero bare calls.
+The `auth_rls_initplan` advisor output is identical before and after (29 unindexed FKs, 3 unused indexes, no RLS
+finding) — it never saw this defect (T-118).
+
+**Burst (cause #2):** per-request time inside a burst fell ~3×, but the burst itself (~40 parallel requests)
+is unchanged. Per the owner, compute size stays as is until the burst is re-measured after fix 3.

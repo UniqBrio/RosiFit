@@ -78,6 +78,8 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 **Guard** — the catalogue assertion in spec 58 fails the `db-harness` job on any bare zero-argument call in any policy, whoever adds it. It walks `pg_policies`; it does not trust the lint.
 
+**Verified in production, 24-Sep-2026 09:14–09:18 UTC** — applied as ledger `20260924091428`; guard and equivalence check passed in the apply; `pg_policies` 62 with 0 bare calls; `EXPLAIN ANALYZE` 1,000-row `member_stats` as `authenticated` shows `InitPlan 1`, **102 ms → 2.7 ms**; `course_week_day_status` **211 → 12.0 ms**; member-list page read avg at the edge **648 → 120 ms**; per-persona visibility (owner / staff / unknown) as specified. The `auth_rls_initplan` advisor output did not change.
+
 **How to verify** — after the production apply: `pg_policies` count 62, zero bare calls (the spec-58 query); `EXPLAIN ANALYZE` of a 1,000-row `member_stats` read as `authenticated` shows an InitPlan and ~1 ms; member-list page-read average in `pg_stat_statements` after a reset. Before/after table in `RUN_app-feels-slow.md`.
 
 ---
