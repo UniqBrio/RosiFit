@@ -205,6 +205,75 @@ all found by a person using the app, which is three for three, and RC-108's proc
 ## Gate run - 2026-09-24 - VERDICT: FAIL
 
 Steps: 7 pass, 6 fail, 0 blocked.
+Time: 24.3s total - slowest G7 Unit + pure specs (15.4s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (54ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit-T408/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (48ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit-T408/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (46ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit-T408/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (61ms)
+- **G5 Types** - PASS (5.3s)
+- **G6 Lint** - FAIL (2.9s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (15.4s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (117ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (51ms)
+- **G10 Backward compatibility (fixtures)** - PASS (103ms)
+- **G11 Wide tables are configurable** - PASS (53ms)
+- **G12 Installable as an application** - PASS (69ms)
+- **G13 Approved design still being built** - PASS (45ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-24 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
 Time: 26.0s total - slowest G7 Unit + pure specs (16.5s).
 Application steps ran in .
 
@@ -11125,3 +11194,15 @@ needs a signed-in session (mobile + PIN through the auth-login Edge Function) th
 did not have - so the defect and the fix are evidenced by the live request-size measurement in
 .evidence/request-size-fail-first.txt rather than by driving the UI. DB harness - N/A: no
 migration, no schema surface.
+
+## T-408 · csv-import pinned beside the database · 24-Sep-2026
+FAIL-FIRST: src/data/functionRegion.test.ts - "csv-import is sent to ap-southeast-1, next to the database"
+failed against the neutral functionTarget (actual forceFunctionRegion: null, expected 'ap-southeast-1');
+the other 3 cases passed. After the change: 4/4.
+UNIT: 1976 tests, 6 fail - the SAME 6 fail on clean main (list-screen filters x1, token list x5 - Gate 2
+rows T-022/T-023/T-025); this branch adds 4 passing tests and no failure.
+typecheck PASS · lint PASS · check:contrast/icons/functions/edge PASS.
+GATE: FAIL - G1/G2/G3 (T-034), G6 (warning in scripts/conformance.mjs, untouched), G7 (the 6 above), G8 -
+the same set as the previous gate run on main; nothing new.
+NOT RUN: a live call. The network proxy blocks *.supabase.co from this session, and no import can be driven
+without a signed-in session. Runtime region is unverified until real imports run after deploy.

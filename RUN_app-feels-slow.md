@@ -69,3 +69,42 @@ finding) — it never saw this defect (T-118).
 
 **Burst (cause #2):** per-request time inside a burst fell ~3×, but the burst itself (~40 parallel requests)
 is unchanged. Per the owner, compute size stays as is until the burst is re-measured after fix 3.
+
+## Experiment — csv-import runs beside the database (T-408)
+
+**Finding (24-Sep-2026).** Vercel runs no server code for RosiFit (static Expo export; no `api/`, route
+handlers, middleware or `regions`), so a Vercel region has no effect. The server code is Supabase Edge
+Functions, and `function_edge_logs.x_sb_edge_region` shows every call executing in **ap-south-1 (Mumbai)**,
+next to the user, while the database is in **ap-southeast-1 (Singapore)**.
+
+**Why csv-import.** The preview path makes **~26 database round trips in sequence**: `auth.getUser`,
+`app_users`, offering, same-file check, same-session check, staff names, five keyset-paged full reads of
+3 pages each (aliases, members, primary emails, stats, enrollments), offerings/courses/branches, the
+`csv_imports` insert and the audit RPC. There are no per-row query loops; matching is in memory. Commit is
+3 trips, with the work inside `commit_csv_import`. Each trip crosses Mumbai → Singapore.
+
+**Mechanism.** `?forceFunctionRegion=ap-southeast-1` on the csv-import URL only (`src/data/functionRegion.ts`).
+The SDK's `region:` option was NOT used: it also sends an `x-region` header, which
+`supabase/functions/_shared/cors.ts` does not allow, so every browser preflight would fail. Supabase's
+regional-invocation guide names the query parameter for CORS requests. There is no function redeploy, no CORS
+change, and no other function moves.
+
+### Baseline — every csv-import in the logs (all ap-south-1)
+
+| Import (UTC) | Rows | Preview `execution_time_ms` | Commit `execution_time_ms` | Preflights | First preflight → commit logged |
+|---|---|---|---|---|---|
+| 23 Sep 11:38 | 15 | 5,709 | 1,677 | 200 / 140 | ~7.8 s |
+| 23 Sep 14:06 | 15 | 5,886 | 1,409 | 244 / 141 | ~7.8 s |
+| 24 Sep 01:11 | 22 | 3,597 | 1,112 | 216 / — | ~4.9 s |
+| 24 Sep 03:06 | 14 | 5,503 | 793 | 219 / 138 | ~6.5 s |
+| 24 Sep 10:45 | 98 | 5,150 | 2,043 | 244 / 157 | ~7.6 s |
+| **Median** | — | **5,503** | **1,409** | — | **~7.6 s** |
+
+Errors: 0 of 19 calls (all HTTP 200). Preview time barely moves with file size (14 → 98 rows), so it is the
+sequential round trips, not the rows. The last column is server-side (edge-log timestamps), not a browser
+measurement.
+
+### After — to be filled from real imports once deployed
+Same queries: `function_edge_logs` for `/functions/v1/csv-import`, grouped by `x_sb_edge_region`, with
+`execution_time_ms` for preview and commit, joined to `csv_imports.row_count` by time. Compare files of
+14–98 rows. **Not measured yet**: no import has run with this change, and this session cannot run one.
