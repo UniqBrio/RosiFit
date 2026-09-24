@@ -186,6 +186,26 @@ export type Member = {
     id?: string;
   }[];
   /**
+   * EVERY ADDRESS THIS MEMBER HAS EVER HAD SUPPRESSED, including ones since
+   * removed from the record. History, not the address list.
+   *
+   * Why it has to exist separately from `emails`: `update_member` SOFT-DELETES
+   * an address left out of a save, and the member read filtered those rows
+   * out. So removing a bounced or opted-out address and typing it back in
+   * produced a brand-new row at 'unknown' -- the suppression erased, with no
+   * trace anywhere the app could see. For an opt-out that is a member being
+   * put back on the send list after asking not to be (RC-107).
+   *
+   * Consulted only when somebody TYPES an address into the Edit form. It is
+   * deliberately not part of `emails`: that list is what the card prints, what
+   * the form edits and what the send splits on, and removed rows belong in
+   * none of those.
+   *
+   * Optional, like `status` and for the same reason: the fixtures and the
+   * specs build records without it, and absent means "no history known".
+   */
+  suppressedBefore?: { address: string; status: EmailStatus }[];
+  /**
    * Whether she is ON the register right now -- `members.status` (0006), the
    * column the app has never written and never read.
    *

@@ -46,7 +46,7 @@ import {
   type StaffAccess, type AuditEntry, type Remark, type SessionDay, type WeekRow,
   type AttendanceRow, type AttendanceStatus, type Holiday, type MemberSession,
 } from './mock';
-import { type EmailStatus } from './emailStatus';
+import { type EmailStatus, emailUsable } from './emailStatus';
 import { memberWeek, NO_SESSIONS_ROW, type MemberWeekSession } from './memberWeek';
 // Every read below that is unbounded BY CONSTRUCTION -- a whole table, or an
 // id list of member scale -- goes through this. PostgREST stops at 1000 rows
@@ -222,7 +222,17 @@ export async function fetchMembers(period: Period): Promise<Member[]> {
    */
   const [membersRes, emailsRes, aliasesRes, statsRes, enrolRes, schedRes, metricsRes] = await Promise.all([
     paged('the member list', () => supabase.from('members').select('id, member_code, full_name, status, inactive_from, active_again_from, joined_on').is('deleted_at', null), 'id'),
-    paged('member addresses', () => supabase.from('member_emails').select('id, member_id, email, is_primary, status').is('deleted_at', null), 'id'),
+    /* SOFT-DELETED ROWS ARE READ TOO, and `deleted_at` comes with them.
+       The filter that used to be here hid the member's SUPPRESSION HISTORY:
+       `update_member` soft-deletes an address left out of a save, so removing
+       a bounced or opted-out address and typing it back in produced a
+       brand-new row at 'unknown' -- the suppression silently erased, and for
+       an opt-out that is a member being put back on the send list after
+       asking not to be (RC-107). The live rows are partitioned out below and
+       behave exactly as before; the deleted ones feed `suppressedBefore` and
+       nothing else. Measured cost on production, 23-Sep-2026: 4 deleted rows
+       against 1,245 live. */
+    paged('member addresses', () => supabase.from('member_emails').select('id, member_id, email, is_primary, status, deleted_at'), 'id'),
     paged('member alternate names', () => supabase.from('member_aliases').select('id, member_id, alias_display').eq('alias_type', 'name'), 'id'),
     // last_present_date DATES the streak beside it. The run was printed bare
     // ("consecutive 6") beside a weekly miss count on a five-day course, which
@@ -327,17 +337,35 @@ export async function fetchMembers(period: Period): Promise<Member[]> {
    * silently censored the record every other question was answered from.
    */
   const emailsByMember = new Map<string, Member['emails']>();
+  /* EVERY ADDRESS THIS MEMBER HAS EVER HAD SUPPRESSED, live or removed.
+     A separate map rather than extra entries in `emails`, deliberately: the
+     address list is what the card prints, what the form edits and what the
+     send splits on, and putting removed rows in it would break all three.
+     This is history, consulted only when somebody types an address in. */
+  const suppressedByMember = new Map<string, NonNullable<Member['suppressedBefore']>>();
   for (const e of emailsRes) {
-    const list = emailsByMember.get(e.member_id as string) ?? [];
+    const status = (e.status ?? 'unknown') as EmailStatus;
+    const memberId = e.member_id as string;
+
+    if (!emailUsable({ status })) {
+      const seen = suppressedByMember.get(memberId) ?? [];
+      seen.push({ address: e.email as string, status });
+      suppressedByMember.set(memberId, seen);
+    }
+
+    // The live list is exactly what it was before this read widened.
+    if (e.deleted_at) continue;
+    const list = emailsByMember.get(memberId) ?? [];
     list.push({
       address: e.email as string,
       primary: Boolean(e.is_primary),
-      status: (e.status ?? 'unknown') as EmailStatus,
-      // The row's identity, so reinstatement can name it. Already in the
-      // SELECT -- it is the keyset cursor -- and was being thrown away.
+      status,
+      // The row's identity, so an address can be acted on by what it IS
+      // rather than by the text in it. Already in the SELECT -- it is the
+      // keyset cursor -- and was being thrown away.
       id: e.id as string,
     });
-    emailsByMember.set(e.member_id as string, list);
+    emailsByMember.set(memberId, list);
   }
 
   /*
@@ -369,6 +397,9 @@ export async function fetchMembers(period: Period): Promise<Member[]> {
       branch: offering ? (branchName.get(offering.branch_id as string) ?? '—') : '—',
       aliases: aliasesByMember.get(m.id as string) ?? [],
       emails: emailsByMember.get(m.id as string) ?? [],
+      // The history behind that list: addresses that bounced, were opted out
+      // of, or reported spam -- including ones since removed from the record.
+      suppressedBefore: suppressedByMember.get(m.id as string) ?? [],
       // null, not [], for a member who has no override: the schema cannot
       // hold an empty set of own days, and the two mean opposite things to
       // update_member (src/data/memberDays.ts). Carrying it is what lets the
@@ -3386,6 +3417,19 @@ export async function updateMember(input: MemberUpdate): Promise<{ moved: boolea
  */
 /**
  * CLEAR A SUPPRESSION on one address, so follow-ups can reach the member again.
+ *
+ * DELIBERATELY UNCALLED SINCE 23-Sep-2026, and kept rather than deleted.
+ * The Edit form no longer offers Reinstate: re-using an address the mail system
+ * has already rejected sends the next follow-up into the same hole, so the form
+ * asks for a DIFFERENT address instead
+ * (requests/2026-09-23-bounced-address-asks-for-a-different-one.md).
+ *
+ * `reinstate_member_email` is applied and live on production (0078, ledger row
+ * 20260922195737) and its refusals are proven in
+ * `supabase/tests/57_reinstate_member_email.sql`. This wrapper is the correct,
+ * tested way to reach it if a reinstatement surface is ever wanted somewhere
+ * else; it is not dead by accident, and a future reader should not "tidy" it
+ * away without reading that request first.
  *
  * DELIBERATELY NOT `updateMember`. That RPC is sent the WHOLE address list on
  * every save, so resetting `status` inside it would un-suppress an address as a

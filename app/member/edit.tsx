@@ -17,9 +17,12 @@ import { DAY_NAMES, type MemberStatus } from '../../src/data/mock';
 import { memberWeekdays, openingDays } from '../../src/data/memberDays';
 import { useCourses, useMembers } from '../../src/data/hooks';
 import {
-  createMember, updateMember, setMemberStatus, setMemberActiveFrom, reinstateMemberEmail,
+  createMember, updateMember, setMemberStatus, setMemberActiveFrom,
 } from '../../src/data/repository';
-import { emailUsable, emailStateWord, suppressionLiftable } from '../../src/data/emailStatus';
+import {
+  emailUsable, emailStateWord, isDeliveryFailure, suppressedOnRecord, normalizeEmail,
+  entryRefusal,
+} from '../../src/data/emailStatus';
 import { namesADisplayName } from '../../src/data/refusalCase';
 import { inactiveFromProblem, dateInWords, dayBefore } from '../../src/data/inactiveFrom';
 import { activeFromProblem } from '../../src/data/joined';
@@ -191,9 +194,6 @@ export default function MemberEdit() {
   const [seeded, setSeeded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
-  /** The address currently being reinstated, by row id -- so one row says
-   *  "Reinstating…" rather than every row saying it at once. */
-  const [reinstating, setReinstating] = useState<string | null>(null);
 
   /**
    * Her record arrives AFTER the first render, so the fields cannot be seeded
@@ -367,13 +367,55 @@ export default function MemberEdit() {
     ? activeFromProblem(wantedActiveFrom, wantedInactiveFrom || null, iso(new Date()))
     : null;
 
+  /**
+   * THE ADDRESS IN THE BOX IS ONE THE MAIL SYSTEM HAS ALREADY REJECTED.
+   *
+   * Answered from `existing.emails` -- the member's STORED record, which has
+   * carried `status` since RC-106 -- so no query is made and nothing is asked
+   * per keystroke; this is a derived value over data already in memory.
+   *
+   * The stored record rather than the `emails` list this form is editing, and
+   * that difference is the point: an operator who removes the bounced row and
+   * then types it back in is doing exactly the thing this refuses, and a check
+   * against the form's own list would have stopped seeing it the moment the row
+   * was removed.
+   *
+   * BOTH THE HISTORY AND THE LIVE LIST. `suppressedBefore` carries addresses
+   * that have since been REMOVED from the record, which is the hole RC-107
+   * found: `update_member` soft-deletes an address left out of a save, the
+   * member read filtered those rows out, and so removing a suppressed address
+   * and typing it back in produced a fresh row at 'unknown' -- the suppression
+   * erased. For an opt-out that put a member back on the send list after they
+   * had asked not to be. It happened once, in production, to one member.
+   *
+   * Only on the EDIT form, because only an existing member has a record to have
+   * been suppressed on. `suppressedOnRecord` normalises with the same rule
+   * update_member applies, so the form and the database agree about what "the
+   * same address" means
+   * (requests/2026-09-23-bounced-address-asks-for-a-different-one.md).
+   */
+  const refusedDraft = existing
+    ? suppressedOnRecord(emailDraft, [...(existing.suppressedBefore ?? []), ...existing.emails])
+    : undefined;
+  /** The words for it: a bounce, an opt-out and a spam report are three
+   *  different facts and the operator acts on the difference. */
+  const draftRefusal = refusedDraft ? entryRefusal(refusedDraft.status) : null;
+
   // Her name and an address are the fields of HERS the save needs (C-70/C-73;
   // requests/2026-09-06-add-member-email-required.md, both forms). A member
   // with no offering cannot be enrolled, and an unenrolled member is expected
   // at no session and appears in no follow-up list -- so the offering is
   // required too, and the form says which piece is missing.
   const valid = name.trim().length > 0 && !!offering && emails.length > 0
-    && !inactiveFromError && !activeFromError;
+    && !inactiveFromError && !activeFromError
+    /* The box holds an address that has already bounced. Save is BLOCKED rather
+       than quietly dropping the draft: a form that flashed "saved" and then
+       showed no new address is the defect this whole line of work began with
+       (RC-106). Note this gates on the DRAFT, not on the list -- a bounced
+       address already on the member's record does not stop her being saved,
+       or the six members who have one could never be edited at all. */
+    && !refusedDraft;
+
 
   /** Whether anything on this form can actually be WRITTEN to. Distinct from
    *  `emails.length`, which is what `valid` gates on: an address that bounced
@@ -491,49 +533,26 @@ export default function MemberEdit() {
   };
 
   const addEmail = () => {
-    const e = emailDraft.trim().toLowerCase();
+    const e = normalizeEmail(emailDraft);
     if (!e) return;
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) { flash('That does not look like an address', 'warn'); return; }
+    /* ALREADY ON THE RECORD AND ALREADY DEAD. Not added, and the text is left
+       in the box on purpose: the message under it names this address, and
+       clearing the field would take the explanation away with it. This is also
+       why there is no toast -- the answer is "use a different one", which is an
+       instruction about the field the caret is in.
+
+       `addEmail` runs on blur as well as on the button (see AddRow), so this
+       is the same refusal whichever way the operator leaves the field. */
+    if (existing && suppressedOnRecord(e, [...(existing.suppressedBefore ?? []), ...existing.emails])) return;
+    // Already on the form's list, whatever its state -- adding it twice would
+    // send the same address to update_member twice and draw two rows.
+    if (emails.some(x => normalizeEmail(x.address) === e)) { setEmailDraft(''); return; }
     // the FIRST address becomes primary; there is always exactly one.
     // 'unknown' is what create_member (0016) and update_member (0027) insert,
     // so the row this form draws says the same thing the database will hold.
     setEmails(p => [...p, { address: e, primary: p.length === 0, status: 'unknown' }]);
     setEmailDraft('');
-  };
-
-  /**
-   * CLEAR A BOUNCE, so follow-ups reach the member again.
-   *
-   * Its own write, NOT part of Save, and that is deliberate. Save sends the
-   * whole address list, so folding reinstatement into it would clear a
-   * suppression whenever anybody corrected an unrelated field -- and the
-   * member whose address bounced is usually being edited for some other
-   * reason entirely. This is a decision somebody takes on purpose, so it is
-   * a button they press on purpose (0078's own reasoning, and 0057's).
-   *
-   * The refusal comes from the DATABASE and is shown as it is written: 0078
-   * refuses an opt-out in a sentence for a person, and the form does not
-   * restate that rule -- a second copy is how a form starts offering what the
-   * database will refuse (RC-023).
-   */
-  const reinstate = async (memberEmailId: string, address: string) => {
-    if (reinstating) return;
-    setReinstating(memberEmailId);
-    setRefusal(null);
-    try {
-      await reinstateMemberEmail(memberEmailId);
-      // The row on THIS form moves too. `existing` will refresh from the
-      // roster, but the seeding effect is once-only by design -- a refetch
-      // landing behind a keystroke must not overwrite it -- so a form that
-      // waited for that would go on showing a bounce it had just cleared.
-      setEmails(p => p.map(x => x.id === memberEmailId ? { ...x, status: 'unknown' } : x));
-      flash(`${address} reinstated — follow-ups will be sent here again`);
-    } catch (err) {
-      setRefusal(err instanceof Error ? err.message
-        : 'That address could not be reinstated. Nothing has been saved.');
-    } finally {
-      setReinstating(null);
-    }
   };
 
   /**
@@ -675,6 +694,7 @@ export default function MemberEdit() {
       ? 'Member name and an email address are required'
       : !course ? 'Choose the course to join'
       : !offering ? `Choose the branch — ${course} runs at ${branchOptions.length || 'no'} of them`
+      : draftRefusal ? draftRefusal.title
       : !emails.length ? 'Add an email address — follow-ups are sent there'
       // Save is NOT blocked on this: a member whose only address was opted
       // out of still has a name, a course and days somebody may need to
@@ -1038,7 +1058,13 @@ export default function MemberEdit() {
              so this is a form deciding what to OFFER rather than the thing
              that enforces it. */
           const suppressed = !emailUsable(e);
-          const liftable = suppressionLiftable(e.status);
+          /* A bounce is the mail system's verdict on the ADDRESS; an opt-out or
+             a complaint is the member's own decision. The row says which,
+             because the answer differs: a dead address is replaced with a
+             working one, and a member who said stop is not written to at all.
+             Neither is reinstated -- no screen in this app un-suppresses an
+             address (requests/2026-09-23-bounced-address-asks-for-a-different-one.md). */
+          const dead = isDeliveryFailure(e.status);
           return (
           <View key={e.address} style={{
             flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
@@ -1068,24 +1094,12 @@ export default function MemberEdit() {
               <Text style={{ fontSize: 10.5, marginTop: 2,
                 color: suppressed ? ink('absent') : e.primary ? theme.accentInk : theme.muted }}>
                 {suppressed
-                  ? `${emailStateWord(e.status).toUpperCase()} — nothing can be sent here`
+                  ? `${emailStateWord(e.status).toUpperCase()} — ${dead
+                      ? 'delivery failed, add a different address'
+                      : 'nothing can be sent here'}`
                   : e.primary ? 'PRIMARY — sends go here' : 'kept on file'}
               </Text>
             </View>
-            {suppressed && liftable && e.id ? (
-              <Pressable
-                testID={`member-email-reinstate-${e.address}`}
-                disabled={reinstating !== null}
-                onPress={() => void reinstate(e.id as string, e.address)}
-                accessibilityRole="button"
-                accessibilityLabel={`Reinstate ${e.address}`}
-                accessibilityHint="Clears the bounce so follow-ups are sent to this address again"
-                style={{ minHeight: TAP_MIN / 2, justifyContent: 'center', paddingHorizontal: SPACE.sm }}>
-                <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.accentInk }}>
-                  {reinstating === e.id ? 'Reinstating…' : 'Reinstate'}
-                </Text>
-              </Pressable>
-            ) : null}
             <Pressable
               testID={`member-email-remove-${e.address}`}
               onPress={() => setEmails(p => {
@@ -1104,7 +1118,42 @@ export default function MemberEdit() {
         })}
       </View>
       <AddRow testID="member-email" value={emailDraft} onChange={setEmailDraft}
-        placeholder="anitha@gmail.com" onAdd={addEmail} />
+        placeholder="anitha@gmail.com" onAdd={addEmail} invalid={!!refusedDraft} />
+      {draftRefusal ? (
+        /* DIRECTLY UNDER THE FIELD IT IS ABOUT, never a toast: the answer is
+           "type a different address", which is an instruction about the box the
+           caret is in, and a toast leaves the screen before the operator has
+           finished reading it.
+
+           The whole sentence is VISIBLE TEXT. The icon carries no meaning on
+           its own and nothing here depends on hover -- the detail is not a
+           tooltip (constraint 7), and the tone comes from the measured token
+           pair for the theme that is on rather than a literal (CP-008). */
+        <View testID="member-email-bounced" accessible
+          accessibilityRole="alert"
+          accessibilityLabel={`${draftRefusal.title}. ${draftRefusal.detail}`}
+          style={{
+            flexDirection: 'row', gap: SPACE.sm, alignItems: 'flex-start',
+            marginTop: SPACE.sm, padding: SPACE.md, borderRadius: RADIUS.md,
+            backgroundColor: statusSurface(ink('absent')).bg,
+            borderWidth: 1, borderColor: statusSurface(ink('absent')).border,
+          }}>
+          {/* Decorative: the words beside it ARE the message. The wrapper above
+              is `accessible` with the whole sentence as its label, so React
+              Native announces the block once and does not reach in for the
+              glyph -- which is why no label is needed here, and why the detail
+              never depends on hovering the icon. */}
+          <Icon name="info" size={15} color={ink('absent')} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ fontSize: 12.5, fontWeight: '700', color: ink('absent') }}>
+              {draftRefusal.title}
+            </Text>
+            <Muted style={{ fontSize: 12, lineHeight: 17, marginTop: 2 }}>
+              {draftRefusal.detail}
+            </Muted>
+          </View>
+        </View>
+      ) : null}
       <View style={{ flexDirection: 'row', gap: SPACE.sm, alignItems: 'flex-start', marginTop: SPACE.sm }}>
         {/* THREE THINGS THIS CAN SAY, not two. "Follow-up emails go to the
             primary address only" over a list where every address is suppressed
@@ -1116,7 +1165,7 @@ export default function MemberEdit() {
           {anyUsableEmail
             ? 'Follow-up emails go to the primary address only.'
             : emails.length
-              ? 'No follow-up can be sent to this member. Correct an address, or reinstate one that bounced.'
+              ? 'No follow-up can be sent to this member. Add a different address.'
               : `Add an email address — it is where every follow-up is sent, and the member cannot be ${editing ? 'saved' : 'added'} without one.`}
         </Muted>
       </View>
@@ -1288,19 +1337,26 @@ function PickRow({ icon, value, onPress, muted, testID, anchorRef }:
  * and clears the draft; the button's handler then sees an empty draft, and
  * both handlers return on an empty draft before doing anything at all.
  */
-function AddRow({ value, onChange, placeholder, onAdd, testID }:
+function AddRow({ value, onChange, placeholder, onAdd, testID, invalid }:
   { value: string; onChange: (v: string) => void; placeholder: string;
-    onAdd: () => void; testID: string }) {
+    onAdd: () => void; testID: string;
+    /** The typed value cannot be accepted. The box takes the refusal's colour
+     *  and says so to a screen reader; the WORDS live under it, because colour
+     *  is never the only carrier of meaning (guardrail 3, CP-010). */
+    invalid?: boolean }) {
   const { theme } = useTheme();
+  const bad = theme.isDark ? STATUS.absent.fgDark : STATUS.absent.fgLight;
   return (
     <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.sm }}>
       <TextInput testID={`${testID}-input`}
         value={value} onChangeText={onChange} placeholder={placeholder}
         placeholderTextColor={theme.muted} accessibilityLabel={placeholder}
+        aria-invalid={invalid || undefined}
         onSubmitEditing={onAdd} onBlur={onAdd}
         style={{
           flex: 1, minHeight: TAP_MIN + 2, borderRadius: RADIUS.md, paddingHorizontal: SPACE.lg,
-          backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
+          backgroundColor: theme.surface, borderWidth: 1,
+          borderColor: invalid ? bad : theme.lineStrong,
           color: theme.fgStrong, fontSize: 14, fontWeight: '600',
         }} />
       <Button testID={`${testID}-add`} label="+ Add" variant="secondary" onPress={onAdd} />

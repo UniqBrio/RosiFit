@@ -25,7 +25,7 @@ import {
 } from '../../src/components/memberDialog';
 import { TabStrip } from '../../src/components/TabStrip';
 import { attendancePct, primaryEmail, hasEmailOnFile, type Member } from '../../src/data/mock';
-import { emailStateWord, suppressionLiftable } from '../../src/data/emailStatus';
+import { emailStateWord, isDeliveryFailure } from '../../src/data/emailStatus';
 import { streakReading } from '../../src/data/streak';
 import { formatDate } from '../../src/data/memberDate';
 import {
@@ -567,8 +567,15 @@ export default function MemberDetail() {
                   decision and the app offers no way to undo it. Saying so here
                   is what stops the reader going to Edit and retyping an address
                   that is already on the record. */}
-              {suppressionLiftable(suppressedAddress(m)?.status)
-                ? 'Follow-ups are not reaching the member. Open Edit to correct the address or reinstate it.'
+              {isDeliveryFailure(suppressedAddress(m)?.status)
+                /* A bounce is the mail system's verdict on the ADDRESS, so the
+                   answer is a different address -- not a button that un-marks
+                   this one. Re-using an address the mail system has already
+                   rejected sends the next follow-up into the same hole
+                   (requests/2026-09-23-bounced-address-asks-for-a-different-one.md). */
+                ? 'Follow-ups are not reaching the member. Open Edit and add a different address.'
+                /* An opt-out or a spam report is the member's own decision, and
+                   there is nothing for the academy to do about it here. */
                 : 'The academy may not write to the member at this address.'}
             </Muted>
           ) : null}
