@@ -1,3 +1,276 @@
+## ISSUES LEAVE THE ROSTER, AND THE DROPDOWN GAINS TWO — 24-Sep-2026
+
+`requests/2026-09-24-issues-leave-the-roster-and-two-filters.md` is the binding record, and
+**RC-108** is the defect. Yesterday's section was built as a pure ADDITION: it listed the members
+whose address could not be used and changed nothing above it. The academy reported the
+consequence the same day — an unsubscribed member appeared TWICE, once under Email issues and
+once among the members with email, where the card printed the address in the ordinary muted grey
+it uses for a working one. That is a second list over the same members, which is the shape
+guardrail 1 exists to prevent.
+
+WHAT CHANGED. `emailIssueIds` returns the ids of the rows the section actually renders, and the
+roster above filters them out, so the section and the exclusion read ONE derivation and cannot
+disagree. The section now draws the SAME `MemberCard` the roster draws, so moving a member down
+the page costs nothing: the day's attendance reading, the status pill and the tick travel with
+the member. The one thing that changes is the line under the name, which names the offending
+address and the app's existing word for its state (`emailStateWord` via `issueBadge`) rather
+than printing it as a working address. The dropdown gained **Bounced** and **Unsubscribed**,
+answered by `emailIssueFor` — the same derivation a third time, never a third reading.
+
+DATA SOURCE: none added. No query, no migration, `git diff supabase/` **EMPTY**. `update_member`,
+unsubscribe semantics, the suppression rules and the send path are all untouched — `isReachable`
+is not read by any line this change adds.
+
+FAIL-FIRST: src/data/rosterFilter.test.ts — **9 of 35 red** against the pre-change
+`rosterFilter.ts`, verbatim: `Expected values to be strictly deep-equal: + actual - expected +
+[] - [ 'm1' ]` for 'Bounced returns the bounced member and nobody else', because `matchesOne`
+had no branch for either key. With it: 'Unsubscribed returns the opted-out member and nobody
+else', 'a re-added address is still found by the filter it was suppressed under (RC-107)', 'an
+opt-out outranks a bounce, so the member is under one filter only', 'they narrow while the week
+is still loading', 'the counts count the same members the filter returns' (both counts came back
+`undefined`), 'the two new labels round-trip like every other' (`rosterFilterKey('Bounced')`
+returned `'all'`), and the two copy-locks below. The source file was restored byte-identical
+afterwards and `diff` run to prove it — `git checkout --` is unsafe in a shared worktree.
+
+FAIL-FIRST: src/data/emailIssues.test.ts — **6 red** against the pre-change tree, both source
+files stashed and restored byte-identical: 'the roster above must exclude the members the issues
+section has taken' (case 15), `(0 , import_emailIssues.emailIssueIds) is not a function` (cases
+16, 17, 18), 'each group is addressable, so a screen check can name one' (case 19), and 'the note
+comes from the shared reading, never from a string typed into the screen'.
+
+The FOUR negative cases among the new filter specs — no address, a usable address alongside a
+dead one, a spam report — passed against the pre-change file, and they passed for the WRONG
+reason: a filter that matches nobody matches them too. They are kept because they pin what the
+two keys must never claim, and they are named here rather than counted as red-first, which would
+have been a nicer number and a false one.
+
+AMENDED, NOT APPENDED — three assertions, stated plainly because specs here are append-only:
+
+  1. `emailIssues.test.ts` case 15 pinned `withEmail = shown.filter(m => m.emails.length > 0)` —
+     that the section was a pure addition. The owner reversed that behaviour, so the assertion is
+     re-pointed at the partition that replaced it and renamed to say what it now guards. Nothing
+     removed, nothing skipped, no matcher loosened; "No email" is asserted unchanged in the same
+     case, and a third assertion was ADDED requiring the exclusion to read `emailIssueIds`.
+  2-3. `rosterFilter.test.ts`'s two copy-locks (**T-025**, half cleared). The academy asked the
+     dropdown for two options by name, so changing that list IS the intent of the work — the one
+     case the append-only rule leaves open. Both now pin the whole current list, including the
+     `Active`/`Inactive` pair that was already in the tree and already failing these locks before
+     this change went near them: verified by stashing only `rosterFilter.ts` and observing the
+     same two failures on the untouched baseline.
+
+MEASURED THIS RUN, baseline vs changed tree:
+  - `npx tsx --test src/data/emailIssues.test.ts`: **34/34 PASS** (23 → 34)
+  - `npx tsx --test src/data/rosterFilter.test.ts`: **38/38 PASS** (25 → 38, 2 were red)
+  - `npm run test:unit`: **1947 pass / 6 fail**, against a clean-tree baseline measured the same
+    hour of **1921 / 8**. +24 tests, **two fewer failures**, none introduced. The remaining six
+    are `message.test.ts` ×5 (T-025's other half) and `formDropdownMenu.test.ts:148` over
+    `app/(tabs)/courses.tsx` (**T-023**) — neither file is touched by this change.
+  - `npx tsc --noEmit -p tsconfig.json`: **0 errors**. One was found and fixed during the run:
+    `ROSTER_FILTERS.some(f => f.key === 'complained')` is a type error because the key is not in
+    the union — the guard doing its job one level above the assertion, which now checks the label.
+  - `npm run check`: **6 of 7 PASS** — lint PASS, typecheck PASS, check:edge PASS, **2852/2852 contrast pairs**, **75/75 icons**,
+    check:functions PASS. No new colour and no new glyph: the section reuses `dangerInk`,
+    `statusSurface` and the card it already drew.
+  - `npm run gate`: 7 pass / 6 fail. G1/G2/G3 are the absent `design/tokens.json`
+    (TD-001/002/003), G8 an empty functional log (TD-006), G7 the six above. **G6 Lint FAIL is
+    one pre-existing warning in `scripts/conformance.mjs`** — *"Unused eslint-disable directive
+    (no problems were reported from 'no-await-in-loop')"* at line 222, a file this change does not
+    touch. `npm run check`'s lint step passes because it does not run with `--max-warnings 0`.
+    None of the six is this change's.
+
+REVIEW ROUND — code-reviewer returned **REQUEST CHANGES** with three blocking findings, and all
+three were real, all three on the path the academy actually asked for, and none of them caught by
+any spec in this repository. They are recorded because the pattern in them is the interesting
+part: the derivation was right and the SCREEN AROUND IT was not.
+
+  B1 · `showPending` kept its own hand-written list of "keys that are facts about the record"
+       — the three names spelled out inline. Bounced and Unsubscribed are exactly that kind of
+       fact and were added to the derivation, to `matchesOne` and to the counts, and not to that
+       line. Tick Unsubscribed while a week is loading or failed and the screen printed *"This
+       week's register could not be loaded, so the roster is not narrowed to Unsubscribed"* over
+       a roster narrowed to precisely that — and `showPending` suppresses the truthful line
+       beneath it, so the false sentence was the only explanation on screen. That is RC-108's own
+       defect class, a screen stating something untrue, reintroduced one line from the fix.
+       FIXED by exporting `isRecordFact` from `rosterFilter.ts`, beside the union it reads, and
+       pinned by three cases including one that walks `ROSTER_FILTERS` so a future key cannot be
+       added without being classified.
+  B2 · The section defaulted to collapsed and nothing linked the filter to it. Tick Unsubscribed:
+       `withEmail` and `withoutEmail` are both empty, `shown` is not, so no empty state fires —
+       the answer to "show me the unsubscribed members" was a heading, a count, and a chevron.
+       FIXED: ticking either key opens the section, and a close the operator chooses outranks
+       that for as long as the filter stays ticked.
+  B3 · `memberSplit` read "N with email · M without", two terms that used to be the whole roster
+       and no longer are. On the academy's own roster it would read *"9 with email · 0 without"*
+       under a heading saying ten. FIXED with a third term, drawn only when there is one.
+
+  Non-blocking, also fixed: the empty-state guard tested `exactly one key and it is one of two`,
+  so ticking BOTH — the point of a checkbox list — fell through to a sentence naming a day, which
+  the comment directly above it forbids (now `every ticked key is an email record fact`); an issue
+  card carried a word and a colour but no glyph and wore the HEALTHY border (guardrail 3 — now the
+  `error` glyph on the line and on each group heading, and the danger border); and `emailIssueFor`
+  could pick a blank address row as `worst` at equal severity and then borrow another row's
+  address to print beside it, which is a pair of facts about two different addresses (now the
+  named row wins at equal severity, severity still outranking it — three cases, fail-first
+  observed by reverting the tiebreak in place and restoring byte-identical).
+
+  T-302 PAID DOWN RATHER THAN ADDED TO: the four source-reading windows in `emailIssues.test.ts`
+  were character slices, the exact pattern that row names as open — a CRLF checkout spends one
+  extra character per line, so the window ends on a different line on Windows than in CI. All
+  four now take a LINE window through one `linesFrom` helper, which is the fix T-302 prescribes.
+
+  ACCEPTED, NOT FIXED, and recorded so it is a decision rather than an inheritance: an unsubscribed
+  member who is INACTIVE on the selected day is not surfaced by the new filters and is not in their
+  counts, while the Inactive section stays on screen beside them. That is exactly how `no-email`
+  has always behaved, so the two new keys are consistent with the key they sit beside rather than
+  novel. Changing it means deciding whether a record fact should reach across the register
+  boundary, which is a wider question than this request.
+
+  Copy-gate-reviewer returned BLOCKED (no shell) with seven findings; five were acted on. The
+  group note's three `detail` strings were written in the singular — *"This member previously
+  opted out…"* — and are now drawn ONCE over a group of cards, where "This member" names nobody;
+  rewritten in the plural, and the three copy-locks still pass unchanged because the pinned
+  phrases survived. The opt-out note said the academy does not write again *"unless the member
+  asks for it"*, a path this app does not have — `emailStatus.ts` records in as many words that no
+  screen here reinstates an address. The bounced note said *"a working address"*, asserting a
+  replacement works, where the product's own word is *"a different email address"*. The two
+  empty-state sentences restated their own titles and made the ADDRESS the subject of a state
+  `emailStateWord` assigns to the member. And `${address} · ${word}` drew a dangling separator
+  when the address is the empty string the bulk import can write. Two findings were logged to
+  `PRODUCT_LEXICON.md` candidates rather than fixed: `Spam Reported` is Title Case among
+  sentence-case siblings and is copy-locked in three places, and `ISSUE_READING.unsubscribed.title`
+  makes the address the subject — both are shipped copy and belong in a declared copy pass. The
+  six email-suppression terms were added to the lexicon as PROVISIONAL rows, recorded as PAIRS:
+  the short form is the heading and the filter, the long form is the word on a card.
+
+  ONE RULE VIOLATION FIXED OUTSIDE THE REQUEST, and named rather than slipped in: the "No email"
+  section's comment read *"She is separated because the follow-up rule cannot reach her"*, two
+  lines above the code this change edits. The gender-neutral rule is binding, so it was fixed.
+  **What was NOT fixed, and the academy should see it:** `app/course/[id].tsx:1619` is a VISIBLE
+  string breaking the same rule — *"…so she is expected at the days that offering runs"* — and
+  about thirty comments in that file do too. Both are logged as lexicon candidates. A one-line
+  edit to a shipped string is a copy pass, not a tidy-up inside an unrelated change.
+
+DEFINITION OF DONE — every item, or an explicit N/A with a reason.
+
+| item | verdict |
+|---|---|
+| Implements the approved plan, no unrequested scope | done · one exception declared: the No email comment's gendered wording, fixed because the rule is binding |
+| Every changed line traces to the request | done |
+| Canonical pattern for every concern | done · guardrail 1 (one derivation feeds section, exclusion and filter), CP-011 |
+| No colour literals, no magic numbers | gate: G4 PASS |
+| Dead weight deleted | done · the hand-kept key list is gone, asserted by case 22 |
+| Dependencies verified and pinned | N/A: none added |
+| Component contributed back | N/A: no new component, `MemberCard` gained one optional prop |
+| Every state looked at: empty, loading, error | done · loading and error are B1's own defect, now correct; empty is the new arm |
+| Loading terminates on forced error | N/A: no new async path |
+| Failure path exercised | N/A: no new write or read |
+| Writes idempotent | N/A: no write |
+| CHECK constraints stated by the form | N/A: no form touched |
+| Multi-step writes in one transaction | N/A: no write |
+| A save proved against the data | N/A: no save |
+| Screen checklist per screen | **NOT DONE** — no spec renders a screen and preview-smoke-verifier is unreachable. This is the standing gap, named above |
+| Both themes verified visually | **NOT DONE**, same reason. No new colour: `dangerInk`, `statusSurface`, `theme.muted` only |
+| Contrast asserted | gate: 2852/2852 pairs |
+| Per-theme assets | N/A: no brand asset touched |
+| Five permission questions, matrix row | N/A: no role, policy or tenant surface touched |
+| Deep route and API path gated | N/A: as above |
+| Tenant scoping on every query | N/A: no query — the section reads the roster already loaded |
+| No secret in client code or repo | done · `git diff supabase/` empty |
+| Cases added, registry delta verified | done · +11 in `emailIssues.test.ts` (23 → 34), +13 in `rosterFilter.test.ts` (25 → 38) |
+| All four dimensions | done · derivation, screen wiring, copy, and the negative cases named above |
+| Fail-first evidence per new behaviour test | done · four separate observations, each restored byte-identical and diffed; the four passing-negative cases named honestly |
+| The gate ran | done · FAIL, six classes, every one named and pre-existing |
+| Module document updated | done · `emailIssues.ts` and `rosterFilter.ts` headers carry the reasoning |
+| Feature register updated | no change needed — this is a correction to a feature registered on 23-Sep |
+| Root-cause entry appended | done · **RC-108** |
+| Limitations entry | N/A: no platform limit found |
+| Decision record | N/A: nothing hard to reverse. The two accepted-not-fixed calls are recorded above |
+| Changelog line | done · see below |
+| Tier stated | **T0** — a correction to a shipped screen, no new surface, no pricing, legal or support change |
+| Run closed out | done · two rows, one per cycle |
+
+CHANGELOG, in the language of the user: *A member who has unsubscribed or whose address has
+bounced now appears only under Email issues on the course screen, not also in the list of members
+with email — and the roster's Show menu can narrow to Bounced or Unsubscribed.*
+
+WHAT IS STILL NOT PROVEN, for the fourth day running, and it is now the pattern rather than the
+exception: no spec here renders a screen. "The unsubscribed member is no longer in the list above
+and the count beside it dropped by one" is asserted by reading `app/course/[id].tsx` for the
+three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
+preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
+all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-09-24 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 26.0s total - slowest G7 Unit + pure specs (16.5s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (61ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (58ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (85ms)
+- **G5 Types** - PASS (5.7s)
+- **G6 Lint** - FAIL (3.1s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (16.5s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (130ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (58ms)
+- **G10 Backward compatibility (fixtures)** - PASS (115ms)
+- **G11 Wide tables are configurable** - PASS (61ms)
+- **G12 Installable as an application** - PASS (76ms)
+- **G13 Approved design still being built** - PASS (49ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
 ## EMAIL ISSUES — a course's unusable addresses, grouped by why, 24-Sep-2026
 
 A visibility section on the course screen, immediately below "No email" and deliberately not
@@ -54,6 +327,146 @@ section appears below No email and its rows read correctly" is asserted by readi
 `app/course/[id].tsx` for the order, the testIDs and the absence of any send or reinstate
 control. preview-smoke-verifier remains unreachable — the network policy rejects the Vercel
 preview host. This is named in RC-107's process check and has not changed.
+
+---
+
+## Gate run - 2026-09-24 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 25.9s total - slowest G7 Unit + pure specs (16.6s).
+Application steps ran in .
+
+> **This run was avoidable.** The tree is byte-identical to the previous gate run, so this verdict was already known. The gate verifies a TREE, not a change: corrections landing in one commit share one verification, and only the last run describes what ships. Corrections in SEPARATE commits each need their own, so every commit is independently bisectable.
+
+- **G1 Theme artifacts in sync** - FAIL (50ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (55ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (49ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (82ms)
+- **G5 Types** - PASS (5.5s)
+- **G6 Lint** - FAIL (3.0s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (16.6s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (122ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (55ms)
+- **G10 Backward compatibility (fixtures)** - PASS (108ms)
+- **G11 Wide tables are configurable** - PASS (59ms)
+- **G12 Installable as an application** - PASS (71ms)
+- **G13 Approved design still being built** - PASS (50ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-24 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 26.2s total - slowest G7 Unit + pure specs (16.7s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (51ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (51ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (51ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (70ms)
+- **G5 Types** - PASS (5.7s)
+- **G6 Lint** - FAIL (3.0s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (16.7s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (163ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (56ms)
+- **G10 Backward compatibility (fixtures)** - PASS (115ms)
+- **G11 Wide tables are configurable** - PASS (63ms)
+- **G12 Installable as an application** - PASS (87ms)
+- **G13 Approved design still being built** - PASS (59ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

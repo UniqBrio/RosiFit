@@ -59,6 +59,27 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-108 — a member whose address could not be used was listed as one whose address worked, and counted as one          Tracker: none (reported by the academy) · Sources: requests/2026-09-24-issues-leave-the-roster-and-two-filters.md, RC-107, RC-106
+**Date:** 24-Sep-2026 · **Severity:** S2 (a screen stated something untrue about who can be written to; no send behaviour changed) · **Modules:** `app/course/[id].tsx`, `src/data/emailIssues.ts`, `src/data/rosterFilter.ts`
+
+**Symptom** — in the academy's words, with a screenshot of a course roster: *"This person has unsubscribed but she is stilll showing under person with email section. Instead she should be coming under email issues."*
+
+**Root cause** — the Email issues section, built the day before, was designed as a pure **addition**: it listed the members whose address could not be used and deliberately changed nothing above it, so the roster kept every member it already had. That made the section a second list over the same members rather than a partition of them — the failure mode guardrail 1 exists for. A suppressed member therefore appeared twice: once under Email issues, and once among the members **with** email, where the card printed the address in the ordinary muted grey it uses for a working one and the section's count included them. A spec pinned exactly that addition (`emailIssues.test.ts` case 15), so the behaviour was asserted, not accidental — which is why this is a design defect and not a slip.
+
+**Fix** — the roster now partitions on one derivation instead of overlapping on two. `emailIssueIds` returns the ids of the rows the section actually renders, and the roster above filters them out, so the section and the exclusion cannot disagree by construction. Moving a member down the page was made free of cost: the section draws the **same** `MemberCard`, so the day's attendance reading, the status pill and the tick travel with the member; the one thing that changes is the line under the name, which now names the offending address and the app's existing word for its state instead of printing it as a working address. The dropdown gained **Bounced** and **Unsubscribed**, answered by `emailIssueFor` — the same derivation again, never a third reading of the same question.
+
+**Files** — `app/course/[id].tsx`, `src/data/emailIssues.ts`, `src/data/emailIssues.test.ts`, `src/data/rosterFilter.ts`, `src/data/rosterFilter.test.ts`
+
+**How to verify** — `npx tsx --test src/data/emailIssues.test.ts` — case *16 · the three predicates partition the roster: nobody twice, nobody lost* must pass; it asserts the three counts sum to the roster and that no id appears in two of them. Then `npx tsx --test src/data/rosterFilter.test.ts` — *the counts count the same members the filter returns*. On the screen: open a course holding an unsubscribed member and confirm the member appears under Email issues → Unsubscribed and **not** in the list above, and that the header's "N with email" no longer counts them.
+
+**Recurrence risk** — every screen that adds a section over a list it does not also narrow. The pattern to look for is a new section derived from the same array as an existing one, with no exclusion between them: RC-108 is that shape, and so is the follow-up/dashboard drift guardrail 1 was written for. The two live "sections over one roster" on this screen — No email and Email issues — are now both partitions; Inactive is deliberately not (it is drawn from `joinedByDay`, a different array, and says so).
+
+**Prevention** — `src/data/emailIssues.test.ts` case 16, which asserts the partition arithmetic rather than either section in isolation, plus `emailIssueIds` existing at all: a single exported derivation is what makes "the section and the exclusion agree" a property of the code rather than of two filters staying in step.
+
+**Process check** — **Yes.** Nothing in the gate could have caught this: the section was correct, the roster was correct, and only the two together were wrong. It was found by a person looking at the screen — the third defect in this series found that way (RC-106, RC-107, RC-108), against a process in which **no spec renders a screen** and `preview-smoke-verifier` cannot reach a deployed preview from this environment. That is the standing gap, and it is now three for three.
+
+---
+
 ## RC-107 — a suppression was erased by removing the address and typing it back in          Tracker: none (found in production during RC-106's follow-up) · Sources: RC-106, requests/2026-09-23-bounced-address-asks-for-a-different-one.md
 **Date:** 24-Sep-2026 · **Severity:** S1 (a member who opted out was returned to the send list) · **Modules:** `src/data/repository.ts`, `src/data/mock.ts`, `src/data/emailStatus.ts`, `app/member/edit.tsx`
 
