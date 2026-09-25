@@ -59,6 +59,42 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-078 — one bundle carried every screen, and a split without a safety net would blank the app          Tracker: T-407 · Sources: RUN_app-feels-slow.md (Fix 4), requests/2026-09-24-app-feels-slow-measure-first.md
+**Date:** 25-Sep-2026 · **Severity:** S2 · **Modules:** `app.json`, `src/components/Icon.tsx`, `src/pwa/`, `app/_layout.tsx`, `public/sw.js`, `vercel.json`
+
+**Symptom** — Every screen downloaded one 2.65 MB (713 KB gzip) entry bundle. Lighthouse mobile LCP was 4.9–7.0 s.
+
+**Root cause** — Two causes:
+- `@expo/vector-icons` was imported through its barrel, which ships every icon set's glyph table (~400 KB raw) for the one WhatsApp glyph.
+- Routes were not split, so each screen carried the code of all the others.
+
+**Fix** —
+- Icon sets are imported one at a time, and WhatsApp is a one-glyph set over the same font.
+- `asyncRoutes: { web: "production" }`.
+
+The split creates a new failure: a stale tab asks for a chunk the new deployment no longer serves. It is closed off four ways:
+- Deployment detection compares only the shared bundles (`sharedBundles`), for detection and for the loop-guard stamp alike.
+- A root `ErrorBoundary` reloads once for a chunk failure (`chunkRecoveryStep`). It waits while a write is in flight (T-021), notes a time rather than a flag (a 60 s window), and does not reload if the note cannot be recorded.
+- `/_expo/` misses are a real 404.
+- The service worker (cache v2) neither caches an HTML answer as a script nor keeps v1's cache.
+
+**Files** — `app.json`, `app/_layout.tsx`, `src/components/Icon.tsx`, `src/components/ui.tsx` (`safeToRetry`), `src/pwa/chunkRecovery.ts`, `src/pwa/deployment.ts`, `src/pwa/DeploymentRefresh.tsx`, `public/sw.js`, `vercel.json`, the tests, and `scripts/perf/js-budget.js`.
+
+**Proof** — Measured with `js-budget.js` and Lighthouse:
+- Per-screen compressed JS: 702 → 467 KB.
+- LCP: Home 5.07 → 3.95 s, Members 7.30 → 5.80 s.
+- Members chunk deleted: before the fix, a blank page; after, one reload and then the error state, in both themes.
+
+**Class** — The owner's targets are NOT met: 250 KB per screen and LCP under 2.5 s. The shared entry (react-dom + react-native-web + expo-router) is ~281 KB gzip on its own. Anything further is options (a)–(d) in the RUN file.
+
+The Expo-upgrade hazard: `sharedBundles` matches the `entry`/`__common`/`__expo-metro-runtime` file names. If an upgrade renames them, the fallback compares every bundle, which brings back the one wasted reload per non-Home session.
+
+**How to verify** — Two checks after a deployment:
+- A tab left open on the previous build and then navigated to an unvisited screen reloads once and lands on the screen.
+- `js-budget.js` against the deployed build reports ≈ 467 KB per screen.
+
+---
+
 ## RC-077 — every hook read on its own, so one screen visit re-read what the last one had just read          Tracker: T-406 · Sources: RUN_app-feels-slow.md (T-406 section), requests/2026-09-24-app-feels-slow-measure-first.md
 **Date:** 25-Sep-2026 · **Severity:** S2 · **Modules:** `src/lib/sharedFetch.ts`, `src/lib/supabase.ts`
 

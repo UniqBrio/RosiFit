@@ -38,8 +38,11 @@
  * ordinary deployment: documents are network-first, so they refresh themselves,
  * and build output is content-hashed, so a new build simply asks for URLs that
  * are not in the cache yet.
+ *
+ * v2 (T-407): the old catch-all answered a missing chunk 200 with HTML and it
+ * was cached under the chunk's path; the new cache name purges those entries.
  */
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE = `rosifit-shell-${VERSION}`;
 
 /* The offline fallback. Also the start_url, which is what Chromium probes. */
@@ -131,7 +134,12 @@ self.addEventListener('fetch', (event) => {
         const cached = await caches.match(request);
         if (cached) return cached;
         const response = await fetch(request);
-        if (response.ok) {
+        /* Never keep an HTML answer under a build-output path (T-407): a
+           missing chunk that some rewrite answers with a page would otherwise
+           be cached as that chunk "forever", since these paths are treated as
+           immutable. */
+        const html = (response.headers.get('content-type') || '').includes('text/html');
+        if (response.ok && !html) {
           const cache = await caches.open(CACHE);
           cache.put(request, response.clone());
         }

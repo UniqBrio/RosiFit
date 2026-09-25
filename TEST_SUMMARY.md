@@ -202,6 +202,75 @@ all found by a person using the app, which is three for three, and RC-108's proc
 
 ---
 
+## Gate run - 2026-09-25 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 29.0s total - slowest G7 Unit + pure specs (16.2s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (45ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit-T407/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (48ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit-T407/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (49ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit-T407/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (72ms)
+- **G5 Types** - PASS (5.1s)
+- **G6 Lint** - FAIL (7.1s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (16.2s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (108ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (49ms)
+- **G10 Backward compatibility (fixtures)** - PASS (98ms)
+- **G11 Wide tables are configurable** - PASS (49ms)
+- **G12 Installable as an application** - PASS (62ms)
+- **G13 Approved design still being built** - PASS (44ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
 ## Gate run - 2026-09-24 - VERDICT: FAIL
 
 Steps: 7 pass, 6 fail, 0 blocked.
@@ -11393,3 +11462,23 @@ the same set as the previous gate run on main; nothing new.
 NOT RUN: a live call. The network proxy blocks *.supabase.co from this session, and no import can be driven
 without a signed-in session. Runtime region is unverified until real imports run after deploy.
 
+
+## T-407 · JavaScript per screen · 25-Sep-2026 · RC-078
+FAIL-FIRST: src/components/iconImports.test.ts - "no screen imports the @expo/vector-icons barrel" failed on
+main (Icon.tsx imported the barrel); 2/2 after. src/pwa/deployment.test.ts - the T-407 route-chunk case failed
+on main's containment rule (Home's chunk read as a new build); passes after. src/pwa/chunkRecovery.test.ts -
+the wiring cases failed before the boundary existed; 10/10 after. The in-flight wait, the 60 s window and the
+read-back on the note were each mutation-checked: removing one fails exactly its test.
+BROWSER (production build, Members chunk deleted, 404): before - a blank page, 0 reloads. After - 1 reload,
+then "This screen could not be loaded. Check the connection and try again." on theme.bg, dark and light.
+BEHAVIOUR: compressed JS per screen 702 -> 467 KB (Home, Attendance, Members); brotli 544 -> 370 KB.
+Lighthouse mobile LCP Home 5.07 -> 3.95 s, Members 7.30 -> 5.80 s. Owner targets (< 250 KB, LCP < 2.5 s)
+NOT met - the shared entry is ~281 KB gzip on its own (RUN_app-feels-slow.md, Fix 4).
+UNIT: 1987 tests, 6 fail - the SAME 6 as clean main. typecheck PASS · lint PASS.
+GATE: FAIL on the same pre-existing set as main (G1-G3 T-034, G6 scripts/conformance.mjs warning, G7 the 6
+above, G8).
+REVIEW: code-reviewer twice. Round 1 REQUEST CHANGES (no boundary for chunk failures, loop-guard stamp mismatch,
+docs/pinning, weak icon test) - fixed. Round 2 REQUEST CHANGES (reload ignored in-flight writes, once-per-tab
+flag never cleared, storage-failure loop, boundary unthemed, "Nothing was changed" promise, classifier breadth,
+sw cache not bumped, weak stamp test, perf-script docs and fallback size) - all fixed in this commit.
+NOT RUN: production. Ships on merge; the first deployment after it is the real chunk-miss test.
