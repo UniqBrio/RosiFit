@@ -24,6 +24,7 @@ import { membersInPeriod } from '../../src/data/joined';
 import { resolvePeriod, type PeriodChoice } from '../../src/data/period';
 import { ALL_BRANCHES } from '../../src/state/academy';
 import { useAdminRedirect } from '../../src/components/AdminOnly';
+import { FreshnessLine } from '../../src/components/FreshnessLine';
 
 /**
  * The Overview: three filters, and the academy's attendance told four ways
@@ -269,6 +270,9 @@ export default function Home() {
 
   return (
     <Screen header={controls}>
+      {/* How old this data is, and whether the last attempt to bring it up
+          to date got through — src/components/FreshnessLine.tsx. */}
+      <FreshnessLine read={followUp} testID="overview-freshness" />
 
       {/* The four sections share ONE grid: two to a row from TWO_UP_MIN,
           stacked below it, and the same gap either way. Each card sits in a

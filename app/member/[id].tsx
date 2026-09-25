@@ -24,10 +24,13 @@ import {
   memberDayNames, addressesInOrder, type MemberTab,
 } from '../../src/components/memberDialog';
 import { TabStrip } from '../../src/components/TabStrip';
-import { attendancePct, primaryEmail, hasEmail, type Member } from '../../src/data/mock';
+import { attendancePct, primaryEmail, hasEmailOnFile, type Member } from '../../src/data/mock';
+import { emailStateWord, isDeliveryFailure } from '../../src/data/emailStatus';
 import { streakReading } from '../../src/data/streak';
 import { formatDate } from '../../src/data/memberDate';
-import { flagged, isReachable, recipientSplit } from '../../src/data/followup';
+import {
+  flagged, isReachable, recipientSplit, emailExclusionReason, suppressedAddress,
+} from '../../src/data/followup';
 import { currentWeek, iso } from '../../src/data/period';
 import { mergeSent, sentThisSession, sentOn, recordSent } from '../../src/data/sent';
 import { reachOutState, REACH_OUT, warnsBeforeReachOut } from '../../src/data/reachOut';
@@ -178,9 +181,34 @@ export default function MemberDetail() {
   const run = streakReading({ streak: m.streak, lastPresent: m.lastPresent ?? null });
   const tone = attendanceTone(pct);
   const pctColor = tone === null ? theme.muted : ink(tone);
-  const mail = hasEmail(m);
+  /* FOUR STATES, WHERE THERE WERE TWO -- and the two were a defect.
+
+     The panel below asked `hasEmail(m)`, over a member record the repository
+     had already stripped of every suppressed address. So a member whose only
+     address had BOUNCED, and a member who had never given one at all, arrived
+     here identical: both drew the no-address wording, over a table row that in the
+     first case was sitting right there. Opening Edit showed nothing, the
+     operator typed the address the academy holds, and the save reported
+     success having changed nothing
+     (requests/2026-09-22-saved-email-not-reflecting.md).
+
+     The record carries `status` now, so the panel can say WHICH it is -- and
+     which it is decides what the reader does next. No address is something the
+     academy fixes by asking the member. A bounce is something it fixes on the
+     Edit form, where Reinstate now lives. An opt-out is not something it may
+     fix at all.
+
+     Every state carries its own word AND its own icon; the tone comes from the
+     measured token pair for the theme that is on, never a literal (CP-008,
+     guardrail 3). */
+  const onFile = hasEmailOnFile(m);
+  const mail = isReachable(m);
+  const mailState = !onFile ? 'none' : mail ? 'ok' : 'suppressed';
   const mailInk = mail ? ink('present') : ink('absent');
   const mailBox = statusSurface(mailInk);
+  const mailWord = mailState === 'ok' ? 'Email on file'
+    : mailState === 'none' ? 'No email on file'
+    : emailStateWord(suppressedAddress(m)?.status);
 
   /* The server's history plus this session's own sends -- the same merge the
      send draft marks its rows from, so the warning here cannot say "never"
@@ -497,23 +525,60 @@ export default function MemberDetail() {
       </View>
       )}
 
-      {/* HER EMAIL, one line. No usable email is shown and counted as
+      {/* THE MEMBER'S EMAIL, one line. An address that cannot be used is shown,
+          named and counted as
           excluded from every send, never quietly dropped (C-76). */}
       <View style={{
         marginTop: SPACE.lg, paddingVertical: 10, paddingHorizontal: 12, borderRadius: RADIUS.md,
         backgroundColor: mailBox.bg, borderWidth: 1, borderColor: mailBox.border,
         flexDirection: 'row', alignItems: 'flex-start', gap: SPACE.md,
       }}>
-        <Icon name={mail ? 'mark_email_read' : 'mail_off'} size={18} color={mailInk} />
+        {/* A DIFFERENT GLYPH PER STATE, because the word is not allowed to be
+            the only thing carrying it either (guardrail 3, CP-010). `block` is
+            the suppression -- the academy is stopped from writing here --
+            against `mail_off`, the envelope-with-minus that means there is no
+            address at all. Both are canvas names already in this app and both
+            go through the alias table (CP-009); a glyph name is never handed to
+            the icon font directly, because a name that stops resolving renders
+            as a blank box and is invisible in review. */}
+        <Icon name={mailState === 'ok' ? 'mark_email_read'
+          : mailState === 'suppressed' ? 'block' : 'mail_off'}
+          size={18} color={mailInk} />
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={{ fontSize: 12.5, fontWeight: '700', color: mailInk }}>
-            {mail ? 'Email on file' : 'No usable email'}
+            {mailWord}
           </Text>
           <Muted style={{ fontSize: 12, lineHeight: 17, marginTop: 2 }}>
-            {mail
-              ? `${primaryEmail(m)} · verified 4 Aug`
-              : 'The member is shown and counted as excluded from every send, never quietly dropped.'}
+            {mailState === 'ok'
+              ? primaryEmail(m)
+              : mailState === 'suppressed'
+                /* THE ADDRESS IS NAMED. It is on the record, the operator has
+                   it in front of them, and the reason it cannot be used is the
+                   one fact that decides what they do next -- which is exactly
+                   what this panel failed to say while it drew "No usable
+                   email" over an address sitting in the table. */
+                ? `${suppressedAddress(m)?.address ?? primaryEmail(m)} · ${emailExclusionReason(m)}`
+                : 'The member is shown and counted as excluded from every send, never quietly dropped.'}
           </Muted>
+          {mailState === 'suppressed' ? (
+            <Muted style={{ fontSize: 12, lineHeight: 17, marginTop: 2 }}>
+              {/* WHAT TO DO, and it differs by state. A bounce is frequently a
+                  typo the academy can correct; an opt-out is the member's own
+                  decision and the app offers no way to undo it. Saying so here
+                  is what stops the reader going to Edit and retyping an address
+                  that is already on the record. */}
+              {isDeliveryFailure(suppressedAddress(m)?.status)
+                /* A bounce is the mail system's verdict on the ADDRESS, so the
+                   answer is a different address -- not a button that un-marks
+                   this one. Re-using an address the mail system has already
+                   rejected sends the next follow-up into the same hole
+                   (requests/2026-09-23-bounced-address-asks-for-a-different-one.md). */
+                ? 'Follow-ups are not reaching the member. Open Edit and add a different address.'
+                /* An opt-out or a spam report is the member's own decision, and
+                   there is nothing for the academy to do about it here. */
+                : 'The academy may not write to the member at this address.'}
+            </Muted>
+          ) : null}
           <Muted style={{ fontSize: 12, lineHeight: 17, marginTop: 2 }}>
             {`Last contacted ${m.last === '—' ? 'never' : m.last}`}
           </Muted>

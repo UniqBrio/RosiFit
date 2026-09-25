@@ -150,10 +150,61 @@ export type Member = {
    */
   code: string;
   aliases: string[];
-  /** A member can hold several addresses; exactly one is primary. An EMPTY
-   *  list means no usable address -- she is still listed and still counted,
-   *  never quietly dropped (C-76). */
-  emails: { address: string; primary: boolean }[];
+  /**
+   * A member can hold several addresses; exactly one is primary. An EMPTY list
+   * means no address at all -- the member is still listed and still counted,
+   * never quietly dropped (C-76).
+   *
+   * `status` is `member_emails.status` (0006) CARRIED, not interpreted. It used
+   * to be read in the repository and thrown away with the whole row, so an
+   * address that had bounced or been opted out of left no trace on the record
+   * and the app could neither show it nor offer to change it. Carrying it is
+   * RC-031's standing rule applied to this column: carry the stored value and
+   * derive the label from it, never the reverse.
+   *
+   * OPTIONAL because a record can be built without it -- the fixtures below,
+   * and the hand-built members in the specs -- and absent reads as usable
+   * (`emailUsable`). The hazard that creates, a future read that forgets to map
+   * the column and silently un-suppresses every address it returns, has no type
+   * error to catch it, so `src/data/memberEmailStatus.test.ts` fails the build
+   * on any address record the repository builds without one.
+   */
+  emails: {
+    address: string;
+    primary: boolean;
+    status?: EmailStatus;
+    /**
+     * `member_emails.id`, carried so an address can be ACTED ON by its
+     * identity rather than by the text in it. `reinstate_member_email`
+     * (0078) takes this and nothing else: an address is not unique across
+     * the register since 0071, so a write keyed on the string could reach
+     * a different member's row.
+     *
+     * Absent on a record the fixtures built, which hold no suppression and
+     * so never reach that call.
+     */
+    id?: string;
+  }[];
+  /**
+   * EVERY ADDRESS THIS MEMBER HAS EVER HAD SUPPRESSED, including ones since
+   * removed from the record. History, not the address list.
+   *
+   * Why it has to exist separately from `emails`: `update_member` SOFT-DELETES
+   * an address left out of a save, and the member read filtered those rows
+   * out. So removing a bounced or opted-out address and typing it back in
+   * produced a brand-new row at 'unknown' -- the suppression erased, with no
+   * trace anywhere the app could see. For an opt-out that is a member being
+   * put back on the send list after asking not to be (RC-107).
+   *
+   * Consulted only when somebody TYPES an address into the Edit form. It is
+   * deliberately not part of `emails`: that list is what the card prints, what
+   * the form edits and what the send splits on, and removed rows belong in
+   * none of those.
+   *
+   * Optional, like `status` and for the same reason: the fixtures and the
+   * specs build records without it, and absent means "no history known".
+   */
+  suppressedBefore?: { address: string; status: EmailStatus }[];
   /**
    * Whether she is ON the register right now -- `members.status` (0006), the
    * column the app has never written and never read.
@@ -402,6 +453,7 @@ import { isEligible, reasonFor, attendancePct } from './followup';
 // Same reason, for the other rule the fixtures have to obey: a member is
 // only in a day's data from the day she joined, and one implementation of
 // that decides it for the fixture generator and the screens alike.
+import type { EmailStatus } from './emailStatus';
 import { hasJoinedBy } from './joined';
 export { ruleHits, isEligible, reasonFor, attendancePct, ruleSentence, flagged, toCandidate } from './followup';
 
@@ -809,12 +861,26 @@ export const CANDIDATES: FollowUpCandidate[] = flaggedMembers().map(m => ({
   follow_up_trigger: GLOBAL_RULE.weekly_threshold,
 }));
 
-/** Her primary address, or '' when there is none on file. */
+/** The member's primary address, or '' when there is none on file. */
 export const primaryEmail = (m: Member): string =>
   (m.emails.find(e => e.primary) ?? m.emails[0])?.address ?? '';
 
-/** C-76: no email means listed-and-excluded, never silently dropped. */
-export const hasEmail = (m: Member): boolean => primaryEmail(m) !== '';
+/**
+ * WHETHER THERE IS AN ADDRESS ON THE RECORD AT ALL, usable or not.
+ *
+ * This is NOT "can we send to the member", and conflating the two is the defect
+ * this pair replaces. `hasEmail` used to be `primaryEmail(m) !== ''` over a list
+ * the read had already stripped of every suppressed row, so a member whose only
+ * address had bounced was indistinguishable from one who had never given an
+ * address -- the card said "No usable email", the Edit form opened blank, and
+ * the operator retyped the address that was sitting on the record all along
+ * (requests/2026-09-22-saved-email-not-reflecting.md).
+ *
+ * Use this to decide WHAT TO SHOW. Use `isReachable` (src/data/followup.ts) to
+ * decide what may be SENT -- it is the predicate the send itself splits on, so
+ * a screen that uses it cannot disagree with what the draft does.
+ */
+export const hasEmailOnFile = (m: Member): boolean => m.emails.length > 0;
 
 /**
  * A member's week, session by session. Holidays and cancellations are LISTED

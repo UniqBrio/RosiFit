@@ -13,6 +13,7 @@ import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../../src/theme/t
 import { ROLE_LABELS } from '../../src/data/mock';
 import { isConfigured } from '../../src/lib/supabase';
 import { staffCreate } from '../../src/data/api';
+import { staffChanged } from '../../src/data/repository';
 
 export default function StaffAdd() {
   const { theme } = useTheme();
@@ -45,6 +46,11 @@ export default function StaffAdd() {
     setBusy(true);
     try {
       await staffCreate({ name: name.trim(), phone, role_label: role });
+      // This screen is a DIALOG over the staff list, which stays mounted
+      // underneath and cannot be reached by a retry() from here. Without
+      // this the person just added is missing from the list she was added
+      // to, which reads as a save that did nothing (RC-034's class).
+      staffChanged();
       flash(`${name.trim().split(' ')[0]} saved · no app access yet`);
       router.replace('/staff');
     } catch (err) {

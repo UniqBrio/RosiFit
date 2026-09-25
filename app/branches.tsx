@@ -13,6 +13,7 @@ import { SPACE, RADIUS, TAP_MIN, STATUS } from '../src/theme/tokens';
 import { useBranchUsage } from '../src/data/hooks';
 import { useIdentity } from '../src/data/session';
 import { createBranch, removeBranch, dataSource, type BranchUsage } from '../src/data/repository';
+import { FreshnessLine } from '../src/components/FreshnessLine';
 
 /**
  * The canvas' BRANCHES section.
@@ -108,6 +109,9 @@ function BranchesBody() {
   return (
     <Screen>
       <ScreenHeader title="Branches" subtitle={summary} onBack={() => router.back()} />
+      {/* How old this data is, and whether the last attempt to bring it up
+          to date got through — src/components/FreshnessLine.tsx. */}
+      <FreshnessLine read={branches} testID="branches-freshness" />
 
       {/* Staff can READ the branch list -- branches_read is
           is_active_app_user() -- and seeing where the academy runs is part of

@@ -175,6 +175,11 @@ const ACTION_TITLE: Record<string, string> = {
   // the counts below name where things went.
   'branch.removed': 'Branch removed',
   'member_email.hard_deleted': 'Email address deleted permanently',
+  // 0078. NOT a deletion and not an edit: the address never moved. What
+  // changed is whether the academy may write to it -- a bounce or a spam
+  // complaint cleared by hand, so follow-ups are sent there again. An
+  // opt-out can never produce this row; reinstate_member_email refuses it.
+  'member_email.reinstated': 'Email address reinstated',
   'member_import_run.hard_deleted': 'Import receipt deleted permanently',
   // Attendance, whose writers are functions rather than the row trigger:
   // set_attendance (0035) and reset_day_attendance (0056).

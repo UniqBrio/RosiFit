@@ -34,11 +34,14 @@
  * anything else.
  */
 import { dayAttendance } from './dayAttendance';
+import { emailIssueFor } from './emailIssues';
 import { isActiveOn } from './inactiveFrom';
 import type { AttendanceRow, Member } from './mock';
 
 export type RosterFilterKey =
-  | 'all' | 'present' | 'absent' | 'unmarked' | 'no-email' | 'active' | 'inactive';
+  | 'all' | 'present' | 'absent' | 'unmarked' | 'no-email'
+  | 'bounced' | 'unsubscribed'
+  | 'active' | 'inactive';
 
 /** The word a card reads on the selected day. `null` when it reads nothing --
  *  no day is selected, or the week has not arrived. */
@@ -60,6 +63,18 @@ export const ROSTER_FILTERS: { key: RosterFilterKey; label: string }[] = [
   { key: 'absent', label: 'Absent' },
   { key: 'unmarked', label: 'Yet to mark' },
   { key: 'no-email', label: 'No email' },
+  /* The two reasons an address that EXISTS still cannot be used, asked for by
+     name. They sit directly under No email because they are the same kind of
+     fact -- about the record, not about the day -- and because the section
+     they narrow to sits directly under the No email section on the screen.
+     The words are the group headings of that section, letter for letter
+     (src/data/emailIssues.ts), for the reason the note above gives: a filter
+     named differently from the thing it filters is a second vocabulary.
+     A spam report is a third reason and is NOT offered here, deliberately:
+     the academy asked for these two. Such a member is still LISTED, under
+     Spam Reported in the section itself. */
+  { key: 'bounced', label: 'Bounced' },
+  { key: 'unsubscribed', label: 'Unsubscribed' },
   /* Active and Inactive sit AFTER the readings, and last, because they are a
      different kind of fact and the order says so: Present, Absent and Yet to
      mark are readings of the day's register, while these two -- like No email
@@ -140,7 +155,7 @@ export function rosterReading(
  */
 type RosterMember =
   Pick<Member, 'id' | 'name' | 'course' | 'course_id' | 'weekdays' | 'emails'>
-  & Pick<Partial<Member>, 'status' | 'inactiveFrom' | 'activeAgainFrom'>;
+  & Pick<Partial<Member>, 'status' | 'inactiveFrom' | 'activeAgainFrom' | 'suppressedBefore'>;
 
 /**
  * Whether this member is ON the register on the day the roster is showing.
@@ -164,12 +179,43 @@ function activeOnDay(member: RosterMember, scope: RosterScope): boolean {
   }, scope.dayIso);
 }
 
+/**
+ * A FACT ABOUT THE RECORD, rather than a reading of the day's register.
+ *
+ * The distinction decides three separate things, which is exactly why it is
+ * written down once instead of being restated wherever it is needed:
+ *   - `matchesOne` answers these ABOVE the `ready` gate, so they narrow while
+ *     a week is still loading and on a day the course does not run;
+ *   - the screen must not say "the roster is not narrowed to X yet" over a
+ *     roster that HAS been narrowed to X -- a sentence that is simply untrue;
+ *   - an empty state under one of these must not name a day, because no day
+ *     was asked about.
+ *
+ * It was a hand-kept list inside `app/course/[id].tsx` -- `k !== 'no-email'
+ * && k !== 'active' && k !== 'inactive'` -- which went wrong every time this
+ * union grew, including when Bounced and Unsubscribed were added to the
+ * derivation, to the counts, and not to that line. A predicate that lives
+ * beside the union it reads cannot be forgotten in the same way.
+ */
+export const isRecordFact = (key: RosterFilterKey): boolean =>
+  key === 'no-email' || key === 'bounced' || key === 'unsubscribed'
+  || key === 'active' || key === 'inactive';
+
 /** One ticked option, against one member. */
 function matchesOne(member: RosterMember, key: RosterFilterKey, scope: RosterScope): boolean {
   if (key === 'all') return true;
   // A fact about the RECORD, not about the day -- so it is answered whether
   // the week has loaded or not, and on a day the course does not run.
   if (key === 'no-email') return member.emails.length === 0;
+  /* Why this asks `emailIssueFor` rather than reading `status` off an address:
+     a suppression survives being removed and re-added (RC-107), so the answer
+     is about the member's HISTORY as well as the live rows -- and it is
+     already written down once, in the module the section below the roster
+     draws from. Asking it here is what keeps the filter and that section
+     showing the same people. */
+  if (key === 'bounced' || key === 'unsubscribed') {
+    return emailIssueFor(member)?.kind === key;
+  }
   // The same, and for the same reason: whether somebody is on the register is
   // not a reading of a register that may not have arrived. Answered ABOVE the
   // `ready` gate below, so these two narrow while a week is still loading.
@@ -275,11 +321,19 @@ export function rosterFilterCounts(
     absent: known ? 0 : null,
     unmarked: known ? 0 : null,
     'no-email': 0,
+    // Facts about the record, counted in the same pass as No email and for
+    // the same reason: they are true whether or not the week has arrived.
+    bounced: 0,
+    unsubscribed: 0,
     active: members.length,
     inactive: inactive.length,
   };
   for (const m of members) {
     if (m.emails.length === 0) counts['no-email'] = (counts['no-email'] ?? 0) + 1;
+    const issue = emailIssueFor(m);
+    if (issue?.kind === 'bounced' || issue?.kind === 'unsubscribed') {
+      counts[issue.kind] = (counts[issue.kind] ?? 0) + 1;
+    }
     if (!known) continue;
     const reading = rosterReading(m, scope);
     if (reading === 'present' || reading === 'absent' || reading === 'unmarked') {
