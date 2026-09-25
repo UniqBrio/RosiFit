@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase, isConfigured } from '../lib/supabase';
 import { STAFF, FIXTURE_SELF_ID, initials as toInitials } from './mock';
 import type { RestoredSession } from './sessionRestore';
+import { createSharedRead } from './sharedRead';
 
 export type AppUser = {
   id: string;
@@ -24,19 +25,28 @@ export type AppUser = {
   is_active: boolean;
 };
 
+// ONE identity read for everyone who asks at start-up (T-405): nine callers
+// sending the same GET were serialized by the browser's HTTP cache into a
+// chain of nine round trips. See sharedRead.ts for what is shared and when.
+// restoreSession below is NOT routed through this: it is a different query
+// and the sign-in security check, and must always ask the server itself.
+const sharedIdentity = createSharedRead<AppUser | null>({ reuseMs: 10_000 });
+
 export async function currentAppUser(): Promise<AppUser | null> {
   if (!isConfigured) return null;
   const { data: sessionData } = await supabase.auth.getSession();
   const authUserId = sessionData.session?.user?.id;
   if (!authUserId) return null;
 
-  // app_users_read lets an account read its OWN row whatever its kind, so
-  // this is the one identity query a staff member can always make.
-  const { data, error } = await supabase.from('app_users')
-    .select('id, name, kind, role_label, phone_e164, must_change_pin, is_active')
-    .eq('auth_user_id', authUserId).is('deleted_at', null).maybeSingle();
-  if (error || !data) return null;
-  return data as AppUser;
+  return sharedIdentity(authUserId, async () => {
+    // app_users_read lets an account read its OWN row whatever its kind, so
+    // this is the one identity query a staff member can always make.
+    const { data, error } = await supabase.from('app_users')
+      .select('id, name, kind, role_label, phone_e164, must_change_pin, is_active')
+      .eq('auth_user_id', authUserId).is('deleted_at', null).maybeSingle();
+    if (error || !data) return null;
+    return data as AppUser;
+  });
 }
 
 export function useAppUser(): { user: AppUser | null; loading: boolean; refresh: () => void } {

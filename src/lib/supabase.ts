@@ -1,6 +1,7 @@
 import 'react-native-url-polyfill/auto';
 import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createSharedFetch } from './sharedFetch';
 
 /**
  * The ONLY Supabase client in the app.
@@ -39,6 +40,14 @@ if (!isConfigured && __DEV__) {
  */
 const isServer = typeof window === 'undefined';
 
+/**
+ * How long an identical read is shared (T-406). Measured, not guessed: see
+ * RUN_app-feels-slow.md for requests per navigation at 2 s / 5 s / 12 s. An
+ * answer reused t ms after the server gave it is stamped as received now, so
+ * this is also how much older than it claims a reused answer can be.
+ */
+export const SHARED_READ_MS = 5_000;
+
 export const supabase = createClient(url ?? 'http://localhost:54321', anonKey ?? 'anon', {
   auth: isServer
     ? { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false }
@@ -50,6 +59,9 @@ export const supabase = createClient(url ?? 'http://localhost:54321', anonKey ??
         // the auth-login Edge Function, not an OAuth redirect.
         detectSessionInUrl: false,
       },
+  // One request per identical read inside SHARED_READ_MS, cleared by any write
+  // (T-406). See sharedFetch.ts for the rules and the cost of the window.
+  global: { fetch: createSharedFetch((...args) => fetch(...args), { freshMs: SHARED_READ_MS }) },
 });
 
 /** Calls an Edge Function, forwarding the caller's session automatically. */
