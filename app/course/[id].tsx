@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, ScrollView, TextInput, useWindowDimensions } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Muted, Label, Skeleton, EmptyState, ErrorState, DeepBackground } from '../../src/components/ui';
@@ -31,13 +31,17 @@ import {
 import { dayAttendance, dayInWords, type DayState } from '../../src/data/dayAttendance';
 import {
   ROSTER_FILTER_OPTIONS, ALL_MEMBERS, rosterFilterKeys, rosterFilterPhrase,
-  narrowRoster, rosterFilterCounts, showsInactive, type RosterScope,
+  narrowRoster, rosterFilterCounts, showsInactive, isRecordFact,
+  type RosterScope, type RosterFilterKey,
 } from '../../src/data/rosterFilter';
 // The two the Overview's own multi-choice filters are built from, so this one
 // prints its field and toggles its ticks by exactly the same rules.
 import { fieldValue, toggle } from '../../src/data/overview';
 import { streakReading, missLine } from '../../src/data/streak';
 import { enrolledIn } from '../../src/data/course';
+import {
+  emailIssueGroups, emailIssueCount, emailIssueIds, ISSUE_READING, issueBadge,
+} from '../../src/data/emailIssues';
 import { offersUpload } from '../../src/data/uploadWindow';
 // The RC-039 rule, pure and specced next door: "not uploaded" is a claim
 // only a COMPLETED read may make (src/data/dayLoad.ts).
@@ -126,6 +130,10 @@ const FILTER_EMPTY: Record<string, string> = {
   absent: 'Nobody is marked absent',
   unmarked: 'Nothing is left to mark',
   'no-email': 'Everybody here has an email address',
+  /* The same kind of sentence for the two record filters: the fact that
+     emptied the list, said as a good thing, because that is what it is. */
+  bounced: 'No address on this roster has bounced',
+  unsubscribed: 'Nobody on this roster has unsubscribed',
   /* Only ever shown when the section below is EMPTY too -- with members
      under the Inactive heading the register's emptiness is the choice
      working, not a dead end, and the body below says so instead. */
@@ -552,11 +560,66 @@ function CourseDetailBody() {
   // says why), so the roster is wider than the field claims. Said in a line
   // rather than left to be noticed: this screen's own rule is that a count
   // which drops -- or keeps -- rows silently is the defect.
-  const showPending = showKeys.some(k => k !== 'no-email' && k !== 'active' && k !== 'inactive')
-    && marks.state !== 'ready';
+  //
+  // WHICH KEYS ARE EXEMPT IS `isRecordFact`'S TO SAY, not this line's. It used
+  // to be the three exempt keys spelled out here one by one, and a list kept
+  // by hand beside a union that grows is a list that goes stale: Bounced and
+  // Unsubscribed narrow above the `ready` gate, so this sentence would have
+  // claimed the roster was NOT narrowed to Unsubscribed over a roster
+  // narrowed to exactly that -- and it suppresses the truthful note below it
+  // while it does so.
+  const showPending = showKeys.some(k => !isRecordFact(k)) && marks.state !== 'ready';
 
-  const withEmail = shown.filter(m => m.emails.length > 0);
+  /* The record facts that are about EMAIL, which is a narrower question than
+     `isRecordFact` and belongs to this screen rather than to the filter
+     module: it decides which sentence an empty roster gets, and Active and
+     Inactive -- record facts both -- are not about an address at all. */
+  const isEmailRecordFact = (k: RosterFilterKey): boolean =>
+    k === 'no-email' || k === 'bounced' || k === 'unsubscribed';
+
+  /* WHOSE EMAIL CANNOT BE USED, AND WHY (the section below "No email").
+     Derived from `shown` -- the same array the roster is drawing -- so the
+     count and the rows come from one pass and cannot drift, and so a member of
+     another course cannot reach it: `shown` is already
+     enrolledIn(members, course), narrowed by branch, by the search box and by
+     the reading filters, exactly as "No email" is.
+     No read of its own: `Member.emails` and `Member.suppressedBefore` both
+     arrive with the roster (src/data/emailIssues.ts). */
+  const issueGroups = useMemo(() => emailIssueGroups(shown), [shown]);
+  const issueTotal = emailIssueCount(issueGroups);
+  const issueIds = useMemo(() => emailIssueIds(issueGroups), [issueGroups]);
+  const [issuesOpen, setIssuesOpen] = useState(false);
+
+  /* THE SECTION OPENS ITSELF WHEN IT IS THE ANSWER TO THE QUESTION ASKED.
+     Collapsed is right when it is one section among three -- it is a report,
+     not the roster. It is wrong the moment the operator TICKS Bounced or
+     Unsubscribed: `shown` is then exactly the members this section holds, the
+     two lists above it are empty, no empty state fires because `shown` is not
+     empty, and the answer to "show me the unsubscribed members" is a heading,
+     a count, and a chevron the operator has to find. A filter that narrows to
+     a closed box has not narrowed to anything.
+
+     `showKeys` and not `issueIds`, deliberately: this is about what was
+     ASKED for, so ticking Unsubscribed opens the section even on a course
+     where the count is zero and the section does not draw at all. The
+     operator can still close it by hand -- the state is theirs once they
+     touch it, which is what the ref below keeps track of. */
+  const askedForIssues = showKeys.some(k => k === 'bounced' || k === 'unsubscribed');
+  const closedByHand = useRef(false);
+  useEffect(() => {
+    if (askedForIssues && !closedByHand.current) setIssuesOpen(true);
+    if (!askedForIssues) closedByHand.current = false;
+  }, [askedForIssues]);
+
+  /* THREE SECTIONS, AND EVERY MEMBER IS IN EXACTLY ONE.
+     A member whose address cannot be used is NOT left in the list above as
+     well. That is what the academy reported: a member who had unsubscribed
+     was still listed among the members with email, with the address printed
+     exactly as a working one. The three predicates partition `shown` -- no
+     address, an address with an issue, an address that works -- so nobody is
+     listed twice and nobody falls out (guardrail 1). */
   const withoutEmail = shown.filter(m => m.emails.length === 0);
+  const withEmail = shown.filter(m => m.emails.length > 0 && !issueIds.has(m.id));
 
   /* ------------------------------------------------ resetting the day
    *
@@ -739,7 +802,16 @@ function CourseDetailBody() {
     : course.offerings.map(o => `${o.branch}: ${o.weekdays.length
         ? o.weekdays.map(d => DAY_NAMES[d]).join(', ') : 'No days set'}`).join(' · ');
 
-  const memberSplit = `${withEmail.length} with email · ${withoutEmail.length} without`;
+  /* THE SPLIT NAMES EVERY SECTION, or it is arithmetic that does not add up.
+     It read "N with email · M without" and those two used to be the whole
+     roster. They are not any more: a member whose address cannot be used is
+     in neither, so on the roster the academy reported -- ten members, one
+     unsubscribed, none without an address -- the line said "9 with email · 0
+     without" over a heading that said ten, and nothing on it said where the
+     tenth had gone. The third term is drawn only when there IS one, so a
+     roster with no issues reads exactly as it did before. */
+  const memberSplit = `${withEmail.length} with email · ${withoutEmail.length} without`
+    + (issueTotal > 0 ? ` · ${issueTotal} with an email issue` : '');
 
   // ONE line under the course name, where the hero used to spend three: how
   // many branches it runs at, and which days it runs on. Both facts were
@@ -1648,6 +1720,25 @@ function CourseDetailBody() {
                   ? `${inactiveListed.length} ${inactiveListed.length === 1 ? 'member is' : 'members are'} listed under Inactive below — they are off the register for ${chosen ? dayLabel(chosen.iso) : 'that day'}, so no attendance is expected of them.`
                   : showKeys.length === 1 && showKeys[0] === 'no-email'
                   ? `Every member on this roster has an address, so every one of them is counted for follow-up.${query.trim() ? ' That is of the members matching your search.' : ''}`
+                  /* Bounced and Unsubscribed are facts about the RECORD, so
+                     the sentence must not name a day: "nobody reads Bounced
+                     for Tuesday" states a reading of a register that was
+                     never asked about.
+
+                     EVERY ticked key, not exactly one of two. Ticking both --
+                     which is the whole point of a checkbox list -- fell
+                     through to the day sentence and said precisely the thing
+                     the paragraph above forbids, and so did Bounced with
+                     No email.
+
+                     It carries the CONSEQUENCE rather than the title again --
+                     the same shape as the No email arm above it. The title
+                     has already said which fact emptied the list, and one
+                     sentence serves every combination, which also avoids
+                     making the address the subject of "unsubscribed": that
+                     state is the member's, and `emailStateWord` says so. */
+                  : showKeys.length > 0 && showKeys.every(isEmailRecordFact)
+                  ? `Every address on this roster can still be written to, so nobody here is held out of follow-up for that reason.${query.trim() ? ' That is of the members matching your search.' : ''} All members brings all ${searched.length} back.`
                   : `No member on this roster reads ${showPhrase} for ${chosen ? dayLabel(chosen.iso) : 'that day'}.${query.trim() ? ' That is of the members matching your search.' : ''} All members brings all ${searched.length} back.`}
                 action="Show all members" onAction={() => setRosterShow([])} />
             </View>
@@ -1665,9 +1756,9 @@ function CourseDetailBody() {
               </View>
 
               {/* C-76: a member with no address is still listed and still
-                  counted. She is separated because the follow-up rule cannot
-                  reach her, which is a fact about the SEND and not about her
-                  attendance -- and the note says exactly that. */}
+                  counted. The separation is because the follow-up rule cannot
+                  reach the member, which is a fact about the SEND and not
+                  about their attendance -- and the note says exactly that. */}
               {withoutEmail.length > 0 ? (
                 <View style={{ marginTop: SPACE.xl }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
@@ -1781,6 +1872,120 @@ function CourseDetailBody() {
                         onToggleSelect={() => toggleSelected(m.id)} />
                     ))}
                   </View>
+                </View>
+              ) : null}
+
+              {/* ------------------------------------------- EMAIL ISSUES
+                  IMMEDIATELY BELOW "No email", and deliberately NOT merged
+                  into it: the two answer different questions and have
+                  different answers. "No email" is no address on file, and the
+                  way out is to add one. This is an address that exists and
+                  cannot be used, and what to do depends entirely on WHY --
+                  which is why the rows are grouped by the reason.
+
+                  Drawn only when there is something to say. A collapsed
+                  heading over an empty list is a section that costs a reader
+                  attention and gives nothing back. */}
+              {issueTotal > 0 ? (
+                <View testID="course-email-issues" style={{ marginTop: SPACE.xl }}>
+                  <Pressable
+                    testID="course-email-issues-toggle"
+                    onPress={() => setIssuesOpen(o => {
+                      /* A close the OPERATOR chose outranks the filter's
+                         opening of it, for as long as that filter stays
+                         ticked. Re-opening it on every render would be the
+                         screen arguing with the person using it. */
+                      if (o) closedByHand.current = true;
+                      return !o;
+                    })}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: issuesOpen }}
+                    accessibilityLabel={`Email issues, ${issueTotal} ${issueTotal === 1 ? 'member' : 'members'}`}
+                    accessibilityHint={issuesOpen ? 'Hides the list' : 'Shows the list, grouped by reason'}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 7, minHeight: TAP_MIN }}>
+                    <Icon name="error" size={16} color={dangerInk} />
+                    <Label style={{ flex: 1, color: dangerInk }}>Email issues</Label>
+                    <Text style={{ fontSize: 11.5, color: theme.muted, fontVariant: ['tabular-nums'] }}>
+                      {`${issueTotal} of ${shown.length}`}
+                    </Text>
+                    <Icon name={issuesOpen ? 'expand_less' : 'expand_more'} size={18} color={theme.muted} />
+                  </Pressable>
+
+                  {issuesOpen ? (
+                    <View style={{ gap: SPACE.xl, marginTop: 9 }}>
+                      {issueGroups.map(group => {
+                        const reading = ISSUE_READING[group.kind];
+                        return (
+                          <View key={group.kind} testID={`course-email-issue-group-${group.kind}`}>
+                            {/* The reason, with its own count. The word carries
+                                it as well as the colour (guardrail 3, CP-010). */}
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              {/* word AND icon, on the heading as on the rows
+                                  below it (guardrail 3). */}
+                              <Icon name="error" size={13} color={dangerInk} />
+                              <Text style={{ fontSize: 11.5, fontWeight: '800', color: dangerInk }}>
+                                {group.label}
+                              </Text>
+                              <Text style={{ fontSize: 11.5, color: theme.muted, fontVariant: ['tabular-nums'] }}>
+                                {`· ${group.rows.length}`}
+                              </Text>
+                            </View>
+
+                            {/* THE REASON ONCE, OVER THE GROUP IT IS TRUE OF,
+                                which is what the grouping buys: every card
+                                below this note carries this exact reason, so
+                                repeating it per member would be the same
+                                sentence printed N times.
+
+                                ONLY A BOUNCE IS OFFERED A WAY OUT, and it is
+                                the Edit control the card already has: the
+                                address is wrong and the answer is to change
+                                it. An opt-out and a spam report are the
+                                member's own decision, so nothing here offers
+                                to override them -- no email goes out from this
+                                section and no suppression is lifted by it, and
+                                the note says so in as many words. */}
+                            <View style={{
+                              marginTop: 9, padding: 13, borderRadius: RADIUS.md,
+                              backgroundColor: statusSurface(dangerInk).bg,
+                              borderWidth: 1, borderColor: statusSurface(dangerInk).border,
+                            }}>
+                              <Text style={{ fontSize: 12.5, fontWeight: '800', color: dangerInk }}>
+                                {reading.title}
+                              </Text>
+                              <Muted style={{ color: theme.fg, marginTop: 3 }}>
+                                {reading.action === 'edit'
+                                  ? `${reading.detail} Attendance is recorded as usual. Use Edit on a member below to add a different email address.`
+                                  : `${reading.detail} Attendance is recorded as usual, and no email is sent to these addresses. There is nothing to change here.`}
+                              </Muted>
+                            </View>
+
+                            {/* THE SAME CARD THE ROSTER ABOVE DRAWS, because
+                                moving a member down here must not cost the
+                                thing the screen is for: the attendance reading
+                                and the day's tick are on this card and nowhere
+                                else. What changes is the line under the name,
+                                which names the address that is the problem and
+                                the app's own word for its state -- not the
+                                plain muted address, which is what made an
+                                unusable address read as a working one. */}
+                            <View style={{ gap: SPACE.sm, marginTop: 10 }}>
+                              {group.rows.map((row, i) => (
+                                <MemberCard key={row.member.id} member={row.member}
+                                  tint={AVATAR_TINTS[i % AVATAR_TINTS.length]}
+                                  weekLabel={week.label} noEmail={false} allMembers={members}
+                                  emailIssue={{ address: row.address, word: issueBadge(row.kind) }}
+                                  dayIso={chosen?.iso ?? null} weekdays={scopeWeekdays}
+                                  rows={marks.data ?? []} attendanceState={marks.state}
+                                  selectable={selectMode} selected={selected.has(row.member.id)}
+                                  onToggleSelect={() => toggleSelected(row.member.id)} />
+                              ))}
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  ) : null}
                 </View>
               ) : null}
             </>
@@ -1998,8 +2203,26 @@ function DayLegend({ failed }: { failed: boolean }) {
  */
 function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
   dayIso, weekdays, rows, attendanceState, offRegister = false,
-  selectable, selected, onToggleSelect }:
+  emailIssue, selectable, selected, onToggleSelect }:
   { member: Member; tint: string; weekLabel: string; noEmail: boolean;
+    /**
+     * This card is in the Email issues section: the address on it exists and
+     * cannot be used, and this is which one and what state it is in.
+     *
+     * It replaces the muted address line and NOTHING else -- the attendance
+     * reading, the tick, the status pill and the controls are the roster's,
+     * unchanged, which is the whole reason the section draws this card rather
+     * than a summary row of its own. A member whose email cannot be used is
+     * still a member of the class, and the day's register is still about them.
+     *
+     * The plain address line is what the academy reported: an address that
+     * had been unsubscribed was printed exactly as a working one, so the
+     * screen read as though a follow-up would reach it. `word` is the app's
+     * existing per-status word (`emailStateWord` via `issueBadge`), never a
+     * second vocabulary, and it is a WORD and not only the colour it is drawn
+     * in (guardrail 3).
+     */
+    emailIssue?: { address: string; word: string };
     /**
      * This card is in the Inactive section, not on the day's register.
      *
@@ -2241,7 +2464,11 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
   return (
     <View style={{
       padding: 11, borderRadius: RADIUS.md, backgroundColor: theme.surface,
-      borderWidth: 1, borderColor: noEmail ? statusSurface(dangerInk).border : theme.line,
+      borderWidth: 1,
+      /* An issue card is bordered like a no-email one, because it is the same
+         KIND of fact -- something is wrong with the address on this record --
+         and it was drawn identically to a healthy card until now. */
+      borderColor: noEmail || emailIssue ? statusSurface(dangerInk).border : theme.line,
     }}>
       {/* ONE row. The status and the Edit control sit together at its right
           hand, where the reference app puts them; Edit used to hang on a
@@ -2280,7 +2507,9 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
           onPress={() => router.push({ pathname: '/member/[id]', params: { id: member.id } })}
           accessibilityRole="button"
           accessibilityLabel={`${member.name}, ${inactive ? 'inactive' : 'active'}. ${
-            noEmail ? 'No email on file, not in follow-up' : member.emails[0]?.address ?? ''
+            noEmail ? 'No email on file, not in follow-up'
+              : emailIssue ? `${emailIssue.address || 'Address not recorded'}, ${emailIssue.word}`
+              : member.emails[0]?.address ?? ''
           }. ${missLine({ weekLabel, missed: member.missed, reading: run })}`}
           style={({ pressed }) => ({
             flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10,
@@ -2303,12 +2532,29 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
             <Text numberOfLines={1} style={{
               fontSize: 14, fontWeight: '700', color: theme.fgStrong,
             }}>{member.name}</Text>
-            <Text numberOfLines={1} style={{
-              fontSize: 11.5, marginTop: 2,
-              color: noEmail ? dangerInk : theme.muted,
-            }}>
-              {noEmail ? 'No email on file · not in follow-up' : member.emails[0]?.address ?? ''}
-            </Text>
+            {/* GUARDRAIL 3 ON THIS LINE, not only on the section above it.
+                A no-email card already carries a glyph -- `mail_off` on its
+                Edit button -- and an issue card carried none: the state was
+                a word in a colour, and the card's border was the healthy
+                one. So the line wears the same `error` glyph the section
+                heading does, which is also what tells the two danger states
+                apart at a glance: an absent address and an unusable one are
+                different facts and now look different. */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+              {emailIssue ? <Icon name="error" size={12} color={dangerInk} /> : null}
+              <Text numberOfLines={1} style={{
+                flex: 1, minWidth: 0, fontSize: 11.5,
+                color: noEmail || emailIssue ? dangerInk : theme.muted,
+              }}>
+                {noEmail ? 'No email on file · not in follow-up'
+                  /* The address CAN be an empty string -- the bulk import has
+                     written one -- and `· Address bounced` with nothing before
+                     the dot reads as a truncation bug rather than as a record
+                     with no address in it. So the missing address is said. */
+                  : emailIssue ? `${emailIssue.address || 'Address not recorded'} · ${emailIssue.word}`
+                  : member.emails[0]?.address ?? ''}
+              </Text>
+            </View>
             <Text numberOfLines={1} style={{
               fontSize: 11, marginTop: 1, fontVariant: ['tabular-nums'],
               color: heavy ? dangerInk : theme.dim,

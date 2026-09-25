@@ -15,7 +15,7 @@
  *
  * WHAT IT PROVES, AND WHAT IT DOES NOT
  *   It drives the real decision layer: `hasEmailOnFile`, `isReachable`,
- *   `emailUsable`, `suppressionLiftable`, `emailStateWord`,
+ *   `emailUsable`, `isDeliveryFailure`, `emailStateWord`,
  *   `emailExclusionReason`, `suppressedAddress`, and `flagged` +
  *   `recipientSplit` -- which ARE the send's own recipient split, not a copy of
  *   it (CP-011). A member record here is shaped exactly as `fetchMembers`
@@ -38,7 +38,10 @@ import {
 import {
   isReachable, recipientSplit, flagged, emailExclusionReason, suppressedAddress,
 } from './followup';
-import { emailUsable, suppressionLiftable, emailStateWord, type EmailStatus } from './emailStatus';
+import {
+  emailUsable, isDeliveryFailure, emailStateWord, bouncedOnRecord,
+  BOUNCED_ENTRY_TITLE, BOUNCED_ENTRY_DETAIL, type EmailStatus,
+} from './emailStatus';
 
 /**
  * A member over the follow-up rule (3 missed of 3 this week), carrying exactly
@@ -55,7 +58,7 @@ const member = (emails: Member['emails'], over = {}): Member => ({
 });
 
 /** What the member card draws, decided exactly as `app/member/[id].tsx` decides it. */
-function cardState(m: Member): { state: string; word: string; offersReinstate: boolean } {
+function cardState(m: Member): { state: string; word: string; advice: string } {
   const onFile = hasEmailOnFile(m);
   const usable = isReachable(m);
   const state = !onFile ? 'none' : usable ? 'ok' : 'suppressed';
@@ -64,8 +67,13 @@ function cardState(m: Member): { state: string; word: string; offersReinstate: b
     word: state === 'ok' ? 'Email on file'
       : state === 'none' ? 'No email on file'
       : emailStateWord(suppressedAddress(m)?.status),
-    offersReinstate: state === 'suppressed'
-      && suppressionLiftable(suppressedAddress(m)?.status),
+    /* WHAT THE READER SHOULD DO, which since 23-Sep-2026 is never "reinstate":
+       a dead address is replaced with a working one, and a member who said stop
+       is not written to at all
+       (requests/2026-09-23-bounced-address-asks-for-a-different-one.md). */
+    advice: state !== 'suppressed' ? 'none'
+      : isDeliveryFailure(suppressedAddress(m)?.status) ? 'add a different address'
+      : 'do not write here',
   };
 }
 
@@ -88,7 +96,7 @@ test('A · an address at `unknown` is displayed, reachable and sendable', () => 
   assert.equal(hasEmailOnFile(m), true);
   assert.equal(isReachable(m), true);
   assert.deepEqual(cardState(m), {
-    state: 'ok', word: 'Email on file', offersReinstate: false,
+    state: 'ok', word: 'Email on file', advice: 'none',
   });
   assert.equal(primaryEmail(m), 'member.one@example.com', 'the card shows the address itself');
 
@@ -109,8 +117,8 @@ test('B · a BOUNCED address stays visible, is not sendable, and offers Reinstat
   assert.equal(isReachable(m), false, 'but nothing may be sent to it');
 
   assert.deepEqual(cardState(m), {
-    state: 'suppressed', word: 'Address bounced', offersReinstate: true,
-  }, 'the card names the state and offers the way out');
+    state: 'suppressed', word: 'Address bounced', advice: 'add a different address',
+  }, 'the card names the state and points at the thing that actually works');
 
   assert.equal(emailExclusionReason(m), 'The address bounced',
     'and the send says WHY, rather than "no email on file" over an address that exists (C-76)');
@@ -122,25 +130,38 @@ test('B · a BOUNCED address stays visible, is not sendable, and offers Reinstat
     'listed and named, never quietly dropped');
 });
 
-test('B · after an explicit Reinstate, the same member becomes reachable', () => {
-  const before = member([{ address: 'member.one@example.com', primary: true, status: 'bounced', id: 'e1' }]);
+test('B · the way forward is a DIFFERENT address — the dead one is never revived', () => {
+  const before = member([{ address: 'dead@example.com', primary: true, status: 'bounced', id: 'e1' }]);
   assert.equal(isReachable(before), false);
 
-  // The transition `reinstate_member_email` (0078) performs, and the ONLY one
-  // it performs: bounced -> 'unknown'. Not 'valid' -- nothing has verified the
-  // address, and nothing in the schema writes 'valid' at all.
-  const after = member([{ address: 'member.one@example.com', primary: true, status: 'unknown', id: 'e1' }]);
+  /* What the operator is asked to do, and what update_member then does: the
+     old row is not in the submitted list, so it is SOFT-deleted and kept for
+     history; the new address inserts at 'unknown', which is what both RPCs
+     write. Nothing anywhere flips the bounce to usable -- re-using an address
+     the mail system rejected sends the next follow-up into the same hole
+     (requests/2026-09-23-bounced-address-asks-for-a-different-one.md). */
+  const after = member([{ address: 'fresh@example.com', primary: true, status: 'unknown', id: 'e2' }]);
 
-  assert.equal(hasEmailOnFile(after), true, 'the address is the SAME address — reinstating is not re-adding');
-  assert.equal(primaryEmail(after), primaryEmail(before), 'and it did not change');
-  assert.equal(isReachable(after), true, 'and now a follow-up can leave');
-  assert.deepEqual(cardState(after), {
-    state: 'ok', word: 'Email on file', offersReinstate: false,
-  });
+  assert.equal(isReachable(after), true, 'a follow-up can leave for the new address');
+  assert.notEqual(primaryEmail(after), primaryEmail(before), 'and it is a different address');
+  assert.deepEqual(cardState(after), { state: 'ok', word: 'Email on file', advice: 'none' });
 
   const d = sendDecision([after]);
-  assert.deepEqual(d.willReceive, ['m1'], 'the send logic recognises it — this is what the operator was trying to achieve');
+  assert.deepEqual(d.willReceive, ['m1'], 'the send recognises it — this is what the operator wanted');
   assert.deepEqual(d.excluded, []);
+});
+
+test('B · and the bounced row stays on the record, for history', () => {
+  // update_member soft-deletes an address left out of the submitted list; the
+  // row is kept because email_messages points at it. Modelled here as the
+  // member holding both, which is what the record looks like mid-flight.
+  const m = member([
+    { address: 'fresh@example.com', primary: true, status: 'unknown', id: 'e2' },
+    { address: 'dead@example.com', primary: false, status: 'bounced', id: 'e1' },
+  ]);
+  assert.equal(isReachable(m), true, 'the live address decides reachability');
+  assert.equal(m.emails.find(e => e.id === 'e1')?.status, 'bounced',
+    'and the old one is still bounced — nothing reinstated it');
 });
 
 /* ====================================== Scenario C — an unsubscribed address */
@@ -151,11 +172,11 @@ test('C · an UNSUBSCRIBED address stays visible, is not sendable, and offers NO
   assert.equal(hasEmailOnFile(m), true, 'shown, so nobody retypes it');
   assert.equal(isReachable(m), false);
   assert.deepEqual(cardState(m), {
-    state: 'suppressed', word: 'Member unsubscribed', offersReinstate: false,
-  }, 'named, and NO Reinstate — the member said something deliberate');
+    state: 'suppressed', word: 'Member unsubscribed', advice: 'do not write here',
+  }, 'named, and no way back — the member said something deliberate');
 
-  assert.equal(suppressionLiftable('unsubscribed'), false,
-    'no screen may offer it, and 0078 refuses it in the database as well');
+  assert.equal(isDeliveryFailure('unsubscribed'), false,
+    'and it is not a dead address — 0078 refuses it in the database as well');
   assert.equal(emailExclusionReason(m), 'The member unsubscribed');
   assert.deepEqual(sendDecision([m]).willReceive, []);
 });
@@ -173,8 +194,8 @@ test('C(ii) · a COMPLAINED address is suppressed and is NOT the academy\'s to l
   assert.equal(hasEmailOnFile(m), true);
   assert.equal(isReachable(m), false, 'suppressed — the conservative half');
   assert.deepEqual(cardState(m), {
-    state: 'suppressed', word: 'Marked as spam', offersReinstate: false,
-  }, 'named, and NO Reinstate — the narrowing');
+    state: 'suppressed', word: 'Marked as spam', advice: 'do not write here',
+  }, 'named, and no way back — the member\'s own click');
   assert.equal(emailExclusionReason(m), 'The address marked a message as spam');
 });
 
@@ -186,7 +207,7 @@ test('D · a member with NO address reads as empty, and offers no Reinstate', ()
   assert.equal(hasEmailOnFile(m), false);
   assert.equal(isReachable(m), false);
   assert.deepEqual(cardState(m), {
-    state: 'none', word: 'No email on file', offersReinstate: false,
+    state: 'none', word: 'No email on file', advice: 'none',
   }, 'a genuinely empty record is its OWN state, not the same one as a suppression');
   assert.equal(emailExclusionReason(m), 'No email on file');
   assert.deepEqual(sendDecision([m]).excluded, [{ id: 'm1', reason: 'No email on file' }],
@@ -196,73 +217,79 @@ test('D · a member with NO address reads as empty, and offers no Reinstate', ()
 /* ======================================== the four states are four, not two */
 
 test('the four states are distinguishable from one another, in both directions', () => {
-  const states: [EmailStatus | undefined, string, boolean, boolean][] = [
-    // status,          word,                   reachable, offersReinstate
-    ['unknown',        'Email on file',         true,  false],
-    ['valid',          'Email on file',         true,  false],
-    ['bounced',        'Address bounced',       false, true],
-    ['complained',     'Marked as spam',        false, false],
-    ['unsubscribed',   'Member unsubscribed',   false, false],
+  const states: [EmailStatus | undefined, string, boolean, string][] = [
+    // status,          word,                   reachable, advice
+    ['unknown',        'Email on file',         true,  'none'],
+    ['valid',          'Email on file',         true,  'none'],
+    ['bounced',        'Address bounced',       false, 'add a different address'],
+    ['complained',     'Marked as spam',        false, 'do not write here'],
+    ['unsubscribed',   'Member unsubscribed',   false, 'do not write here'],
   ];
-  for (const [status, word, reachable, offers] of states) {
-    const m = member([{ address: 'a@b.com', primary: true, status, id: 'e1' }]);
+  for (const [status, word, reachable, advice] of states) {
+    const m = member([{ address: 'member.one@example.com', primary: true, status, id: 'e1' }]);
     const c = cardState(m);
     assert.equal(c.word, word, `${status} should read "${word}"`);
     assert.equal(isReachable(m), reachable, `${status} reachable should be ${reachable}`);
-    assert.equal(c.offersReinstate, offers, `${status} Reinstate offered should be ${offers}`);
+    assert.equal(c.advice, advice, `${status} advice should be "${advice}"`);
     // On file in every one of them: a suppression is never a missing address.
     assert.equal(hasEmailOnFile(m), true, `${status} must still be ON FILE`);
   }
-  // And exactly one of the five may ever be lifted.
-  const liftable = states.filter(([s]) => suppressionLiftable(s)).map(([s]) => s);
-  assert.deepEqual(liftable, ['bounced'],
-    'exactly one state is the academy\'s to lift, and it is the bounce');
+  // Exactly one of the five is the mail system's verdict on the ADDRESS. The
+  // other two suppressions are the member's own decision, and the difference
+  // is what the advice above turns on.
+  const dead = states.filter(([s]) => isDeliveryFailure(s)).map(([s]) => s);
+  assert.deepEqual(dead, ['bounced']);
 });
 
 /* ================================= the original report, walked start to end */
 
-test('THE ORIGINAL BUG: the whole reported journey, step by step', () => {
-  // 1. The member as the academy actually held her: one address, bounced after
-  //    the follow-up that went out on 19/9.
-  const step1 = member([{ address: 'member.one@example.com', primary: true, status: 'bounced', id: 'e1' }]);
+test('THE ACCEPTANCE CRITERIA: the whole journey, step by step', () => {
+  /* The eleven steps the academy specified
+     (requests/2026-09-23-bounced-address-asks-for-a-different-one.md), walked
+     in order. The first three are RC-106's fix and must not regress; steps
+     four to eight are this change. */
+
+  // 1. The member as the academy holds her: one address, which bounced.
+  const step1 = member([{ address: 'abc@example.com', primary: true, status: 'bounced', id: 'e1' }]);
 
   // 2. The member screen shows the address AND the state.
   const card = cardState(step1);
-  assert.equal(card.state, 'suppressed');
   assert.equal(card.word, 'Address bounced');
   assert.notEqual(card.word, 'No usable email',
-    'the sentence that started this: drawn over an address sitting in the table');
-  assert.equal(suppressedAddress(step1)?.address, 'member.one@example.com',
-    'and the card can name the address, so nobody is sent to Edit to guess at it');
+    'the sentence that started all of this: drawn over an address sitting in the table');
+  assert.equal(suppressedAddress(step1)?.address, 'abc@example.com',
+    'and the card can name it, so nobody is sent to Edit to guess');
 
-  // 3. The Edit form shows it — it seeds from this same record, and the record
-  //    now carries the row instead of having had it filtered away.
+  // 3. The Edit form shows it — it seeds from this same record.
   assert.equal(step1.emails.length, 1, 'Edit opens with the address, not blank');
-  assert.ok(step1.emails[0].id, 'and with its row id, so Reinstate can name it by identity');
 
-  // 4. Reinstate is offered, because a bounce is the academy's to lift.
-  assert.equal(card.offersReinstate, true);
+  // 4-5. The operator types THE SAME address. It is detected and refused.
+  const reentry = bouncedOnRecord('abc@example.com', step1.emails);
+  assert.ok(reentry, 'the re-entry is detected against the stored record');
+  assert.equal(reentry?.address, 'abc@example.com');
 
-  // 5. The RPC moves the row bounced -> 'unknown' (proven against a real
-  //    Postgres in supabase/tests/57_reinstate_member_email.sql).
-  const step5 = member([{ address: 'member.one@example.com', primary: true, status: 'unknown', id: 'e1' }]);
+  // 6. With an explanation that says what to do.
+  assert.equal(BOUNCED_ENTRY_TITLE, 'Email address is not active');
+  assert.match(BOUNCED_ENTRY_DETAIL, /could not be delivered/);
+  assert.match(BOUNCED_ENTRY_DETAIL, /try adding a different email address/);
 
-  // 6/7. The member refreshes; the address is still there and still the same.
-  assert.equal(hasEmailOnFile(step5), true);
-  assert.equal(primaryEmail(step5), 'member.one@example.com');
+  // 7-8. Save is blocked, and NOTHING is reinstated: the stored row is exactly
+  //      as it was, and it is still not sendable.
+  assert.equal(step1.emails[0].status, 'bounced', 'the stored row is untouched');
+  assert.equal(isReachable(step1), false);
+  assert.equal(cardState(step1).advice, 'add a different address',
+    'and the app is consistent about what the operator should do instead');
 
-  // 8. isReachable becomes true.
-  assert.equal(isReachable(step5), true);
+  // 9-10. The operator types a DIFFERENT address. The refusal clears.
+  assert.equal(bouncedOnRecord('xyz@example.com', step1.emails), undefined,
+    'a different address collides with nothing');
 
-  // 9. The send recognises it — the ACTUAL split the draft uses.
-  const d = sendDecision([step5]);
-  assert.deepEqual(d.willReceive, ['m1']);
-  assert.deepEqual(d.excluded, []);
-
-  // And the card says so.
-  assert.deepEqual(cardState(step5), {
-    state: 'ok', word: 'Email on file', offersReinstate: false,
-  });
+  // 11. Save succeeds and the member becomes reachable.
+  const step11 = member([{ address: 'xyz@example.com', primary: true, status: 'unknown', id: 'e2' }]);
+  assert.equal(isReachable(step11), true);
+  assert.deepEqual(cardState(step11), { state: 'ok', word: 'Email on file', advice: 'none' });
+  assert.deepEqual(sendDecision([step11]).willReceive, ['m1'],
+    'and the send reaches her — which is the outcome the whole thing was for');
 });
 
 test('an unrelated save can never be what un-suppresses an address', () => {
