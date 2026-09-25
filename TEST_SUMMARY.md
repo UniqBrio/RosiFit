@@ -206,7 +206,6 @@ all found by a person using the app, which is three for three, and RC-108's proc
 
 Steps: 7 pass, 6 fail, 0 blocked.
 Time: 27.3s total - slowest G7 Unit + pure specs (16.9s).
-Time: 32.8s total - slowest G7 Unit + pure specs (16.6s).
 Application steps ran in .
 
 - **G1 Theme artifacts in sync** - FAIL (50ms)
@@ -230,6 +229,57 @@ Error: ENOENT: no such file or directory, open '/home/user/RosiFit-T406/design/t
 - **G4 No hard-coded colours** - PASS (71ms)
 - **G5 Types** - PASS (6.2s)
 - **G6 Lint** - FAIL (3.4s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (16.9s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (128ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (58ms)
+- **G10 Backward compatibility (fixtures)** - PASS (127ms)
+- **G11 Wide tables are configurable** - PASS (56ms)
+- **G12 Installable as an application** - PASS (76ms)
+- **G13 Approved design still being built** - PASS (49ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-25 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 32.8s total - slowest G7 Unit + pure specs (16.6s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (50ms)
+
+```
 Error: ENOENT: no such file or directory, open '/home/user/RosiFit-T405/design/tokens.json'
 ```
 
@@ -254,7 +304,6 @@ Error: ENOENT: no such file or directory, open '/home/user/RosiFit-T405/design/t
   0 errors and 1 warning potentially fixable with the `--fix` option.
 ```
 
-- **G7 Unit + pure specs** - FAIL (16.9s)
 - **G7 Unit + pure specs** - FAIL (16.6s)
 
 ```
@@ -275,18 +324,12 @@ ok 195 - a failed save survives the collapse — it is drawn outside both branch
   error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
 ```
 
-- **G8 Functional / integration** - FAIL (128ms)
 - **G8 Functional / integration** - FAIL (130ms)
 
 ```
 exit 1
 ```
 
-- **G9 Automation addressability** - PASS (58ms)
-- **G10 Backward compatibility (fixtures)** - PASS (127ms)
-- **G11 Wide tables are configurable** - PASS (56ms)
-- **G12 Installable as an application** - PASS (76ms)
-- **G13 Approved design still being built** - PASS (49ms)
 - **G9 Automation addressability** - PASS (56ms)
 - **G10 Backward compatibility (fixtures)** - PASS (111ms)
 - **G11 Wide tables are configurable** - PASS (53ms)
@@ -11220,32 +11263,6 @@ needs a signed-in session (mobile + PIN through the auth-login Edge Function) th
 did not have - so the defect and the fix are evidenced by the live request-size measurement in
 .evidence/request-size-fail-first.txt rather than by driving the UI. DB harness - N/A: no
 migration, no schema surface.
-
-## T-406 · shared reads at the client's fetch · 25-Sep-2026 · RC-077
-FAIL-FIRST: src/lib/sharedFetch.test.ts - "Cannot find module './sharedFetch'" (new module); 17/17 after.
-Each fix mutation-checked (removing it fails exactly its test): settle-time clear on write; in-flight joins
-bounded by age; body-failure drop (entryCount 0); sweep of expired entries; sign-out clear.
-BEHAVIOUR (production bundle vs local HTTP/2 stand-in, 200 ms replies, 3 runs): cold start 34 -> 26 requests,
-1,828-1,835 -> 692-713 ms first request -> last response; cold start + 3 tab switches 54 -> 31 requests, every
-remaining request distinct. Window measured at 2 / 5 / 12 s: 45 / 31 / 31 requests; 5 s shipped.
-UNIT: 1989 tests, 6 fail - the SAME 6 as clean main. check: lint, typecheck, contrast, icons, functions, edge PASS.
-GATE: FAIL on the same pre-existing set as main (G1-G3 T-034, G6 scripts/conformance.mjs warning, G7, G8).
-REVIEW: code-reviewer twice. Round 1 REQUEST CHANGES (hung-request join, body-failure entry, false freshness claim,
-unbounded map, vacuous test) - all fixed. Round 2 REQUEST CHANGES (evidence cited but not in tree, weak
-body-failure assertion, 12 s-only tests, two overstated comments) - all fixed in this commit.
-NOT RUN: production. Ships on merge; verify requests per URL per session-minute in edge_logs.
-## T-405 · shared identity read · 25-Sep-2026 · RC-076
-FAIL-FIRST (behaviour): cold start of the production bundle against a local HTTP/2 stand-in, unmodified main,
-3 runs: 10 app_users reads, strictly serial (each starts ~4 ms after the previous ends), 1,828-1,836 ms first
-request -> last response. After: 2 parallel reads, 706-723 ms. Same with an expired token: 11 -> 2 reads,
-2,241-2,245 -> 916-947 ms.
-FAIL-FIRST: src/data/sharedRead.test.ts - "Cannot find module './sharedRead'" (new module); 9/9 after.
-The race case ("a read that settles AFTER a newer one began cannot clear the newer one") was mutation-checked:
-removing the current===entry guard makes it fail; restored.
-UNIT: 1981 tests, 6 fail - the SAME 6 as clean main. check: lint, typecheck, contrast, icons, functions, edge PASS.
-GATE: FAIL on the same pre-existing set as main (G1-G3 T-034, G6 scripts/conformance.mjs warning, G7, G8).
-REVIEW: code-reviewer APPROVE; its findings applied (race + clock tests, unused force option removed, cast removed).
-NOT RUN: a production cold start. Ships on merge; verify in edge_logs.
 ## T-043 · 0079 RLS helpers once per statement · 24-Sep-2026 · RC-053
 FAIL-FIRST: supabase/tests/58_rls_rules_by_role.sql - "no policy calls a helper bare" failed
 naming all 62 policies on a harness replayed WITHOUT 0079 (psql run WITHOUT ON_ERROR_STOP so
@@ -11267,3 +11284,31 @@ production is T-124, open.
 PARITY: production pg_policies fingerprint = harness fingerprint (62, md5 4d21e86e...), read
 24-Sep-2026; 0079 refuses to run against any other.
 NOT RUN: npm run check / gate - no src/ or app/ change on this branch.
+
+## T-405 · shared identity read · 25-Sep-2026 · RC-076
+FAIL-FIRST (behaviour): cold start of the production bundle against a local HTTP/2 stand-in, unmodified main,
+3 runs: 10 app_users reads, strictly serial (each starts ~4 ms after the previous ends), 1,828-1,836 ms first
+request -> last response. After: 2 parallel reads, 706-723 ms. Same with an expired token: 11 -> 2 reads,
+2,241-2,245 -> 916-947 ms.
+FAIL-FIRST: src/data/sharedRead.test.ts - "Cannot find module './sharedRead'" (new module); 9/9 after.
+The race case ("a read that settles AFTER a newer one began cannot clear the newer one") was mutation-checked:
+removing the current===entry guard makes it fail; restored.
+UNIT: 1981 tests, 6 fail - the SAME 6 as clean main. check: lint, typecheck, contrast, icons, functions, edge PASS.
+GATE: FAIL on the same pre-existing set as main (G1-G3 T-034, G6 scripts/conformance.mjs warning, G7, G8).
+REVIEW: code-reviewer APPROVE; its findings applied (race + clock tests, unused force option removed, cast removed).
+NOT RUN: a production cold start. Ships on merge; verify in edge_logs.
+
+## T-406 · shared reads at the client's fetch · 25-Sep-2026 · RC-077
+FAIL-FIRST: src/lib/sharedFetch.test.ts - "Cannot find module './sharedFetch'" (new module); 17/17 after.
+Each fix mutation-checked (removing it fails exactly its test): settle-time clear on write; in-flight joins
+bounded by age; body-failure drop (entryCount 0); sweep of expired entries; sign-out clear.
+BEHAVIOUR (production bundle vs local HTTP/2 stand-in, 200 ms replies, 3 runs): cold start 34 -> 26 requests,
+1,828-1,835 -> 692-713 ms first request -> last response; cold start + 3 tab switches 54 -> 31 requests, every
+remaining request distinct. Window measured at 2 / 5 / 12 s: 45 / 31 / 31 requests; 5 s shipped.
+UNIT: 1989 tests, 6 fail - the SAME 6 as clean main. check: lint, typecheck, contrast, icons, functions, edge PASS.
+GATE: FAIL on the same pre-existing set as main (G1-G3 T-034, G6 scripts/conformance.mjs warning, G7, G8).
+REVIEW: code-reviewer twice. Round 1 REQUEST CHANGES (hung-request join, body-failure entry, false freshness claim,
+unbounded map, vacuous test) - all fixed. Round 2 REQUEST CHANGES (evidence cited but not in tree, weak
+body-failure assertion, 12 s-only tests, two overstated comments) - all fixed in this commit.
+NOT RUN: production. Ships on merge; verify requests per URL per session-minute in edge_logs.
+
