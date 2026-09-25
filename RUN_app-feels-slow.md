@@ -69,3 +69,59 @@ finding) — it never saw this defect (T-118).
 
 **Burst (cause #2):** per-request time inside a burst fell ~3×, but the burst itself (~40 parallel requests)
 is unchanged. Per the owner, compute size stays as is until the burst is re-measured after fix 3.
+
+## Before / after — Fix 3 (T-406, shared reads)
+
+**Measured in production (edge_logs, 25-Sep-2026):**
+- One session, 03:53 UTC, one minute: **300 requests for 49 distinct URLs**. The five-table member list was read
+  **6 times in ~30 s**, `member_period_metrics_page` 48 times, and `branches`, `courses` and `course_offerings`
+  by id 6–16 times each.
+- Another session, 03:32 UTC: **398 requests for 44 distinct URLs** in one minute.
+
+Each hook fetched on mount with nothing shared, and the repeats were spread over seconds as screens and dialogs
+mounted.
+
+**Why a repeat costs a round trip, not just bandwidth.** Identical concurrent GETs are queued by the browser's
+HTTP cache. Against a local HTTP/2 stand-in (production browsers use HTTP/3 or HTTP/2), 10 identical identity
+reads that the app issued as two parallel batches (at +0 and +280 ms) arrived one after another. With the browser
+cache disabled (`scripts/perf/cold-start-nocache.js`) the same 10 went out in those two batches. This is the
+T-405 mechanism; its root-cause entry is RC-076 on that PR.
+
+**Fix.** `src/lib/sharedFetch.ts`, installed as the Supabase client's fetch:
+- identical reads are shared for `SHARED_READ_MS`;
+- any write clears everything, at the start and at the settle;
+- in-flight joins are bounded by age;
+- failures are never kept;
+- sign-out clears everything.
+
+**Choosing the window, measured.** Cold start plus Courses → Reports → Home via the tab bar, same 31 distinct
+requests every time:
+
+| Build | Tabs 2 s apart | Tabs 4 s apart |
+|---|---|---|
+| `main` | 54 requests | 54 |
+| 2 s window | 45 | 45 |
+| **5 s window (shipped)** | **31** | **32** |
+| 12 s window | 31 | 31 |
+
+5 s gets nearly all of 12 s's saving. Its cost: a reused answer is stamped as received when reused, so it can be
+up to 5 s older than it claims. The 12 s window would have allowed 12 s.
+
+**Before / after (5 s build vs `main`, 3 runs each, stand-in replying in 200 ms):**
+
+| | Before | After |
+|---|---|---|
+| Cold start: requests | 34 | **26** |
+| Cold start: first request → last response | 1,828–1,835 ms | **692–713 ms** |
+| Cold start + 3 tab switches: requests | 54 | **31** (every remaining request distinct) |
+
+The 9 `member_period_metrics_page` calls left after the change are 9 **different** periods (7 days, the week, the
+month), not repeats. Collapsing them is server-side work, already filed as T-301.
+
+**Not changed — the trailing empty page.** I had proposed stopping paged reads on a short page. `pageAll.ts`
+records why it stops only on an EMPTY page: `db-max-rows` is a project setting, and review found that a
+short-page stop silently truncates every read if it is lowered. That stays. With shared reads the extra page is
+paid once per read, not once per repeat.
+
+**Production not yet measured:** client code, ships on merge. Expected in `edge_logs`: requests per URL per
+session-minute close to 1.
