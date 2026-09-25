@@ -12,9 +12,10 @@ import { useStaff } from '../../src/data/hooks';
 import { useIdentity } from '../../src/data/session';
 import { isConfigured } from '../../src/lib/supabase';
 import { pinIssue, pinReset, staffReenable } from '../../src/data/api';
-import { deleteStaff } from '../../src/data/repository';
+import { deleteStaff, staffChanged } from '../../src/data/repository';
 import { setIssuedPin } from '../../src/data/pending';
 import { ShellScreen } from '../../src/components/AppShell';
+import { FreshnessLine } from '../../src/components/FreshnessLine';
 
 /**
  * Adding a person and giving them a login are TWO steps, on purpose. A record
@@ -31,7 +32,8 @@ function StaffListBody() {
   const { flash } = useToast();
   const router = useRouter();
   const { state: forced } = useLocalSearchParams<{ state?: string }>();
-  const { state, data, error, retry } = useStaff(forced);
+  const staffRead = useStaff(forced);
+  const { state, data, error, retry } = staffRead;
   const [target, setTarget] = useState<Staff | null>(null);
   const [signOutEverywhere, setSignOutEverywhere] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -63,6 +65,10 @@ function StaffListBody() {
       if (!isConfigured) { flash(`${s.name.split(' ')[0]} re-enabled · still needs a PIN`); return; }
       try {
         await staffReenable(s.id);
+        // Both: retry() is this screen's own read, staffChanged() is every
+        // OTHER mounted reader of the staff list -- the More tab's count
+        // most visibly, which outlives every screen.
+        staffChanged();
         flash(`${s.name.split(' ')[0]} re-enabled · still needs a PIN`);
         retry();
       } catch (err) {
@@ -99,6 +105,7 @@ function StaffListBody() {
       const result = s.access === 'active'
         ? await pinReset(s.id, signOutEverywhere)
         : await pinIssue({ app_user_id: s.id });
+      staffChanged();
       goShowOnce(result.pin);
       retry();
     } catch (err) {
@@ -121,6 +128,7 @@ function StaffListBody() {
     setRemoving(true);
     try {
       await deleteStaff(s.id);
+      staffChanged();
       flash(`${s.name.split(' ')[0]} removed · the PIN no longer works`);
       retry();
     } catch (err) {
@@ -146,6 +154,9 @@ function StaffListBody() {
         {`${staff.length} people · ${needAccess} still need access`}
         {asked > 0 ? ` · ${asked} asked for a new PIN` : ''}
       </Muted>
+      {/* How old this data is, and whether the last attempt to bring it up
+          to date got through — src/components/FreshnessLine.tsx. */}
+      <FreshnessLine read={staffRead} testID="staff-freshness" />
 
       {staff.length === 0 && (
         <EmptyState

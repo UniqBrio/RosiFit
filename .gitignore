@@ -24,3 +24,7 @@ expo-env.d.ts
 # (the pooler URL has no password), which is the only reason committing it was
 # untidy rather than a leak.
 supabase/.temp/
+
+# run-log.mjs open-run state and close-out marker (docs/FRAMEWORK_ADOPTION.md) -- transient, never committed
+.run-log.json
+.close-out-commit.txt

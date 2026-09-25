@@ -148,7 +148,24 @@ export function DropdownField({ label, value, open, highlight, onPress, testID, 
  * by the screen, so a floating panel can be clipped at the header's edge,
  * and a dropdown nobody can reach is worse than one that moves the page.
  */
-export function DropdownPanel({ children, maxHeight = 340, inset = 0, flow = false, menu = false }:
+/**
+ * HOW MANY ROWS A PANEL SHOWS BEFORE IT SCROLLS.
+ *
+ * Four. The panel used to be capped at a flat 340px, which is more than half
+ * a phone's height and, opened from a field low on a screen, ran straight off
+ * the bottom of it with the rest of the list unreachable. The cap is derived
+ * from the row's own dimensions -- `DropdownItem`/`DropdownCheckItem` are
+ * TAP_MIN tall plus SPACE.sm above and below, with a 4px gap between them --
+ * so it stays exactly four rows if either of those ever moves. It was five
+ * first, and opened from the course screen's Show filter five still ran off
+ * the bottom of the viewport, with Inactive unreachable.
+ */
+const VISIBLE_ROWS = 4;
+const ROW_GAP = 4;
+const ROW_HEIGHT = TAP_MIN + SPACE.sm * 2;
+export const PANEL_MAX_HEIGHT = VISIBLE_ROWS * ROW_HEIGHT + (VISIBLE_ROWS - 1) * ROW_GAP;
+
+export function DropdownPanel({ children, maxHeight = PANEL_MAX_HEIGHT, inset = 0, flow = false, menu = false }:
   { children: React.ReactNode; maxHeight?: number;
     /** pulls the panel in from the row's edges, to line it up with a
      *  padded header rather than with the screen */
@@ -170,7 +187,21 @@ export function DropdownPanel({ children, maxHeight = 340, inset = 0, flow = fal
       ...(menu ? { padding: 0, overflow: 'hidden' as const } : { padding: SPACE.sm }),
       elevation: 8,
     }}>
-      <ScrollView style={{ maxHeight }} contentContainerStyle={menu ? undefined : { gap: 4 }}
+      {/* A VISIBLE SCROLLBAR, always, on the web. The list is capped at
+          `maxHeight` and has always scrolled past it, but nothing said so: a
+          long filter list looked like it ended where the panel did. On the
+          web the track is forced on and kept thin, with a stable gutter so
+          rows do not shift when it appears; native keeps its own indicator. */}
+      <ScrollView
+        style={{
+          maxHeight,
+          ...(Platform.OS === 'web'
+            ? ({ overflowY: 'scroll', scrollbarWidth: 'thin', scrollbarGutter: 'stable' } as unknown as ViewStyle)
+            : null),
+        }}
+        contentContainerStyle={menu ? undefined : { gap: ROW_GAP }}
+        showsVerticalScrollIndicator
+        persistentScrollbar
         keyboardShouldPersistTaps="handled">
         {children}
       </ScrollView>

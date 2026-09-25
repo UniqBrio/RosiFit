@@ -1,3 +1,1217 @@
+## ISSUES LEAVE THE ROSTER, AND THE DROPDOWN GAINS TWO — 24-Sep-2026
+
+`requests/2026-09-24-issues-leave-the-roster-and-two-filters.md` is the binding record, and
+**RC-108** is the defect. Yesterday's section was built as a pure ADDITION: it listed the members
+whose address could not be used and changed nothing above it. The academy reported the
+consequence the same day — an unsubscribed member appeared TWICE, once under Email issues and
+once among the members with email, where the card printed the address in the ordinary muted grey
+it uses for a working one. That is a second list over the same members, which is the shape
+guardrail 1 exists to prevent.
+
+WHAT CHANGED. `emailIssueIds` returns the ids of the rows the section actually renders, and the
+roster above filters them out, so the section and the exclusion read ONE derivation and cannot
+disagree. The section now draws the SAME `MemberCard` the roster draws, so moving a member down
+the page costs nothing: the day's attendance reading, the status pill and the tick travel with
+the member. The one thing that changes is the line under the name, which names the offending
+address and the app's existing word for its state (`emailStateWord` via `issueBadge`) rather
+than printing it as a working address. The dropdown gained **Bounced** and **Unsubscribed**,
+answered by `emailIssueFor` — the same derivation a third time, never a third reading.
+
+DATA SOURCE: none added. No query, no migration, `git diff supabase/` **EMPTY**. `update_member`,
+unsubscribe semantics, the suppression rules and the send path are all untouched — `isReachable`
+is not read by any line this change adds.
+
+FAIL-FIRST: src/data/rosterFilter.test.ts — **9 of 35 red** against the pre-change
+`rosterFilter.ts`, verbatim: `Expected values to be strictly deep-equal: + actual - expected +
+[] - [ 'm1' ]` for 'Bounced returns the bounced member and nobody else', because `matchesOne`
+had no branch for either key. With it: 'Unsubscribed returns the opted-out member and nobody
+else', 'a re-added address is still found by the filter it was suppressed under (RC-107)', 'an
+opt-out outranks a bounce, so the member is under one filter only', 'they narrow while the week
+is still loading', 'the counts count the same members the filter returns' (both counts came back
+`undefined`), 'the two new labels round-trip like every other' (`rosterFilterKey('Bounced')`
+returned `'all'`), and the two copy-locks below. The source file was restored byte-identical
+afterwards and `diff` run to prove it — `git checkout --` is unsafe in a shared worktree.
+
+FAIL-FIRST: src/data/emailIssues.test.ts — **6 red** against the pre-change tree, both source
+files stashed and restored byte-identical: 'the roster above must exclude the members the issues
+section has taken' (case 15), `(0 , import_emailIssues.emailIssueIds) is not a function` (cases
+16, 17, 18), 'each group is addressable, so a screen check can name one' (case 19), and 'the note
+comes from the shared reading, never from a string typed into the screen'.
+
+The FOUR negative cases among the new filter specs — no address, a usable address alongside a
+dead one, a spam report — passed against the pre-change file, and they passed for the WRONG
+reason: a filter that matches nobody matches them too. They are kept because they pin what the
+two keys must never claim, and they are named here rather than counted as red-first, which would
+have been a nicer number and a false one.
+
+AMENDED, NOT APPENDED — three assertions, stated plainly because specs here are append-only:
+
+  1. `emailIssues.test.ts` case 15 pinned `withEmail = shown.filter(m => m.emails.length > 0)` —
+     that the section was a pure addition. The owner reversed that behaviour, so the assertion is
+     re-pointed at the partition that replaced it and renamed to say what it now guards. Nothing
+     removed, nothing skipped, no matcher loosened; "No email" is asserted unchanged in the same
+     case, and a third assertion was ADDED requiring the exclusion to read `emailIssueIds`.
+  2-3. `rosterFilter.test.ts`'s two copy-locks (**T-025**, half cleared). The academy asked the
+     dropdown for two options by name, so changing that list IS the intent of the work — the one
+     case the append-only rule leaves open. Both now pin the whole current list, including the
+     `Active`/`Inactive` pair that was already in the tree and already failing these locks before
+     this change went near them: verified by stashing only `rosterFilter.ts` and observing the
+     same two failures on the untouched baseline.
+
+MEASURED THIS RUN, baseline vs changed tree:
+  - `npx tsx --test src/data/emailIssues.test.ts`: **34/34 PASS** (23 → 34)
+  - `npx tsx --test src/data/rosterFilter.test.ts`: **38/38 PASS** (25 → 38, 2 were red)
+  - `npm run test:unit`: **1947 pass / 6 fail**, against a clean-tree baseline measured the same
+    hour of **1921 / 8**. +24 tests, **two fewer failures**, none introduced. The remaining six
+    are `message.test.ts` ×5 (T-025's other half) and `formDropdownMenu.test.ts:148` over
+    `app/(tabs)/courses.tsx` (**T-023**) — neither file is touched by this change.
+  - `npx tsc --noEmit -p tsconfig.json`: **0 errors**. One was found and fixed during the run:
+    `ROSTER_FILTERS.some(f => f.key === 'complained')` is a type error because the key is not in
+    the union — the guard doing its job one level above the assertion, which now checks the label.
+  - `npm run check`: **6 of 7 PASS** — lint PASS, typecheck PASS, check:edge PASS, **2852/2852 contrast pairs**, **75/75 icons**,
+    check:functions PASS. No new colour and no new glyph: the section reuses `dangerInk`,
+    `statusSurface` and the card it already drew.
+  - `npm run gate`: 7 pass / 6 fail. G1/G2/G3 are the absent `design/tokens.json`
+    (TD-001/002/003), G8 an empty functional log (TD-006), G7 the six above. **G6 Lint FAIL is
+    one pre-existing warning in `scripts/conformance.mjs`** — *"Unused eslint-disable directive
+    (no problems were reported from 'no-await-in-loop')"* at line 222, a file this change does not
+    touch. `npm run check`'s lint step passes because it does not run with `--max-warnings 0`.
+    None of the six is this change's.
+
+REVIEW ROUND — code-reviewer returned **REQUEST CHANGES** with three blocking findings, and all
+three were real, all three on the path the academy actually asked for, and none of them caught by
+any spec in this repository. They are recorded because the pattern in them is the interesting
+part: the derivation was right and the SCREEN AROUND IT was not.
+
+  B1 · `showPending` kept its own hand-written list of "keys that are facts about the record"
+       — the three names spelled out inline. Bounced and Unsubscribed are exactly that kind of
+       fact and were added to the derivation, to `matchesOne` and to the counts, and not to that
+       line. Tick Unsubscribed while a week is loading or failed and the screen printed *"This
+       week's register could not be loaded, so the roster is not narrowed to Unsubscribed"* over
+       a roster narrowed to precisely that — and `showPending` suppresses the truthful line
+       beneath it, so the false sentence was the only explanation on screen. That is RC-108's own
+       defect class, a screen stating something untrue, reintroduced one line from the fix.
+       FIXED by exporting `isRecordFact` from `rosterFilter.ts`, beside the union it reads, and
+       pinned by three cases including one that walks `ROSTER_FILTERS` so a future key cannot be
+       added without being classified.
+  B2 · The section defaulted to collapsed and nothing linked the filter to it. Tick Unsubscribed:
+       `withEmail` and `withoutEmail` are both empty, `shown` is not, so no empty state fires —
+       the answer to "show me the unsubscribed members" was a heading, a count, and a chevron.
+       FIXED: ticking either key opens the section, and a close the operator chooses outranks
+       that for as long as the filter stays ticked.
+  B3 · `memberSplit` read "N with email · M without", two terms that used to be the whole roster
+       and no longer are. On the academy's own roster it would read *"9 with email · 0 without"*
+       under a heading saying ten. FIXED with a third term, drawn only when there is one.
+
+  Non-blocking, also fixed: the empty-state guard tested `exactly one key and it is one of two`,
+  so ticking BOTH — the point of a checkbox list — fell through to a sentence naming a day, which
+  the comment directly above it forbids (now `every ticked key is an email record fact`); an issue
+  card carried a word and a colour but no glyph and wore the HEALTHY border (guardrail 3 — now the
+  `error` glyph on the line and on each group heading, and the danger border); and `emailIssueFor`
+  could pick a blank address row as `worst` at equal severity and then borrow another row's
+  address to print beside it, which is a pair of facts about two different addresses (now the
+  named row wins at equal severity, severity still outranking it — three cases, fail-first
+  observed by reverting the tiebreak in place and restoring byte-identical).
+
+  T-302 PAID DOWN RATHER THAN ADDED TO: the four source-reading windows in `emailIssues.test.ts`
+  were character slices, the exact pattern that row names as open — a CRLF checkout spends one
+  extra character per line, so the window ends on a different line on Windows than in CI. All
+  four now take a LINE window through one `linesFrom` helper, which is the fix T-302 prescribes.
+
+  ACCEPTED, NOT FIXED, and recorded so it is a decision rather than an inheritance: an unsubscribed
+  member who is INACTIVE on the selected day is not surfaced by the new filters and is not in their
+  counts, while the Inactive section stays on screen beside them. That is exactly how `no-email`
+  has always behaved, so the two new keys are consistent with the key they sit beside rather than
+  novel. Changing it means deciding whether a record fact should reach across the register
+  boundary, which is a wider question than this request.
+
+  Copy-gate-reviewer returned BLOCKED (no shell) with seven findings; five were acted on. The
+  group note's three `detail` strings were written in the singular — *"This member previously
+  opted out…"* — and are now drawn ONCE over a group of cards, where "This member" names nobody;
+  rewritten in the plural, and the three copy-locks still pass unchanged because the pinned
+  phrases survived. The opt-out note said the academy does not write again *"unless the member
+  asks for it"*, a path this app does not have — `emailStatus.ts` records in as many words that no
+  screen here reinstates an address. The bounced note said *"a working address"*, asserting a
+  replacement works, where the product's own word is *"a different email address"*. The two
+  empty-state sentences restated their own titles and made the ADDRESS the subject of a state
+  `emailStateWord` assigns to the member. And `${address} · ${word}` drew a dangling separator
+  when the address is the empty string the bulk import can write. Two findings were logged to
+  `PRODUCT_LEXICON.md` candidates rather than fixed: `Spam Reported` is Title Case among
+  sentence-case siblings and is copy-locked in three places, and `ISSUE_READING.unsubscribed.title`
+  makes the address the subject — both are shipped copy and belong in a declared copy pass. The
+  six email-suppression terms were added to the lexicon as PROVISIONAL rows, recorded as PAIRS:
+  the short form is the heading and the filter, the long form is the word on a card.
+
+  ONE RULE VIOLATION FIXED OUTSIDE THE REQUEST, and named rather than slipped in: the "No email"
+  section's comment read *"She is separated because the follow-up rule cannot reach her"*, two
+  lines above the code this change edits. The gender-neutral rule is binding, so it was fixed.
+  **What was NOT fixed, and the academy should see it:** `app/course/[id].tsx:1619` is a VISIBLE
+  string breaking the same rule — *"…so she is expected at the days that offering runs"* — and
+  about thirty comments in that file do too. Both are logged as lexicon candidates. A one-line
+  edit to a shipped string is a copy pass, not a tidy-up inside an unrelated change.
+
+DEFINITION OF DONE — every item, or an explicit N/A with a reason.
+
+| item | verdict |
+|---|---|
+| Implements the approved plan, no unrequested scope | done · one exception declared: the No email comment's gendered wording, fixed because the rule is binding |
+| Every changed line traces to the request | done |
+| Canonical pattern for every concern | done · guardrail 1 (one derivation feeds section, exclusion and filter), CP-011 |
+| No colour literals, no magic numbers | gate: G4 PASS |
+| Dead weight deleted | done · the hand-kept key list is gone, asserted by case 22 |
+| Dependencies verified and pinned | N/A: none added |
+| Component contributed back | N/A: no new component, `MemberCard` gained one optional prop |
+| Every state looked at: empty, loading, error | done · loading and error are B1's own defect, now correct; empty is the new arm |
+| Loading terminates on forced error | N/A: no new async path |
+| Failure path exercised | N/A: no new write or read |
+| Writes idempotent | N/A: no write |
+| CHECK constraints stated by the form | N/A: no form touched |
+| Multi-step writes in one transaction | N/A: no write |
+| A save proved against the data | N/A: no save |
+| Screen checklist per screen | **NOT DONE** — no spec renders a screen and preview-smoke-verifier is unreachable. This is the standing gap, named above |
+| Both themes verified visually | **NOT DONE**, same reason. No new colour: `dangerInk`, `statusSurface`, `theme.muted` only |
+| Contrast asserted | gate: 2852/2852 pairs |
+| Per-theme assets | N/A: no brand asset touched |
+| Five permission questions, matrix row | N/A: no role, policy or tenant surface touched |
+| Deep route and API path gated | N/A: as above |
+| Tenant scoping on every query | N/A: no query — the section reads the roster already loaded |
+| No secret in client code or repo | done · `git diff supabase/` empty |
+| Cases added, registry delta verified | done · +11 in `emailIssues.test.ts` (23 → 34), +13 in `rosterFilter.test.ts` (25 → 38) |
+| All four dimensions | done · derivation, screen wiring, copy, and the negative cases named above |
+| Fail-first evidence per new behaviour test | done · four separate observations, each restored byte-identical and diffed; the four passing-negative cases named honestly |
+| The gate ran | done · FAIL, six classes, every one named and pre-existing |
+| Module document updated | done · `emailIssues.ts` and `rosterFilter.ts` headers carry the reasoning |
+| Feature register updated | no change needed — this is a correction to a feature registered on 23-Sep |
+| Root-cause entry appended | done · **RC-108** |
+| Limitations entry | N/A: no platform limit found |
+| Decision record | N/A: nothing hard to reverse. The two accepted-not-fixed calls are recorded above |
+| Changelog line | done · see below |
+| Tier stated | **T0** — a correction to a shipped screen, no new surface, no pricing, legal or support change |
+| Run closed out | done · two rows, one per cycle (R-019 and R-020 after the merge with `main` renumbered them; `main` had already taken R-015) |
+
+CHANGELOG, in the language of the user: *A member who has unsubscribed or whose address has
+bounced now appears only under Email issues on the course screen, not also in the list of members
+with email — and the roster's Show menu can narrow to Bounced or Unsubscribed.*
+
+WHAT IS STILL NOT PROVEN, for the fourth day running, and it is now the pattern rather than the
+exception: no spec here renders a screen. "The unsubscribed member is no longer in the list above
+and the count beside it dropped by one" is asserted by reading `app/course/[id].tsx` for the
+three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
+preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
+all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-09-24 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 26.0s total - slowest G7 Unit + pure specs (16.5s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (61ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (58ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (85ms)
+- **G5 Types** - PASS (5.7s)
+- **G6 Lint** - FAIL (3.1s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (16.5s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (130ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (58ms)
+- **G10 Backward compatibility (fixtures)** - PASS (115ms)
+- **G11 Wide tables are configurable** - PASS (61ms)
+- **G12 Installable as an application** - PASS (76ms)
+- **G13 Approved design still being built** - PASS (49ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## EMAIL ISSUES — a course's unusable addresses, grouped by why, 24-Sep-2026
+
+A visibility section on the course screen, immediately below "No email" and deliberately not
+merged with it. `requests/2026-09-24-email-issues-section.md` is the binding record.
+
+DATA SOURCE: none added. The section derives from `shown` — the array the roster above it is
+already rendering, which is `enrolledIn(members, course)` narrowed by branch, by the search box
+and by the reading filters. `Member.emails` and `Member.suppressedBefore` both arrive with the
+single `useFollowUp` load, so there is no query per member and no second count that can drift
+from the rows (guardrail 1, CP-011).
+
+FAIL-FIRST. The module and its spec were written together, so the evidence is mutation, plus
+two UI guards that were genuinely red before the section existed:
+
+FAIL-FIRST: src/data/emailIssues.test.ts — "# fail 2" of 23 against the tree before the course
+screen was touched: "the section is rendered immediately BELOW No email" and "it reads the
+roster the screen is already drawing — no second query". The other 21 are the derivation and
+passed from the start, which is why they are mutation-tested below rather than counted as
+red-first.
+
+MUTATION M1 — stop folding suppression history in (`status: e.status` instead of
+`effectiveStatus(...)`), which is the RC-107 blind spot put back: **4 fired**, including all
+three soft-deleted cases and the normalisation case.
+
+MUTATION M3 — give an opt-out the Edit action: **1 fired**, "an opt-out offers NO action".
+
+MUTATION M2 SURVIVED, and is recorded rather than quietly dropped. Removing the
+`if (m.emails.length === 0) return undefined;` guard changed nothing: a member with no
+addresses produces an empty `read`, so no usable address is found, no suppressed one either,
+and the function returns undefined by the ordinary route. The guard is therefore REDUNDANT
+against the current body. It is kept as an explicit statement of intent — "No email" and
+"Email issues" are different sections answering different questions — and the behaviour it
+describes is pinned by two tests that pass by that other route. A surviving mutant is
+information about the spec, not a thing to hide.
+
+MEASURED THIS RUN, clean tree vs changed tree:
+  - `npx tsx --test src/data/emailIssues.test.ts`: **23/23 PASS**
+  - email-status family (emailIssues, bouncedReentry, memberEmailStatus, memberEmailJourney):
+    **79/79 PASS**
+  - course / roster / attendance specs: 82/84 — the 2 failures are `rosterFilter.test.ts`,
+    both in the pre-existing eight
+  - `npx tsc --noEmit -p tsconfig.json`: **0 errors**
+  - `npm run test:unit`: **1921 pass / 8 fail** against a clean-tree baseline of 1842 / 8 —
+    the SAME EIGHT, name for name. +79 tests, +0 failures.
+  - `npm run audit:all`: the same 3 pre-existing RULE COVERAGE violations
+  - `npm run check:icons`: 75/75. The two new glyph names (`expand_less` / `expand_more`) are
+    already this app's expand/collapse idiom in four other screens and resolve through the
+    alias table; verified against the MaterialIcons glyphmap directly.
+  - `git diff supabase/`: **EMPTY**. No migration, no DB spec, `update_member` untouched, and
+    nothing about suppression, unsubscribe or sending was changed.
+
+WHAT IS STILL NOT PROVEN, for the third day running: no spec here renders a screen, so "the
+section appears below No email and its rows read correctly" is asserted by reading
+`app/course/[id].tsx` for the order, the testIDs and the absence of any send or reinstate
+control. preview-smoke-verifier remains unreachable — the network policy rejects the Vercel
+preview host. This is named in RC-107's process check and has not changed.
+
+---
+
+## Gate run - 2026-09-24 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 25.9s total - slowest G7 Unit + pure specs (16.6s).
+Application steps ran in .
+
+> **This run was avoidable.** The tree is byte-identical to the previous gate run, so this verdict was already known. The gate verifies a TREE, not a change: corrections landing in one commit share one verification, and only the last run describes what ships. Corrections in SEPARATE commits each need their own, so every commit is independently bisectable.
+
+- **G1 Theme artifacts in sync** - FAIL (50ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (55ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (49ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (82ms)
+- **G5 Types** - PASS (5.5s)
+- **G6 Lint** - FAIL (3.0s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (16.6s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (122ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (55ms)
+- **G10 Backward compatibility (fixtures)** - PASS (108ms)
+- **G11 Wide tables are configurable** - PASS (59ms)
+- **G12 Installable as an application** - PASS (71ms)
+- **G13 Approved design still being built** - PASS (50ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-24 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 26.2s total - slowest G7 Unit + pure specs (16.7s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (51ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (51ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (51ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (70ms)
+- **G5 Types** - PASS (5.7s)
+- **G6 Lint** - FAIL (3.0s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (16.7s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (163ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (56ms)
+- **G10 Backward compatibility (fixtures)** - PASS (115ms)
+- **G11 Wide tables are configurable** - PASS (63ms)
+- **G12 Installable as an application** - PASS (87ms)
+- **G13 Approved design still being built** - PASS (59ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## RC-107 — A SUPPRESSION ERASED BY REMOVE-THEN-RE-ADD, 24-Sep-2026
+
+Found by the academy using the app, one day after RC-106 shipped: a member's opted-out address
+was removed by a save and typed back in, and it was accepted. The 23-Sep re-entry check did not
+stop it for three independent reasons, all of which are now closed or explained.
+
+MEASURED ON PRODUCTION before touching anything:
+  - the member held three rows: the original address `unsubscribed` (soft-deleted 22-Sep
+    16:32:59), a second address (soft-deleted 23-Sep 12:04:45), and the ORIGINAL address again
+    as a fresh live primary row at `unknown`, created at that same moment;
+  - blast radius, by joining soft-deleted suppressed rows to live rows for the same address:
+    **1 member, and it was an opt-out.** No bounced address had been re-added this way;
+  - 1,249 address rows in total, of which **4** are soft-deleted — so widening the read to
+    include them costs nothing.
+
+THE DATA WAS REPAIRED FIRST, with the requester's go-ahead and the SQL shown before running:
+one UPDATE setting that row back to `unsubscribed`, recorded by `member_emails`' own audit
+trigger (0006). Verified after: the row reads `unsubscribed`, live unsubscribed went 6 → 7,
+live bounced unchanged at 6, and the detached-suppression join now returns **0**.
+
+FAIL-FIRST, by injection, reverted and re-verified:
+
+FAIL-FIRST: src/data/bouncedReentry.test.ts - "not ok 21 - RC-107 · the member read must keep
+reading soft-deleted rows" - restored `.is('deleted_at', null)` to the member addresses query,
+which is the defect itself put back. 1 of 22 fired. That rung exists because there is NO TYPE
+ERROR for this regression: `suppressedBefore` would simply go empty and every check over it
+would quietly start passing.
+
+MEASURED THIS RUN, clean tree vs changed tree:
+  - `npx tsx --test src/data/bouncedReentry.test.ts`: **23/23 PASS**
+  - `npx tsc --noEmit -p tsconfig.json`: **0 errors**
+  - `npm run test:unit`: **1898 pass / 8 fail** against a clean-tree baseline of 1842 / 8 —
+    the SAME EIGHT, name for name. One of mine failed mid-run (`memberEmailStatus.test.ts`
+    still pinned the old symbol name after the rename) and was fixed, not excused.
+  - `npm run gate`: **FAIL — 7 pass / 6 fail**, step for step identical to the clean-tree
+    baseline. G1/G2/G3 want a missing `design/tokens.json`, G6 one pre-existing lint warning,
+    G7 the eight above, G8 because `test:functional` is not a script in package.json.
+  - `git diff supabase/`: **EMPTY**. No migration, no DB spec, `update_member` untouched.
+
+WHAT IS STILL NOT PROVEN, and it is now twice in two days: no spec in this repository renders a
+screen or drives the real repository against a database. "The form refuses what the database
+would accept" is asserted by reading source. Both RC-106 and RC-107 were found by the academy
+using the app, not by this suite. The standing answer — `preview-smoke-verifier`, the only
+stage that opens the running application — has not been reachable from any session in this
+run: the environment's network policy rejects the Vercel preview host, the same way it rejects
+the Supabase host. That gap is named in RC-107's process check.
+
+---
+
+## Gate run - 2026-09-24 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 28.3s total - slowest G7 Unit + pure specs (16.4s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (55ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (52ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (49ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (63ms)
+- **G5 Types** - PASS (6.1s)
+- **G6 Lint** - FAIL (5.1s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (16.4s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (123ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (54ms)
+- **G10 Backward compatibility (fixtures)** - PASS (107ms)
+- **G11 Wide tables are configurable** - PASS (53ms)
+- **G12 Installable as an application** - PASS (69ms)
+- **G13 Approved design still being built** - PASS (48ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## A BOUNCED ADDRESS ASKS FOR A DIFFERENT ONE — 23-Sep-2026
+
+Track B over RC-106. The academy asked for the opposite answer to the one shipped the day
+before, and it is the better one: an address the mail system has already rejected is not
+repaired by marking it un-rejected, so the form now REFUSES the re-entry and asks for a
+different address. The Reinstate action is withdrawn;
+`requests/2026-09-23-bounced-address-asks-for-a-different-one.md` records the reversal.
+
+FAIL-FIRST, by injection, both reverted and re-verified green afterwards:
+
+FAIL-FIRST: src/data/bouncedReentry.test.ts - "not ok 3 - it is matched the way the DATABASE
+matches it, not the way a form might" - replaced `normalizeEmail(e.address) === want` with a
+raw `e.address === draft`, which is the form and the database disagreeing about what "the same
+address" means for a trailing space or a capital letter. 1 of 19 fired, and it is the one that
+names the rule.
+
+FAIL-FIRST: src/data/bouncedReentry.test.ts - "not ok 12 - Save is blocked while the box holds
+a bounced address" - removed `&& !bouncedDraft` from the form's `valid` expression. 1 of 19
+fired. That is the assertion standing between this change and the original RC-106 defect: a
+form that accepts the address and then shows nothing new.
+
+MEASURED THIS RUN, clean tree vs changed tree:
+  - targeted (bouncedReentry, memberEmailStatus, memberEmailJourney): **52/52 PASS**
+  - `npx tsc --noEmit -p tsconfig.json`: **0 errors**
+  - `npm run test:unit`: **1894 pass / 8 fail** against a clean-tree baseline of 1842 / 8 —
+    the SAME EIGHT, name for name. +52 tests, +0 failures.
+  - `npm run audit:all`: the same 3 pre-existing RULE COVERAGE violations (RC-073, RC-047,
+    RC-048), verified earlier as byte-identical with this branch's register entries stashed.
+  - `git diff supabase/`: **EMPTY**. No migration, no DB spec, and `update_member` untouched —
+    this change is entirely client-side, as the request required.
+  - `supabase/tests/57_reinstate_member_email.sql` on a from-scratch replay: **16/16 PASS**.
+    The RPC is unchanged and still live on production; it is simply no longer called.
+
+WHAT IS PROVEN, AND WHAT IS NOT. The rule, the wording and the form's wiring are pinned —
+`bouncedReentry.test.ts` reads `app/member/edit.tsx` for the branch it takes, the inline block
+it renders and the absence of any Reinstate control, the way this project's other specs do.
+Nothing here RENDERS the form: there is no component harness in this repository, so "the ⓘ
+block appears under the field" is asserted structurally, not visually. Opening the running app
+remains the only proof of that, and the Vercel preview on PR #37 is where it would be done.
+
+---
+
+## Gate run - 2026-09-24 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 29.5s total - slowest G7 Unit + pure specs (16.4s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (56ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (79ms)
+- **G5 Types** - PASS (6.0s)
+- **G6 Lint** - FAIL (6.4s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (16.4s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (125ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (55ms)
+- **G10 Backward compatibility (fixtures)** - PASS (114ms)
+- **G11 Wide tables are configurable** - PASS (56ms)
+- **G12 Installable as an application** - PASS (71ms)
+- **G13 Approved design still being built** - PASS (52ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-23 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 37.1s total - slowest G7 Unit + pure specs (20.4s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (61ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (63ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (64ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (92ms)
+- **G5 Types** - PASS (8.3s)
+- **G6 Lint** - FAIL (7.4s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (20.4s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (152ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (73ms)
+- **G10 Backward compatibility (fixtures)** - PASS (143ms)
+- **G11 Wide tables are configurable** - PASS (77ms)
+- **G12 Installable as an application** - PASS (97ms)
+- **G13 Approved design still being built** - PASS (63ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## FAIL-FIRST — import decisions, 22-Sep-2026
+
+FAIL-FIRST: src/data/importDecisions.test.ts - run against the module carrying the pre-fix `autoDecisions` copied verbatim from app/upload.tsx: 11/18 failing — the three decision cases ("two namesakes already on the register: the upload does not create a third" et al.: `add_as_new` !== `skip`), the held-names and wording cases (empty placeholders), and the three wiring cases (screen still held its private copy, no `upload-ambiguous` note, `c.ambiguous` still counted). After the fix: 18/18.
+
+---
+
+## PRODUCTION APPLY — 0078, 22-Sep-2026 19:57 UTC
+
+The Supabase connector was completed mid-session, so the migration this repository had prepared
+was applied and verified against the live project rather than left at the boundary. Everything
+below was observed against `lhpzhkzbnquwjljmbylo` ("Rosifit", ap-southeast-1, Postgres
+17.6.1.166, ACTIVE_HEALTHY). No member's email address is reproduced here: production PII does
+not belong in a repository, and an earlier draft of this entry was refused for exactly that.
+
+APPLIED: `apply_migration` returned success. Ledger row **`20260922195737` /
+`reinstate_member_email`**, recorded by the tool itself — a timestamp version, not the literal
+`0078`, which is what SETUP.md requires. `supabase db push` was NOT used (SETUP.md:75: the local
+ledger has no overlap with the remote one, so a push would replay from `0001`).
+
+VERIFIED AFTER APPLYING, by querying production rather than trusting the success flag:
+  function exists = 1 · `anon` execute = **false** · `authenticated` execute = **true** ·
+  SECURITY DEFINER = true · deployed body refuses 'unsubscribed' = true · refuses 'complained'
+  = true · clears only `<> 'bounced'` = true · writes the audit row = true ·
+  **`update_member` still present and still 9958 bytes — unchanged by this apply.**
+
+LIVE GATE TEST, without touching a member's record. The function was called on production
+through a `pg_temp` probe with (a) a uuid matching no row and (b) a real suppressed row id.
+Both returned verbatim:
+
+    REFUSED: only a signed-in, active user can reinstate an address [42501]
+
+The connector is not a signed-in app user, so the auth gate fires before the status checks —
+which is why probing a real row was safe. Re-read afterwards: that row's status is unchanged,
+the counts are unchanged, and `audit_logs` holds **0** `member_email.reinstated` rows. The
+status refusals themselves remain proven by EXECUTION in 57_reinstate_member_email.sql (16/16),
+against a body identical to the deployed one.
+
+### THE OUTSTANDING READ IS DONE, and it confirms the diagnosis
+
+`update_member`'s live body was read. Its `exists` branch is
+`set is_primary = v_first, updated_at = now()` — `status` is not in that SET. Piece 3 of RC-106
+is confirmed against production rather than derived from source; T-400's caveat on it is
+discharged. The body is still divergent from the repo (9,958 live vs 11,213 replayed), which is
+untouched here and remains T-120/T-400's.
+
+### A CORRECTION TO THE DIAGNOSIS, about the reported member specifically
+
+The defect is real and confirmed. **The reported member's own case was not the one diagnosed.**
+Production holds two rows for her: the original address, `unsubscribed`, soft-deleted
+2026-09-22 16:32:59 UTC; and a second, different address, `unknown`, primary and live, created
+at that same moment. She was given a DIFFERENT address, not the same one retyped — so it fell
+outside `v_wanted`, the opt-out was soft-deleted and the new address inserted cleanly. That
+save WORKED, about an hour before the question was asked. The screenshot was the state before
+it: one unsubscribed address, filtered out by `repository.ts:302`, drawn as "No usable email".
+Pieces 1 and 2 exactly; piece 3 was never reached for her.
+
+MEASURED IMPACT, rather than inferred: 1,223 `unknown`, 9 `valid`, 6 `unsubscribed`,
+6 `bounced`, 0 `complained`. **Twelve live members** read as having no address at all. Six
+become fixable from Edit once the app deploys; six correctly do not, and the app will now name
+which is which.
+
+NOT DONE: the app itself is not deployed. The migration is live; the client that uses it is on
+`claude/relaxed-ride-0g6u4p` and unmerged. Until it ships, the twelve still read as "No usable
+email" and no Reinstate button exists — the function has no caller yet.
+
+---
+
+## Gate run - 2026-09-22 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 26.3s total - slowest G7 Unit + pure specs (16.4s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (51ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (51ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (75ms)
+- **G5 Types** - PASS (5.7s)
+- **G6 Lint** - FAIL (3.5s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (16.4s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (136ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (57ms)
+- **G10 Backward compatibility (fixtures)** - PASS (128ms)
+- **G11 Wide tables are configurable** - PASS (59ms)
+- **G12 Installable as an application** - PASS (78ms)
+- **G13 Approved design still being built** - PASS (59ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## COMPLETION RUN — RC-106 taken through to the DB/apply boundary, 22-Sep-2026
+
+A second pass over the shipped fix (commit `4557595`): review the migration, correct the one
+policy it got wrong, re-verify, and take it as far towards production as this environment
+allows. What follows is only what was actually observed in this run.
+
+### The correction: `complained` is no longer reinstatable
+
+The shipped `0078` allowed `complained -> unknown`. That was a policy INVENTED BY THE BUG FIX
+and nothing in the product had asked for it — before this change `send-followups` had no
+complaint rule at all (`index.ts:233-234` refuses only bounced and unsubscribed), so a
+complained address was simply **sendable**. The line now drawn is whose act the suppression
+was: a BOUNCE is the mail system reporting a dead address (the academy's to correct), while a
+COMPLAINT and an OPT-OUT are both the member's own click (not the academy's to undo).
+
+`complained` stays SUPPRESSED — that half is the conservative fix and is unchanged. Only the
+lifting was withdrawn. Narrowed in `0078`, `emailStatus.ts` (`suppressionLiftable`), and the
+two specs written alongside them.
+
+MUTATION-TESTED IN BOTH DIRECTIONS, because a narrowing that cannot be observed failing is not
+a rule:
+  - restore `|| status === 'complained'` to `suppressionLiftable` → **4 assertions fire**
+    across both JS specs;
+  - let `emailUsable` accept `'bounced'` (the original defect, re-injected) → **5 fire**,
+    including `THE ORIGINAL BUG: the whole reported journey, step by step`.
+  Both reverted and re-verified green afterwards.
+
+FAIL-FIRST: src/data/memberEmailJourney.test.ts - "# fail 5" of 9, incl. "THE ORIGINAL BUG: the whole reported journey, step by step" - injected `|| e.status === 'bounced'` into `emailUsable` (the original defect, put back). The other four that fired were
+"B - a BOUNCED address stays visible, is not sendable, and offers Reinstate", "B - after an
+explicit Reinstate, the same member becomes reachable", "the four states are distinguishable
+from one another, in both directions", "an unrelated save can never be what un-suppresses an
+address", and "THE ORIGINAL BUG: the whole reported journey, step by step". Injection reverted
+and the file re-run green (9/9). A second injection - restoring `|| status === 'complained'`
+to `suppressionLiftable` - fired 2 more of its cases ("C(ii)" and the four-states table), and
+2 in memberEmailStatus.test.ts, for 4 across both specs.
+
+FAIL-FIRST: supabase/tests/57_reinstate_member_email.sql - "ERROR: FAIL a spam complaint is REFUSED, in its own words -- it is the member's click, not the academy's mistake -- statement was ACCEPTED and should not have been" - the pre-narrowing function injected back into 0078 (complaint refusal removed, guard widened to `not in ('bounced','complained')`) and the harness replayed from scratch.
+
+HOW THAT EVIDENCE CAME TO BE TAKEN, recorded because the process nearly failed here. The
+migration was narrowed BEFORE the spec was rewritten, so that ordering produced no observed
+failure at all - and the first draft of this summary CLAIMED one anyway ("run against the
+pre-narrowing 0078 still in the tree"). It had not been. The injection above was then actually
+performed to make the claim true. A fail-first line nobody watched fail is the exact thing
+these lines exist to prevent, and writing one is worse than writing none.
+
+Injection reverted, harness replayed again, 16/16 PASS. The
+soft-delete case was moved onto its own bounced member in the same edit - hung on the
+complained address it would now have passed for the WRONG REASON, and a test that cannot fail
+for the reason it names is not a test.
+
+### New: the journey spec
+
+`src/data/memberEmailJourney.test.ts`, 9 cases. Walks ONE member through all four address
+states and the single legal transition, then replays the reported journey step by step. It
+drives `flagged` + `recipientSplit` — the send's own recipient split, not a copy of it
+(CP-011) — so "the send recognises it" is asserted against the real decision, not a stand-in.
+
+WHAT IT DOES NOT PROVE, stated rather than implied: it renders no screen and calls no
+database. `src/data/repository.ts` cannot be imported under `node --test` at all (it reaches
+react-native transitively, which esbuild will not transform), which is why no spec in this
+project imports it. The RPC's own behaviour is proven separately against a real Postgres.
+
+### Measured this run
+
+| Check | Result |
+|---|---|
+| `supabase/tests/57_reinstate_member_email.sql` on a from-scratch replay | **16/16 PASS** |
+| `db/harness/reset.sh` (every migration, 0078 included) | **exit 0** |
+| `supabase/tests/47_unsubscribe_and_ses_feedback.sql` (opt-out protection) | **17/17 PASS**, incl. "a permanent bounce does not overwrite a member's own opt-out" |
+| targeted JS (status, journey, grants, audit coverage, audit wording, unsubscribe token, followup) | **80/80 PASS** |
+| `npx tsc --noEmit -p tsconfig.json` | **0 errors** |
+| `npm run test:unit` | **1865 pass / 8 fail** vs clean-tree baseline **1842 / 8** — the same eight, name for name |
+| `npm run gate` | **FAIL — 7 pass / 6 fail**, step for step IDENTICAL to the clean-tree baseline |
+
+The six gate failures are all infrastructure and all pre-existing: G1/G2/G3 cannot find
+`design/tokens.json`, G6 carries one pre-existing lint warning, G7 is the eight unit failures
+above, and G8 fails because **`test:functional` is not a script in `package.json` at all**.
+None was introduced here and none is this defect's.
+
+### NOT DONE, and it is the honest headline
+
+**The migration has NOT been applied to production.** Not deferred by choice — blocked by the
+environment, verified three ways: no credentials anywhere (`env`, `~/.supabase`, `~/.netrc`,
+no `.env`), `supabase projects list` → `LegacyPlatformAuthRequiredError`, and the agent proxy
+rejecting the host outright: `connect_rejected  lhpzhkzbnquwjljmbylo.supabase.co:443`. The
+production Supabase project was never contacted in this run, for reading or for writing.
+
+Consequently **no production verification was performed**, and none is claimed. The apply
+commands, the safety argument, the post-apply read-only checks and the standing
+`update_member` body read are written up in `supabase/APPLY_0078.md` for whoever holds access.
+
+The full `bash db/harness/test.sh` again did not complete — it replays every migration once
+per spec file, ~45 times. The targeted replay above is what was observed.
+
+---
+
+## FAIL-FIRST — a suppressed address is invisible (RC-106), 22-Sep-2026
+
+Spec: `src/data/memberEmailStatus.test.ts`, 22 cases. Run against the PRE-FIX tree first; the
+whole file was watched failing before a line of the fix was written.
+
+FAIL-FIRST: src/data/memberEmailStatus.test.ts — **17 of 20 failing** against the pre-fix tree.
+`hasEmailOnFile` did not exist; a bounced, unsubscribed and complained address each answered
+`isReachable` **true** (the read had already stripped them, so the predicate never saw one);
+`repository.ts` still carried `if (e.status === 'bounced' || e.status === 'unsubscribed') continue;`;
+the Edit form named no suppressed state and offered no reinstatement; the card still said
+"No usable email"; and `supabase/migrations/0078_reinstate_member_email.sql` did not exist.
+After the fix: **22/22 pass** (the file grew by two cases while the copy-lock moved to the
+shared wording module).
+
+NOT OBSERVED FAILING, and said rather than left silent — two of the twenty passed vacuously
+pre-fix and are not evidence from that run:
+  - "a member holding one dead address and one live one is still reachable" — passed because the
+    pre-fix predicate tested only that an address was non-blank, which the live one satisfied.
+    It is a real assertion post-fix (it stops `isReachable` being narrowed to the primary) and
+    was mutation-tested: `emails.every` in place of `emails.some` → fails.
+  - "the card copy is about the member, never gendered" — its anchor string did not exist
+    pre-fix, so the slice it searched was meaningless. Re-pointed at `src/data/emailStatus.ts`,
+    where the wording now lives, and mutation-tested: "she" in the state words → fails.
+
+THREE RUNGS FIRED ON THIS CHANGE, each catching a real defect in it:
+  - `src/data/migrationGrants.test.ts` — 0078 revoked from `public, anon` in one statement, which
+    the guard does not accept: Supabase grants EXECUTE to `anon` DIRECTLY on every new public
+    function, so `anon` needs naming in its own `revoke` (0012 exists for this; RC-042, RC-052).
+  - `src/data/memberEmailStatus.test.ts`'s own "every address record the repository builds carries
+    its status" — found **three** writers building one without it (both offline writers and the
+    bulk-import writer). Absent reads as usable, so each was a silent un-suppression.
+  - `src/data/auditActionCoverage.test.ts` — `member_email.reinstated` had no written wording, so
+    it would have reached the academy owner as a prettified code.
+
+BASELINES MEASURED, because nothing on this tree is green and a delta is worthless without
+them. Every figure below was taken in this session, clean tree vs. changed tree:
+
+  - `npm run test:unit`, clean tree: **1842 pass / 8 fail**. With this change:
+    **1864 pass / 8 fail** — the SAME EIGHT, name for name (a `courses.tsx` filter spec,
+    message tokens ×5, recipient options ×2). None is in a file this change touches.
+  - `npm run gate`, clean tree: **7 pass / 6 fail / 0 blocked**. With this change: **identical**,
+    step for step — G1/G2/G3 cannot find `design/tokens.json`, G6 Lint carries one pre-existing
+    warning, G7 is the eight above, and G8 fails because `test:functional` is not a script in
+    `package.json` at all. Six infrastructure gaps, none of them this defect's.
+  - `db/harness/reset.sh`: every migration replays from scratch, **0078 included, exit 0**.
+  - `supabase/tests/57_reinstate_member_email.sql` against that fresh replay: **15/15 PASS**,
+    including the opt-out refusal and the audit row naming the actor.
+
+  HONEST GAP: the FULL `bash db/harness/test.sh` did not complete in the time available on this
+  machine — it replays every migration once per spec file, ~45 times. Four attempts stopped at
+  different points (465, 547, 768 and 884 assertions). The clean-tree run that got furthest read
+  **884 pass / 12 fail**; every failure seen in every changed-tree run was already in that list.
+  The twelfth is `53_harness_body_matches_production.sql` failing on **`update_member`** —
+  T-120's production drift pinned as a test, and the direct reason this change adds a function
+  rather than restating that body. What is NOT claimed: a completed full-suite run on the
+  changed tree. The targeted replay above is what was actually observed.
+
+---
+
+## Gate run - 2026-09-22 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 29.1s total - slowest G7 Unit + pure specs (16.2s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (70ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (49ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (50ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (68ms)
+- **G5 Types** - PASS (6.2s)
+- **G6 Lint** - FAIL (5.9s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (16.2s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (126ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (59ms)
+- **G10 Backward compatibility (fixtures)** - PASS (121ms)
+- **G11 Wide tables are configurable** - PASS (56ms)
+- **G12 Installable as an application** - PASS (74ms)
+- **G13 Approved design still being built** - PASS (49ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-22 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 28.4s total - slowest G7 Unit + pure specs (17.7s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (54ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (50ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (75ms)
+- **G5 Types** - PASS (6.3s)
+- **G6 Lint** - FAIL (3.6s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (17.7s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (128ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (59ms)
+- **G10 Backward compatibility (fixtures)** - PASS (120ms)
+- **G11 Wide tables are configurable** - PASS (61ms)
+- **G12 Installable as an application** - PASS (79ms)
+- **G13 Approved design still being built** - PASS (50ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## FAIL-FIRST — data freshness change, 22-Sep-2026
+
+Observed in this session, in the order the specs were written. Mutation = the defect was injected
+into the source, the spec run, the source restored.
+
+FAIL-FIRST: src/data/asyncState.test.ts - run before the module existed: `Cannot find module './asyncState'`, 1/1 failing; later, the C-1 reducer case ("a retry keeps the error") was written against a reducer that cleared it
+FAIL-FIRST: src/data/revalidate.test.ts - run before the module existed: `Cannot find module './revalidate'`, 1/1 failing; mutation: `busy` guard removed → "a read with a fetch already open is NOT restarted" fails
+FAIL-FIRST: src/data/hookInvalidation.test.ts - first run: T13 useOfferingEditor failed (version passed inline, not as the 5th argument); mutations: onMembersChanged dropped from useBucketMetrics → T8 fails; version folded back into deps → "every pre-existing subscriber now revalidates" fails
+FAIL-FIRST: src/data/dataRefreshWiring.test.ts - first run: "it never reloads the page" failed because the assertion matched the module's own prose; tightened to read code only
+FAIL-FIRST: src/data/uploadServerConfirmed.test.ts - mutations: timer calls setPhase('done') → 2 fail; commit catch restored to "Nothing was written." → 1 fails; Attendance skeletons on revalidation → 1 fails; fixture guard removed from commit branch → 0 fails (escaped), spec strengthened, then → 1 fails; batch fixture guard removed → 1 fails; freshness tick frozen → 2 fail
+FAIL-FIRST: src/data/freshness.test.ts - 2 copy-locks failed when the stale wording changed to "Last updated … · Couldn’t refresh" and were re-pointed (string literal only)
+FAIL-FIRST: src/data/freshnessLineWiring.test.ts - its predecessor (staleBannerWiring.test.ts, deleted with the app-wide banner) caught 5/5 injected mutations: reads stop reporting, wrong condition reported, banner unmounted, retry ignores write-in-flight, banner always rendered. The per-screen successor was mutation-tested on: Attendance stops using the shared rule → 2 fail; the rule stops seeing ready+error → 1 fails
+NOT OBSERVED FAILING: src/data/uploadSafety.test.ts - module and spec were written together and the first run passed; not mutation-tested
+NOT OBSERVED FAILING: src/data/uploadProgress.test.ts - module and spec were written together and the first run passed; the "leave this screen open" copy-lock was re-pointed in the same edit as the copy
+
 FAIL-FIRST: supabase/functions/send-followups/load.test.ts - 4 of 5 failed, "AssertionError: Values are not equal: a failed members read must throw" and "every member row must be loaded" (1001 expected, 1000 received), against readAll reverted to one unchunked request whose error is discarded; restored 5 passed 0 failed, Deno 2.9.7, 19-Sep-2026
 
 ## Gate run - 2026-09-19 - VERDICT: FAIL
@@ -108,6 +1322,361 @@ timed out after 15 minutes
 - **G11 Wide tables are configurable** - PASS (679ms)
 - **G12 Installable as an application** - PASS (738ms)
 - **G13 Approved design still being built** - PASS (191ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-22 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 27.8s total - slowest G7 Unit + pure specs (17.2s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (52ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (50ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (49ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (69ms)
+- **G5 Types** - PASS (6.2s)
+- **G6 Lint** - FAIL (3.6s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (17.2s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (176ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (58ms)
+- **G10 Backward compatibility (fixtures)** - PASS (120ms)
+- **G11 Wide tables are configurable** - PASS (59ms)
+- **G12 Installable as an application** - PASS (82ms)
+- **G13 Approved design still being built** - PASS (61ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-22 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 22.2s total - slowest G7 Unit + pure specs (13.9s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (44ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (45ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (42ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (60ms)
+- **G5 Types** - PASS (4.9s)
+- **G6 Lint** - FAIL (2.8s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (13.9s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (112ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (50ms)
+- **G10 Backward compatibility (fixtures)** - PASS (100ms)
+- **G11 Wide tables are configurable** - PASS (48ms)
+- **G12 Installable as an application** - PASS (63ms)
+- **G13 Approved design still being built** - PASS (43ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-22 - VERDICT: FAIL
+
+Steps: 6 pass, 7 fail, 0 blocked.
+Time: 22.8s total - slowest G7 Unit + pure specs (14.1s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (47ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (47ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (38ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - FAIL (56ms)
+
+```
+BLOCKED [HARDCODED COLOUR] - 1 new violation(s):
+```
+
+- **G5 Types** - PASS (5.4s)
+- **G6 Lint** - FAIL (2.6s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (14.1s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (121ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (48ms)
+- **G10 Backward compatibility (fixtures)** - PASS (93ms)
+- **G11 Wide tables are configurable** - PASS (48ms)
+- **G12 Installable as an application** - PASS (63ms)
+- **G13 Approved design still being built** - PASS (47ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-22 - VERDICT: FAIL
+
+Steps: 6 pass, 7 fail, 0 blocked.
+Time: 34.8s total - slowest G7 Unit + pure specs (14.3s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (94ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (51ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (63ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - FAIL (232ms)
+
+```
+BLOCKED [HARDCODED COLOUR] - 1 new violation(s):
+```
+
+- **G5 Types** - PASS (12.9s)
+- **G6 Lint** - FAIL (6.8s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (14.3s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (101ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (43ms)
+- **G10 Backward compatibility (fixtures)** - PASS (85ms)
+- **G11 Wide tables are configurable** - PASS (50ms)
+- **G12 Installable as an application** - PASS (65ms)
+- **G13 Approved design still being built** - PASS (40ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-19 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 22.3s total - slowest G7 Unit + pure specs (13.8s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (49ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (45ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (44ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (66ms)
+- **G5 Types** - PASS (5.1s)
+- **G6 Lint** - FAIL (2.7s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (13.8s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (111ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (49ms)
+- **G10 Backward compatibility (fixtures)** - PASS (106ms)
+- **G11 Wide tables are configurable** - PASS (49ms)
+- **G12 Installable as an application** - PASS (67ms)
+- **G13 Approved design still being built** - PASS (47ms)
 
 _Merge blocked. Every FAIL above must resolve. No partial merges._
 

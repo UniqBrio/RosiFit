@@ -8,7 +8,8 @@ import { Icon } from '../../src/components/Icon';
 import { MemberRow } from '../../src/components/MemberRow';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { SPACE, RADIUS, TAP_MIN } from '../../src/theme/tokens';
-import { ruleSentence, hasEmail } from '../../src/data/mock';
+import { ruleSentence } from '../../src/data/mock';
+import { isReachable } from '../../src/data/followup';
 import { useFollowUp } from '../../src/data/hooks';
 import { currentWeek } from '../../src/data/period';
 
@@ -33,13 +34,17 @@ export default function Weekly() {
   const members = data?.members ?? [];
   const rules = data?.rules;
   const flagged = data?.flagged ?? [];
-  const noMail = members.filter(m => !hasEmail(m));
+  // `isReachable`, the predicate the SEND splits on -- so this chip's count
+  // and the draft's recipient list cannot disagree (CP-011). An address that
+  // bounced or was opted out of is on the record and cannot be written to,
+  // so the chip says "no usable email" rather than claiming none is held.
+  const noMail = members.filter(m => !isReachable(m));
   const rows = filter === 'follow' ? flagged : filter === 'nomail' ? noMail : members;
 
   const chips: { key: Filter; label: string }[] = [
     { key: 'follow', label: `Needs follow-up · ${flagged.length}` },
     { key: 'all',    label: `All ${members.length}` },
-    { key: 'nomail', label: `No email · ${noMail.length}` },
+    { key: 'nomail', label: `No usable email · ${noMail.length}` },
   ];
 
   return (
@@ -126,7 +131,7 @@ export default function Weekly() {
           </Muted>
 
           {flagged.length > 0 && (
-            <Button label={`Reach out to ${flagged.filter(hasEmail).length} members`}
+            <Button label={`Reach out to ${flagged.filter(isReachable).length} members`}
               onPress={() => router.push('/send')} />
           )}
         </>

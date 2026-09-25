@@ -59,6 +59,117 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-108 — a member whose address could not be used was listed as one whose address worked, and counted as one          Tracker: none (reported by the academy) · Sources: requests/2026-09-24-issues-leave-the-roster-and-two-filters.md, RC-107, RC-106
+**Date:** 24-Sep-2026 · **Severity:** S2 (a screen stated something untrue about who can be written to; no send behaviour changed) · **Modules:** `app/course/[id].tsx`, `src/data/emailIssues.ts`, `src/data/rosterFilter.ts`
+
+**Symptom** — in the academy's words, with a screenshot of a course roster: *"This person has unsubscribed but she is stilll showing under person with email section. Instead she should be coming under email issues."*
+
+**Root cause** — the Email issues section, built the day before, was designed as a pure **addition**: it listed the members whose address could not be used and deliberately changed nothing above it, so the roster kept every member it already had. That made the section a second list over the same members rather than a partition of them — the failure mode guardrail 1 exists for. A suppressed member therefore appeared twice: once under Email issues, and once among the members **with** email, where the card printed the address in the ordinary muted grey it uses for a working one and the section's count included them. A spec pinned exactly that addition (`emailIssues.test.ts` case 15), so the behaviour was asserted, not accidental — which is why this is a design defect and not a slip.
+
+**Fix** — the roster now partitions on one derivation instead of overlapping on two. `emailIssueIds` returns the ids of the rows the section actually renders, and the roster above filters them out, so the section and the exclusion cannot disagree by construction. Moving a member down the page was made free of cost: the section draws the **same** `MemberCard`, so the day's attendance reading, the status pill and the tick travel with the member; the one thing that changes is the line under the name, which now names the offending address and the app's existing word for its state instead of printing it as a working address. The dropdown gained **Bounced** and **Unsubscribed**, answered by `emailIssueFor` — the same derivation again, never a third reading of the same question.
+
+**Files** — `app/course/[id].tsx`, `src/data/emailIssues.ts`, `src/data/emailIssues.test.ts`, `src/data/rosterFilter.ts`, `src/data/rosterFilter.test.ts`
+
+**How to verify** — `npx tsx --test src/data/emailIssues.test.ts` — case *16 · the three predicates partition the roster: nobody twice, nobody lost* must pass; it asserts the three counts sum to the roster and that no id appears in two of them. Then `npx tsx --test src/data/rosterFilter.test.ts` — *the counts count the same members the filter returns*. On the screen: open a course holding an unsubscribed member and confirm the member appears under Email issues → Unsubscribed and **not** in the list above, and that the header's "N with email" no longer counts them.
+
+**Recurrence risk** — every screen that adds a section over a list it does not also narrow. The pattern to look for is a new section derived from the same array as an existing one, with no exclusion between them: RC-108 is that shape, and so is the follow-up/dashboard drift guardrail 1 was written for. The two live "sections over one roster" on this screen — No email and Email issues — are now both partitions; Inactive is deliberately not (it is drawn from `joinedByDay`, a different array, and says so).
+
+**Prevention** — `src/data/emailIssues.test.ts` case 16, which asserts the partition arithmetic rather than either section in isolation, plus `emailIssueIds` existing at all: a single exported derivation is what makes "the section and the exclusion agree" a property of the code rather than of two filters staying in step.
+
+**Process check** — **Yes.** Nothing in the gate could have caught this: the section was correct, the roster was correct, and only the two together were wrong. It was found by a person looking at the screen — the third defect in this series found that way (RC-106, RC-107, RC-108), against a process in which **no spec renders a screen** and `preview-smoke-verifier` cannot reach a deployed preview from this environment. That is the standing gap, and it is now three for three.
+
+---
+
+## RC-107 — a suppression was erased by removing the address and typing it back in          Tracker: none (found in production during RC-106's follow-up) · Sources: RC-106, requests/2026-09-23-bounced-address-asks-for-a-different-one.md
+**Date:** 24-Sep-2026 · **Severity:** S1 (a member who opted out was returned to the send list) · **Modules:** `src/data/repository.ts`, `src/data/mock.ts`, `src/data/emailStatus.ts`, `app/member/edit.tsx`
+
+**Symptom** — reported as *"i added same email which was bounced earlier but it got added now instead of showing the message of it ws bounce why?"*, over a member card reading **"Email on file"** above an address that had been **unsubscribed**.
+
+**Root cause** — `update_member` (0027) SOFT-DELETES an address left out of a save, and `fetchMembers` filtered `deleted_at is null`. So the moment a suppressed address was removed from the record, every trace of the suppression became invisible to the app — and typing the same address back in took `update_member`'s INSERT branch, because its `exists` clause filters `deleted_at is null` too. A **brand-new row at `status = 'unknown'`** replaced a suppression nobody could see had existed.
+
+For a bounce that means the next follow-up goes to a dead address. **For an opt-out it means a member who asked not to be written to is back on the send list** — and because the unsubscribe token is signed on `member_emails.id` (0066), the new row carries a new id and the original opt-out is detached from it entirely.
+
+**Measured on production, 24-Sep-2026:** exactly **one** member, whose address was opted out on 08-Sep, removed 22-Sep 16:32:59, and re-added 23-Sep 12:04:45 as a live primary row at `unknown`. No bounced address had been re-added this way. 1,249 address rows in total, of which **4** are soft-deleted.
+
+**Why RC-106's fix did not catch it** — RC-106 made suppressed addresses visible and the 23-Sep change refused re-entry of a bounced one, but both read `Member.emails`, which is the LIVE list. A check over the live list stops seeing a suppression exactly when the row is removed, which is the case this defect is made of. The narrowing to `bounced` compounded it: the address here was `unsubscribed`, which that check deliberately ignored.
+
+**Fix** — The member read stops filtering `deleted_at is null` and partitions instead: live rows populate `Member.emails` exactly as before, and any row carrying a suppression — live or removed — populates the new `Member.suppressedBefore`. The Edit form checks a typed address against the history AND the live list, refuses every suppression rather than only a bounce, and says which in its own words: a bounce invites a different address, an opt-out and a spam report say the academy may not write there at all. Save stays blocked while the box holds one.
+
+**The data was repaired first**, with the requester's go-ahead: the re-added row was set back to `unsubscribed` (one UPDATE, one row, recorded by `member_emails`' own audit trigger from 0006). Re-measured afterwards — **0 members** now carry a suppression detached by a re-add.
+
+**Files** — `src/data/repository.ts` (the read and the partition), `src/data/mock.ts` (`Member.suppressedBefore`), `src/data/emailStatus.ts` (`suppressedOnRecord`, `entryRefusal`, the three message pairs), `app/member/edit.tsx`, `src/data/bouncedReentry.test.ts`.
+
+**How to verify** — `npx tsx --test src/data/bouncedReentry.test.ts` — 23 cases. The one that names this defect is *"a REMOVED suppression is still found"*: over the live list alone the address is not found, over the history it is. In the app: remove a suppressed address from a member, save, then type it back in — the form must refuse it.
+
+**Recurrence risk** — The hole is one line, and the cheapest way for it to come back is somebody restoring `.is('deleted_at', null)` to the addresses read while tidying. There is no type error for that: `suppressedBefore` would simply go empty. `bouncedReentry.test.ts` therefore reads `repository.ts` and fails the build on that filter returning to that query — watched failing by injecting it.
+
+**Prevention** — **A soft delete is not a delete. A read that hides removed rows hides the history every suppression decision depends on.** The standing rule from RC-106 extends: carry the stored value, and do not filter the record on the way out — including rows the record has retired.
+
+**Process check** — **Yes, and it is the same gap RC-106 named.** No spec in this repository renders a screen or drives the real repository against a database, so "the form refuses what the database would accept" is asserted structurally. What actually found this was the academy using the app. The standing answer — `preview-smoke-verifier`, the only stage that opens the running application — has not been reachable from any session in this run: the environment's network policy rejects the Vercel preview host. That is worth its own row.
+
+---
+
+## RC-106 — a suppressed address was dropped on the way out of the read, so saving it again changed nothing          Tracker: none (reported by the academy) · Sources: requests/2026-09-22-saved-email-not-reflecting.md, RC-023, RC-031, RC-008
+**Date:** 22-Sep-2026 · **Severity:** S2 · **Modules:** `src/data/repository.ts`, `src/data/mock.ts`, `src/data/followup.ts`, `src/data/emailStatus.ts`, `app/member/[id].tsx`, `app/member/edit.tsx`, `supabase/migrations/0078_reinstate_member_email.sql`
+
+**Symptom** — reported as *"I clicked on Edit button and then added email and then saved but its not reflecting why?"*, over a member card reading **"No usable email"**, *"The member is shown and counted as excluded from every send, never quietly dropped"*, **"Last contacted 9/19/2026"**, and under it **"Rule is not met, No email to send"**. The save flashed *"<name> saved"* and the card did not move.
+
+**Root cause** — A member's address that carries a suppression was dropped on the way out of the read, so the app had no way to show it and no way to ask for it to be changed — and the update path treats "a row for this address already exists" as "there is nothing to do".
+
+Three pieces, and only together are they a defect:
+
+1. `fetchMembers` began its address loop with `if (e.status === 'bounced' || e.status === 'unsubscribed') continue;`. The record the entire app derives from carried **no trace** of an address that exists in the table.
+2. `hasEmail(m)` was `primaryEmail(m) !== ''` over that censored list, so the member card drew its no-address branch. The Edit form seeds its address list from the same record, so it opened **blank**.
+3. The operator did the only thing that screen invited: typed the address the academy holds. `update_member` (0027) found the row still live, took its `exists` branch, set `is_primary`, and never touched `status`. **Nothing anywhere in this repository had ever cleared a suppression** — `ses-feedback` writes 'bounced' and 'complained', `unsubscribe` (0066) writes 'unsubscribed', and no function writes any of them back. `supabase/tests/47_unsubscribe_and_ses_feedback.sql:143` says in as many words that *"'bounced' is a state the academy could decide to clear"*; it was never given anything to clear it with.
+
+The card's own "Last contacted 9/19/2026" was the evidence: a follow-up had gone to that address three days earlier, so it existed and was usable then.
+
+This is **RC-023's shape** — a rule that lives in exactly one place, invisible from where it has to be obeyed — and **RC-031's prevention read backwards**: *carry the stored value and derive the label from it, never the reverse*. Under C2b it is also the **claimed success** class (RC-008, RC-017): the toast asserted the act and nothing asserted the effect.
+
+**CONFIRMED AGAINST PRODUCTION, 22-Sep-2026 19:57 UTC.** `update_member`'s live body was read through the Supabase connector. Its email loop is exactly as described above: the `exists` branch is `set is_primary = v_first, updated_at = now()` and `status` is not in that SET. Piece 3 is no longer derived from source, and T-400's caveat on it is discharged. The body is still DIVERGENT from the repo (9,958 bytes live against 11,213 in the harness replay; T-120 measured 9,625 on 18-Sep, so it has moved since) — that is untouched here and remains T-120/T-400's.
+
+**THE REPORTED MEMBER'S OWN CASE WAS NOT THE ONE DIAGNOSED, and this is recorded because the diagnosis was right about the defect and wrong about her.** Production holds two address rows for the reported member: her original address, status `unsubscribed`, soft-deleted at **2026-09-22 16:32:59 UTC**; and a second, different address, status `unknown`, primary, live, created at that same moment. So the operator did not retype the address already on file — they entered a DIFFERENT one, which put it outside `v_wanted`, soft-deleted the opt-out and inserted the new address cleanly. **That save worked.** The screen she photographed was the state BEFORE it: one unsubscribed address, filtered out of the record by `repository.ts:302`, drawn as "No usable email" over a row sitting in the table. Piece 1 and piece 2, exactly; piece 3 was never reached for this member.
+
+What the defect actually costs, measured rather than inferred: **twelve live members** carry a suppressed address — 6 `bounced`, 6 `unsubscribed`, 0 `complained`, against 1,223 `unknown` and 9 `valid` — and every one of them reads as having no address at all. The six bounced become fixable from the Edit form; the six who opted out are correctly not fixable, and the app will now say which is which instead of flattening both into "No usable email".
+
+**A CONSENT QUESTION THIS SURFACED, for the academy rather than for the code:** the member above opted out of her original address, and a second address for the same person was added twenty minutes later. Nothing in the schema prevents that and this change does not alter it — `update_member` has always accepted a new address, and the opt-out was recorded against the ADDRESS, not the person. It is named here because a bug fix about suppression that left it unsaid would be hiding it.
+
+**What was NOT the cause, and is worth recording** — the refresh wiring is sound. `useMembers` subscribes to `onMembersChanged`, `updateMember` calls `membersChanged()`, and `useAsync` holds no cache. The screen refetched correctly every time and re-applied the same filter to the same row.
+
+**Fix** — Four parts.
+
+*The state is carried.* `Member.emails` entries gain `status` (and `id`, so an address can be acted on by identity rather than by the text in it — an address has not been unique across the register since 0071). The `continue` is gone.
+
+*One question is split into two, and the compiler enforces the sweep.* `hasEmail` answered "is there an address" and "can we send" at once, which is how one question ended up with two answers. It is **deleted**, not widened, and replaced by `hasEmailOnFile` (anything on the record) and `isReachable` (something sendable — already the predicate the send splits on, now status-aware). All 38 references had to pick.
+
+*The screens name the state.* The member card has four states where it had two, each with its own word and its own glyph. The Edit form draws a suppressed address instead of opening blank, will not let it be made primary, and carries **Reinstate** where the suppression is liftable.
+
+*A route back exists, for one state only.* `reinstate_member_email` (0078) clears a **bounce** to 'unknown' and refuses everything else in its own words. The line it draws is *whose act the suppression was*: a bounce is the mail system reporting a dead address, usually a typo the academy can correct; a complaint is the member clicking "report spam" and an opt-out is the member clicking unsubscribe, and neither is the academy's to undo.
+
+**NARROWED ON REVIEW, 22-Sep-2026, and recorded because it was a defect in the fix.** The first draft cleared a *complaint* as well, reasoning that a complaint is a judgement SES made about a message. That was a **new policy invented by a bug fix**, and nothing in the product had asked for it — before this change `send-followups` had no complaint rule at all (`index.ts:233-234` refuses only bounced and unsubscribed), so a complained address was simply **sendable**. Suppressing it is the conservative half and stays; lifting it is not the academy's to do. The narrowing touched `0078`, `emailStatus.ts` (`suppressionLiftable`), and the two specs written with them. Mutation-tested in both directions: restoring `|| status === 'complained'` fires 4 assertions, and letting a bounce read as usable fires 5, including the whole-journey test.
+
+**Deliberately NOT done: `update_member` is untouched.** Two reasons, and the second decided it. The Edit form sends the whole address list on every save, so resetting `status` there would un-suppress an address as a side effect of an unrelated edit. And `update_member` is one of the **fifteen bodies T-120 measured as divergent on production** — 9,625 bytes live against 11,213 in the harness replay — so a `create or replace` from this tree would push whatever the repo holds over whatever is running (RC-047's mechanism, T-125's warning). 0078 restates nothing.
+
+**Files** — `src/data/emailStatus.ts` (new), `src/data/mock.ts`, `src/data/repository.ts`, `src/data/followup.ts`, `src/data/course.ts`, `src/data/reportSheets.ts`, `src/components/MemberRow.tsx`, `app/member/[id].tsx`, `app/member/edit.tsx`, `app/(tabs)/members.tsx`, `app/(tabs)/weekly.tsx`, `app/send/result.tsx`, `src/data/auditPlain.ts`, `supabase/migrations/0078_reinstate_member_email.sql` (new), `supabase/tests/57_reinstate_member_email.sql` (new), `src/data/memberEmailStatus.test.ts` (new).
+
+**How to verify** — `npx tsx --test src/data/memberEmailStatus.test.ts src/data/memberEmailJourney.test.ts` — 32 cases. The status spec was run against the pre-fix tree and 17 of its 20 then-cases fired. The journey spec walks one member through all four states and the single legal transition, using `flagged` + `recipientSplit` — the send's own split, not a copy of it — and ends by replaying the reported journey step by step.
+
+Against a real Postgres: `bash db/harness/reset.sh` then `supabase/tests/57_reinstate_member_email.sql` — **16/16**, covering bounce cleared, complaint refused, opt-out refused, healthy address refused, soft-deleted row refused, one audit row naming the actor, and `anon` unable to execute. In the app: open a member whose address has bounced. The card reads **"Address bounced"** with the address and the reason beside it, not "No usable email". Open Edit: the address is drawn, marked, cannot be made primary, and carries **Reinstate**. Press it — the card reads "Email on file". For an opt-out, no Reinstate is offered, and calling the RPC directly is refused with *"the member unsubscribed from this address, and only the member can undo that"*.
+
+**Recurrence risk** — Two classes, both swept.
+
+(1) *A stored fact discarded on the way out of a read.* `grep -n "continue;" src/data/repository.ts` → 10 hits; nine are null-guards and loop bookkeeping. Every `.filter(` / `.neq(` / `status ===` in the file (40 hits) scopes or counts. **One site, and it was this one.** Two lines below it, `repository.ts:348` already did it the blessed way — an unrecognised `members.status` is *mapped*, not dropped.
+
+(2) *An optional field a future read forgets to map.* This is the hazard `status?` creates: absent reads as usable, which is this defect returning, and there is no type error for it. `memberEmailStatus.test.ts` fails the build on any address record `repository.ts` builds without one — it caught three on the first run (both offline writers and the import writer).
+
+**Recorded, not fixed** (outside the reported defect): `follow_up_candidates` still computes `has_email` as `me.status <> 'bounced'` (`0009:107`, `0045:138`, `0072:165`), so an *unsubscribed* address counts as reachable server-side while the client and `send-followups` both refuse it. Changing it changes who the send selects, which is a second PR. `attendanceResetPreview`'s offline branch derives `has_email` from the member record while the live RPC counts a bounced address as an address on purpose (`0056:157`, `0057:121`); fixtures hold no suppression so the two cannot disagree today.
+
+**Prevention** — The standing rule is RC-031's, and this is its second sighting: **carry the stored value and derive the answer from it, never filter the record on the way out.** A read that drops a row removes the evidence every screen downstream needs to explain itself. Rung: `src/data/memberEmailStatus.test.ts`, which holds both the carrying and the two-predicate split as executable claims.
+
+**Process check** — **No, with one qualification.** No gate could have caught this: every layer was internally consistent and the suite was green. What would have caught it is the question C2b's "claimed success" row already asks — *assert the effect, never the message about it* — and no automated rung can ask that of a path where the effect is "a column the read then hides". The qualification: this defect's diagnosis was **limited by T-400/T-120**, and that is a process gap already filed. Piece 3 above is derived from repository source for a function whose production body has never been read.
+
+---
+
 ## RC-073 — a guard that asked a migration file what the database runs, and was wrong five times over          Tracker: T-121 · Sources: T-111, RC-047, D-2b
 **Date:** 18-Sep-2026  ·  **Severity:** S3 (a spec, not a user-facing defect — but it was five of the fourteen red cases hiding the nine that matter)  ·  **Modules:** `src/data/aliasConflictTarget.test.ts` (deleted)
 
@@ -390,6 +501,73 @@ Two consequences worth naming rather than filing: Guardrail 2 of `CLAUDE.md` ("c
 **Guard** — the spec runs in `guard:test`, which CI invokes above `npm run check`, so it cannot itself be hidden behind a red step. That placement is deliberate and is the same reasoning as T-401's adapter spec.
 
 **Recurrence risk** — Low for `npm run check`, which is now structurally incapable of it and has a spec pinning the structure. The class is not closed: T-402 still has `audit:all` stranded at the job level, and `guard:test` retains an `&&` chain that is only harmless because it is green. The deeper habit — trusting a step's name for what it covers — has no guard at all, and produced three of this session's findings on its own (T-402, T-404, and the stale counts corrected in T-035).
+
+---
+
+## RC-107 — the upload filed an `ambiguous` name as somebody new, so one person became three members          Tracker: — · Sources: requests/2026-09-22-import-multiplies-a-namesake.md
+**Date:** 22-Sep-2026  ·  **Severity:** S2  ·  **Modules:** `app/upload.tsx`, `src/data/importDecisions.ts`
+
+**Numbering note** — written as RC-106 on its branch; main took RC-106 for the suppressed-address fix first, so this is RC-107. The branch's commit messages and PR title still say RC-106 for that reason.
+
+**Symptom** — "What is this issue is it a logic missed issue or technical issue. Same display name appearing thrice?" — the course register's No email section showed three live cards for "vishnu priya", each keyed by its own member id, each with its own missed streak, the oldest the longest.
+
+**Root cause** — When the row-by-row review was removed, `autoDecisions` in `app/upload.tsx` filed every preview row that was not a clean match as `add_as_new`, including `ambiguous` — the one kind whose meaning is "two or more members of this course already hold this name". So a second namesake became a third on the next upload, and every later file naming that person added one more, with the present mark landing on the newest record and the older ones swept absent. The fixtures had stated the rule since the review screen existed (`src/data/mock.ts`, `MATCH_OUTCOMES.ambiguous`: "Pick one explicitly — the import will not guess"); the auto-decision guessed. Not a rendering fault: the register drew three records faithfully.
+
+**Fix** — The decision moved to `src/data/importDecisions.ts`, where a spec can run it. An `ambiguous` row is now HELD: the decision is `skip`, which `commit_csv_import` audits as skipped (0024), so nothing is created and nobody is marked present on a guess. The result screen names the held names (`upload-ambiguous`) with the two taps that resolve them — fold the duplicates with "Add display name to existing member", then upload the file again — and the batch row carries the same fact in one sentence. `unmatched` and `possible` rows are unchanged: still somebody new, still acknowledged (C-79, C-80). The `no_email` count no longer includes ambiguous rows, because a held row lands nowhere.
+
+**Files** — `src/data/importDecisions.ts` (new), `src/data/importDecisions.test.ts` (new), `app/upload.tsx`, `requests/2026-09-22-import-multiplies-a-namesake.md`.
+
+**How to verify** — `npx tsx --test src/data/importDecisions.test.ts`: an `ambiguous` row with two candidates must come back `skip`, never `add_as_new`; the screen must import `autoDecisions` from the module and keep no private copy. On a live project: two members named alike in one course, upload a file naming that person — the member count must not move, the result screen must show the held-back note, and the audit log must carry `csv_import.row_skipped` for the row.
+
+**Recurrence risk** — Two sites, both closed in this change: the single-file commit and the batch commit in `app/upload.tsx` both call `autoDecisions`, and both counted `c.ambiguous` as landed (search: `grep -n "autoDecisions\|c\.ambiguous" app/upload.tsx`). The class remains open one layer down: `commit_csv_import` accepts `add_as_new` on an `ambiguous` row from any client, and a server-side refusal belongs in a migration — not written here because production's copy of that function already differs from the harness (T-120). The three existing "vishnu priya" records are reported, not touched. How the FIRST pair was born is not established: the pre-12-Sep 1,000-row cap (RC-043), a namesake at another branch (`splitByCourse` scopes by offering while `is_in_course` scopes by course, and the 0071 comment says they agree), or two genuine people.
+
+**Prevention** — `rung: src/data/importDecisions.test.ts` — the decision, the other kinds, the screen's wiring and the operator's words, 18 assertions, 11 observed failing against the pre-fix behaviour.
+
+**Process check** — Yes. The rule was written in the fixtures and the review screen, and the change that removed the review ("no stop between the rows") re-implemented the decisions without reading it. A test that runs each kind through the decision would have caught it on that day; it exists now. No framework change: the gap is the missing spec, not the process that asks for one.
+
+---
+
+## RC-052 — a new SECURITY DEFINER function shipped executable by `anon`, for the second time          Tracker: T-042 · Sources: RC-042 (the first time), `src/data/migrationGrants.test.ts:102`, D-12a
+**Date:** 18-Sep-2026  ·  **Severity:** S1 by exposure class, S3 by outcome — nothing was read  ·  **Modules:** `supabase/migrations/0075_member_period_metrics_page.sql`, `supabase/migrations/0077_page_fn_revoke_anon.sql`
+
+**Symptom** — not observed by anyone; found by comparing PR #22's `gate` job against `main`'s. `main` failed 13 tests, the PR failed 14, and the extra one was `migrationGrants.test.ts:102`: *"These functions are granted to `authenticated` but never revoked from `anon`: public.member_period_metrics_page"*. Confirmed against production at 10:26 UTC: `has_function_privilege('anon', …, 'execute')` returned **true** for the new function and **false** for the original it was derived from.
+
+**Root cause** — Supabase grants `EXECUTE` on every new function in `public` **directly to `anon`**, through a default privilege that fires when the object is created. 0075 wrote `revoke all on function … from public, anon` immediately after the `create` in the same file, which reads as covering it and does not: the direct grant is applied to the created object and `revoke all … from public` addresses the PUBLIC pseudo-role, not `anon`'s own entry. The function is `SECURITY DEFINER`, so an unauthenticated caller holding only the public anon key would have executed it with the definer's rights and read every member's attendance figures for any period. Migration 0012 exists solely to undo this default for the functions that existed then; **RC-042 is the same mechanism, recorded the first time it happened.**
+
+**Why it shipped** — The guard worked. `migrationGrants.test.ts:102` failed on the PR's own CI run at 07:45 UTC, naming the function and quoting the correct statement, nearly two hours before the apply. I read the `db-harness` job, saw spec 56 green and the red-file set unchanged, and applied at 09:46 without opening the `gate` job at all — reasoning that a migration's evidence is the DB harness and the gate is the client suite's business. That reasoning is wrong for exactly this class: `migrationGrants.test.ts` lives under `src/` and reads `supabase/migrations/*.sql`, so the only place a migration's grants are checked is the job I did not read. Nothing about the tooling failed. The verdict existed, was correct, was addressed to me, and I did not look at it.
+
+**Class** — every `create function` in `public` whose migration does not carry a standalone `revoke execute … from anon`. The rule is 0012's; the rung is `migrationGrants.test.ts:102`, which enumerates them from the migration files on every `npm run check` and has been doing so since RC-042. It caught this one immediately. The gap is not coverage, it is that the rung reports into a job the migration workflow was not reading — so the sweep here is procedural, not a code sweep: **D-12b**. Checked at 10:28 UTC: `member_period_metrics_page` was the only function in `public` in that state; every other function granted to `authenticated` carries its direct anon revoke.
+
+**Fix** — `revoke execute on function public.member_period_metrics_page(date, date, uuid, int) from anon;` applied to production at **10:28:15 UTC**, ahead of any file, because the exposure was live and a file is not a fix until it runs. `0077_page_fn_revoke_anon.sql` carries that statement, applied 10:29:37 UTC and ledgered as `20260918102937` the same day (D-10). 0077 also guards in both directions — `anon` cannot execute afterwards, and `authenticated` and `service_role` still can, because a revoke that over-reaches is a different outage. **Deliberately not changed:** 0075 itself. It is applied and ledgered; its grant lines stay as the record of what was done, and 0077 is the correction on top, in the in-place spirit rather than a rewrite.
+
+**Proof** — three reads, all pasted into T-042's row with timestamps. `has_function_privilege('anon', …)` = **false** at 10:28:34, with the ACL reading `postgres=X/postgres | service_role=X/postgres | authenticated=X/postgres`. An unauthenticated `POST /rest/v1/rpc/member_period_metrics_page` with the public anon key at 10:28:47 returned **HTTP 401 / 42501 permission denied for function member_period_metrics_page**, matching the control call to the original function exactly. And `migrationGrants.test.ts` returns the gate to 13 failures, identical to `main`'s set.
+
+**Exposure** — 09:46:15 UTC (0075 applied) to 10:28:15 UTC (revoke), **42 minutes**. `edge_logs` filtered to the path over 09:46:00–10:29:30 holds exactly **one** request: the verification probe at 10:28:47, after the revoke, answering 401. No other caller reached the function, authenticated or otherwise. **Nothing was read.**
+
+**Guard** — **D-12b**: a production apply requires both the `gate` and `db-harness` jobs of the PR's latest run to have been read, including the gate's failure diff against `main`, and both pasted, before `db query` runs. The apply is not authorised until they are. That is the only new thing here; the technical rung already existed and already worked.
+
+**Process check** — Yes, a correctly functioning process would have caught this, and it did. The failure was between the verdict and the person. D-12b closes it.
+
+---
+
+## RC-051 — the member cards read "attended nothing" for everyone past row 1,000          Tracker: T-042 (with T-016) · Sources: A:F-02, B:F-02, RV-34
+**Date:** 18-Sep-2026  ·  **Severity:** S2  ·  **Modules:** `supabase/migrations/0075_member_period_metrics_page.sql`, `src/data/repository.ts`
+
+**Symptom** — not reported by a person; found by audit and confirmed by arithmetic. The academy passed 1,000 live members on 12-Sep-2026 and holds 1,152 today. `member_period_metrics` returns one row per member with attendance in the period, so from the 12th onward every read of it has been returning 1,000 rows and stopping. On the member list the 152 members past the cap show expected 0, missed 0, and are never flagged for follow-up; the donut and the week strip under-report by the same members.
+
+**Root cause** — PostgREST caps a response at `db-max-rows` (1,000 by default) and does not say when it truncates: the reply is a valid 200 with fewer rows. `repository.ts` reads the function unpaged at three sites — `:229` `fetchMembers`, `:1953` `fetchBucketMetrics`, `:1977` `fetchWeekRows` — and `fetchMembers` then falls back to `metric?.expected ?? 0`. That fallback is the mechanism: a missing row and a row of zeroes are indistinguishable downstream, so "not loaded" is rendered as "attended nothing". The cap is in PostgREST; the silence is in the `??`.
+
+**Why it shipped** — RV-34 checked paging and returned FIXED, but its scope was `supabase.from(` table reads; `pageAll.ts` and `pagedReads.test.ts` enforce paging only for those. An RPC is a `supabase.rpc(` call and no guard has ever scanned for it — T-030 is the rung that would have. So the project had a paging rule, a spec enforcing it, and a whole class of reads outside both. The second reason is that the ceiling was invisible while the academy was under 1,000 members: the same code was correct for a year and became wrong on a Saturday without anything changing.
+
+**Class** — every set-returning RPC read without a cursor. Enumerated by grepping `supabase.rpc(` in `src/`: `member_period_metrics` ×3 (this fix), `course_week_day_status` (aggregates server-side, returns one row per weekday — bounded by 7, exempt), `commit_csv_import`, `set_attendance`, `set_member_status`, `audit_log_as`, `bulk_import_members`, `bulk_set_member_dates`, `reset_day_attendance`, `delete_course`, `purge_member` (all single-row or single-verdict returns, not set-returning). So `member_period_metrics` is the only unbounded one today — but "only one today" is exactly what was true of the table reads before RC-039. T-030 makes it a build failure rather than a grep.
+
+**Fix** — `0075` adds `member_period_metrics_page(p_from, p_to, p_after_member_id, p_limit)`: keyset by `member_id`, `limit` defaulting to 1,000. Keyset rather than OFFSET because a row inserted between two reads shifts every OFFSET page after it, and because page 900 costs what page 1 costs. The body is derived from `pg_get_functiondef` on the **live** function, not from a migration file (RC-047's rule), and differs from it in exactly three lines: the cursor predicate, `order by a.member_id`, `limit p_limit`. **Deliberately not changed:** the existing `member_period_metrics` is left in place, so callers move one at a time and the two can be compared; the four optional filters are not reproduced because no caller passes them.
+
+**Proof** — `supabase/tests/56_member_period_metrics_page.sql`. 1,001 seeded members with a year of attendance: two pages, 1,001 rows, 1,001 **distinct** members, nobody the unpaged function returns missing from the pages, an empty third page, every total equal, and every member's six numbers identical row for row — the last of which is what catches a pager that swaps two members' numbers while keeping the totals right.
+
+**Guard** — three inside the migration: refuse if the paged function already exists; refuse if `member_period_metrics`'s body hash has moved since the derivation (checked at apply time, not at authoring time); and after creating, call it over an empty period and assert the argument names PostgREST will resolve the client's call against. The class-level rung is **T-030** — `pagedReads.test.ts` scanning `supabase.rpc(` — which is not yet written and which this entry is the argument for.
+
+**Verify** — after apply: `select count(*) from member_period_metrics_page('<from>','<to>', null, 1000)` returns 1,000 on a period the academy's whole register falls in, and a second call with the last `member_id` returns the remainder. Compare `sum(expected)` across the pages against one unpaged call; they must be equal. Recorded with its timestamp in T-042's row.
 
 ---
 

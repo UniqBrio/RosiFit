@@ -13,6 +13,7 @@
  * it counts cannot disagree.
  */
 import type { Member, FollowUpRule, FollowUpCandidate } from './mock';
+import { emailUsable } from './emailStatus';
 import { isActiveOn } from './inactiveFrom';
 import { iso } from './period';
 
@@ -125,23 +126,83 @@ export function recipientSplit(flagged: Member[]):
 }
 
 /**
- * Whether a follow-up can actually LEAVE for her.
+ * Whether a follow-up can actually LEAVE for this member.
  *
- * Written out rather than imported from mock's `hasEmail`: mock imports
- * isEligible and attendancePct FROM this file, so a value import back would
- * close a require cycle and mock's module body -- which calls both at load --
- * would run before they exist. Type imports are erased and are fine.
+ * Exported because it is not the same question as "is there an address on the
+ * record", and anything claiming on screen that an email is or is not going has
+ * to ask THIS one. This is the predicate the send itself splits on, so a screen
+ * that uses it cannot disagree with what the draft does.
  *
- * Exported because it is not the same question as `hasEmail`, and anything
- * claiming on screen that an email is or is not going has to ask THIS one.
- * `hasEmail` is `primaryEmail(m) !== ''` -- her PRIMARY address, untrimmed --
- * so a member whose primary is blank but who holds a second address answers
- * no to it and yes here, and the send would reach somebody a label had just
- * said was unreachable. This is the predicate the send itself splits on, so a
- * screen that uses it cannot disagree with what the draft does.
+ * TWO CONDITIONS, AND THE SECOND IS NEW.
+ *
+ * The address must be non-blank -- a member whose primary is empty but who
+ * holds a second address is reachable at the second one, which is why this is
+ * `some` over the list rather than a test of the primary.
+ *
+ * And it must be an address the academy MAY write to (`emailUsable`). Before
+ * this, a suppressed address never reached here at all: the repository dropped
+ * the whole row on the way out of the member read, so this predicate answered
+ * over a list that had already been censored. That is what made a bounced
+ * address indistinguishable from no address -- the card said "No usable email"
+ * over one that existed, the Edit form opened blank, and the operator retyped
+ * the address that was already on the record
+ * (requests/2026-09-22-saved-email-not-reflecting.md).
+ *
+ * The rule now lives in ONE module, `src/data/emailStatus.ts`, rather than
+ * being written out here a second time. It cannot be imported from `mock.ts`:
+ * mock imports `isEligible` and `attendancePct` FROM this file and calls them
+ * in its module body, so a value import back would close a require cycle and
+ * mock would run before they exist. Type imports are erased and are fine.
  */
 export const isReachable = (m: Member): boolean =>
-  m.emails.some(e => e.address.trim() !== '');
+  m.emails.some(e => e.address.trim() !== '' && emailUsable(e));
+
+/**
+ * WHY a member the rule flagged is not being written to.
+ *
+ * C-76 is that an excluded member is NAMED with the reason, never quietly
+ * dropped from a list that then reads as complete. There was only ever one
+ * reason to give -- "No email on file" -- because there was only one way to be
+ * excluded that this app could see: the repository dropped suppressed addresses
+ * on the way out of the read, so a member who had bounced and a member who had
+ * never given an address arrived here identical.
+ *
+ * Now that the state is carried, the sentence can say which it is, and the
+ * difference is the whole point: "no email on file" is something the academy
+ * fixes by asking the member; a bounce is something it fixes on the Edit form;
+ * an opt-out is not something it may fix at all.
+ *
+ * Only ever called for a member `isReachable` has already answered no for.
+ */
+export function emailExclusionReason(m: Member): string {
+  if (m.emails.length === 0) return 'No email on file';
+  const worst = suppressedAddress(m);
+  return worst?.status === 'unsubscribed' ? 'The member unsubscribed'
+    : worst?.status === 'complained' ? 'The address marked a message as spam'
+    : worst?.status === 'bounced' ? 'The address bounced'
+    : 'No usable email on file';
+}
+
+/**
+ * THE address a screen should name when a member cannot be written to.
+ *
+ * A member may hold several, and they may be suppressed for different reasons.
+ * The order below is what the screen leads with, and it is not arbitrary: an
+ * OPT-OUT outranks everything, because it is the one state the academy may not
+ * clear and the one a reader must not be invited to "fix". A complaint outranks
+ * a bounce for the same reason one rung down -- it is a judgement about the
+ * academy's mail, not about the address.
+ *
+ * Returns undefined for a member with no addresses at all: that is a different
+ * fact and its own state on the card, never folded in here.
+ */
+export function suppressedAddress(m: Member): Member['emails'][number] | undefined {
+  return m.emails.find(e => e.status === 'unsubscribed')
+    ?? m.emails.find(e => e.status === 'complained')
+    ?? m.emails.find(e => e.status === 'bounced')
+    ?? m.emails.find(e => !emailUsable(e))
+    ?? m.emails[0];
+}
 
 /**
  * The two numbers the attendance ring draws, counted from the SAME member

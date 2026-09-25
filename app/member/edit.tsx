@@ -16,7 +16,13 @@ import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../../src/theme/t
 import { DAY_NAMES, type MemberStatus } from '../../src/data/mock';
 import { memberWeekdays, openingDays } from '../../src/data/memberDays';
 import { useCourses, useMembers } from '../../src/data/hooks';
-import { createMember, updateMember, setMemberStatus, setMemberActiveFrom } from '../../src/data/repository';
+import {
+  createMember, updateMember, setMemberStatus, setMemberActiveFrom,
+} from '../../src/data/repository';
+import {
+  emailUsable, emailStateWord, isDeliveryFailure, suppressedOnRecord, normalizeEmail,
+  entryRefusal,
+} from '../../src/data/emailStatus';
 import { namesADisplayName } from '../../src/data/refusalCase';
 import { inactiveFromProblem, dateInWords, dayBefore } from '../../src/data/inactiveFrom';
 import { activeFromProblem } from '../../src/data/joined';
@@ -361,13 +367,61 @@ export default function MemberEdit() {
     ? activeFromProblem(wantedActiveFrom, wantedInactiveFrom || null, iso(new Date()))
     : null;
 
+  /**
+   * THE ADDRESS IN THE BOX IS ONE THE MAIL SYSTEM HAS ALREADY REJECTED.
+   *
+   * Answered from `existing.emails` -- the member's STORED record, which has
+   * carried `status` since RC-106 -- so no query is made and nothing is asked
+   * per keystroke; this is a derived value over data already in memory.
+   *
+   * The stored record rather than the `emails` list this form is editing, and
+   * that difference is the point: an operator who removes the bounced row and
+   * then types it back in is doing exactly the thing this refuses, and a check
+   * against the form's own list would have stopped seeing it the moment the row
+   * was removed.
+   *
+   * BOTH THE HISTORY AND THE LIVE LIST. `suppressedBefore` carries addresses
+   * that have since been REMOVED from the record, which is the hole RC-107
+   * found: `update_member` soft-deletes an address left out of a save, the
+   * member read filtered those rows out, and so removing a suppressed address
+   * and typing it back in produced a fresh row at 'unknown' -- the suppression
+   * erased. For an opt-out that put a member back on the send list after they
+   * had asked not to be. It happened once, in production, to one member.
+   *
+   * Only on the EDIT form, because only an existing member has a record to have
+   * been suppressed on. `suppressedOnRecord` normalises with the same rule
+   * update_member applies, so the form and the database agree about what "the
+   * same address" means
+   * (requests/2026-09-23-bounced-address-asks-for-a-different-one.md).
+   */
+  const refusedDraft = existing
+    ? suppressedOnRecord(emailDraft, [...(existing.suppressedBefore ?? []), ...existing.emails])
+    : undefined;
+  /** The words for it: a bounce, an opt-out and a spam report are three
+   *  different facts and the operator acts on the difference. */
+  const draftRefusal = refusedDraft ? entryRefusal(refusedDraft.status) : null;
+
   // Her name and an address are the fields of HERS the save needs (C-70/C-73;
   // requests/2026-09-06-add-member-email-required.md, both forms). A member
   // with no offering cannot be enrolled, and an unenrolled member is expected
   // at no session and appears in no follow-up list -- so the offering is
   // required too, and the form says which piece is missing.
   const valid = name.trim().length > 0 && !!offering && emails.length > 0
-    && !inactiveFromError && !activeFromError;
+    && !inactiveFromError && !activeFromError
+    /* The box holds an address that has already bounced. Save is BLOCKED rather
+       than quietly dropping the draft: a form that flashed "saved" and then
+       showed no new address is the defect this whole line of work began with
+       (RC-106). Note this gates on the DRAFT, not on the list -- a bounced
+       address already on the member's record does not stop her being saved,
+       or the six members who have one could never be edited at all. */
+    && !refusedDraft;
+
+
+  /** Whether anything on this form can actually be WRITTEN to. Distinct from
+   *  `emails.length`, which is what `valid` gates on: an address that bounced
+   *  or was opted out of is on the record and is not a way to reach anybody,
+   *  and the two lines under the list have to tell those apart. */
+  const anyUsableEmail = emails.some(emailUsable);
 
   // days she may pick are only days her course's offerings actually run
   const courseDays = useMemo(() => {
@@ -479,11 +533,25 @@ export default function MemberEdit() {
   };
 
   const addEmail = () => {
-    const e = emailDraft.trim().toLowerCase();
+    const e = normalizeEmail(emailDraft);
     if (!e) return;
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) { flash('That does not look like an address', 'warn'); return; }
-    // the FIRST address becomes primary; there is always exactly one
-    setEmails(p => [...p, { address: e, primary: p.length === 0 }]);
+    /* ALREADY ON THE RECORD AND ALREADY DEAD. Not added, and the text is left
+       in the box on purpose: the message under it names this address, and
+       clearing the field would take the explanation away with it. This is also
+       why there is no toast -- the answer is "use a different one", which is an
+       instruction about the field the caret is in.
+
+       `addEmail` runs on blur as well as on the button (see AddRow), so this
+       is the same refusal whichever way the operator leaves the field. */
+    if (existing && suppressedOnRecord(e, [...(existing.suppressedBefore ?? []), ...existing.emails])) return;
+    // Already on the form's list, whatever its state -- adding it twice would
+    // send the same address to update_member twice and draw two rows.
+    if (emails.some(x => normalizeEmail(x.address) === e)) { setEmailDraft(''); return; }
+    // the FIRST address becomes primary; there is always exactly one.
+    // 'unknown' is what create_member (0016) and update_member (0027) insert,
+    // so the row this form draws says the same thing the database will hold.
+    setEmails(p => [...p, { address: e, primary: p.length === 0, status: 'unknown' }]);
     setEmailDraft('');
   };
 
@@ -626,7 +694,13 @@ export default function MemberEdit() {
       ? 'Member name and an email address are required'
       : !course ? 'Choose the course to join'
       : !offering ? `Choose the branch — ${course} runs at ${branchOptions.length || 'no'} of them`
+      : draftRefusal ? draftRefusal.title
       : !emails.length ? 'Add an email address — follow-ups are sent there'
+      // Save is NOT blocked on this: a member whose only address was opted
+      // out of still has a name, a course and days somebody may need to
+      // correct, and a form that refused to save them would be unusable for
+      // exactly the member this change is about. It is stated, not enforced.
+      : !anyUsableEmail ? 'No address here can be written to — follow-ups will not reach this member'
       // The Save is disabled for this too, so the line under it has to say
       // which field is holding it -- a dead button with "Prenatal Flow ·
       // Coimbatore" under it explains nothing.
@@ -968,27 +1042,62 @@ export default function MemberEdit() {
       {/* -------------------------------------------------- emails (C-73) */}
       <Label required style={{ marginTop: SPACE.xl }}>Email addresses</Label>
       <View style={{ gap: SPACE.sm, marginTop: SPACE.md }}>
-        {emails.map(e => (
+        {emails.map(e => {
+          /* A SUPPRESSED ADDRESS IS DRAWN, and that is the point of this change.
+             This list used to be seeded from a member record the repository had
+             already stripped of every bounced and opted-out row, so the form
+             opened EMPTY over a member who has an address. The operator typed
+             the one the academy holds, `update_member` found it still live and
+             changed nothing but `is_primary`, and the save reported success
+             (requests/2026-09-22-saved-email-not-reflecting.md).
+
+             Three consequences here: the row says which state it is in, it
+             cannot be made primary while nothing can be sent to it, and a
+             BOUNCE carries a way back. An opt-out carries none -- the member
+             said something deliberate, and 0078 refuses it in the database too,
+             so this is a form deciding what to OFFER rather than the thing
+             that enforces it. */
+          const suppressed = !emailUsable(e);
+          /* A bounce is the mail system's verdict on the ADDRESS; an opt-out or
+             a complaint is the member's own decision. The row says which,
+             because the answer differs: a dead address is replaced with a
+             working one, and a member who said stop is not written to at all.
+             Neither is reinstated -- no screen in this app un-suppresses an
+             address (requests/2026-09-23-bounced-address-asks-for-a-different-one.md). */
+          const dead = isDeliveryFailure(e.status);
+          return (
           <View key={e.address} style={{
             flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
             padding: SPACE.md, borderRadius: RADIUS.md, backgroundColor: theme.surface,
-            borderWidth: 1, borderColor: e.primary ? theme.accent : theme.line,
+            borderWidth: 1,
+            borderColor: suppressed ? ink('absent') : e.primary ? theme.accent : theme.line,
           }}>
             <Pressable
               testID={`member-email-primary-${e.address}`}
+              disabled={suppressed}
               onPress={() => setEmails(p => p.map(x => ({ ...x, primary: x.address === e.address })))}
-              accessibilityRole="radio" accessibilityState={{ selected: e.primary }}
-              accessibilityLabel={`Make ${e.address} the primary address`}
-              style={{ minHeight: TAP_MIN / 2, justifyContent: 'center' }}>
-              <Icon name={e.primary ? 'radio_button_checked' : 'radio_button_unchecked'}
-                size={19} color={e.primary ? theme.accentInk : theme.dim} />
+              accessibilityRole="radio" accessibilityState={{ selected: e.primary, disabled: suppressed }}
+              accessibilityLabel={suppressed
+                ? `${e.address} cannot be the primary address: ${emailStateWord(e.status).toLowerCase()}`
+                : `Make ${e.address} the primary address`}
+              style={{ minHeight: TAP_MIN / 2, justifyContent: 'center', opacity: suppressed ? 0.45 : 1 }}>
+              <Icon name={suppressed ? 'block'
+                : e.primary ? 'radio_button_checked' : 'radio_button_unchecked'}
+                size={19} color={suppressed ? ink('absent') : e.primary ? theme.accentInk : theme.dim} />
             </Pressable>
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 13, fontWeight: '700', color: theme.fgStrong, fontVariant: ['tabular-nums'] }}>
                 {e.address}
               </Text>
-              <Text style={{ fontSize: 10.5, color: e.primary ? theme.accentInk : theme.muted, marginTop: 2 }}>
-                {e.primary ? 'PRIMARY — sends go here' : 'kept on file'}
+              {/* The word, always -- colour is never the only carrier
+                  (guardrail 3, CP-010). */}
+              <Text style={{ fontSize: 10.5, marginTop: 2,
+                color: suppressed ? ink('absent') : e.primary ? theme.accentInk : theme.muted }}>
+                {suppressed
+                  ? `${emailStateWord(e.status).toUpperCase()} — ${dead
+                      ? 'delivery failed, add a different address'
+                      : 'nothing can be sent here'}`
+                  : e.primary ? 'PRIMARY — sends go here' : 'kept on file'}
               </Text>
             </View>
             <Pressable
@@ -1005,17 +1114,59 @@ export default function MemberEdit() {
               <Icon name="close" size={17} color={theme.muted} />
             </Pressable>
           </View>
-        ))}
+          );
+        })}
       </View>
       <AddRow testID="member-email" value={emailDraft} onChange={setEmailDraft}
-        placeholder="anitha@gmail.com" onAdd={addEmail} />
+        placeholder="anitha@gmail.com" onAdd={addEmail} invalid={!!refusedDraft} />
+      {draftRefusal ? (
+        /* DIRECTLY UNDER THE FIELD IT IS ABOUT, never a toast: the answer is
+           "type a different address", which is an instruction about the box the
+           caret is in, and a toast leaves the screen before the operator has
+           finished reading it.
+
+           The whole sentence is VISIBLE TEXT. The icon carries no meaning on
+           its own and nothing here depends on hover -- the detail is not a
+           tooltip (constraint 7), and the tone comes from the measured token
+           pair for the theme that is on rather than a literal (CP-008). */
+        <View testID="member-email-bounced" accessible
+          accessibilityRole="alert"
+          accessibilityLabel={`${draftRefusal.title}. ${draftRefusal.detail}`}
+          style={{
+            flexDirection: 'row', gap: SPACE.sm, alignItems: 'flex-start',
+            marginTop: SPACE.sm, padding: SPACE.md, borderRadius: RADIUS.md,
+            backgroundColor: statusSurface(ink('absent')).bg,
+            borderWidth: 1, borderColor: statusSurface(ink('absent')).border,
+          }}>
+          {/* Decorative: the words beside it ARE the message. The wrapper above
+              is `accessible` with the whole sentence as its label, so React
+              Native announces the block once and does not reach in for the
+              glyph -- which is why no label is needed here, and why the detail
+              never depends on hovering the icon. */}
+          <Icon name="info" size={15} color={ink('absent')} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ fontSize: 12.5, fontWeight: '700', color: ink('absent') }}>
+              {draftRefusal.title}
+            </Text>
+            <Muted style={{ fontSize: 12, lineHeight: 17, marginTop: 2 }}>
+              {draftRefusal.detail}
+            </Muted>
+          </View>
+        </View>
+      ) : null}
       <View style={{ flexDirection: 'row', gap: SPACE.sm, alignItems: 'flex-start', marginTop: SPACE.sm }}>
-        <Icon name={emails.length ? 'mark_email_read' : 'mail_off'} size={15}
-          color={emails.length ? ink('present') : ink('absent')} />
+        {/* THREE THINGS THIS CAN SAY, not two. "Follow-up emails go to the
+            primary address only" over a list where every address is suppressed
+            is the same false reassurance the member card used to give -- the
+            form has to say that nothing is going anywhere. */}
+        <Icon name={anyUsableEmail ? 'mark_email_read' : 'mail_off'} size={15}
+          color={anyUsableEmail ? ink('present') : ink('absent')} />
         <Muted style={{ flex: 1 }}>
-          {emails.length
+          {anyUsableEmail
             ? 'Follow-up emails go to the primary address only.'
-            : `Add an email address — it is where every follow-up is sent, and the member cannot be ${editing ? 'saved' : 'added'} without one.`}
+            : emails.length
+              ? 'No follow-up can be sent to this member. Add a different address.'
+              : `Add an email address — it is where every follow-up is sent, and the member cannot be ${editing ? 'saved' : 'added'} without one.`}
         </Muted>
       </View>
 
@@ -1186,19 +1337,26 @@ function PickRow({ icon, value, onPress, muted, testID, anchorRef }:
  * and clears the draft; the button's handler then sees an empty draft, and
  * both handlers return on an empty draft before doing anything at all.
  */
-function AddRow({ value, onChange, placeholder, onAdd, testID }:
+function AddRow({ value, onChange, placeholder, onAdd, testID, invalid }:
   { value: string; onChange: (v: string) => void; placeholder: string;
-    onAdd: () => void; testID: string }) {
+    onAdd: () => void; testID: string;
+    /** The typed value cannot be accepted. The box takes the refusal's colour
+     *  and says so to a screen reader; the WORDS live under it, because colour
+     *  is never the only carrier of meaning (guardrail 3, CP-010). */
+    invalid?: boolean }) {
   const { theme } = useTheme();
+  const bad = theme.isDark ? STATUS.absent.fgDark : STATUS.absent.fgLight;
   return (
     <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.sm }}>
       <TextInput testID={`${testID}-input`}
         value={value} onChangeText={onChange} placeholder={placeholder}
         placeholderTextColor={theme.muted} accessibilityLabel={placeholder}
+        aria-invalid={invalid || undefined}
         onSubmitEditing={onAdd} onBlur={onAdd}
         style={{
           flex: 1, minHeight: TAP_MIN + 2, borderRadius: RADIUS.md, paddingHorizontal: SPACE.lg,
-          backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
+          backgroundColor: theme.surface, borderWidth: 1,
+          borderColor: invalid ? bad : theme.lineStrong,
           color: theme.fgStrong, fontSize: 14, fontWeight: '600',
         }} />
       <Button testID={`${testID}-add`} label="+ Add" variant="secondary" onPress={onAdd} />

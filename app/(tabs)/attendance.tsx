@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, TextInput } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Screen, Muted, Label, Skeleton, EmptyState, ErrorState } from '../../src/components/ui';
@@ -11,6 +11,7 @@ import { useTheme } from '../../src/theme/ThemeProvider';
 import { useAutoFocus } from '../../src/components/openingFocus';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface, type StatusKey } from '../../src/theme/tokens';
 import { useAttendance, useFilterOptions } from '../../src/data/hooks';
+import { FreshnessLine } from '../../src/components/FreshnessLine';
 import { resolvePeriod, type PeriodChoice } from '../../src/data/period';
 import { formatDate, formatTime } from '../../src/components/DateTimePicker';
 import { useAcademy, ALL_BRANCHES } from '../../src/state/academy';
@@ -140,6 +141,7 @@ export default function Attendance() {
 
   const ink = (k: StatusKey) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
 
+
   const uploadButton = (
     <Pressable testID="attendance-upload" onPress={() => router.push('/upload')}
       accessibilityRole="button" accessibilityLabel="Upload attendance from a Google Meet CSV"
@@ -250,6 +252,16 @@ export default function Attendance() {
         onBack={() => router.navigate(backTo)} right={uploadButton} />}>
 
       {controls}
+
+      {/* The freshness line. Never a skeleton and never a spinner over the
+          rows: a revalidation leaves `state` at 'ready' precisely so the
+          register stays readable while it happens (asyncState.ts), and the
+          only thing that changes here is this sentence. `polite` because it
+          is worth hearing and never worth interrupting for. */}
+      {/* How old the register on screen is, and whether the last attempt to
+          bring it up to date got through. One component, one wording, every
+          screen — src/components/FreshnessLine.tsx. */}
+      <FreshnessLine read={attendance} testID="attendance-freshness" />
 
       {/* ------------------------------------------------------- the totals */}
       <View style={{

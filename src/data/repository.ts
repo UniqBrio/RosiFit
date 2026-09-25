@@ -46,6 +46,7 @@ import {
   type StaffAccess, type AuditEntry, type Remark, type SessionDay, type WeekRow,
   type AttendanceRow, type AttendanceStatus, type Holiday, type MemberSession,
 } from './mock';
+import { type EmailStatus, emailUsable } from './emailStatus';
 import { memberWeek, NO_SESSIONS_ROW, type MemberWeekSession } from './memberWeek';
 // Every read below that is unbounded BY CONSTRUCTION -- a whole table, or an
 // id list of member scale -- goes through this. PostgREST stops at 1000 rows
@@ -221,7 +222,17 @@ export async function fetchMembers(period: Period): Promise<Member[]> {
    */
   const [membersRes, emailsRes, aliasesRes, statsRes, enrolRes, schedRes, metricsRes] = await Promise.all([
     paged('the member list', () => supabase.from('members').select('id, member_code, full_name, status, inactive_from, active_again_from, joined_on').is('deleted_at', null), 'id'),
-    paged('member addresses', () => supabase.from('member_emails').select('id, member_id, email, is_primary, status').is('deleted_at', null), 'id'),
+    /* SOFT-DELETED ROWS ARE READ TOO, and `deleted_at` comes with them.
+       The filter that used to be here hid the member's SUPPRESSION HISTORY:
+       `update_member` soft-deletes an address left out of a save, so removing
+       a bounced or opted-out address and typing it back in produced a
+       brand-new row at 'unknown' -- the suppression silently erased, and for
+       an opt-out that is a member being put back on the send list after
+       asking not to be (RC-107). The live rows are partitioned out below and
+       behave exactly as before; the deleted ones feed `suppressedBefore` and
+       nothing else. Measured cost on production, 23-Sep-2026: 4 deleted rows
+       against 1,245 live. */
+    paged('member addresses', () => supabase.from('member_emails').select('id, member_id, email, is_primary, status, deleted_at'), 'id'),
     paged('member alternate names', () => supabase.from('member_aliases').select('id, member_id, alias_display').eq('alias_type', 'name'), 'id'),
     // last_present_date DATES the streak beside it. The run was printed bare
     // ("consecutive 6") beside a weekly miss count on a five-day course, which
@@ -297,12 +308,64 @@ export async function fetchMembers(period: Period): Promise<Member[]> {
     list.push(a.alias_display as string);
     aliasesByMember.set(a.member_id as string, list);
   }
-  const emailsByMember = new Map<string, { address: string; primary: boolean }[]>();
+  /*
+   * THE STATE IS CARRIED, NOT USED TO DROP THE ROW.
+   *
+   * This loop used to begin `if (e.status === 'bounced' || e.status ===
+   * 'unsubscribed') continue;`, and that one line was the first of the three
+   * pieces of a defect the academy reported as "I added email and then saved
+   * but its not reflecting"
+   * (requests/2026-09-22-saved-email-not-reflecting.md).
+   *
+   * Dropping the row left the record carrying NO TRACE of an address that
+   * exists. So the member card drew its no-address branch -- "No usable email"
+   * over an address sitting in the table -- and the Edit form, which seeds its
+   * list from this same record, opened blank. The operator did the only thing
+   * that screen invited: typed the address the academy holds. `update_member`
+   * (0027) found that row still live, set `is_primary`, never touched `status`,
+   * and reported success having changed nothing. Nothing anywhere in this
+   * repository has ever cleared a suppression.
+   *
+   * Carrying it is RC-031's standing rule applied to this column -- carry the
+   * stored value and derive the label from it, never the reverse -- and it is
+   * what the line below this loop already does for `members.status`, where an
+   * unrecognised value is MAPPED rather than discarded.
+   *
+   * What decides whether an address may be written to is now `emailUsable`
+   * (src/data/emailStatus.ts), asked at the point of use by `isReachable`. One
+   * copy of the rule, reached by every caller, rather than a filter here that
+   * silently censored the record every other question was answered from.
+   */
+  const emailsByMember = new Map<string, Member['emails']>();
+  /* EVERY ADDRESS THIS MEMBER HAS EVER HAD SUPPRESSED, live or removed.
+     A separate map rather than extra entries in `emails`, deliberately: the
+     address list is what the card prints, what the form edits and what the
+     send splits on, and putting removed rows in it would break all three.
+     This is history, consulted only when somebody types an address in. */
+  const suppressedByMember = new Map<string, NonNullable<Member['suppressedBefore']>>();
   for (const e of emailsRes) {
-    if (e.status === 'bounced' || e.status === 'unsubscribed') continue;
-    const list = emailsByMember.get(e.member_id as string) ?? [];
-    list.push({ address: e.email as string, primary: Boolean(e.is_primary) });
-    emailsByMember.set(e.member_id as string, list);
+    const status = (e.status ?? 'unknown') as EmailStatus;
+    const memberId = e.member_id as string;
+
+    if (!emailUsable({ status })) {
+      const seen = suppressedByMember.get(memberId) ?? [];
+      seen.push({ address: e.email as string, status });
+      suppressedByMember.set(memberId, seen);
+    }
+
+    // The live list is exactly what it was before this read widened.
+    if (e.deleted_at) continue;
+    const list = emailsByMember.get(memberId) ?? [];
+    list.push({
+      address: e.email as string,
+      primary: Boolean(e.is_primary),
+      status,
+      // The row's identity, so an address can be acted on by what it IS
+      // rather than by the text in it. Already in the SELECT -- it is the
+      // keyset cursor -- and was being thrown away.
+      id: e.id as string,
+    });
+    emailsByMember.set(memberId, list);
   }
 
   /*
@@ -334,6 +397,9 @@ export async function fetchMembers(period: Period): Promise<Member[]> {
       branch: offering ? (branchName.get(offering.branch_id as string) ?? '—') : '—',
       aliases: aliasesByMember.get(m.id as string) ?? [],
       emails: emailsByMember.get(m.id as string) ?? [],
+      // The history behind that list: addresses that bounced, were opted out
+      // of, or reported spam -- including ones since removed from the record.
+      suppressedBefore: suppressedByMember.get(m.id as string) ?? [],
       // null, not [], for a member who has no override: the schema cannot
       // hold an empty set of own days, and the two mean opposite things to
       // update_member (src/data/memberDays.ts). Carrying it is what lets the
@@ -1486,6 +1552,43 @@ function accessOf(u: { is_active: boolean; pin_set_at: string | null; last_login
   if (!u.pin_set_at) return 'notEnabled';
   if (!u.last_login_at) return 'awaiting';
   return 'active';
+}
+
+/**
+ * THE STAFF LIST MOVED.
+ *
+ * Every other write in this app announces itself from inside this file,
+ * because this file is where the writes are. The staff writes are the
+ * exception: `pinIssue`, `pinReset`, `staffCreate`, `staffDelete` and
+ * `staffReenable` are Edge Functions called through `src/data/api.ts`, which
+ * by design holds no notifications at all — so they are RC-034's class
+ * exactly, and RC-034's own note says so ("the PIN and staff writes call
+ * their own screen's `retry()` at the call site, which covers that screen and
+ * only that screen").
+ *
+ * That was true and it was not enough. `app/staff/add.tsx` is a DIALOG over
+ * the staff list (`DIALOG_SCREEN` in app/_layout.tsx), so the list stays
+ * mounted underneath while a staff member is created on top of it, and it
+ * cannot call the list's `retry()`. The More tab shows a staff COUNT and
+ * stays mounted for the life of the app. Both went on showing the roster
+ * they read before the change — a person added and then missing from the
+ * list she was added to, which is the complaint this whole mechanism exists
+ * to answer.
+ *
+ * So the staff writes announce, the way the CSV import does through
+ * `attendanceImported()`: the caller says it, because the caller is the only
+ * one who knows the Edge Function returned.
+ */
+const staffListeners = new Set<() => void>();
+
+export function onStaffChanged(listener: () => void): () => void {
+  staffListeners.add(listener);
+  return () => { staffListeners.delete(listener); };
+}
+
+/** A staff account was created, removed, re-enabled, or had its PIN issued. */
+export function staffChanged(): void {
+  for (const listener of staffListeners) listener();
 }
 
 export async function fetchStaff(): Promise<Staff[]> {
@@ -2979,7 +3082,11 @@ export async function createMember(input: MemberInput): Promise<{ id: string }> 
       // says the same, and says it once -- the label is derived from the date.
       joinedOn: input.joined_on ?? iso(new Date()),
       joined: joinedLabel(input.joined_on ?? iso(new Date())),
-      emails: input.emails.map((address, i) => ({ address, primary: i === 0 })),
+      // 'unknown' is what create_member (0016) and update_member (0027) write
+      // on every address they insert, so the offline store holds what the
+      // live one would. Never left absent: absent reads as usable and a
+      // writer that omits it silently un-suppresses (memberEmailStatus.test.ts).
+      emails: input.emails.map((address, i) => ({ address, primary: i === 0, status: 'unknown' as const })),
       // create_member (0016) inserts 'active' explicitly; offline says the same.
       status: 'active',
       expected: 0, attended: 0, missed: 0, streak: 0, last: '\u2014',
@@ -3053,7 +3160,11 @@ export async function bulkImportMembers(input: {
       MEMBERS.push({
         id, code: '', name: r.full_name, course: course.name, course_id: course.id,
         branch: offering.branch,
-        aliases: r.aliases, emails: r.email ? [{ address: r.email, primary: true }] : [],
+        aliases: r.aliases,
+        // Same rule as the two writers above: an imported address is 'unknown',
+        // never absent. T-105 tracks that nothing validates it before the first
+        // send -- which is a different gap, and not this one.
+        emails: r.email ? [{ address: r.email, primary: true, status: 'unknown' as const }] : [],
         // the import gives nobody days of her own; every row follows its course
         weekdays: null,
         status: 'active',
@@ -3251,7 +3362,11 @@ export async function updateMember(input: MemberUpdate): Promise<{ moved: boolea
       course: course?.name ?? MEMBERS[i].course,
       branch: offering?.branch ?? MEMBERS[i].branch,
       aliases: input.aliases,
-      emails: input.emails.map((address, n) => ({ address, primary: n === 0 })),
+      // 'unknown' is what create_member (0016) and update_member (0027) write
+      // on every address they insert, so the offline store holds what the
+      // live one would. Never left absent: absent reads as usable and a
+      // writer that omits it silently un-suppresses (memberEmailStatus.test.ts).
+      emails: input.emails.map((address, n) => ({ address, primary: n === 0, status: 'unknown' as const })),
       // `joinedOn` and `joined` are NOT among the fields written here, and
       // the spread above is what keeps them: saving a member without touching
       // her joining date must leave the date she actually joined on alone.
@@ -3300,6 +3415,75 @@ export async function updateMember(input: MemberUpdate): Promise<{ moved: boolea
  * `alias_normalized` is not supplied: the `member_aliases_normalize` trigger
  * computes it, and duplicating that here is how the two would drift.
  */
+/**
+ * CLEAR A SUPPRESSION on one address, so follow-ups can reach the member again.
+ *
+ * DELIBERATELY UNCALLED SINCE 23-Sep-2026, and kept rather than deleted.
+ * The Edit form no longer offers Reinstate: re-using an address the mail system
+ * has already rejected sends the next follow-up into the same hole, so the form
+ * asks for a DIFFERENT address instead
+ * (requests/2026-09-23-bounced-address-asks-for-a-different-one.md).
+ *
+ * `reinstate_member_email` is applied and live on production (0078, ledger row
+ * 20260922195737) and its refusals are proven in
+ * `supabase/tests/57_reinstate_member_email.sql`. This wrapper is the correct,
+ * tested way to reach it if a reinstatement surface is ever wanted somewhere
+ * else; it is not dead by accident, and a future reader should not "tidy" it
+ * away without reading that request first.
+ *
+ * DELIBERATELY NOT `updateMember`. That RPC is sent the WHOLE address list on
+ * every save, so resetting `status` inside it would un-suppress an address as a
+ * side effect of correcting a display name or moving somebody's course. And
+ * `update_member` is one of the fifteen function bodies T-120 measured as
+ * divergent on production (9,625 bytes live against 11,213 in the harness
+ * replay), so restating it from this repository would push whatever this tree
+ * holds over whatever is actually running -- RC-047's mechanism. 0078 adds a
+ * function beside it and restates nothing.
+ *
+ * BY ROW ID, never by the address text: an address has not been unique across
+ * the register since 0071, so a write keyed on the string could reach a
+ * different member's row entirely.
+ *
+ * The REFUSALS are the database's, not this function's -- an opt-out may not be
+ * cleared by anybody, and 0078 says so in a sentence the operator reads. They
+ * are not restated here, because a second copy of the rule is how the form
+ * starts offering something the database will refuse (RC-023).
+ */
+export async function reinstateMemberEmail(memberEmailId: string): Promise<void> {
+  if (!isConfigured) {
+    // Offline the fixture list IS the store. No fixture carries a suppression,
+    // so this is unreachable by construction -- it is written out rather than
+    // stubbed because an offline branch that quietly does nothing and returns
+    // is the exact defect this whole change exists to end (RC-008).
+    for (const m of MEMBERS) {
+      const hit = m.emails.find(e => e.id === memberEmailId);
+      if (!hit) continue;
+      if (hit.status === 'unsubscribed') {
+        throw new Error('The member unsubscribed from this address, and only the member can undo that. Nothing has been saved.');
+      }
+      if (hit.status !== 'bounced' && hit.status !== 'complained') {
+        throw new Error('That address is not suppressed, so there is nothing to reinstate. Nothing has been saved.');
+      }
+      hit.status = 'unknown';
+      membersChanged();
+      return;
+    }
+    throw new Error('That address is not on the member\'s record. Nothing has been saved.');
+  }
+
+  const { error } = await supabase.rpc('reinstate_member_email', {
+    p_member_email_id: memberEmailId,
+  });
+  if (error) {
+    console.error('reinstateMemberEmail:', error.message);
+    throw new Error(memberWriteError(error));
+  }
+  // The roster the whole app derives from carries the status now, so one
+  // notification moves the card, the roster row and the follow-up counts
+  // together (guardrail 1).
+  membersChanged();
+}
+
 export async function addMemberAlias(memberId: string, alias: string): Promise<void> {
   const display = cleanAlias(alias);
 

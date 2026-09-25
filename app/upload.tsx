@@ -29,11 +29,18 @@ import {
   planBatch, batchAskWords, batchHeading, mergedFileName, mergedNote,
 } from '../src/data/uploadBatch';
 import { iso } from '../src/data/period';
+import { autoDecisions, heldNames, heldWords, heldSentence } from '../src/data/importDecisions';
 import {
   alreadyImportedWords, nothingChanged, noChangeWords, changeSummary,
   type ImportChanges, type OutcomeWords,
 } from '../src/data/uploadOutcome';
 import { FormDialog } from '../src/components/FormDialog';
+import {
+  stageWords, stillWorkingWords, WAITING_NOTE, STILL_WORKING_MS, type UploadStage,
+} from '../src/data/uploadProgress';
+import {
+  fixtureModeRefusal, commitFailureText, previewFailureText,
+} from '../src/data/uploadSafety';
 
 /**
  * THERE IS NO STEP BAR ANY MORE, because there is no longer a sequence to
@@ -65,42 +72,10 @@ import { FormDialog } from '../src/components/FormDialog';
  */
 type Phase = 'choose' | 'pick' | 'course' | 'confirm' | 'working' | 'done';
 
-/**
- * WHAT THE IMPORT DOES WITH A ROW NOBODY WAS ASKED ABOUT.
- *
- * An exact match -- her canonical name, or a display name already confirmed
- * for her -- is her, and her attendance is marked. Everything else becomes a
- * NEW MEMBER WITH NO EMAIL, which is what puts her in the No email group on
- * the course, next to the two buttons that resolve her.
- *
- * WHY CREATE RATHER THAN LINK, for a fuzzy hit the matcher is 90% sure of,
- * or for a name two members share: because the two mistakes are not the same
- * size. A wrong LINK marks the wrong woman present and looks exactly like a
- * right one -- nothing on any screen says it happened. A wrong CREATE puts a
- * name you recognise in the No email group, where "add display name to
- * existing member" folds her into the real member and carries her attendance
- * across with her (0032). Visible and two taps to undo beats invisible and
- * permanent. Confirmed by the requester on 06-Sep-2026.
- *
- * This is what C-79's "a fuzzy hit is never auto-accepted" becomes: it is
- * still never accepted AS a match. It is filed as somebody new until a person
- * says otherwise.
- *
- * The instructor is not in here at all: csv-import sets staff names aside
- * before matching, so she never reaches this function as an unmatched row.
- */
-function autoDecisions(rows: { row: number; kind: string; candidates: unknown[] }[]): ImportDecision[] {
-  return rows
-    .filter(r => r.kind !== 'matched' && r.kind !== 'noEmail')
-    .map(r => ({
-      row: r.row,
-      action: 'add_as_new' as const,
-      // C-80 wants an acknowledgement that this is a different person from
-      // the candidate shown. Nobody was shown one, and this IS the
-      // acknowledgement: the row is deliberately filed as somebody new.
-      confirm_different_person: r.candidates.length > 0,
-    }));
-}
+/* The decision for each row is made in src/data/importDecisions.ts, where a
+   spec can run it. What it decides, and the row it used to get wrong -- an
+   ambiguous name filed as somebody new, a third record for one person --
+   is written there. */
 
 /**
  * What the import did, in the terms the requester asked to see it in:
@@ -126,6 +101,9 @@ type Outcome = {
   /** names whose only member of that name is enrolled in ANOTHER course, so
    *  they were added here as somebody new rather than marking that woman */
   other_course: string[];
+  /** names two or more members of this course already hold, HELD BACK:
+   *  nobody created, nobody marked on a guess (src/data/importDecisions.ts) */
+  ambiguous: string[];
   /** names Meet wrote more than once, counted once */
   duplicates: string[];
   /** the file this one corrected, when the day already had one */
@@ -388,6 +366,46 @@ function UploadBody() {
    * after every preview has answered, and the previews are most of the wait.
    */
   const [batchCount, setBatchCount] = useState(0);
+  /**
+   * WHICH STEP OF THE UPLOAD IS OPEN RIGHT NOW.
+   *
+   * Exactly the three the CLIENT can see, because each is a thing it is
+   * itself doing or a request it is itself holding open: reading and parsing
+   * the files, `csvPreview` open, `csvCommit` open. It does not and must not
+   * claim to know where `csv-import` is inside any of them.
+   */
+  const [step, setStep] = useState<UploadStage>('reading');
+  /**
+   * The wait has gone on long enough to say so.
+   *
+   * A LABEL AND NOTHING ELSE. Nothing reads it, nothing branches on it, and
+   * it can never reach `setPhase('done')` — the result is whatever csvCommit
+   * resolves or rejects with, and only that. This is the one place a timer
+   * touches the upload at all, and it is why it is kept this small.
+   */
+  const [stillWorking, setStillWorking] = useState(false);
+
+  /* Restarted whenever the stage changes, so "still processing" is about the
+     step that is actually open rather than about the upload as a whole. */
+  useEffect(() => {
+    if (phase !== 'working') { setStillWorking(false); return; }
+    setStillWorking(false);
+    const timer = setTimeout(() => setStillWorking(true), STILL_WORKING_MS);
+    return () => clearTimeout(timer);
+  }, [phase, step]);
+
+  /**
+   * A BUILD THAT CANNOT REACH ITS DATABASE MUST NOT REPORT AN IMPORT.
+   *
+   * T-113/T-114: with no project configured this screen answers from
+   * fixtures — counts, a day, a register, and no request — which is right on
+   * the walkthrough and a fabrication on a real origin. It has already
+   * happened once, from a stale Metro cache over a correct `.env`. The rule
+   * is in src/data/uploadSafety.ts; this reads the host it is running on.
+   */
+  const fixtureRefusal = fixtureModeRefusal(
+    isConfigured,
+    typeof window === 'undefined' ? null : window.location?.hostname ?? null);
 
   const scope = scopeSessions(pending.data ?? [], courseId, date);
   const sessions = scope.sessions;
@@ -474,6 +492,20 @@ function UploadBody() {
    */
   const choose = async () => {
     setFailure(null);
+    /* AT THE DOOR. Refused before the picker opens, so nothing is read, sent
+       or reported by a build that cannot write any of it (T-114). */
+    if (fixtureRefusal) { setFailure({ text: fixtureRefusal }); return; }
+    setStep('reading');
+    /* CLEARED ON EVERY PICK, because the progress line now READS it.
+       `batchCount` is set by stageBatch and was only ever cleared in the six
+       full-reset clusters — so declining a three-file override, or a batch
+       preview that failed, left it at 3, and the next single-file upload said
+       "Reading 3 files…" over one file and suppressed that file's name. A
+       progress line that states a false quantity about the request in flight
+       is the defect uploadProgress.ts exists to avoid, said by the panel
+       rather than by a countdown. A single file is one file; stageBatch sets
+       the real number again before anything is shown for a batch. */
+    setBatchCount(1);
     try {
       const chosen = await pickCsvFiles();
       // She opened the picker and chose nothing.
@@ -563,6 +595,12 @@ function UploadBody() {
     try {
       let staged: Staged;
       if (!isConfigured) {
+        /* The second half of the T-114 guard, on the branch that actually
+           invents the result. `choose` refuses before this is reachable; this
+           is here because the branch itself is what fabricated an import, and
+           a guard one call away from the fabrication is a guard that a future
+           edit can walk around. */
+        if (fixtureRefusal) { setFailure({ text: fixtureRefusal }); setPhase('pick'); return; }
         // No project configured: the fixtures answer, and they answer at once.
         const name = IMPORTED_DAYS[day];
         staged = {
@@ -582,6 +620,8 @@ function UploadBody() {
         }
         const parsed = parseMeetCsv(source.text);
         const deduped = dedupeRows(parsed.rows);
+        // The request is about to be open: matching is what it is doing.
+        setStep('matching');
         const preview: PreviewResult = await csvPreview({
           offering_id: target.offering_id,
           // FROM THE FILE, not from a list. The session this belongs to is
@@ -646,12 +686,12 @@ function UploadBody() {
       }
       await commit(source, staged);
     } catch (err) {
-      // The sentence the commit's own catch already ships. It is true of this
-      // path too -- the preview writes no attendance -- and a second wording
-      // for the same fact is a new string this change was not asked for.
-      setFailure({ text: err instanceof Error
-        ? `${err.message} Nothing was written.`
-        : 'The import did not run. Nothing was written.' });
+      /* "Nothing was written" is TRUE of this path whatever went wrong, and
+         stays. A preview stages a `csv_imports` row at `previewed` and
+         touches no attendance; both server-side checks count only
+         `completed`, so even a reply that never arrived has written nothing.
+         The commit is the one that cannot say this — see uploadSafety.ts. */
+      setFailure({ text: previewFailureText(err) });
       setPhase('pick');
     }
   };
@@ -672,6 +712,8 @@ function UploadBody() {
     setPhase('working');
 
     if (!staged.preview) {
+      /* The branch T-113 caught reporting an import that never happened. */
+      if (fixtureRefusal) { setFailure({ text: fixtureRefusal }); setPhase('pick'); return; }
       // No project configured: the fixtures answer, and they answer at once.
       setOutcome(fixtureOutcome(staged.day, source, staged.supersedes));
       setPhase('done');
@@ -680,6 +722,9 @@ function UploadBody() {
 
     try {
       const preview = staged.preview;
+      // One transaction, about to be open. This is the stage whose answer
+      // can be lost, which is why it is the one that says so.
+      setStep('writing');
       const result = await csvCommit(preview.import_id, autoDecisions(preview.rows));
       // The register has moved. Every mounted list still holds what it read
       // BEFORE the file went in -- the member cards most visibly, because
@@ -692,13 +737,15 @@ function UploadBody() {
       setOutcome({
         session_date: staged.day,
         with_email: c.matched ?? 0,
-        no_email: (c.noEmail ?? 0) + (c.possible ?? 0) + (c.ambiguous ?? 0) + (c.unmatched ?? 0),
+        // Not `ambiguous`: a held row lands nowhere, so it is counted nowhere.
+        no_email: (c.noEmail ?? 0) + (c.possible ?? 0) + (c.unmatched ?? 0),
         imported: result.present_or_extra,
         dropped: preview.dropped_names ?? [],
         staff: preview.staff_names ?? [],
         // Absent from a project still on the older function, and read as
         // "nothing to say" rather than "none": the note simply does not draw.
         other_course: preview.other_course_names ?? [],
+        ambiguous: heldNames(preview.rows),
         duplicates: staged.duplicates,
         supersedes: staged.supersedes?.file_name ?? null,
         // Absent until the migration that returns it is applied, which is why
@@ -711,11 +758,15 @@ function UploadBody() {
       });
       setPhase('done');
     } catch (err) {
-      // The whole file failed together -- nothing landed -- so say that rather
-      // than leaving anyone to wonder which half went in.
-      setFailure({ text: err instanceof Error
-        ? `${err.message} Nothing was written.`
-        : 'The import did not run. Nothing was written.' });
+      /* A REFUSAL and a LOST ANSWER are not the same thing, and this used to
+         say they were. commit_csv_import raises inside its transaction, so a
+         refusal the server actually sent really did write nothing — that
+         sentence is kept, word for word. But if the reply never came back,
+         the transaction may well have committed and the register moved, and
+         "Nothing was written." is then a flat assertion of the opposite of
+         what happened (T-109). uploadSafety.ts tells the two apart by
+         whether an HTTP status came with the error. */
+      setFailure({ text: commitFailureText(err) });
       setPhase('pick');
     }
   };
@@ -767,6 +818,8 @@ function UploadBody() {
   const previewDay = async (src: DayImport, day: string): Promise<
     { kind: 'staged'; staged: Staged } | { kind: 'already'; words: OutcomeWords }> => {
     if (!isConfigured) {
+      // The batch's copy of the same T-114 guard, on the same branch.
+      if (fixtureRefusal) throw new Error(fixtureRefusal);
       // No project configured: the fixtures answer, and they answer at once.
       const name = IMPORTED_DAYS[day];
       return { kind: 'staged', staged: {
@@ -776,6 +829,7 @@ function UploadBody() {
       } };
     }
 
+    setStep('matching');
     const preview = await csvPreview({
       offering_id: target!.offering_id,
       session_date: day,
@@ -812,8 +866,10 @@ function UploadBody() {
     setOutcome(null);
     setBatch(null);
     setBatchCount(files.length);
+    setStep('reading');
     setPhase('working');
 
+    if (fixtureRefusal) { setFailure({ text: fixtureRefusal }); setPhase('pick'); return; }
     if (!target?.offering_id) {
       setFailure({ text: 'No course is selected, so there is nothing to import into. Nothing was written.' });
       setPhase('pick');
@@ -888,10 +944,9 @@ function UploadBody() {
       await commitBatch(staged, other, order);
     } catch (err) {
       // A preview failed, so NOTHING in this batch was committed — the writes
-      // all happen after every preview has answered.
-      setFailure({ text: err instanceof Error
-        ? `${err.message} Nothing was written.`
-        : 'The import did not run. Nothing was written.' });
+      // all happen after every preview has answered. True whether or not the
+      // server answered, so this keeps the plain sentence.
+      setFailure({ text: previewFailureText(err) });
       setPhase('pick');
     }
   };
@@ -908,6 +963,7 @@ function UploadBody() {
    */
   const commitBatch = async (staged: StagedFile[], other: BatchRow[], order: string[]) => {
     setFailure(null);
+    setStep('writing');
     setPhase('working');
 
     const rows: BatchRow[] = [...other];
@@ -920,6 +976,12 @@ function UploadBody() {
       const merged = mergedNote(source.fileNames, st.day, dayLabel);
       try {
         if (!st.preview) {
+          /* The batch's fixture result, guarded like every other place one is
+             invented (T-114). `previewDay` already refuses earlier, so this
+             is unreachable in practice -- and it is here precisely because a
+             guard one call away from the fabrication is a guard that a later
+             edit walks around. */
+          if (fixtureRefusal) throw new Error(fixtureRefusal);
           // No project configured: the fixtures answer. The fixture counts come
           // from MATCH_ROWS whatever the text; the rows already merged here are
           // what a real preview would classify.
@@ -950,18 +1012,21 @@ function UploadBody() {
                 changeSummary(result.changes ?? null),
                 st.supersedes ? `Replaced ${st.supersedes.file_name}.` : null,
                 overrideSummary(result.overridden ?? null),
+                heldSentence(heldNames(preview.rows)),
                 merged,
               ].filter(Boolean).join(' '),
           files: source.fileNames.length,
           withEmail: c.matched ?? 0,
-          noEmail: (c.noEmail ?? 0) + (c.possible ?? 0) + (c.ambiguous ?? 0) + (c.unmatched ?? 0),
+          noEmail: (c.noEmail ?? 0) + (c.possible ?? 0) + (c.unmatched ?? 0),
         });
       } catch (err) {
+        /* Same distinction as the single-file commit, said on this file's own
+           row: a refusal the server sent wrote nothing, a reply that never
+           arrived cannot be spoken for. Each file is its own transaction, so
+           the claim is per row and not about the batch. */
         rows.push({
           fileName: source.name, day: st.day, kind: 'failed',
-          note: err instanceof Error
-            ? `${err.message} Nothing was written for this file.`
-            : 'This file did not import. Nothing was written for it.',
+          note: commitFailureText(err),
           files: source.fileNames.length,
           withEmail: 0, noEmail: 0,
         });
@@ -1289,21 +1354,50 @@ function UploadBody() {
               onPress={() => { setFailure(null); setPhase('course'); }} />
           </View>
 
+          {/* ------------------------------------------------ while it works
+
+              WHAT THIS SAYS AND WHAT IT REFUSES TO SAY. It names the step
+              that is open -- reading the files, matching names, writing the
+              register -- because those are the three the client genuinely
+              knows: each is something it is doing or a request it is holding.
+              It carries no countdown, no seconds and no percentage, because
+              nothing in this repository has ever measured this path (T-068
+              and V-01 are both unrun) and the documented Edge CPU ceiling is
+              2s, an order of magnitude under the 15s that was proposed for
+              display. An invented number that runs out invites exactly the
+              conclusion this flow must never allow: that the upload is
+              finished when the server has not said so.
+
+              The indicator is INDETERMINATE by construction, and the note
+              under it says who decides. */}
           {phase === 'working' ? (
             <View testID="upload-working" accessibilityLiveRegion="polite" style={{
               marginTop: SPACE.md, padding: SPACE.lg, borderRadius: RADIUS.lg,
-              flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
+              flexDirection: 'row', alignItems: 'flex-start', gap: SPACE.md,
               backgroundColor: statusSurface(theme.accentInk).bg,
               borderWidth: 1, borderColor: statusSurface(theme.accentInk).border,
             }}>
               <Icon name="cloud_upload" size={20} color={theme.accentInk} />
-              <Body style={{ flex: 1, fontSize: 12.5 }}>
+              <View style={{ flex: 1 }}>
                 {/* A batch does not set `file`, because there is no one file
                     it is working on. It says how many instead. */}
-                {batchCount > 1
-                  ? `Importing ${batchCount} files — matching every name against the register.`
-                  : `Importing ${file?.name ?? 'the file'} — matching every name against the register.`}
-              </Body>
+                <Body style={{ fontSize: 12.5, fontWeight: '700' }}>
+                  {stageWords(step, Math.max(batchCount, 1))}
+                </Body>
+                {batchCount <= 1 && file?.name ? (
+                  <Muted style={{ marginTop: 2 }}>{file.name}</Muted>
+                ) : null}
+                {/* Only once the step has genuinely been open long enough
+                    that somebody would wonder. It changes the wording and
+                    nothing else -- it cannot end the upload, and the timer
+                    behind it reaches no state but this sentence. */}
+                {stillWorking ? (
+                  <View testID="upload-still-working" style={{ marginTop: 6 }}>
+                    <Body style={{ fontSize: 12.5 }}>{stillWorkingWords(step)}</Body>
+                  </View>
+                ) : null}
+                <Muted style={{ marginTop: 6 }}>{WAITING_NOTE}</Muted>
+              </View>
             </View>
           ) : null}
 
@@ -1538,6 +1632,16 @@ function UploadBody() {
             <Note testID="upload-other-course" ink={warnInk} icon="swap_horiz"
               title={`${outcome.other_course.length} ${outcome.other_course.length === 1 ? 'name belongs' : 'names belong'} to another course`}
               body={`${outcome.other_course.join(', ')} ${outcome.other_course.length === 1 ? 'matches a member' : 'match members'} enrolled elsewhere, and a member is in one course at a time — so ${outcome.other_course.length === 1 ? 'they were added to this course as somebody new' : 'they were added to this course as new members'}, not marked present on the other register. If it is the same member, “Add display name to existing member” on the course folds them in and carries their attendance across.`} />
+          ) : null}
+
+          {/* A NAME TWO MEMBERS OF THIS COURSE ALREADY HOLD. The import will not
+              guess which one attended, and it will not invent a third -- the
+              row is held back, and this is where that is said, with the two
+              taps that resolve it. The words are in src/data/importDecisions.ts. */}
+          {outcome.ambiguous.length > 0 ? (
+            <Note testID="upload-ambiguous" ink={warnInk} icon="group"
+              title={heldWords(outcome.ambiguous).title}
+              body={heldWords(outcome.ambiguous).body} />
           ) : null}
 
           {/* WHO RAN THE CLASS. Named, because leaving the instructor off the
@@ -1801,7 +1905,8 @@ function Note({ testID, ink, icon, title, body }: {
 function fixtureOutcome(day: string, source: { text: string }, supersedes: Supersedes): Outcome {
   const kinds = MATCH_ROWS.map(r => r.kind);
   const withEmail = kinds.filter(k => k === 'matched').length;
-  const newMembers = kinds.filter(k => k === 'possible' || k === 'ambiguous' || k === 'unmatched').length;
+  // An ambiguous row is held, not landed, so it is in neither count.
+  const newMembers = kinds.filter(k => k === 'possible' || k === 'unmatched').length;
   const noEmail = kinds.filter(k => k === 'noEmail').length + newMembers;
   return {
     session_date: day,
@@ -1811,6 +1916,7 @@ function fixtureOutcome(day: string, source: { text: string }, supersedes: Super
     dropped: [],
     staff: [],
     other_course: [],
+    ambiguous: heldNames(MATCH_ROWS.map(r => ({ row: r.row, kind: r.kind, raw_name: r.raw, candidates: [] }))),
     duplicates: [...new Set(dedupeRows(parseMeetCsv(source.text).rows).duplicates)],
     supersedes: supersedes?.file_name ?? null,
     // The fixtures describe a register being replaced; they do not invent
