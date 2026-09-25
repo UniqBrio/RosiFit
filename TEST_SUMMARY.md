@@ -202,6 +202,282 @@ all found by a person using the app, which is three for three, and RC-108's proc
 
 ---
 
+## Gate run - 2026-09-25 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 29.0s total - slowest G7 Unit + pure specs (16.2s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (45ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit-T407/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (48ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit-T407/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (49ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit-T407/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (72ms)
+- **G5 Types** - PASS (5.1s)
+- **G6 Lint** - FAIL (7.1s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (16.2s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (108ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (49ms)
+- **G10 Backward compatibility (fixtures)** - PASS (98ms)
+- **G11 Wide tables are configurable** - PASS (49ms)
+- **G12 Installable as an application** - PASS (62ms)
+- **G13 Approved design still being built** - PASS (44ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-24 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 24.3s total - slowest G7 Unit + pure specs (15.4s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (54ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit-T408/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (48ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit-T408/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (46ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit-T408/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (61ms)
+- **G5 Types** - PASS (5.3s)
+- **G6 Lint** - FAIL (2.9s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (15.4s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (117ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (51ms)
+- **G10 Backward compatibility (fixtures)** - PASS (103ms)
+- **G11 Wide tables are configurable** - PASS (53ms)
+- **G12 Installable as an application** - PASS (69ms)
+- **G13 Approved design still being built** - PASS (45ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-25 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 27.3s total - slowest G7 Unit + pure specs (16.9s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (50ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit-T406/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (52ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit-T406/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (52ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit-T406/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (71ms)
+- **G5 Types** - PASS (6.2s)
+- **G6 Lint** - FAIL (3.4s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (16.9s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (128ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (58ms)
+- **G10 Backward compatibility (fixtures)** - PASS (127ms)
+- **G11 Wide tables are configurable** - PASS (56ms)
+- **G12 Installable as an application** - PASS (76ms)
+- **G13 Approved design still being built** - PASS (49ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-25 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 32.8s total - slowest G7 Unit + pure specs (16.6s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (50ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit-T405/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (48ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit-T405/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (49ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit-T405/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (71ms)
+- **G5 Types** - PASS (5.9s)
+- **G6 Lint** - FAIL (9.6s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (16.6s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (130ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (56ms)
+- **G10 Backward compatibility (fixtures)** - PASS (111ms)
+- **G11 Wide tables are configurable** - PASS (53ms)
+- **G12 Installable as an application** - PASS (70ms)
+- **G13 Approved design still being built** - PASS (50ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
 ## Gate run - 2026-09-24 - VERDICT: FAIL
 
 Steps: 7 pass, 6 fail, 0 blocked.
@@ -11125,3 +11401,84 @@ needs a signed-in session (mobile + PIN through the auth-login Edge Function) th
 did not have - so the defect and the fix are evidenced by the live request-size measurement in
 .evidence/request-size-fail-first.txt rather than by driving the UI. DB harness - N/A: no
 migration, no schema surface.
+## T-043 · 0079 RLS helpers once per statement · 24-Sep-2026 · RC-053
+FAIL-FIRST: supabase/tests/58_rls_rules_by_role.sql - "no policy calls a helper bare" failed
+naming all 62 policies on a harness replayed WITHOUT 0079 (psql run WITHOUT ON_ERROR_STOP so
+the rest of the file still ran); passes at 0 with it.
+UNCHANGED RULES: the file's other 26 behavioural assertions (per-role visibility of every
+seeded table incl. admin-or-self / admin-only / delete shapes; UPDATE, INSERT WITH CHECK and
+DELETE per role; app_users self-update; audit_remarks author check; suspended subscription)
+passed 26/26 on the pre-0079 tree and 26/26 after it. After 0079 the whole file is 28/28
+under test.sh (ON_ERROR_STOP): +1 catalogue, +1 policy count = 62.
+EQUIVALENCE, now executable: 0079's $verify$ un-wraps every "( SELECT f() AS f)" and compares
+with a pre-image taken in the same run; it raises on any difference. Observed firing on two
+injected defects, then restored: is_active_app_user -> is_super_admin in courses_read
+("not equivalent ... courses.courses_read"), and the 'previewed' literal dropped from
+csv_imports_insert ("... csv_imports.csv_imports_insert").
+DB HARNESS: bash db/harness/test.sh - THERE ARE FAILURES, the SAME set before and after
+(pre-existing, Gate 2): diff of per-file FAIL/ERROR lines is empty; the only new file, 58,
+has no FAIL or ERROR. PASS count 901 -> 929 (+28 = file 58). Postgres 16 harness vs 17.6
+production is T-124, open.
+PARITY: production pg_policies fingerprint = harness fingerprint (62, md5 4d21e86e...), read
+24-Sep-2026; 0079 refuses to run against any other.
+NOT RUN: npm run check / gate - no src/ or app/ change on this branch.
+
+## T-405 · shared identity read · 25-Sep-2026 · RC-076
+FAIL-FIRST (behaviour): cold start of the production bundle against a local HTTP/2 stand-in, unmodified main,
+3 runs: 10 app_users reads, strictly serial (each starts ~4 ms after the previous ends), 1,828-1,836 ms first
+request -> last response. After: 2 parallel reads, 706-723 ms. Same with an expired token: 11 -> 2 reads,
+2,241-2,245 -> 916-947 ms.
+FAIL-FIRST: src/data/sharedRead.test.ts - "Cannot find module './sharedRead'" (new module); 9/9 after.
+The race case ("a read that settles AFTER a newer one began cannot clear the newer one") was mutation-checked:
+removing the current===entry guard makes it fail; restored.
+UNIT: 1981 tests, 6 fail - the SAME 6 as clean main. check: lint, typecheck, contrast, icons, functions, edge PASS.
+GATE: FAIL on the same pre-existing set as main (G1-G3 T-034, G6 scripts/conformance.mjs warning, G7, G8).
+REVIEW: code-reviewer APPROVE; its findings applied (race + clock tests, unused force option removed, cast removed).
+NOT RUN: a production cold start. Ships on merge; verify in edge_logs.
+
+## T-406 · shared reads at the client's fetch · 25-Sep-2026 · RC-077
+FAIL-FIRST: src/lib/sharedFetch.test.ts - "Cannot find module './sharedFetch'" (new module); 17/17 after.
+Each fix mutation-checked (removing it fails exactly its test): settle-time clear on write; in-flight joins
+bounded by age; body-failure drop (entryCount 0); sweep of expired entries; sign-out clear.
+BEHAVIOUR (production bundle vs local HTTP/2 stand-in, 200 ms replies, 3 runs): cold start 34 -> 26 requests,
+1,828-1,835 -> 692-713 ms first request -> last response; cold start + 3 tab switches 54 -> 31 requests, every
+remaining request distinct. Window measured at 2 / 5 / 12 s: 45 / 31 / 31 requests; 5 s shipped.
+UNIT: 1989 tests, 6 fail - the SAME 6 as clean main. check: lint, typecheck, contrast, icons, functions, edge PASS.
+GATE: FAIL on the same pre-existing set as main (G1-G3 T-034, G6 scripts/conformance.mjs warning, G7, G8).
+REVIEW: code-reviewer twice. Round 1 REQUEST CHANGES (hung-request join, body-failure entry, false freshness claim,
+unbounded map, vacuous test) - all fixed. Round 2 REQUEST CHANGES (evidence cited but not in tree, weak
+body-failure assertion, 12 s-only tests, two overstated comments) - all fixed in this commit.
+NOT RUN: production. Ships on merge; verify requests per URL per session-minute in edge_logs.
+
+## T-408 · csv-import pinned beside the database · 24-Sep-2026
+FAIL-FIRST: src/data/functionRegion.test.ts - "csv-import is sent to ap-southeast-1, next to the database"
+failed against the neutral functionTarget (actual forceFunctionRegion: null, expected 'ap-southeast-1');
+the other 3 cases passed. After the change: 4/4.
+UNIT: 1976 tests, 6 fail - the SAME 6 fail on clean main (list-screen filters x1, token list x5 - Gate 2
+rows T-022/T-023/T-025); this branch adds 4 passing tests and no failure.
+typecheck PASS · lint PASS · check:contrast/icons/functions/edge PASS.
+GATE: FAIL - G1/G2/G3 (T-034), G6 (warning in scripts/conformance.mjs, untouched), G7 (the 6 above), G8 -
+the same set as the previous gate run on main; nothing new.
+NOT RUN: a live call. The network proxy blocks *.supabase.co from this session, and no import can be driven
+without a signed-in session. Runtime region is unverified until real imports run after deploy.
+
+
+## T-407 · JavaScript per screen · 25-Sep-2026 · RC-078
+FAIL-FIRST: src/components/iconImports.test.ts - "no screen imports the @expo/vector-icons barrel" failed on
+main (Icon.tsx imported the barrel); 2/2 after. src/pwa/deployment.test.ts - the T-407 route-chunk case failed
+on main's containment rule (Home's chunk read as a new build); passes after. src/pwa/chunkRecovery.test.ts -
+the wiring cases failed before the boundary existed; 10/10 after. The in-flight wait, the 60 s window and the
+read-back on the note were each mutation-checked: removing one fails exactly its test.
+BROWSER (production build, Members chunk deleted, 404): before - a blank page, 0 reloads. After - 1 reload,
+then "This screen could not be loaded. Check the connection and try again." on theme.bg, dark and light.
+BEHAVIOUR: compressed JS per screen 702 -> 467 KB (Home, Attendance, Members); brotli 544 -> 370 KB.
+Lighthouse mobile LCP Home 5.07 -> 3.95 s, Members 7.30 -> 5.80 s. Owner targets (< 250 KB, LCP < 2.5 s)
+NOT met - the shared entry is ~281 KB gzip on its own (RUN_app-feels-slow.md, Fix 4).
+UNIT: 1987 tests, 6 fail - the SAME 6 as clean main. typecheck PASS · lint PASS.
+GATE: FAIL on the same pre-existing set as main (G1-G3 T-034, G6 scripts/conformance.mjs warning, G7 the 6
+above, G8).
+REVIEW: code-reviewer twice. Round 1 REQUEST CHANGES (no boundary for chunk failures, loop-guard stamp mismatch,
+docs/pinning, weak icon test) - fixed. Round 2 REQUEST CHANGES (reload ignored in-flight writes, once-per-tab
+flag never cleared, storage-failure loop, boundary unthemed, "Nothing was changed" promise, classifier breadth,
+sw cache not bumped, weak stamp test, perf-script docs and fallback size) - all fixed in this commit.
+NOT RUN: production. Ships on merge; the first deployment after it is the real chunk-miss test.

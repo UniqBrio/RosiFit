@@ -9,6 +9,7 @@ import {
   bundlesFrom,
   bundlesFromHtml,
   safeToReload,
+  sharedBundles,
   shouldReload,
   stamp,
 } from './deployment';
@@ -72,7 +73,7 @@ export function DeploymentRefresh(): null {
     };
 
     /* We are the build the last reload was for: the note has done its job. */
-    if (attempted() === stamp(running)) {
+    if (attempted() === stamp(sharedBundles(running))) {
       try {
         sessionStorage.removeItem(ATTEMPT_KEY);
       } catch {
@@ -95,7 +96,7 @@ export function DeploymentRefresh(): null {
         waiting = setTimeout(() => reloadWhenIdle(served), RETRY_MS);
         return;
       }
-      remember(stamp(served) as string);
+      remember(stamp(sharedBundles(served)) as string);
       window.location.reload();
     };
 

@@ -206,7 +206,11 @@ export function EmptyState({ title, body, action, onAction }:
   );
 }
 
-export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
+export function ErrorState({ message, onRetry, safeToRetry = true }: {
+  message: string; onRetry?: () => void;
+  /** false where it is not KNOWN that nothing changed (the root boundary, T-407). */
+  safeToRetry?: boolean;
+}) {
   const { theme } = useTheme();
   return (
     <View accessibilityLiveRegion="polite" style={{
@@ -216,9 +220,11 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
       <Text style={{ fontSize: 17, fontWeight: '800', color: theme.danger }}>Something went wrong</Text>
       {/* say what failed and what it means, never just "error" */}
       <Text style={{ fontSize: 14, color: theme.fg, lineHeight: 21, marginTop: SPACE.sm }}>{message}</Text>
-      <Text style={{ fontSize: 13, color: theme.muted, marginTop: SPACE.sm }}>
-        Nothing was changed. You can try again safely.
-      </Text>
+      {safeToRetry ? (
+        <Text style={{ fontSize: 13, color: theme.muted, marginTop: SPACE.sm }}>
+          Nothing was changed. You can try again safely.
+        </Text>
+      ) : null}
       {onRetry ? <Button label="Try again" onPress={onRetry} style={{ marginTop: SPACE.lg }} /> : null}
     </View>
   );

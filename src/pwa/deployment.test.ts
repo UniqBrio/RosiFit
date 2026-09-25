@@ -138,3 +138,54 @@ test('the wiring keeps the promises the rules make', () => {
   const layout = fs.readFileSync(path.join(root, 'app/_layout.tsx'), 'utf8');
   assert.match(layout, /<DeploymentRefresh \/>/, 'the watcher is not mounted at the root');
 });
+
+test('T-407: another screen\'s route chunk named by the probe page is not a deployment', () => {
+  // With per-route bundles (asyncRoutes), the probe page `/` names HOME's route
+  // chunk and layouts next to the shared bundles. A session that started on
+  // Members never loaded Home's chunk, so under plain containment it read as
+  // "a bundle this document has not got" and reloaded once for nothing --
+  // every deep link and every refresh on another screen.
+  const dir = '/_expo/static/js/web/';
+  const shared = [`${dir}entry-00012ec88415cc753e32e3ff69b54a6a.js`, `${dir}__common-b03836d3397dc964efd292cc5593d89e.js`,
+    `${dir}__expo-metro-runtime-1f8f5d3ca6b7f58204d51e14506d73fb.js`];
+  const probe = [...shared, `${dir}_layout-11f98de6ed69987111a567c3d513b249.js`, `${dir}index-c45a0c2bcee4913613f58314778c01ff.js`];
+  const onMembers = bundlesFrom([...shared, `${dir}_layout-11f98de6ed69987111a567c3d513b249.js`,
+    `${dir}_layout-b2653f42d61d421503b7f232175fc64b.js`, `${dir}members-d77193e9060fa98107898486dffc939f.js`]);
+  assert.equal(isNewDeployment(onMembers, bundlesFrom(probe)), false, 'Home\'s route chunk is not a new build');
+  assert.equal(shouldReload(onMembers, bundlesFrom(probe), null), false);
+
+  // ...and a real deployment -- the shared entry renamed -- is still seen from any screen.
+  const deployed = probe.map(b => b.replace('entry-00012ec88415cc753e32e3ff69b54a6a', 'entry-ffff2ec88415cc753e32e3ff69b54a6a'));
+  assert.equal(isNewDeployment(onMembers, bundlesFrom(deployed)), true);
+  const commonOnly = probe.map(b => b.replace('__common-b03836d3', '__common-aaaa6d3'));
+  assert.equal(isNewDeployment(onMembers, bundlesFrom(commonOnly)), true, 'a change only in __common is a build too');
+});
+
+// ES imports hoist; kept down here so the spec above stays byte-for-byte as it was (append-only).
+import { sharedBundles } from './deployment';
+
+test('T-407: the loop-guard note written before a reload matches the page that comes back on ANY screen', () => {
+  const dir = '/_expo/static/js/web/';
+  const shared = [`${dir}entry-ffff2ec88415cc753e32e3ff69b54a6a.js`, `${dir}__common-b03836d3397dc964efd292cc5593d89e.js`];
+  const probe = bundlesFrom([...shared, `${dir}index-c45a0c2bcee4913613f58314778c01ff.js`]);
+  const backOnMembers = bundlesFrom([...shared, `${dir}members-d77193e9060fa98107898486dffc939f.js`]);
+  assert.equal(stamp(sharedBundles(probe!)), stamp(sharedBundles(backOnMembers!)),
+    'written from the probe, cleared from the page: same stamp');
+
+  // The case the guard exists for: the reload came back to a tab STILL on the old build (the server
+  // disagreeing with itself), on a screen other than Home. The note was written from the probe.
+  const oldShared = [`${dir}entry-00012ec88415cc753e32e3ff69b54a6a.js`, `${dir}__common-b03836d3397dc964efd292cc5593d89e.js`];
+  const stillOld = bundlesFrom([...oldShared, `${dir}members-d77193e9060fa98107898486dffc939f.js`]);
+  assert.equal(isNewDeployment(stillOld, probe), true, 'the probe really is a new build for this tab');
+  assert.equal(shouldReload(stillOld, probe, stamp(sharedBundles(probe!))), false, 'no second reload for the same answer');
+  assert.equal(shouldReload(stillOld, probe, stamp(probe)), true,
+    'a note stamped from EVERY bundle would never match -- the loop this guards against');
+});
+
+test('T-407: an answer naming no shared bundle still compares every bundle it names', () => {
+  const a = ['/_expo/static/js/web/app-1111.js'];
+  const b = ['/_expo/static/js/web/app-2222.js'];
+  assert.deepEqual(sharedBundles(b), b);
+  assert.equal(isNewDeployment(a, b), true);
+  assert.equal(isNewDeployment(b, b), false);
+});

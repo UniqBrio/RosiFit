@@ -1,7 +1,19 @@
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
-import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
+// Imported one set at a time, never from the '@expo/vector-icons' barrel:
+// Metro does not drop unused exports, so the barrel shipped EVERY icon set's
+// glyph table -- ~400 KB of JavaScript for two sets (T-407).
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import createIconSet from '@expo/vector-icons/createIconSet';
+// MaterialCommunityIcons is used for ONE glyph. Its full table is 186 KB of
+// JavaScript, so this is a one-glyph set over the same font file, built the
+// way the library builds its own sets (build/MaterialCommunityIcons.js).
 import { resolveGlyph } from './iconAlias';
+
+/** codepoint of "whatsapp" in MaterialCommunityIcons.json -- pinned by iconImports.test.ts */
+export const WHATSAPP_CODEPOINT = 984483;
+const WhatsAppGlyph = createIconSet({ whatsapp: WHATSAPP_CODEPOINT }, 'material-community',
+  require('@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialCommunityIcons.ttf'));
 
 /**
  * The canvas draws with Material Symbols. Expo ships Material Icons, which
@@ -70,9 +82,9 @@ export function Icon({ name, size = 20, color }: { name: string; size?: number; 
  * Like every icon here it sits beside its own word, so it is decorative.
  */
 export function WhatsAppIcon({ size = 20, color }: { size?: number; color: string }) {
-  const fontReady = useFontReady(MaterialCommunityIcons.loadFont);
+  const fontReady = useFontReady(WhatsAppGlyph.loadFont);
 
   if (!fontReady) return <View style={{ width: size, height: size }} />;
 
-  return <MaterialCommunityIcons name="whatsapp" size={size} color={color} accessibilityElementsHidden />;
+  return <WhatsAppGlyph name="whatsapp" size={size} color={color} accessibilityElementsHidden />;
 }

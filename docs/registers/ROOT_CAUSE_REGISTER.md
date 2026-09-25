@@ -59,6 +59,109 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-078 — one bundle carried every screen, and a split without a safety net would blank the app          Tracker: T-407 · Sources: RUN_app-feels-slow.md (Fix 4), requests/2026-09-24-app-feels-slow-measure-first.md
+**Date:** 25-Sep-2026 · **Severity:** S2 · **Modules:** `app.json`, `src/components/Icon.tsx`, `src/pwa/`, `app/_layout.tsx`, `public/sw.js`, `vercel.json`
+
+**Symptom** — Every screen downloaded one 2.65 MB (713 KB gzip) entry bundle. Lighthouse mobile LCP was 4.9–7.0 s.
+
+**Root cause** — Two causes:
+- `@expo/vector-icons` was imported through its barrel, which ships every icon set's glyph table (~400 KB raw) for the one WhatsApp glyph.
+- Routes were not split, so each screen carried the code of all the others.
+
+**Fix** —
+- Icon sets are imported one at a time, and WhatsApp is a one-glyph set over the same font.
+- `asyncRoutes: { web: "production" }`.
+
+The split creates a new failure: a stale tab asks for a chunk the new deployment no longer serves. It is closed off four ways:
+- Deployment detection compares only the shared bundles (`sharedBundles`), for detection and for the loop-guard stamp alike.
+- A root `ErrorBoundary` reloads once for a chunk failure (`chunkRecoveryStep`). It waits while a write is in flight (T-021), notes a time rather than a flag (a 60 s window), and does not reload if the note cannot be recorded.
+- `/_expo/` misses are a real 404.
+- The service worker (cache v2) neither caches an HTML answer as a script nor keeps v1's cache.
+
+**Files** — `app.json`, `app/_layout.tsx`, `src/components/Icon.tsx`, `src/components/ui.tsx` (`safeToRetry`), `src/pwa/chunkRecovery.ts`, `src/pwa/deployment.ts`, `src/pwa/DeploymentRefresh.tsx`, `public/sw.js`, `vercel.json`, the tests, and `scripts/perf/js-budget.js`.
+
+**Proof** — Measured with `js-budget.js` and Lighthouse:
+- Per-screen compressed JS: 702 → 467 KB.
+- LCP: Home 5.07 → 3.95 s, Members 7.30 → 5.80 s.
+- Members chunk deleted: before the fix, a blank page; after, one reload and then the error state, in both themes.
+
+**Class** — The owner's targets are NOT met: 250 KB per screen and LCP under 2.5 s. The shared entry (react-dom + react-native-web + expo-router) is ~281 KB gzip on its own. Anything further is options (a)–(d) in the RUN file.
+
+The Expo-upgrade hazard: `sharedBundles` matches the `entry`/`__common`/`__expo-metro-runtime` file names. If an upgrade renames them, the fallback compares every bundle, which brings back the one wasted reload per non-Home session.
+
+**How to verify** — Two checks after a deployment:
+- A tab left open on the previous build and then navigated to an unvisited screen reloads once and lands on the screen.
+- `js-budget.js` against the deployed build reports ≈ 467 KB per screen.
+
+---
+
+## RC-077 — every hook read on its own, so one screen visit re-read what the last one had just read          Tracker: T-406 · Sources: RUN_app-feels-slow.md (T-406 section), requests/2026-09-24-app-feels-slow-measure-first.md
+**Date:** 25-Sep-2026 · **Severity:** S2 · **Modules:** `src/lib/sharedFetch.ts`, `src/lib/supabase.ts`
+
+**Symptom** — Production `edge_logs`, 25-Sep-2026: one session made 300 requests for 49 distinct URLs in a minute, reading the five-table member list 6 times in ~30 s; another made 398 for 44.
+
+**Root cause** — `useAsync` (`src/data/hooks.ts`) fetches on mount and keeps nothing between hooks. Every screen, tab and dialog that needs the member list, the courses or the rules asks the server again, even seconds after another reader got the same answer. Identical concurrent GETs are also queued by the browser's HTTP cache (the RC-076 mechanism), so each repeat costs a round trip.
+
+**Fix** — `createSharedFetch` is installed as the Supabase client's `global.fetch`:
+- identical reads (GET/HEAD under `/rest/v1/`, and 4 read-only RPCs per body, keyed by the token and the answer-changing headers) are shared for `SHARED_READ_MS = 5_000`;
+- any other `/rest/v1/` or `/functions/v1/` request clears everything at start and settle;
+- in-flight joins are bounded by age;
+- non-2xx answers, body failures and callers with an abort signal are never kept;
+- expired entries are swept, and `/auth/v1/logout` clears everything.
+
+**Deliberately not changed:** `pageAll`'s stop-on-empty-page rule (the `db-max-rows` truncation hazard it guards against is documented in its header).
+
+**Files** — `src/lib/sharedFetch.ts`, `src/lib/sharedFetch.test.ts`, `src/lib/supabase.ts`, `scripts/perf/`.
+
+**Proof** — Cold start + 3 tab switches against the stand-in: 54 → 31 requests, all remaining distinct. Cold start first request → last response 1,828–1,835 → 692–713 ms. The 5 s window was chosen from a 2 / 5 / 12 s measurement. `sharedFetch.test.ts` 17/17; each fix (settle-time clear, in-flight age bound, body-failure drop, sweep, sign-out clear) was mutation-checked: removing it fails exactly its test.
+
+**Class** — Any read path outside this client (raw `fetch`, a second Supabase client) would not share; `src/` has none today. Setting `db.timeout` in `createClient` would add an abort signal to every request and silently turn sharing off; noted here so the next change to createClient sees it.
+
+**How to verify** — In production `edge_logs`, count requests per identical URL per session-minute. Before: up to 6× for the member list. After: about 1× unless a write happened in between.
+
+---
+
+## RC-076 — nine components asked for the same identity, and the browser made them queue          Tracker: T-405 · Sources: RUN_app-feels-slow.md #3, requests/2026-09-24-app-feels-slow-measure-first.md
+**Date:** 25-Sep-2026 · **Severity:** S2 · **Modules:** `src/data/session.ts`, `src/data/sharedRead.ts`
+
+**Symptom** — The production cold-start trace (24-Sep-2026 02:14 UTC) showed 10 identical `app_users?select=id,name,kind,…` requests, ~150–180 ms each, arriving one after another: **2.4 s** before the first data request.
+
+**Root cause** — Nine components (the route guard, three shell parts, screens, and `ThemeProvider`) each called `currentAppUser()` on their own, and each sent the byte-identical GET. **Chromium's HTTP cache lets only one request per identical URL be in flight**, so the duplicates waited for each other. The code issued them as two parallel batches, and the network saw a chain. Reproduced against a local HTTP/2 stand-in (production browsers use HTTP/3 or HTTP/2): 10 serialized reads with the cache on; the same load with the cache disabled sent them in two parallel batches. The auth client's lock was ruled out: auth-js 2.112.4 runs lockless by default.
+
+**Fix** — `currentAppUser()` goes through `createSharedRead` (`src/data/sharedRead.ts`), keyed by the signed-in auth user id. A read in flight is shared; a successful answer is reused for 10 s (the start-up burst); failures and null are not kept; after 10 s every caller reads fresh as before. **Not changed:** `restoreSession`, which is a different query and the sign-in security check, still always asks the server.
+
+**Files** — `src/data/sharedRead.ts`, `src/data/sharedRead.test.ts`, `src/data/session.ts`, `scripts/perf/` (the reproduction).
+
+**Proof** — Cold start against the HTTP/2 stand-in (200 ms per reply), 3 runs each: identity reads **10 → 2**, requests **34 → 26**, first request → last response **1,828–1,836 → 706–723 ms** (fresh token) and **2,241–2,245 → 916–947 ms** (expired token). `sharedRead.test.ts` 9/9; its race test was mutation-checked (it fails if a stale read may clear a newer entry).
+
+**Class** — Any identical GET issued by several components at once is serialized the same way: `courses` ×7, `follow_up_config` ×5, `sessions` ×5 and more in the same trace. That is **T-406**; this entry closes the identity read only.
+
+**How to verify** — `node scripts/perf/stand-in-api.js` + `node scripts/perf/cold-start.js /` against a build pointed at it: `app_users` appears twice, in parallel. In production: a cold start in `edge_logs` shows at most two `app_users` requests.
+
+---
+
+## RC-053 — every RLS policy ran its helper once per ROW, and the only check anyone ran could not see helpers          Tracker: T-043, T-118 · Sources: requests/2026-09-24-app-feels-slow-measure-first.md, RUN_app-feels-slow.md, C:RF-07
+**Date:** 24-Sep-2026 · **Severity:** S2 · **Modules:** `supabase/migrations/0079_rls_helpers_once_per_statement.sql`, `supabase/tests/58_rls_rules_by_role.sql`
+
+**Symptom** — *"The app feels slow even with little data."* Measured in production 24-Sep-2026: the five member-list page reads average **624–774 ms** each for tables of ~1,600 rows; `app_users` (11 rows) has taken **18.9 M sequential scans** since 1 Sep.
+
+**Root cause** — Every one of the 62 policies in `public` called a zero-argument helper bare — `is_active_app_user()`, `is_super_admin()`, `is_subscription_writable()`, `current_app_user_id()`. A bare function call in `USING` / `WITH CHECK` is evaluated **per row**, and each helper is SECURITY DEFINER over a scan of `app_users`. The value cannot differ between rows of one statement; the cost scaled with every row read. Measured: 1,000-row `member_stats` read **158 ms as written vs 1.3 ms** with the check hoisted to an InitPlan; `course_week_day_status` (SECURITY INVOKER) **403 ms under RLS vs 13.5 ms**.
+
+**Why it shipped** — 0013 (`rls_initplan_perf`) fixed exactly this for `auth.uid()` in the two policies that call it directly and was never generalised to the helpers every other policy uses. The only automated check aimed at the class — Supabase's `auth_rls_initplan` advisor — follows `auth.*` calls only, so it reported **0 findings with the defect present on 62 of 62 policies** (T-118). The harness has no volume, so no spec ever timed a read.
+
+**Class** — every policy in `public`: all 62, across 32 tables. No policy was exempt. Any future policy that calls a zero-argument function bare re-opens it; the guard below names it.
+
+**Fix** — `0079`: `ALTER POLICY` on all 62, wrapping each call as `(select public.f())`. Generated from the harness catalogue, whose 62 policies fingerprint identically to production's (`md5 4d21e86e…`, read 24-Sep-2026); the migration refuses to run against any other fingerprint. **Deliberately not changed:** any predicate, role, command or permissive flag — after replay, un-wrapping the new expressions yields text byte-identical to the old for all 62. The helper functions themselves are untouched.
+
+**Files** — `supabase/migrations/0079_rls_helpers_once_per_statement.sql`, `supabase/tests/58_rls_rules_by_role.sql`, `docs/registers/ISSUE_TRACKER.md`.
+
+**Proof** — `58_rls_rules_by_role.sql` first assertion: fails naming 62 of 62 policies without 0079, passes at 0 with it. Its remaining 13 assertions (visibility of every seeded table for owner / staff / disabled / anon; writes and WITH CHECK per role; a suspended subscription) pass **both** before and after — the rules did not move. Full harness suite: the same pre-existing failures before and after, none new.
+
+**Guard** — the catalogue assertion in spec 58 fails the `db-harness` job on any bare zero-argument call in any policy, whoever adds it. It walks `pg_policies`; it does not trust the lint.
+
+**Verified in production, 24-Sep-2026 09:14–09:18 UTC** — applied as ledger `20260924091428`; guard and equivalence check passed in the apply; `pg_policies` 62 with 0 bare calls; `EXPLAIN ANALYZE` 1,000-row `member_stats` as `authenticated` shows `InitPlan 1`, **102 ms → 2.7 ms**; `course_week_day_status` **211 → 12.0 ms**; member-list page read avg at the edge **648 → 120 ms**; per-persona visibility (owner / staff / unknown) as specified. The `auth_rls_initplan` advisor output did not change.
+
+**How to verify** — after the production apply: `pg_policies` count 62, zero bare calls (the spec-58 query); `EXPLAIN ANALYZE` of a 1,000-row `member_stats` read as `authenticated` shows an InitPlan and ~1 ms; member-list page-read average in `pg_stat_statements` after a reset. Before/after table in `RUN_app-feels-slow.md`.
 ## RC-108 — a member whose address could not be used was listed as one whose address worked, and counted as one          Tracker: none (reported by the academy) · Sources: requests/2026-09-24-issues-leave-the-roster-and-two-filters.md, RC-107, RC-106
 **Date:** 24-Sep-2026 · **Severity:** S2 (a screen stated something untrue about who can be written to; no send behaviour changed) · **Modules:** `app/course/[id].tsx`, `src/data/emailIssues.ts`, `src/data/rosterFilter.ts`
 

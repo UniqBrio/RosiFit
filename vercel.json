@@ -7,6 +7,6 @@
   "rewrites": [
     { "source": "/course/:id", "destination": "/course/[id]" },
     { "source": "/member/:id", "destination": "/member/[id]" },
-    { "source": "/:path*", "destination": "/+not-found" }
+    { "source": "/((?!_expo/).*)", "destination": "/+not-found" }
   ]
 }
