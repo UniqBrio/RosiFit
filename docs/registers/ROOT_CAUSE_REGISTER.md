@@ -59,6 +59,28 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-053 — every RLS policy ran its helper once per ROW, and the only check anyone ran could not see helpers          Tracker: T-043, T-118 · Sources: requests/2026-09-24-app-feels-slow-measure-first.md, RUN_app-feels-slow.md, C:RF-07
+**Date:** 24-Sep-2026 · **Severity:** S2 · **Modules:** `supabase/migrations/0079_rls_helpers_once_per_statement.sql`, `supabase/tests/58_rls_rules_by_role.sql`
+
+**Symptom** — *"The app feels slow even with little data."* Measured in production 24-Sep-2026: the five member-list page reads average **624–774 ms** each for tables of ~1,600 rows; `app_users` (11 rows) has taken **18.9 M sequential scans** since 1 Sep.
+
+**Root cause** — Every one of the 62 policies in `public` called a zero-argument helper bare — `is_active_app_user()`, `is_super_admin()`, `is_subscription_writable()`, `current_app_user_id()`. A bare function call in `USING` / `WITH CHECK` is evaluated **per row**, and each helper is SECURITY DEFINER over a scan of `app_users`. The value cannot differ between rows of one statement; the cost scaled with every row read. Measured: 1,000-row `member_stats` read **158 ms as written vs 1.3 ms** with the check hoisted to an InitPlan; `course_week_day_status` (SECURITY INVOKER) **403 ms under RLS vs 13.5 ms**.
+
+**Why it shipped** — 0013 (`rls_initplan_perf`) fixed exactly this for `auth.uid()` in the two policies that call it directly and was never generalised to the helpers every other policy uses. The only automated check aimed at the class — Supabase's `auth_rls_initplan` advisor — follows `auth.*` calls only, so it reported **0 findings with the defect present on 62 of 62 policies** (T-118). The harness has no volume, so no spec ever timed a read.
+
+**Class** — every policy in `public`: all 62, across 32 tables. No policy was exempt. Any future policy that calls a zero-argument function bare re-opens it; the guard below names it.
+
+**Fix** — `0079`: `ALTER POLICY` on all 62, wrapping each call as `(select public.f())`. Generated from the harness catalogue, whose 62 policies fingerprint identically to production's (`md5 4d21e86e…`, read 24-Sep-2026); the migration refuses to run against any other fingerprint. **Deliberately not changed:** any predicate, role, command or permissive flag — after replay, un-wrapping the new expressions yields text byte-identical to the old for all 62. The helper functions themselves are untouched.
+
+**Files** — `supabase/migrations/0079_rls_helpers_once_per_statement.sql`, `supabase/tests/58_rls_rules_by_role.sql`, `docs/registers/ISSUE_TRACKER.md`.
+
+**Proof** — `58_rls_rules_by_role.sql` first assertion: fails naming 62 of 62 policies without 0079, passes at 0 with it. Its remaining 13 assertions (visibility of every seeded table for owner / staff / disabled / anon; writes and WITH CHECK per role; a suspended subscription) pass **both** before and after — the rules did not move. Full harness suite: the same pre-existing failures before and after, none new.
+
+**Guard** — the catalogue assertion in spec 58 fails the `db-harness` job on any bare zero-argument call in any policy, whoever adds it. It walks `pg_policies`; it does not trust the lint.
+
+**Verified in production, 24-Sep-2026 09:14–09:18 UTC** — applied as ledger `20260924091428`; guard and equivalence check passed in the apply; `pg_policies` 62 with 0 bare calls; `EXPLAIN ANALYZE` 1,000-row `member_stats` as `authenticated` shows `InitPlan 1`, **102 ms → 2.7 ms**; `course_week_day_status` **211 → 12.0 ms**; member-list page read avg at the edge **648 → 120 ms**; per-persona visibility (owner / staff / unknown) as specified. The `auth_rls_initplan` advisor output did not change.
+
+**How to verify** — after the production apply: `pg_policies` count 62, zero bare calls (the spec-58 query); `EXPLAIN ANALYZE` of a 1,000-row `member_stats` read as `authenticated` shows an InitPlan and ~1 ms; member-list page-read average in `pg_stat_statements` after a reset. Before/after table in `RUN_app-feels-slow.md`.
 ## RC-108 — a member whose address could not be used was listed as one whose address worked, and counted as one          Tracker: none (reported by the academy) · Sources: requests/2026-09-24-issues-leave-the-roster-and-two-filters.md, RC-107, RC-106
 **Date:** 24-Sep-2026 · **Severity:** S2 (a screen stated something untrue about who can be written to; no send behaviour changed) · **Modules:** `app/course/[id].tsx`, `src/data/emailIssues.ts`, `src/data/rosterFilter.ts`
 
