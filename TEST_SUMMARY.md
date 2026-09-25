@@ -206,6 +206,7 @@ all found by a person using the app, which is three for three, and RC-108's proc
 
 Steps: 7 pass, 6 fail, 0 blocked.
 Time: 27.3s total - slowest G7 Unit + pure specs (16.9s).
+Time: 32.8s total - slowest G7 Unit + pure specs (16.6s).
 Application steps ran in .
 
 - **G1 Theme artifacts in sync** - FAIL (50ms)
@@ -229,6 +230,24 @@ Error: ENOENT: no such file or directory, open '/home/user/RosiFit-T406/design/t
 - **G4 No hard-coded colours** - PASS (71ms)
 - **G5 Types** - PASS (6.2s)
 - **G6 Lint** - FAIL (3.4s)
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit-T405/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (48ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit-T405/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (49ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit-T405/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (71ms)
+- **G5 Types** - PASS (5.9s)
+- **G6 Lint** - FAIL (9.6s)
 
 ```
 ✖ 1 problem (0 errors, 1 warning)
@@ -236,6 +255,7 @@ Error: ENOENT: no such file or directory, open '/home/user/RosiFit-T406/design/t
 ```
 
 - **G7 Unit + pure specs** - FAIL (16.9s)
+- **G7 Unit + pure specs** - FAIL (16.6s)
 
 ```
 # Subtest: a failed remarks load is reported, not rendered as emptiness
@@ -256,6 +276,7 @@ ok 195 - a failed save survives the collapse — it is drawn outside both branch
 ```
 
 - **G8 Functional / integration** - FAIL (128ms)
+- **G8 Functional / integration** - FAIL (130ms)
 
 ```
 exit 1
@@ -266,6 +287,11 @@ exit 1
 - **G11 Wide tables are configurable** - PASS (56ms)
 - **G12 Installable as an application** - PASS (76ms)
 - **G13 Approved design still being built** - PASS (49ms)
+- **G9 Automation addressability** - PASS (56ms)
+- **G10 Backward compatibility (fixtures)** - PASS (111ms)
+- **G11 Wide tables are configurable** - PASS (53ms)
+- **G12 Installable as an application** - PASS (70ms)
+- **G13 Approved design still being built** - PASS (50ms)
 
 _Merge blocked. Every FAIL above must resolve. No partial merges._
 
@@ -11208,3 +11234,36 @@ REVIEW: code-reviewer twice. Round 1 REQUEST CHANGES (hung-request join, body-fa
 unbounded map, vacuous test) - all fixed. Round 2 REQUEST CHANGES (evidence cited but not in tree, weak
 body-failure assertion, 12 s-only tests, two overstated comments) - all fixed in this commit.
 NOT RUN: production. Ships on merge; verify requests per URL per session-minute in edge_logs.
+## T-405 · shared identity read · 25-Sep-2026 · RC-076
+FAIL-FIRST (behaviour): cold start of the production bundle against a local HTTP/2 stand-in, unmodified main,
+3 runs: 10 app_users reads, strictly serial (each starts ~4 ms after the previous ends), 1,828-1,836 ms first
+request -> last response. After: 2 parallel reads, 706-723 ms. Same with an expired token: 11 -> 2 reads,
+2,241-2,245 -> 916-947 ms.
+FAIL-FIRST: src/data/sharedRead.test.ts - "Cannot find module './sharedRead'" (new module); 9/9 after.
+The race case ("a read that settles AFTER a newer one began cannot clear the newer one") was mutation-checked:
+removing the current===entry guard makes it fail; restored.
+UNIT: 1981 tests, 6 fail - the SAME 6 as clean main. check: lint, typecheck, contrast, icons, functions, edge PASS.
+GATE: FAIL on the same pre-existing set as main (G1-G3 T-034, G6 scripts/conformance.mjs warning, G7, G8).
+REVIEW: code-reviewer APPROVE; its findings applied (race + clock tests, unused force option removed, cast removed).
+NOT RUN: a production cold start. Ships on merge; verify in edge_logs.
+## T-043 · 0079 RLS helpers once per statement · 24-Sep-2026 · RC-053
+FAIL-FIRST: supabase/tests/58_rls_rules_by_role.sql - "no policy calls a helper bare" failed
+naming all 62 policies on a harness replayed WITHOUT 0079 (psql run WITHOUT ON_ERROR_STOP so
+the rest of the file still ran); passes at 0 with it.
+UNCHANGED RULES: the file's other 26 behavioural assertions (per-role visibility of every
+seeded table incl. admin-or-self / admin-only / delete shapes; UPDATE, INSERT WITH CHECK and
+DELETE per role; app_users self-update; audit_remarks author check; suspended subscription)
+passed 26/26 on the pre-0079 tree and 26/26 after it. After 0079 the whole file is 28/28
+under test.sh (ON_ERROR_STOP): +1 catalogue, +1 policy count = 62.
+EQUIVALENCE, now executable: 0079's $verify$ un-wraps every "( SELECT f() AS f)" and compares
+with a pre-image taken in the same run; it raises on any difference. Observed firing on two
+injected defects, then restored: is_active_app_user -> is_super_admin in courses_read
+("not equivalent ... courses.courses_read"), and the 'previewed' literal dropped from
+csv_imports_insert ("... csv_imports.csv_imports_insert").
+DB HARNESS: bash db/harness/test.sh - THERE ARE FAILURES, the SAME set before and after
+(pre-existing, Gate 2): diff of per-file FAIL/ERROR lines is empty; the only new file, 58,
+has no FAIL or ERROR. PASS count 901 -> 929 (+28 = file 58). Postgres 16 harness vs 17.6
+production is T-124, open.
+PARITY: production pg_policies fingerprint = harness fingerprint (62, md5 4d21e86e...), read
+24-Sep-2026; 0079 refuses to run against any other.
+NOT RUN: npm run check / gate - no src/ or app/ change on this branch.
