@@ -11125,7 +11125,6 @@ needs a signed-in session (mobile + PIN through the auth-login Edge Function) th
 did not have - so the defect and the fix are evidenced by the live request-size measurement in
 .evidence/request-size-fail-first.txt rather than by driving the UI. DB harness - N/A: no
 migration, no schema surface.
-
 ## T-043 · 0079 RLS helpers once per statement · 24-Sep-2026 · RC-053
 FAIL-FIRST: supabase/tests/58_rls_rules_by_role.sql - "no policy calls a helper bare" failed
 naming all 62 policies on a harness replayed WITHOUT 0079 (psql run WITHOUT ON_ERROR_STOP so
@@ -11147,3 +11146,4 @@ production is T-124, open.
 PARITY: production pg_policies fingerprint = harness fingerprint (62, md5 4d21e86e...), read
 24-Sep-2026; 0079 refuses to run against any other.
 NOT RUN: npm run check / gate - no src/ or app/ change on this branch.
+
