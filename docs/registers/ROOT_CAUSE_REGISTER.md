@@ -59,6 +59,25 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-076 — nine components asked for the same identity, and the browser made them queue          Tracker: T-405 · Sources: RUN_app-feels-slow.md #3, requests/2026-09-24-app-feels-slow-measure-first.md
+**Date:** 25-Sep-2026 · **Severity:** S2 · **Modules:** `src/data/session.ts`, `src/data/sharedRead.ts`
+
+**Symptom** — The production cold-start trace (24-Sep-2026 02:14 UTC) showed 10 identical `app_users?select=id,name,kind,…` requests, ~150–180 ms each, arriving one after another: **2.4 s** before the first data request.
+
+**Root cause** — Nine components (the route guard, three shell parts, screens, and `ThemeProvider`) each called `currentAppUser()` on their own, and each sent the byte-identical GET. **Chromium's HTTP cache lets only one request per identical URL be in flight**, so the duplicates waited for each other. The code issued them as two parallel batches, and the network saw a chain. Reproduced against a local HTTP/2 stand-in (production browsers use HTTP/3 or HTTP/2): 10 serialized reads with the cache on; the same load with the cache disabled sent them in two parallel batches. The auth client's lock was ruled out: auth-js 2.112.4 runs lockless by default.
+
+**Fix** — `currentAppUser()` goes through `createSharedRead` (`src/data/sharedRead.ts`), keyed by the signed-in auth user id. A read in flight is shared; a successful answer is reused for 10 s (the start-up burst); failures and null are not kept; after 10 s every caller reads fresh as before. **Not changed:** `restoreSession`, which is a different query and the sign-in security check, still always asks the server.
+
+**Files** — `src/data/sharedRead.ts`, `src/data/sharedRead.test.ts`, `src/data/session.ts`, `scripts/perf/` (the reproduction).
+
+**Proof** — Cold start against the HTTP/2 stand-in (200 ms per reply), 3 runs each: identity reads **10 → 2**, requests **34 → 26**, first request → last response **1,828–1,836 → 706–723 ms** (fresh token) and **2,241–2,245 → 916–947 ms** (expired token). `sharedRead.test.ts` 9/9; its race test was mutation-checked (it fails if a stale read may clear a newer entry).
+
+**Class** — Any identical GET issued by several components at once is serialized the same way: `courses` ×7, `follow_up_config` ×5, `sessions` ×5 and more in the same trace. That is **T-406**; this entry closes the identity read only.
+
+**How to verify** — `node scripts/perf/stand-in-api.js` + `node scripts/perf/cold-start.js /` against a build pointed at it: `app_users` appears twice, in parallel. In production: a cold start in `edge_logs` shows at most two `app_users` requests.
+
+---
+
 ## RC-108 — a member whose address could not be used was listed as one whose address worked, and counted as one          Tracker: none (reported by the academy) · Sources: requests/2026-09-24-issues-leave-the-roster-and-two-filters.md, RC-107, RC-106
 **Date:** 24-Sep-2026 · **Severity:** S2 (a screen stated something untrue about who can be written to; no send behaviour changed) · **Modules:** `app/course/[id].tsx`, `src/data/emailIssues.ts`, `src/data/rosterFilter.ts`
 
