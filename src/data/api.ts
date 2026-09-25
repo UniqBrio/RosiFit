@@ -8,13 +8,14 @@
  * callFn turns that into a thrown Error carrying that same sentence.
  */
 import { supabase } from '../lib/supabase';
+import { functionTarget } from './functionRegion';
 import { duringWrite } from './inFlight';
 import type { OverrideCounts } from './uploadOverride';
 import type { AlreadyImported, ImportChanges } from './uploadOutcome';
 import { FunctionError, type SendFollowUpsInput, type SendResult } from './sendBatch';
 
 async function callFn<T>(name: string, body: Record<string, unknown>): Promise<T> {
-  const { data, error } = await supabase.functions.invoke(name, { body });
+  const { data, error } = await supabase.functions.invoke(functionTarget(name), { body });
   if (error) {
     // supabase-js keeps the response on FunctionsHttpError; the function's
     // own message is far more useful than "Edge Function returned 400".
