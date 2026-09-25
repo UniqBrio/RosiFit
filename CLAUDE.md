@@ -116,6 +116,11 @@ There is no free-form send path anywhere.
   removed, no `.skip`, no matcher loosened. Anything else is overwriting a spec.
 - **Verify every dependency before installing** — it exists, it is the
   intended name, it is pinned.
+- **`supabase/functions/` needs Deno 2.9.7 installed locally** — the same version
+  `denoland/setup-deno` installs in CI. It is not an npm dependency and cannot be;
+  `npm run check:edge` SKIPS loudly without it and CI is then the first place a type
+  error in the Edge tree appears. Three CI round-trips were spent on T-027 for want
+  of it. Pin the version: a different Deno is a different type checker.
 - **Remediation is governed by `docs/registers/ISSUE_TRACKER.md`.** Work rows
   in gate order, one row per PR, per the loop in that file. Every merged PR
   has an `RC-nnn` entry.

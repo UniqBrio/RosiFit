@@ -1212,6 +1212,76 @@ FAIL-FIRST: src/data/freshnessLineWiring.test.ts - its predecessor (staleBannerW
 NOT OBSERVED FAILING: src/data/uploadSafety.test.ts - module and spec were written together and the first run passed; not mutation-tested
 NOT OBSERVED FAILING: src/data/uploadProgress.test.ts - module and spec were written together and the first run passed; the "leave this screen open" copy-lock was re-pointed in the same edit as the copy
 
+FAIL-FIRST: supabase/functions/send-followups/load.test.ts - 4 of 5 failed, "AssertionError: Values are not equal: a failed members read must throw" and "every member row must be loaded" (1001 expected, 1000 received), against readAll reverted to one unchunked request whose error is discarded; restored 5 passed 0 failed, Deno 2.9.7, 19-Sep-2026
+
+## Gate run - 2026-09-19 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 32.6s total - slowest G7 Unit + pure specs (18.9s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (75ms)
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\AppData\Local\Temp\claude\C--Users-shazi-Downloads-RosiFit-Custom-App-RosiFit\fb715c00-8d4a-469c-b0bb-76890c10c5c0\scratchpad\wt-C\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (68ms)
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\AppData\Local\Temp\claude\C--Users-shazi-Downloads-RosiFit-Custom-App-RosiFit\fb715c00-8d4a-469c-b0bb-76890c10c5c0\scratchpad\wt-C\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (68ms)
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\AppData\Local\Temp\claude\C--Users-shazi-Downloads-RosiFit-Custom-App-RosiFit\fb715c00-8d4a-469c-b0bb-76890c10c5c0\scratchpad\wt-C\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (90ms)
+- **G5 Types** - PASS (7.7s)
+- **G6 Lint** - FAIL (4.3s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (18.9s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (587ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (125ms)
+- **G10 Backward compatibility (fixtures)** - PASS (216ms)
+- **G11 Wide tables are configurable** - PASS (127ms)
+- **G12 Installable as an application** - PASS (179ms)
+- **G13 Approved design still being built** - PASS (115ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
 
 ## Gate run - 2026-09-18 - VERDICT: FAIL
 
