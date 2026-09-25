@@ -1213,6 +1213,71 @@ NOT OBSERVED FAILING: src/data/uploadSafety.test.ts - module and spec were writt
 NOT OBSERVED FAILING: src/data/uploadProgress.test.ts - module and spec were written together and the first run passed; the "leave this screen open" copy-lock was re-pointed in the same edit as the copy
 
 
+## Gate run - 2026-09-19 - VERDICT: FAIL
+
+Steps: 7 pass, 5 fail, 1 blocked.
+Time: 27.5s total - slowest G5 Types (13.3s).
+Application steps ran in .
+
+FAIL-FIRST: supabase/functions/send-followups/drain.test.ts - `deno test` (2.9.7) against this tree: "FAILED | 3 passed | 3 failed". Case 1 gave "AssertionError: Expected error to be instance of \"Killed\", but was \"Error\"" - there is no drain, so the kill it describes cannot happen; cases 2 and 3 gave "Error: T-049: runDrainSlice is not implemented". The three `send-loop.test.ts` specs in the same run passed, so the runner is wired and it is these three that are red. RED IS THE INTENDED STATE here: this spec is the contract for A's `enqueue_send` / `claim_send_slice` / `email_batch_state` and for C's drain on top of them, and it stays red until both land. It was not observed failing against a pre-fix tree for the ordinary reason - there is no fix yet.
+
+- **G1 Theme artifacts in sync** - FAIL (95ms)
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (86ms)
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (82ms)
+
+```
+Error: ENOENT: no such file or directory, open 'C:\Users\shazi\Downloads\RosiFit Custom App\RosiFit\design\tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (225ms)
+- **G5 Types** - PASS (13.3s)
+- **G6 Lint** - BLOCKED (-) - no local "eslint" in . - not fetched from the registry on purpose. Run `npm install` in . (provides eslint), or state why this class is unverified.
+- **G7 Unit + pure specs** - FAIL (12.3s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+  error: `app/(tabs)/courses.tsx: a list screen's filter was flattened into a form's menu. The request scoped the filters out by saying "only inside forms and dialogs"`
+```
+
+- **G8 Functional / integration** - FAIL (515ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (155ms)
+- **G10 Backward compatibility (fixtures)** - PASS (202ms)
+- **G11 Wide tables are configurable** - PASS (128ms)
+- **G12 Installable as an application** - PASS (266ms)
+- **G13 Approved design still being built** - PASS (110ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
 ## Gate run - 2026-09-18 - VERDICT: FAIL
 
 Steps: 6 pass, 4 fail, 3 blocked.
