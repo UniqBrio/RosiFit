@@ -59,6 +59,32 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-113 — two attendance specs had disagreed with their own migrations since they were written          Tracker: T-133 · Sources: T-126, harness run 26-Sep-2026
+**Date:** 26-Sep-2026  ·  **Severity:** S4  ·  **Modules:** DB specs `27_set_attendance.sql`, `35_attendance_backdates_membership.sql`
+
+**Symptom** — both red in every `db-harness` replay: `27` "absent on a day she was not expected is
+refused … statement was ACCEPTED"; `35` `column reference "status" is ambiguous`.
+
+**Root cause** — `27` asserted a rule 0035 never implemented: 0035 creates a day off the schedule as
+an `all_enrolled` session, so the member IS expected and both 'absent' and 'present' are ordinary
+marks. `35` selected bare `status`/`expected` across `attendance_records join members`, and
+`members.status` has existed since 0006; behind that, its `a_session` helper inserted a second live
+session on an already-used date, which `sessions_unique_live` (0007) refuses.
+
+**Fix** — owner decision 26-Sep-2026, "Accept it": `27`'s two ad-hoc-day assertions re-pointed to
+0035's rule (absent accepted; present stored as present). `35`: columns qualified; `a_session`
+reuses a live session on the date. Edited in place under the owner's exemption for specs that never
+passed; no assertion removed.
+
+**How to verify** — the harness: `27` 28 PASS, `35` 14 PASS.
+
+**Recurrence risk** — any spec written beside its migration without being run: these two never
+passed. `ON_ERROR_STOP=1` also hides every assertion after a file's first failure, as `35`'s second
+error shows.
+
+**Prevention** — `db-harness` in CI; it only protects once it is required on `main` (Gate 2.2).
+
+**Process check** — Yes: both merged on a red `db-harness`. Gate 2.2.
 ## RC-110 — a course's own wording skipped the opt-out line every template carries          Tracker: none (found in session, 26-Sep-2026) · Sources: RC-109, 0066, requests/2026-09-26-every-course-wording-says-how-to-stop.md
 **Date:** 26-Sep-2026  ·  **Severity:** S3  ·  **Modules:** send-followups (Edge Function), send-step preview
 
