@@ -59,6 +59,33 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-114 — three DB specs could never pass their own setup          Tracker: T-134 · Sources: harness run 26-Sep-2026
+**Date:** 26-Sep-2026  ·  **Severity:** S4  ·  **Modules:** DB specs `11_holiday_delete`, `23_course_threshold`, `36_hard_delete_course`
+
+**Symptom** — each red at its setup in every replay: `duplicate key … sessions_unique_live`,
+`duplicate key … email_templates_name`, `conflicting key value violates exclusion constraint
+member_enrollments_member_id_daterange_excl`.
+
+**Root cause** — each spec's fixture broke a constraint that already existed when it was written
+(0007's one live session per offering per day, 0009's seeded template name, 0006's one enrolment at
+a time), so none ever reached its assertions. `ON_ERROR_STOP=1` then hid what lay behind:
+`11`'s count of 3 matched no reading of its setup; `36` had a `perform` outside PL/pgSQL and
+two assertions of 0047's rule that 0064 replaced on the requester's instruction (09-Sep-2026).
+
+**Fix** — fixtures corrected to the constraints; `11`'s count to 2 (with the arithmetic stated);
+`36`'s `perform` → `select` and its member-survival cases re-pointed to 0064. In place, under the
+owner's exemption for specs that never passed.
+
+**How to verify** — the harness: `11` 21 PASS, `23` 13 PASS, `36` 39 PASS.
+
+**Recurrence risk** — any spec merged without a green `db-harness`. Same class as RC-113.
+
+**Prevention** — `db-harness` required on `main` (Gate 2.2).
+
+**Process check** — Yes: all three merged red. Gate 2.2.
+
+---
+
 ## RC-109 — the course's own wording was saved, previewed and never sent          Tracker: none (reported by the academy) · Sources: requests/2026-09-26-send-uses-the-course-wording.md, 0021_course_communication.sql
 **Date:** 26-Sep-2026  ·  **Severity:** S2  ·  **Modules:** send-followups (Edge Function)
 
