@@ -3,7 +3,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { firstTicked, sendPreview } from './sendPreview';
+import { firstTicked, sendPreview, senderPct, UNSUBSCRIBE_STAND_IN } from './sendPreview';
 import type { Member } from './mock';
 
 const member = (id: string, name: string, over: Partial<Member> = {}): Member => ({
@@ -58,4 +58,37 @@ test("every token is filled with the member's own figures and this send's period
 
 test('the label names whose figures these are', () => {
   assert.equal(sendPreview(WITH_TOKENS, sharmila, WEEK).label, 'Preview · J Sharmila');
+});
+
+// ------------------------------------------------ the sender's own format
+// Code review, 26-Sep-2026: four tokens the form preview's map fills
+// differently from send-followups. The send preview must match the SENDER.
+
+test('{{last_attendance_date}} is the last session attended (ISO), not the last email', () => {
+  const m = member('m-x', 'Kavya', { lastPresent: '2026-09-12', last: '24/9/2026' });
+  assert.equal(sendPreview({ subject: 's', body: '{{last_attendance_date}}' }, m, WEEK).body, '2026-09-12');
+  const never = member('m-y', 'Kavya', { lastPresent: null, last: '24/9/2026' });
+  assert.equal(sendPreview({ subject: 's', body: '{{last_attendance_date}}' }, never, WEEK).body, '—');
+});
+
+test('{{attendance_pct}} carries the database one-decimal rounding', () => {
+  assert.equal(senderPct(1, 3), '33.3%');
+  assert.equal(senderPct(2, 3), '66.7%');
+  assert.equal(senderPct(1, 2), '50%');
+  assert.equal(senderPct(0, 0), '—');
+  const m = member('m-z', 'Kavya', { expected: 3, attended: 1 });
+  assert.equal(sendPreview({ subject: 's', body: '{{attendance_pct}}' }, m, WEEK).body, '33.3%');
+});
+
+test('{{follow_up_trigger}} is the number in force, or an em dash when no condition is on', () => {
+  assert.equal(sendPreview({ subject: 's', body: '{{follow_up_trigger}}' }, rosi, WEEK).body, '2');
+  assert.equal(sendPreview({ subject: 's', body: '{{follow_up_trigger}}' }, rosi,
+    { ...WEEK, followUpTrigger: null }).body, '—');
+});
+
+test('{{unsubscribe_url}} says what goes there, never a URL that looks like the real one', () => {
+  const body = 'Stop them here:\n{{unsubscribe_url}}';
+  const p = sendPreview({ subject: 's', body }, rosi, WEEK);
+  assert.equal(p.body, `Stop them here:\n${UNSUBSCRIBE_STAND_IN}`);
+  assert.ok(!p.body.includes('http'));
 });

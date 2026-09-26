@@ -20,7 +20,7 @@ Run **Track B** ([workflows/enhance.md](../workflows/enhance.md)) with this requ
 
 ## DESIGN SURFACE
 - VISUAL?: yes
-- SCREENS & STATES TOUCHED: the send draft's confirm pop-up (`app/send/index.tsx`) and the trigger prompt's confirm step (`FollowUpTriggerPrompt`, opened from `app/member/[id].tsx`). States: the confirm step only opens once the wording has loaded and at least one member is ticked; if either is missing no preview is drawn and the step is otherwise unchanged. No empty/offline/permission state of its own.
+- SCREENS & STATES TOUCHED: the send draft's confirm pop-up (`app/send/index.tsx`) and the trigger prompt's confirm step (`FollowUpTriggerPrompt`, opened from `app/member/[id].tsx`). States: no preview is drawn until the wording, the academy name and the trigger have been read and a member is ticked; the send draft's confirm cannot open before the wording loads, while the trigger prompt's confirm step can (pre-existing) and then shows no preview. Otherwise the step is unchanged. No empty/offline/permission state of its own.
 - STRINGS ADDED OR ALTERED: "Preview · <member name>" (the course form's existing label pattern). The previewed subject and body are the course's stored wording. Nothing else altered.
 - PERMISSIONS: no
 - USAGE: unknown

@@ -17,8 +17,20 @@
  * (`effective_course_message`, read by `useCourseMessage`) -- the same one
  * `send-followups` renders since RC-109 -- filled by `fillTokens`, the same
  * one-pass substitution the course form's preview uses. There is no second
- * wording and no second filler: a preview that could disagree with the send
- * would be worse than none.
+ * wording: a preview that could disagree with the send would be worse than
+ * none.
+ *
+ * FOUR TOKENS ARE FILLED HERE FIRST, in the SENDER's format, because the form
+ * preview's map (`variables()` in message.ts) does not match the sender for
+ * them and its specs pin that on purpose for the form:
+ *   - {{last_attendance_date}}: the sender prints `last_present_date` (ISO);
+ *     `Member.last` is the date the member was last EMAILED.
+ *   - {{attendance_pct}}: the database rounds to one decimal (0008, 0075), so
+ *     33.3%, never 33%; em dash when nothing was expected.
+ *   - {{follow_up_trigger}}: em dash when no condition is on, as `triggerOf`.
+ *   - {{unsubscribe_url}}: minted per recipient at send time, so no screen can
+ *     hold it -- the preview says what goes there instead of showing a URL
+ *     that looks like the member's real one.
  *
  * Kept out of the screens for the reason every rule in this layer is: a file
  * importing react-native cannot be run by a spec.
@@ -33,6 +45,15 @@ export type SendPreview = {
   subject: string;
   body: string;
 };
+
+/** Shown where each member's own signed opt-out link goes (0066). */
+export const UNSUBSCRIBE_STAND_IN = '[the member’s own unsubscribe link]';
+
+/** `member_period_metrics.attendance_pct` as the sender prints it: one decimal,
+ *  trailing zero dropped the way a JSON number drops it. */
+export function senderPct(attended: number, expected: number): string {
+  return expected > 0 ? `${Math.round((attended / expected) * 1000) / 10}%` : '—';
+}
 
 /** The first member of `list` whose id is ticked, in LIST order -- never in
  *  the order the boxes were ticked, which the confirmation's name line does
@@ -57,9 +78,20 @@ export function sendPreview(
   member: Member,
   over: {
     periodFrom: string; periodTo: string;
-    academyName: string; followUpTrigger: number;
+    /** null when no condition is switched on -- the sender prints an em dash */
+    academyName: string; followUpTrigger: number | null;
   },
 ): SendPreview {
+  const sender: Record<string, string> = {
+    last_attendance_date: member.lastPresent ?? '—',
+    attendance_pct: senderPct(member.attended, member.expected),
+    follow_up_trigger: over.followUpTrigger == null ? '—' : String(over.followUpTrigger),
+    unsubscribe_url: UNSUBSCRIBE_STAND_IN,
+  };
+  // One pass over the four, then fillTokens over the rest. None of the values
+  // above contains a brace, so the second pass cannot re-expand them.
+  const pre = (text: string) => String(text ?? '').replace(/\{\{(\w+)\}\}/g, (whole, key: string) =>
+    Object.prototype.hasOwnProperty.call(sender, key) ? sender[key] : whole);
   const ctx = previewContext({
     member,
     courseName: member.course,
@@ -71,7 +103,7 @@ export function sendPreview(
   });
   return {
     label: `Preview · ${member.name}`,
-    subject: fillTokens(wording.subject, ctx),
-    body: fillTokens(wording.body, ctx),
+    subject: fillTokens(pre(wording.subject), ctx),
+    body: fillTokens(pre(wording.body), ctx),
   };
 }

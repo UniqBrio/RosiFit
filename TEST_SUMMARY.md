@@ -23,6 +23,17 @@ BROWSER (web export, fixtures, 420×900, both themes chosen through /appearance)
 full body above Not yet / Send; `/member/1` → Reach out → Apply → Send to 2 → the confirm step
 shows the same preview above the trigger. Dark and light both rendered; 0 page errors.
 
+REVIEW ROUND (code + copy review, 26-Sep-2026). Four tokens the form preview's map fills
+differently from send-followups are now filled in the SENDER's format by `sendPreview`
+(last attended date, one-decimal attendance %, em dash for a trigger with no condition on, and a
+stated stand-in for the per-recipient unsubscribe link); the academy name and trigger are
+required, so no sample value can pass as the member's email; ConfirmDialog caps its card and lets
+the preview shrink. FAIL-FIRST: 4 new cases in src/data/sendPreview.test.ts — **4 of 9 red** with
+the sender-format pass removed, **9 of 9 green** restored. test:unit 1975 pass / the same 6 fail.
+Browser re-run both themes, 0 page errors; at 420×520 the final Send sits at y≈415, on screen.
+The form preview's own divergence is TD-055. Freeze rule checked by `git diff`: no shipped string
+removed or altered.
+
 ## A COURSE SENDS ITS OWN WORDING — 26-Sep-2026
 
 `requests/2026-09-26-send-uses-the-course-wording.md` is the binding record, and **RC-109** is the

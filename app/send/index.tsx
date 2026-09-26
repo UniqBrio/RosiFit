@@ -395,7 +395,7 @@ function SendDraftBody() {
   const preview = previewMember && message.data && academy.data && trigger
     ? sendPreview(message.data, previewMember, {
         periodFrom: week.from, periodTo: week.to,
-        academyName: academy.data.name, followUpTrigger: trigger.threshold,
+        academyName: academy.data.name, followUpTrigger: trigger.enabled ? trigger.threshold : null,
       })
     : null;
 

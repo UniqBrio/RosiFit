@@ -537,10 +537,13 @@ export function ConfirmDialog({ open, onClose, title, body, cancelLabel = 'Not y
         <View accessibilityViewIsModal style={{
           width: '100%', maxWidth: 420, borderRadius: 24, padding: 22,
           backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
+          // A `detail` is the part that gives way on a short screen, never the
+          // buttons; without a detail nothing here is tall enough to reach it.
+          ...(detail ? { maxHeight: '90%' as const } : null),
         }}>
           <Text style={{ fontSize: 20, fontWeight: '800', color: theme.fgStrong, lineHeight: 26 }}>{title}</Text>
           <Text style={{ fontSize: 13, color: theme.muted, lineHeight: 20, marginTop: SPACE.md }}>{body}</Text>
-          {detail ? <ScrollView style={{ maxHeight: 320 }}>{detail}</ScrollView> : null}
+          {detail ? <ScrollView style={{ maxHeight: 320, flexShrink: 1 }}>{detail}</ScrollView> : null}
           <View style={{ flexDirection: 'row', gap: 10, marginTop: SPACE.xl }}>
             <Pressable onPress={onClose} accessibilityRole="button"
               style={({ pressed }) => ({
