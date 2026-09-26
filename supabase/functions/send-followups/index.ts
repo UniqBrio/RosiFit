@@ -196,12 +196,20 @@ Deno.serve(async (req) => {
       const enroll = enrollByMember.get(id);
       return enroll ? offeringById.get(enroll.offering_id as string)?.course_id as string | undefined : undefined;
     };
-    const snapshot = batchWording(memberIds.map(courseOfMember), wordingByCourse, templateWording);
+    // Over the members that will be RENDERED only: an id with no member row is
+    // excluded below with no wording at all, and counting it as "the template"
+    // would make a one-course batch look mixed.
+    const renderedWording = batchWording(
+      memberIds.filter(id => memberById.has(id)).map(courseOfMember), wordingByCourse, templateWording);
+    // Mixed (or nobody rendered): the columns are NOT NULL, so they keep the
+    // template's words, and `context.wording` says the snapshot is not the text
+    // any one member received.
+    const snapshot = renderedWording ?? templateWording;
 
     const { data: batch, error: batchErr } = await admin.from('email_batches').insert({
       client_batch_id: clientBatchId, template_id: templateId,
       subject_snapshot: snapshot.subject, body_snapshot: snapshot.body,
-      context: { period_from: periodFrom, period_to: periodTo },
+      context: { period_from: periodFrom, period_to: periodTo, wording: renderedWording ? 'single' : 'mixed' },
       config_snapshot: configSnapshot, requested_count: memberIds.length, sent_by: caller.id,
     }).select('id').single();
     if (batchErr || !batch) {
@@ -214,7 +222,8 @@ Deno.serve(async (req) => {
     // PREPARE every recipient, then run the loop. The split is what lets a
     // fake admin client drive the write-send-record loop in a spec (T-020):
     // what a member is TOLD is decided here, what is RECORDED is decided in
-    // send-loop.ts. Nothing about the rendering below changed.
+    // send-loop.ts. Each member's wording now comes from the member's course
+    // (RC-109); nothing else about the rendering below changed.
     const prepared: PreparedRecipient[] = [];
 
     for (const id of memberIds) {

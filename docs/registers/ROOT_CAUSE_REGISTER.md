@@ -78,11 +78,13 @@ and the words were wrong: exactly the selectivity reported.
 
 **Fix** — the function now resolves each course through `effective_course_message()` (the
 resolver 0021 already names as the one behind "the batch") once per course, fails loud if that
-read errors, and renders each recipient from their own course's wording
+read errors, and renders each recipient from the member's own course wording
 (`send-followups/wording.ts`, `wordingFor`). A member with no course keeps the template the send
 asked for. `email_batches.subject_snapshot` / `body_snapshot` now record the wording actually
-sent when every recipient shares one (`batchWording`), which is every batch either send screen
-starts. No schema change; no client change — both buttons already call this one function.
+rendered when the rendered recipients share one (`batchWording`), which is every batch either
+send screen starts; a batch that rendered more than one wording keeps the template's words in
+those NOT NULL columns and says `context.wording = 'mixed'`, so the snapshot never passes for
+text a member received. No schema change; no client change — both buttons already call this one function.
 
 **Files** — `supabase/functions/send-followups/index.ts`, `supabase/functions/send-followups/wording.ts`,
 `supabase/functions/send-followups/wording.test.ts`.
@@ -95,6 +97,16 @@ Reach out to a flagged member of a course with its own wording and read the deli
 `grep -rn "email_templates\|body_text" supabase/functions --include=*.ts`: the only render is in
 `send-followups/index.ts`, now through `wordingFor`. The class — a course setting the form saves
 that the sender never reads — has now happened twice on the same row (sender, then wording).
+
+**Known gaps, not widened into this fix** (code review, 26-Sep-2026) —
+- The 409 for an inactive template checks the `template_id` the caller passes, not the template
+  the course's wording resolves from; `effective_course_message()` does not check `is_active`.
+  Unreachable from the app — both screens pass the resolver's own `template_id` — but a direct
+  API caller can pass one active id and send a course the words of an inactive one, and
+  `email_batches.template_id` then names the passed template.
+- A member with more than one `active` enrolment row (0039 can leave a current row and a later
+  one) gets whichever row the read returned last — pre-existing, now also choosing the wording.
+  0039 keeps those rows within one course, so the wording matches in practice.
 
 **Prevention** — `supabase/functions/send-followups/wording.test.ts` pins the resolution rule.
 The wiring in `index.ts` has no rung: the file calls `Deno.serve` at module scope and the CI

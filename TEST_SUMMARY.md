@@ -10,7 +10,10 @@ behaviour injected into `wordingFor` (`return template;`): "a member of a course
 wording is sent the course's words", "each course keeps its own wording -- one template for one
 course", "the batch records the course's wording when every recipient shares it", each
 `AssertionError: Values are not equal.` The file was restored from a copy and the spec re-run:
-**5 of 5 green**. `deno test` over the tree: 8 passed, 0 failed.
+**5 of 5 green**. After code review the snapshot rule changed (a batch that rendered more than
+one wording is recorded as mixed, not as the template): the spec is now 7 cases, all green;
+`deno test` over the tree: 10 passed, 0 failed. The fail-first is an INJECTED one — `wordingFor`
+did not exist before the fix — and the wiring in `index.ts` has no spec (see RC-109 Prevention).
 
 GATES: `npm run check` — lint, typecheck, check:edge (306 files, deno 2.5.6), contrast, icons,
 check:functions PASS. test:unit **1965 pass / 6 fail — the same 6 on the untouched base**

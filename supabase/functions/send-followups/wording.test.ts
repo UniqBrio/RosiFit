@@ -1,4 +1,4 @@
-// RC-109: a send renders each recipient from THEIR COURSE's wording, not the
+// RC-109: a send renders each recipient from THE MEMBER'S COURSE wording, not the
 // template the client named (requests/2026-09-26-send-uses-the-course-wording.md).
 //
 // The shape is the reported one: Postnatal carries its own subject and body,
@@ -46,7 +46,15 @@ Deno.test("the batch records the course's wording when every recipient shares it
   assertEquals(batchWording(['postnatal', 'postnatal'], byCourse, TEMPLATE), POSTNATAL);
 });
 
-Deno.test('a batch spanning courses with different wordings keeps the template snapshot', () => {
-  assertEquals(batchWording(['postnatal', 'prenatal'], byCourse, TEMPLATE), TEMPLATE);
-  assertEquals(batchWording([], byCourse, TEMPLATE), TEMPLATE);
+Deno.test('a batch that rendered more than one wording says so, never claims the template', () => {
+  assertEquals(batchWording(['postnatal', 'prenatal'], byCourse, TEMPLATE), null);
+  assertEquals(batchWording(['postnatal', null], byCourse, TEMPLATE), null);
+});
+
+Deno.test('a batch whose recipients have no course records the template, because that is what was sent', () => {
+  assertEquals(batchWording([null], byCourse, TEMPLATE), TEMPLATE);
+});
+
+Deno.test('a batch that rendered nobody has no single wording', () => {
+  assertEquals(batchWording([], byCourse, TEMPLATE), null);
 });

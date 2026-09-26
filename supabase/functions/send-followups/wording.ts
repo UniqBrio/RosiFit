@@ -23,8 +23,8 @@
 export type Wording = { subject: string; body: string };
 
 /**
- * The words one recipient is rendered from: their course's resolved wording,
- * or -- when the member has no course, or the resolver returned no row --
+ * The words one recipient is rendered from: the member's course's resolved
+ * wording, or -- when the member has no course, or the resolver returned no row --
  * the template the send was asked for. That fallback is not a guess: with no
  * course there is no course wording to prefer, and the template is what the
  * function has always sent.
@@ -38,22 +38,24 @@ export function wordingFor(
 }
 
 /**
- * The words `email_batches` records for the whole batch. A batch is answerable
- * for what it SENT, so when every recipient's course resolves to one wording
- * that wording is the snapshot -- which is every batch either send screen can
- * start, since both send for one course. A batch spanning courses with
- * different wordings has no single truthful answer; it keeps the template's,
- * as before, and every screen that could start one is disabled today (TD-033).
+ * The ONE wording a batch rendered, or null when it rendered more than one.
+ * `email_batches.body_snapshot` is the only record of a body -- email_messages
+ * keeps the subject and variables, not the text -- so the caller passes the
+ * course of every recipient it actually RENDERS (never an id it could not
+ * find), and a null is recorded as mixed rather than papered over with the
+ * template's words, which would read as what was sent when it was not.
+ * Both send screens send for one course, so null is reachable only through a
+ * batch spanning courses (TD-033).
  */
 export function batchWording(
   courseIds: ReadonlyArray<string | null | undefined>,
   byCourse: ReadonlyMap<string, Wording>,
   template: Wording,
-): Wording {
+): Wording | null {
   const seen = new Map<string, Wording>();
   for (const id of courseIds) {
     const w = wordingFor(id, byCourse, template);
     seen.set(`${w.subject}\u0000${w.body}`, w);
   }
-  return seen.size === 1 ? [...seen.values()][0] : template;
+  return seen.size === 1 ? [...seen.values()][0] : null;
 }
