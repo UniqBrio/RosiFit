@@ -59,6 +59,34 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-111 — a token added to the sender left five message specs pinning the old list          Tracker: T-025 · Sources: RV-03, requests/2026-09-08-follow-up-trigger-on-send-and-reach-out.md
+**Date:** 26-Sep-2026  ·  **Severity:** S3  ·  **Modules:** message tokens (`src/data/message.ts`), gate
+
+**Symptom** — `test:unit` red on `main` since `{{follow_up_trigger}}` landed: five `message.test.ts`
+cases (the token list against the sender's map, three counts, and the chip-length rule), which kept
+`gate` red on every PR.
+
+**Root cause** — the 08-Sep change added a token to `MESSAGE_TOKENS` and to send-followups' `vars`
+without running the spec file that pins both, so four locks still named the 13-token list, and the
+new chip label ("Follow-up trigger", 17 characters) broke a 16-character rule nobody saw fail.
+
+**Fix** — the four locks re-pinned to the 14-token list (only literals moved); the chip label
+shortened to "Trigger" so the rule holds, with its spoken meaning now "the follow-up trigger that
+listed them". Files: `src/data/message.ts`, `src/data/message.test.ts`.
+
+**How to verify** — `npx tsx --test src/data/message.test.ts`: 60 pass, 0 fail.
+
+**Recurrence risk** — any token added to the sender's map; the spec already names that map, so
+the class is covered once `gate` is honoured (Gate 2.2 makes it required).
+
+**Prevention** — `src/data/message.test.ts` "the token list IS the sender's variable map".
+Enforcement is `gate` itself being required on `main` (T-001's finding: 0 green runs).
+
+**Process check** — Yes: the change merged on a red `gate`. A required check would have stopped
+it; that is Gate 2.2, not this row.
+
+---
+
 ## RC-109 — the course's own wording was saved, previewed and never sent          Tracker: none (reported by the academy) · Sources: requests/2026-09-26-send-uses-the-course-wording.md, 0021_course_communication.sql
 **Date:** 26-Sep-2026  ·  **Severity:** S2  ·  **Modules:** send-followups (Edge Function)
 
