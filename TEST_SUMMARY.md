@@ -1,3 +1,16 @@
+## EVERY COURSE WORDING SAYS HOW TO STOP — 26-Sep-2026
+
+`requests/2026-09-26-every-course-wording-says-how-to-stop.md` (CHANGE, scoped). `send-followups`
+appends 0066's opt-out line to any wording without `{{unsubscribe_url}}` (`withUnsubscribeLine`,
+`send-followups/wording.ts`), and the send-step preview does the same (`src/data/sendPreview.ts`).
+
+FAIL-FIRST: send-followups/wording.test.ts — **1 of 12 red** with `withUnsubscribeLine` returning
+the body unchanged; 12 of 12 green restored. src/data/sendPreview.test.ts — **6 of 12 red** with
+the preview's append removed, and the parity case red (**2 of 12**) with the client's copy of the
+line changed by one word; 12 of 12 green restored. The five earlier cases in that file (unmerged,
+this PR) now expect the line at the foot — the expected value changed, no assertion was removed or
+loosened.
+
 ## THE MESSAGE IS SHOWN ON THE LAST SEND STEP — 26-Sep-2026
 
 `requests/2026-09-26-preview-before-send.md` is the binding record (CHANGE, Track B, scoped). The

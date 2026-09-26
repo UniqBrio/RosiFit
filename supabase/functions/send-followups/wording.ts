@@ -59,3 +59,25 @@ export function batchWording(
   }
   return seen.size === 1 ? [...seen.values()][0] : null;
 }
+
+/**
+ * The opt-out line 0066 put into every stored template, verbatim
+ * (requests/2026-09-26-every-course-wording-says-how-to-stop.md). A course's
+ * OWN wording bypasses the template, so since RC-109 a course that wrote its
+ * own words sent no visible way to stop -- 0066's title is "every follow-up
+ * email says how to stop getting them", and a course's wording is not an
+ * exception to it. The List-Unsubscribe headers are sent regardless; this is
+ * the line a person can SEE.
+ *
+ * `src/data/sendPreview.ts` carries the same string, and
+ * `src/data/sendPreview.test.ts` reads this file to hold the two together.
+ */
+export const UNSUBSCRIBE_LINE =
+  '\n\n--\nIf you would rather not get these check-ins, you can stop them here:\n{{unsubscribe_url}}';
+
+/** The body with the opt-out line, appended only when the wording does not
+ *  already place {{unsubscribe_url}} itself -- the same guard 0066 used, so a
+ *  course that worded its own opt-out keeps it exactly as written. */
+export function withUnsubscribeLine(body: string): string {
+  return body.includes('{{unsubscribe_url}}') ? body : body + UNSUBSCRIBE_LINE;
+}

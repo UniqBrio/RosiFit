@@ -46,6 +46,13 @@ export type SendPreview = {
   body: string;
 };
 
+/** The opt-out line send-followups appends to a wording that lacks one
+ *  (`UNSUBSCRIBE_LINE` in supabase/functions/send-followups/wording.ts, 0066's
+ *  text). Restated because the app cannot import the Deno tree; the spec
+ *  reads that file and fails if the two drift. */
+export const UNSUBSCRIBE_LINE =
+  '\n\n--\nIf you would rather not get these check-ins, you can stop them here:\n{{unsubscribe_url}}';
+
 /** Shown where each member's own signed opt-out link goes (0066). */
 export const UNSUBSCRIBE_STAND_IN = '[the member’s own unsubscribe link]';
 
@@ -101,9 +108,12 @@ export function sendPreview(
     periodTo: over.periodTo,
     followUpTrigger: over.followUpTrigger,
   });
+  // The send appends the opt-out line when the wording has none, so the
+  // preview does too -- before the tokens are filled, exactly as the send.
+  const body = wording.body.includes('{{unsubscribe_url}}') ? wording.body : wording.body + UNSUBSCRIBE_LINE;
   return {
     label: `Preview · ${member.name}`,
     subject: fillTokens(pre(wording.subject), ctx),
-    body: fillTokens(pre(wording.body), ctx),
+    body: fillTokens(pre(body), ctx),
   };
 }

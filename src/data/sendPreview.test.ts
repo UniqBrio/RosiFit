@@ -3,7 +3,9 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { firstTicked, sendPreview, senderPct, UNSUBSCRIBE_STAND_IN } from './sendPreview';
+import fs from 'node:fs';
+import path from 'node:path';
+import { firstTicked, sendPreview, senderPct, UNSUBSCRIBE_STAND_IN, UNSUBSCRIBE_LINE } from './sendPreview';
 import type { Member } from './mock';
 
 const member = (id: string, name: string, over: Partial<Member> = {}): Member => ({
@@ -30,6 +32,9 @@ const WITH_TOKENS = {
   body: 'You were down for {{expected_sessions}} sessions in {{course_name}} between '
     + '{{period_from}} and {{period_to}}, and made {{attended_sessions}}.\n\n{{academy_name}}',
 };
+/** What the preview shows at the foot of a wording that carries no opt-out of
+ *  its own: 0066's line, with the stand-in where each member's link goes. */
+const withLine = (body: string) => body + UNSUBSCRIBE_LINE.replace('{{unsubscribe_url}}', UNSUBSCRIBE_STAND_IN);
 const WEEK = { periodFrom: '2026-09-21', periodTo: '2026-09-27', academyName: 'RosiFit Academy', followUpTrigger: 2 };
 
 test('the first TICKED member in list order, not the first in the list', () => {
@@ -44,15 +49,15 @@ test('nobody ticked is no preview member, never the first row by default', () =>
 test("the course's own wording is shown as stored when it carries no tokens", () => {
   const p = sendPreview(POSTNATAL, rosi, WEEK);
   assert.equal(p.subject, POSTNATAL.subject);
-  assert.equal(p.body, POSTNATAL.body);
+  assert.equal(p.body, withLine(POSTNATAL.body));
 });
 
 test("every token is filled with the member's own figures and this send's period", () => {
   const p = sendPreview(WITH_TOKENS, rosi, WEEK);
   assert.equal(p.subject, 'We missed you this week, rosi');
-  assert.equal(p.body,
+  assert.equal(p.body, withLine(
     'You were down for 4 sessions in Postnatal between 2026-09-21 and 2026-09-27, and made 0.'
-    + '\n\nRosiFit Academy');
+    + '\n\nRosiFit Academy'));
   assert.ok(!p.subject.includes('{{') && !p.body.includes('{{'));
 });
 
@@ -66,9 +71,9 @@ test('the label names whose figures these are', () => {
 
 test('{{last_attendance_date}} is the last session attended (ISO), not the last email', () => {
   const m = member('m-x', 'Kavya', { lastPresent: '2026-09-12', last: '24/9/2026' });
-  assert.equal(sendPreview({ subject: 's', body: '{{last_attendance_date}}' }, m, WEEK).body, '2026-09-12');
+  assert.equal(sendPreview({ subject: 's', body: '{{last_attendance_date}}' }, m, WEEK).body, withLine('2026-09-12'));
   const never = member('m-y', 'Kavya', { lastPresent: null, last: '24/9/2026' });
-  assert.equal(sendPreview({ subject: 's', body: '{{last_attendance_date}}' }, never, WEEK).body, '—');
+  assert.equal(sendPreview({ subject: 's', body: '{{last_attendance_date}}' }, never, WEEK).body, withLine('—'));
 });
 
 test('{{attendance_pct}} carries the database one-decimal rounding', () => {
@@ -77,13 +82,13 @@ test('{{attendance_pct}} carries the database one-decimal rounding', () => {
   assert.equal(senderPct(1, 2), '50%');
   assert.equal(senderPct(0, 0), '—');
   const m = member('m-z', 'Kavya', { expected: 3, attended: 1 });
-  assert.equal(sendPreview({ subject: 's', body: '{{attendance_pct}}' }, m, WEEK).body, '33.3%');
+  assert.equal(sendPreview({ subject: 's', body: '{{attendance_pct}}' }, m, WEEK).body, withLine('33.3%'));
 });
 
 test('{{follow_up_trigger}} is the number in force, or an em dash when no condition is on', () => {
-  assert.equal(sendPreview({ subject: 's', body: '{{follow_up_trigger}}' }, rosi, WEEK).body, '2');
+  assert.equal(sendPreview({ subject: 's', body: '{{follow_up_trigger}}' }, rosi, WEEK).body, withLine('2'));
   assert.equal(sendPreview({ subject: 's', body: '{{follow_up_trigger}}' }, rosi,
-    { ...WEEK, followUpTrigger: null }).body, '—');
+    { ...WEEK, followUpTrigger: null }).body, withLine('—'));
 });
 
 test('{{unsubscribe_url}} says what goes there, never a URL that looks like the real one', () => {
@@ -91,4 +96,25 @@ test('{{unsubscribe_url}} says what goes there, never a URL that looks like the 
   const p = sendPreview({ subject: 's', body }, rosi, WEEK);
   assert.equal(p.body, `Stop them here:\n${UNSUBSCRIBE_STAND_IN}`);
   assert.ok(!p.body.includes('http'));
+});
+
+// ------------------------------------------- every wording says how to stop
+// requests/2026-09-26-every-course-wording-says-how-to-stop.md
+
+test("a course's own wording with no opt-out previews with 0066's line, as it is sent", () => {
+  const p = sendPreview(POSTNATAL, rosi, WEEK);
+  assert.ok(p.body.startsWith(POSTNATAL.body));
+  assert.ok(p.body.endsWith(`you can stop them here:\n${UNSUBSCRIBE_STAND_IN}`));
+});
+
+test('a wording that places its own opt-out gets no second line', () => {
+  const own = { subject: 's', body: 'Hi.\n\nTo stop: {{unsubscribe_url}}' };
+  assert.equal(sendPreview(own, rosi, WEEK).body, `Hi.\n\nTo stop: ${UNSUBSCRIBE_STAND_IN}`);
+});
+
+test('the preview appends the SAME line the send appends (send-followups/wording.ts)', () => {
+  const src = fs.readFileSync(path.join(process.cwd(), 'supabase/functions/send-followups/wording.ts'), 'utf8');
+  const m = src.match(/export const UNSUBSCRIBE_LINE =\s*'([^']*)';/);
+  assert.ok(m, 'send-followups/wording.ts no longer declares UNSUBSCRIBE_LINE as one string literal');
+  assert.equal(JSON.parse(`"${m[1]}"`), UNSUBSCRIBE_LINE);
 });

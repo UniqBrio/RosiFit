@@ -12,7 +12,7 @@ import { resolveEmailProvider } from './email.ts';
 import { chooseFromAddress, unquoteSecret } from '../_shared/from-address.ts';
 import { buildUnsubscribeUrl } from '../_shared/unsubscribe-token.ts';
 import { runSendLoop, type AdminLike, type PreparedRecipient } from './send-loop.ts';
-import { batchWording, wordingFor, type Wording } from './wording.ts';
+import { batchWording, wordingFor, withUnsubscribeLine, type Wording } from './wording.ts';
 
 /** The mailbox a mail client offers when it cannot use the URL. Named here
  *  rather than derived from the sender, because the sender now varies per
@@ -184,13 +184,15 @@ Deno.serve(async (req) => {
     // Loud on a failed read, for the reason the sender read is: an error here
     // is indistinguishable from "no course has its own wording", and that
     // sends every member the wrong message while reporting success.
-    const templateWording: Wording = { subject: template.subject, body: template.body_text };
+    // Every wording carries the opt-out line (0066) -- added here, at the
+    // source, so the rendered emails and the batch snapshot both hold it.
+    const templateWording: Wording = { subject: template.subject, body: withUnsubscribeLine(template.body_text) };
     const wordingByCourse = new Map<string, Wording>();
     for (const cid of courseIds) {
       const { data: msg, error: msgErr } = await admin.rpc('effective_course_message', { p_course_id: cid });
       if (msgErr) throw new HttpError(500, "Could not load the courses' message wording, so nothing was sent.");
       const row = (msg as Array<{ subject: string; body_text: string }> | null)?.[0];
-      if (row) wordingByCourse.set(cid, { subject: row.subject, body: row.body_text });
+      if (row) wordingByCourse.set(cid, { subject: row.subject, body: withUnsubscribeLine(row.body_text) });
     }
     const courseOfMember = (id: string): string | undefined => {
       const enroll = enrollByMember.get(id);
