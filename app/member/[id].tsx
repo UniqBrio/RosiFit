@@ -308,10 +308,10 @@ export default function MemberDetail() {
      for one of the members the prompt lists. */
   const previewFor = (memberId: string) => {
     const who = split.recipients.find(r => r.id === memberId);
-    return who && message.data
+    return who && message.data && academy.data && trigger
       ? sendPreview(message.data, who, {
           periodFrom: week.from, periodTo: week.to,
-          academyName: academy.data?.name, followUpTrigger: trigger?.threshold,
+          academyName: academy.data.name, followUpTrigger: trigger.threshold,
         })
       : null;
   };

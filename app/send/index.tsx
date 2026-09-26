@@ -392,10 +392,10 @@ function SendDraftBody() {
      wording -- what send-followups renders since RC-109 -- filled for the
      first ticked member, the one whose name leads `whoLine`. */
   const previewMember = firstTicked(recipients, picked);
-  const preview = previewMember && message.data
+  const preview = previewMember && message.data && academy.data && trigger
     ? sendPreview(message.data, previewMember, {
         periodFrom: week.from, periodTo: week.to,
-        academyName: academy.data?.name, followUpTrigger: trigger?.threshold,
+        academyName: academy.data.name, followUpTrigger: trigger.threshold,
       })
     : null;
 

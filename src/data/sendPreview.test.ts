@@ -30,7 +30,7 @@ const WITH_TOKENS = {
   body: 'You were down for {{expected_sessions}} sessions in {{course_name}} between '
     + '{{period_from}} and {{period_to}}, and made {{attended_sessions}}.\n\n{{academy_name}}',
 };
-const WEEK = { periodFrom: '2026-09-21', periodTo: '2026-09-27' };
+const WEEK = { periodFrom: '2026-09-21', periodTo: '2026-09-27', academyName: 'RosiFit Academy', followUpTrigger: 2 };
 
 test('the first TICKED member in list order, not the first in the list', () => {
   const list = [aanchal, rosi, sharmila];
@@ -48,7 +48,7 @@ test("the course's own wording is shown as stored when it carries no tokens", ()
 });
 
 test("every token is filled with the member's own figures and this send's period", () => {
-  const p = sendPreview(WITH_TOKENS, rosi, { ...WEEK, academyName: 'RosiFit Academy' });
+  const p = sendPreview(WITH_TOKENS, rosi, WEEK);
   assert.equal(p.subject, 'We missed you this week, rosi');
   assert.equal(p.body,
     'You were down for 4 sessions in Postnatal between 2026-09-21 and 2026-09-27, and made 0.'

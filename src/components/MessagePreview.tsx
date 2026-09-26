@@ -8,8 +8,8 @@ import type { SendPreview } from '../data/sendPreview';
  * The message a send is about to deliver, on the step with the last Send
  * button (requests/2026-09-26-preview-before-send.md). Drawn the way the course
  * form's own preview is -- the label saying whose figures these are, the
- * subject in bold, the body as it will read -- so the words a person approved
- * on the course and the words they are confirming look like one thing.
+ * subject in bold, the body as it will read -- so the words approved on the
+ * course and the words being confirmed look like one thing.
  *
  * The dialog that holds it SCROLLS it rather than growing: a long body must
  * not push the Send and Not yet buttons off a phone screen, which is exactly

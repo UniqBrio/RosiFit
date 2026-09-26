@@ -10,8 +10,8 @@
  * WHO IT IS RENDERED FOR: the FIRST TICKED member, in list order -- the same
  * member whose name leads the confirmation's "who" line, so the preview and
  * the line above it are about one person. Every other recipient receives the
- * same wording with their own figures, which the label says by naming whose
- * these are. Reach out has one member, so it is that member.
+ * same wording, filled from that member's own row, which the label says by
+ * naming whose figures these are. Reach out has one member, so it is that member.
  *
  * WHAT IT IS RENDERED FROM: the wording the course resolves to
  * (`effective_course_message`, read by `useCourseMessage`) -- the same one
@@ -44,16 +44,20 @@ export function firstTicked<T extends { id: string }>(list: readonly T[], picked
 /**
  * The message as `member` will read it: subject and body with every token
  * filled from the member's own row, this send's period, the academy name and
- * the trigger in force. Anything the screen has not loaded yet falls back the
- * way the course form's preview does (`previewContext`) -- to the member's
- * own course and branch, never to a blank or a token.
+ * the trigger in force.
+ *
+ * The academy name and the trigger are REQUIRED, not defaulted. The label
+ * names a real member, so a sample value standing in for one that has not
+ * loaded would read as that member's actual email -- "RosiFit" over an
+ * academy licensed under another name. A screen that has not read them yet
+ * draws no preview rather than a plausible one.
  */
 export function sendPreview(
   wording: { subject: string; body: string },
   member: Member,
   over: {
     periodFrom: string; periodTo: string;
-    academyName?: string | null; followUpTrigger?: number | null;
+    academyName: string; followUpTrigger: number;
   },
 ): SendPreview {
   const ctx = previewContext({
