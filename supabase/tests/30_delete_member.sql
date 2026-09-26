@@ -188,6 +188,9 @@ select t.rejects($$
 -- other write fail closed. This is the check that replaced the role check --
 -- 0038 moved the boundary, it did not remove one.
 begin;
+  -- As service_role: 0003's trigger lets only it change more than name and
+  -- role_label, which is how an account is disabled for real (T-135).
+  set local role service_role;
   update public.app_users set is_active = false
    where auth_user_id = 'dddddddd-0000-0000-0000-000000000002';
 commit;

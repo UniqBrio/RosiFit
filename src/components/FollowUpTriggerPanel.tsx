@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { View, Text, Pressable, Modal, ScrollView } from 'react-native';
 import { Muted, Label } from './ui';
 import { defaultSelection, sentLabel } from '../data/sent';
+import { firstTicked, type SendPreview } from '../data/sendPreview';
+import { MessagePreview } from './MessagePreview';
 import { Icon } from './Icon';
 import { useTheme } from '../theme/ThemeProvider';
 import { useToast } from './Toast';
@@ -358,7 +360,7 @@ export type TriggerRecipient = {
 export function FollowUpTriggerPrompt({
   open, onClose, onContinue, continueLabel, reading, courseId, daysPerWeek = null,
   readOnlyNote, recipients, excludedNames = [], listPending = false,
-  sending = false, failure = null, onSend, periodLabel,
+  sending = false, failure = null, onSend, periodLabel, previewFor,
 }: {
   open: boolean;
   onClose: () => void;
@@ -380,6 +382,11 @@ export function FollowUpTriggerPrompt({
   failure?: string | null;
   onSend: (memberIds: string[]) => void;
   periodLabel: string;
+  /** The message as one member will read it, drawn on the confirm step
+   *  (requests/2026-09-26-preview-before-send.md). Rendered by the SCREEN,
+   *  from the course's stored wording -- this component still never decides
+   *  what the email says (guardrail 5). Null draws no preview. */
+  previewFor?: (memberId: string) => SendPreview | null;
 }) {
   const { theme } = useTheme();
   const ink = (k: keyof typeof STATUS) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
@@ -408,6 +415,8 @@ export function FollowUpTriggerPrompt({
   const toggle = (id: string) => setChosen(
     picked.includes(id) ? picked.filter(x => x !== id) : [...picked, id]);
   const resending = recipients.filter(r => picked.includes(r.id) && r.sentAt).length;
+  const previewRecipient = confirming ? firstTicked(recipients, picked) : null;
+  const confirmPreview = previewRecipient && previewFor ? previewFor(previewRecipient.id) : null;
 
   /* THE GATE. Nothing to send to, a save still in flight, or a change typed and
      not applied — each of them is a reason this button must not act, and each
@@ -455,6 +464,14 @@ export function FollowUpTriggerPrompt({
           {/* The card scrolls, the footer does not: on a phone a list of a
               dozen members would otherwise push the send button off-screen. */}
           <ScrollView style={{ marginTop: SPACE.md }} contentContainerStyle={{ paddingBottom: 2 }}>
+            {/* WHAT GOES OUT, first on the confirm step so it is read before
+                the Send beneath it: the first ticked member's copy, the same
+                member the list below leads with. */}
+            {confirming && confirmPreview ? (
+              <View style={{ marginBottom: SPACE.md }}>
+                <MessagePreview preview={confirmPreview} testID="trigger-prompt-preview" />
+              </View>
+            ) : null}
             {/* THE TRIGGER STAYS ON SCREEN through every step. It is what the
                 list below is an answer to, and a person confirming a send is
                 entitled to see the rule that produced it without going back. */}

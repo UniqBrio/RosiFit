@@ -25,6 +25,8 @@ with intended(tbl, privs) as (values
   -- log it sits beside.
   ('audit_remarks','INSERT,SELECT'),
   ('branches','INSERT,SELECT,UPDATE'),
+  -- Added by 0021: the course form writes its own sender and wording.
+  ('course_communication','INSERT,SELECT,UPDATE'),
   ('course_follow_up_config','INSERT,SELECT,UPDATE'),
   ('course_offerings','INSERT,SELECT,UPDATE'),
   ('courses','INSERT,SELECT,UPDATE'),
@@ -40,11 +42,15 @@ with intended(tbl, privs) as (values
   ('member_aliases','DELETE,INSERT,SELECT,UPDATE'),
   ('member_emails','INSERT,SELECT,UPDATE'),
   ('member_enrollments','SELECT'),
+  -- Added by 0028: runs are read on screen and written only by the RPC.
+  ('member_import_runs','SELECT'),
   ('member_schedules','SELECT'),
   ('member_stats','SELECT'),
   ('members','INSERT,SELECT,UPDATE'),
   ('mobile_number_changes','SELECT'),
   ('offering_schedules','SELECT'),
+  -- Added by 0034: the owner reads the queue; requests arrive via the function.
+  ('pin_reset_requests','SELECT'),
   ('security_questions','SELECT'),
   ('session_expectations','SELECT'),
   ('sessions','SELECT'),
