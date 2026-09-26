@@ -12,7 +12,7 @@ import { recipientSplit } from '../../src/data/followup';
 import { narrowBySearch, searchTerm } from '../../src/data/memberSearch';
 import { enrolledIn } from '../../src/data/course';
 import { mergeSent, sentThisSession, recordSent, defaultSelection, sentLabel } from '../../src/data/sent';
-import { useCourses, useFollowUp, useCourseMessage, useSentForPeriod } from '../../src/data/hooks';
+import { useCourses, useFollowUp, useCourseMessage, useSentForPeriod, useAcademyDetails } from '../../src/data/hooks';
 import { FollowUpTriggerPanel } from '../../src/components/FollowUpTriggerPanel';
 import { readTrigger } from '../../src/data/followupTrigger';
 import { currentWeek } from '../../src/data/period';
@@ -20,6 +20,8 @@ import { sendFollowUps } from '../../src/data/api';
 import { fetchBatchByClientKey } from '../../src/data/repository';
 import { attemptSend, closeSendBatchKey, openSendBatchKey, sendBatchName } from '../../src/data/sendBatch';
 import { setSendAlready, setSendResult } from '../../src/data/pending';
+import { firstTicked, sendPreview } from '../../src/data/sendPreview';
+import { MessagePreview } from '../../src/components/MessagePreview';
 
 /**
  * ONE draft, for ONE course: WHO it goes to, and nothing else.
@@ -100,6 +102,7 @@ function SendDraftBody() {
   const wantedCourseId = courseId ?? memberCourseId;
   const message = useCourseMessage(wantedCourseId, forced);
   const already = useSentForPeriod(week, forced);
+  const academy = useAcademyDetails(forced);
 
   // null = nobody has touched a box yet, so the default below applies. An
   // empty array is a real answer -- everything unticked -- and must not read
@@ -384,6 +387,17 @@ function SendDraftBody() {
     resending ? `${resending} already sent this week` : '',
     excluded.length ? `${excluded.length} without an address` : '',
   ].filter(Boolean).join(' · ');
+  /* WHAT GOES OUT, on the step that sends it
+     (requests/2026-09-26-preview-before-send.md). The course's resolved
+     wording -- what send-followups renders since RC-109 -- filled for the
+     first ticked member, the one whose name leads `whoLine`. */
+  const previewMember = firstTicked(recipients, picked);
+  const preview = previewMember && message.data && academy.data && trigger
+    ? sendPreview(message.data, previewMember, {
+        periodFrom: week.from, periodTo: week.to,
+        academyName: academy.data.name, followUpTrigger: trigger.enabled ? trigger.threshold : null,
+      })
+    : null;
 
   return (
     <FormDialog
@@ -431,6 +445,7 @@ function SendDraftBody() {
             + '\nThis cannot be recalled.'}
           cancelLabel="Not yet"
           confirmLabel="Send"
+          detail={preview ? <MessagePreview preview={preview} testID="send-preview" /> : null}
           onConfirm={() => { void send(); }} />
       )}
     >

@@ -148,24 +148,25 @@ select t.eq((select a.original_status from public.attendance_records a
   'original_status is stamped once and stays what the register first said');
 
 -- ==================================== a day the course does not run at all
--- Tuesday. She was never expected, so 'absent' is not a fact that exists --
--- and absent_must_be_expected (0008) would refuse it with a constraint name.
--- The point of this pair is that a PERSON gets a sentence instead.
+-- Tuesday, off the schedule. 0035 creates an ad-hoc day as an all_enrolled
+-- session, so every enrolled member IS expected on it and 'absent' is an
+-- ordinary mark. Re-pointed 26-Sep-2026 by the owner's decision (T-133):
+-- "Accept it" -- the spec had asserted a refusal 0035 never made.
 begin;
   set local role authenticated;
   set local request.jwt.claim.sub = 'dddddddd-0000-0000-0000-000000000001';
-  select t.rejects($$select public.set_attendance(
-                       (select id from public.members where full_name = 'Anitha Rajesh'),
-                       (date_trunc('week', current_date) + interval '1 day')::date, 'absent')$$,
-    'absent on a day she was not expected is refused, in words rather than by a CHECK',
-    'was not expected');
+  select t.eq(public.set_attendance(
+                (select id from public.members where full_name = 'Anitha Rajesh'),
+                (date_trunc('week', current_date) + interval '1 day')::date, 'absent') ->> 'status',
+    'absent',
+    'absent on an ad-hoc day is accepted -- an all_enrolled session expects every enrolled member');
 
   select t.eq(public.set_attendance(
                 (select id from public.members where full_name = 'Anitha Rajesh'),
                 (date_trunc('week', current_date) + interval '1 day')::date, 'present') ->> 'status',
-    'extra',
-    'present on a day she was not expected is stored as EXTRA -- she turned up when nobody '
-    'expected her, and that never counts as a miss');
+    'present',
+    'present on the same ad-hoc day is PRESENT -- the member was expected there (0035), so it is '
+    'an ordinary attendance, not an extra (re-pointed with the absent case above, T-133)');
 commit;
 
 select t.eq((select expectation_mode from public.sessions

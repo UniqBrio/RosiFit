@@ -6,7 +6,7 @@
 // out as "We missed you this week, rosi" -- the template's words.
 
 import { assertEquals } from 'jsr:@std/assert@1';
-import { batchWording, wordingFor, type Wording } from './wording.ts';
+import { batchWording, sendable, wordingFor, withUnsubscribeLine, UNSUBSCRIBE_LINE, type Wording } from './wording.ts';
 
 const TEMPLATE: Wording = {
   subject: 'We missed you this week, {{first_name}}',
@@ -57,4 +57,23 @@ Deno.test('a batch whose recipients have no course records the template, because
 
 Deno.test('a batch that rendered nobody has no single wording', () => {
   assertEquals(batchWording([], byCourse, TEMPLATE), null);
+});
+
+// Every course's wording says how to stop (0066), even a course's OWN wording
+// (requests/2026-09-26-every-course-wording-says-how-to-stop.md).
+Deno.test("a course's own wording without an opt-out gets 0066's line", () => {
+  assertEquals(withUnsubscribeLine(POSTNATAL.body), POSTNATAL.body + UNSUBSCRIBE_LINE);
+  assertEquals(UNSUBSCRIBE_LINE.includes('{{unsubscribe_url}}'), true);
+});
+
+Deno.test('wording that already places {{unsubscribe_url}} is left exactly as written', () => {
+  const own = 'Hello {{first_name}}.\n\nTo stop: {{unsubscribe_url}}';
+  assertEquals(withUnsubscribeLine(own), own);
+});
+
+Deno.test('a stored wording is made sendable: the subject untouched, the body with the line', () => {
+  const w = sendable(POSTNATAL.subject, POSTNATAL.body);
+  assertEquals(w.subject, POSTNATAL.subject);
+  assertEquals(w.body.endsWith('you can stop them here:\n{{unsubscribe_url}}'), true);
+  assertEquals(w.body.startsWith(POSTNATAL.body), true);
 });

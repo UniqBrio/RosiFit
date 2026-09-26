@@ -89,7 +89,11 @@ select t.ok(
 -- in practice; it is asserted so a future migration that handed one out would
 -- fail here rather than silently orphan somebody's note.
 select t.rejects(
-  $$delete from public.audit_logs where id = 900001$$,
+  -- As a signed-in account, the one that could ever ask: the harness session
+  -- is a superuser, which skips privileges and meets the append-only trigger
+  -- first -- right outcome, wrong reason (T-135).
+  $$set local role authenticated;
+    delete from public.audit_logs where id = 900001$$,
   'an annotated entry cannot be deleted, by privilege or by restrict',
   'permission denied');
 
