@@ -1,3 +1,52 @@
+## EVERY COURSE WORDING SAYS HOW TO STOP — 26-Sep-2026
+
+`requests/2026-09-26-every-course-wording-says-how-to-stop.md` (CHANGE, scoped). `send-followups`
+appends 0066's opt-out line to any wording without `{{unsubscribe_url}}` (`withUnsubscribeLine`,
+`send-followups/wording.ts`), and the send-step preview does the same (`src/data/sendPreview.ts`).
+
+FAIL-FIRST: send-followups/wording.test.ts — **1 of 12 red** with `withUnsubscribeLine` returning
+the body unchanged; 12 of 12 green restored. src/data/sendPreview.test.ts — **6 of 12 red** with
+the preview's append removed, and the parity case red (**2 of 12**) with the client's copy of the
+line changed by one word; 12 of 12 green restored. The five earlier cases in that file (unmerged,
+this PR) now expect the line at the foot — the expected value changed, no assertion was removed or
+loosened.
+
+## THE MESSAGE IS SHOWN ON THE LAST SEND STEP — 26-Sep-2026
+
+`requests/2026-09-26-preview-before-send.md` is the binding record (CHANGE, Track B, scoped). The
+send draft's confirm pop-up and the member pop-up's trigger-prompt confirm step now show the
+course's stored wording filled for the first ticked member (`src/data/sendPreview.ts`, drawn by
+`src/components/MessagePreview.tsx`).
+
+FAIL-FIRST: src/data/sendPreview.test.ts — **3 of 5 red** with two defects injected
+(`firstTicked` returning the first row regardless of the tick; the subject returned unfilled):
+'the first TICKED member in list order, not the first in the list', 'nobody ticked is no preview
+member, never the first row by default', 'every token is filled with the member's own figures and
+this send's period'. The file was restored from a copy: **5 of 5 green**.
+
+GATES: `npm run check` — lint, typecheck, check:edge, contrast, icons, check:functions PASS.
+test:unit **1970 pass / 6 fail — the same 6 that fail on `main`** (message.test.ts token list,
+formDropdownMenu filters); none touches this change. `audit:colors`, `audit:testids`,
+`audit:columns`, `audit:deadweight`, `audit:auditactor`, `audit:boundary` OK, none new.
+`audit:rules` reports 4 violations, all on pre-existing register entries (RC-047, RC-048, RC-073,
+the duplicate RC-107); none names this change. DB harness N/A — no migration.
+
+BROWSER (web export, fixtures, 420×900, both themes chosen through /appearance):
+`/send?id=c1` → Send to 1 → the confirm pop-up shows "PREVIEW · DIVYA RAMESH", the subject and the
+full body above Not yet / Send; `/member/1` → Reach out → Apply → Send to 2 → the confirm step
+shows the same preview above the trigger. Dark and light both rendered; 0 page errors.
+
+REVIEW ROUND (code + copy review, 26-Sep-2026). Four tokens the form preview's map fills
+differently from send-followups are now filled in the SENDER's format by `sendPreview`
+(last attended date, one-decimal attendance %, em dash for a trigger with no condition on, and a
+stated stand-in for the per-recipient unsubscribe link); the academy name and trigger are
+required, so no sample value can pass as the member's email; ConfirmDialog caps its card and lets
+the preview shrink. FAIL-FIRST: 4 new cases in src/data/sendPreview.test.ts — **4 of 9 red** with
+the sender-format pass removed, **9 of 9 green** restored. test:unit 1975 pass / the same 6 fail.
+Browser re-run both themes, 0 page errors; at 420×520 the final Send sits at y≈415, on screen.
+The form preview's own divergence is TD-055. Freeze rule checked by `git diff`: no shipped string
+removed or altered.
+
 ## A COURSE SENDS ITS OWN WORDING — 26-Sep-2026
 
 `requests/2026-09-26-send-uses-the-course-wording.md` is the binding record, and **RC-109** is the
