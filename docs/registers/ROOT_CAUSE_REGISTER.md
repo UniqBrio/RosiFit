@@ -59,6 +59,66 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-109 — the course's own wording was saved, previewed and never sent          Tracker: none (reported by the academy) · Sources: requests/2026-09-26-send-uses-the-course-wording.md, 0021_course_communication.sql
+**Date:** 26-Sep-2026  ·  **Severity:** S2  ·  **Modules:** send-followups (Edge Function)
+
+**Symptom** — "When the email is sent to rcflive1@gmail.com (using "Reach out" button) … it
+triggers the old email template(content) instead of using the latest corrected email content."
+The delivered email read "We missed you this week, rosi" / "You were down for 4 sessions in
+Postnatal …" — the seeded *Gentle check-in* template — while the Postnatal course form showed its
+saved wording "Live class attendance update" / "Hi Ma, …". The from-address was the course's own.
+
+**Root cause** — `send-followups` rendered the one template the client named (`email_templates`
+by `template_id`) for every recipient, and read `course_communication` only for `from_email`.
+The course's `subject` and `body_text` (0021) were written by the course form, read by its
+preview through `effective_course_message()`, and read by nobody who sends — so every course
+sent its template's words regardless of what the form said. The sender half was wired on
+07-Sep-2026; the wording half of the same row never was. That is also why the address was right
+and the words were wrong: exactly the selectivity reported.
+
+**Fix** — the function now resolves each course through `effective_course_message()` (the
+resolver 0021 already names as the one behind "the batch") once per course, fails loud if that
+read errors, and renders each recipient from the member's own course wording
+(`send-followups/wording.ts`, `wordingFor`). A member with no course keeps the template the send
+asked for. `email_batches.subject_snapshot` / `body_snapshot` now record the wording actually
+rendered when the rendered recipients share one (`batchWording`), which is every batch either
+send screen starts; a batch that rendered more than one wording keeps the template's words in
+those NOT NULL columns and says `context.wording = 'mixed'`, so the snapshot never passes for
+text a member received. No schema change; no client change — both buttons already call this one function.
+
+**Files** — `supabase/functions/send-followups/index.ts`, `supabase/functions/send-followups/wording.ts`,
+`supabase/functions/send-followups/wording.test.ts`.
+
+**How to verify** — `cd supabase/functions && deno test send-followups/wording.test.ts` (5 pass;
+3 fail with `wordingFor` returning the template, the pre-fix behaviour). Live, after deploy: send
+Reach out to a flagged member of a course with its own wording and read the delivered subject.
+
+**Recurrence risk** — one send site. Swept with
+`grep -rn "email_templates\|body_text" supabase/functions --include=*.ts`: the only render is in
+`send-followups/index.ts`, now through `wordingFor`. The class — a course setting the form saves
+that the sender never reads — has now happened twice on the same row (sender, then wording).
+
+**Known gaps, not widened into this fix** (code review, 26-Sep-2026) —
+- The 409 for an inactive template checks the `template_id` the caller passes, not the template
+  the course's wording resolves from; `effective_course_message()` does not check `is_active`.
+  Unreachable from the app — both screens pass the resolver's own `template_id` — but a direct
+  API caller can pass one active id and send a course the words of an inactive one, and
+  `email_batches.template_id` then names the passed template.
+- A member with more than one `active` enrolment row (0039 can leave a current row and a later
+  one) gets whichever row the read returned last — pre-existing, now also choosing the wording.
+  0039 keeps those rows within one course, so the wording matches in practice.
+
+**Prevention** — `supabase/functions/send-followups/wording.test.ts` pins the resolution rule.
+The wiring in `index.ts` has no rung: the file calls `Deno.serve` at module scope and the CI
+`deno test` runs without read permission, so no spec can import or scan it — prose only.
+
+**Process check** — Yes. 0021's comment claimed the resolver was "behind … the batch" and
+`FEATURE_TRUTH.md` claimed the per-member draft used the wording resolved from the member's own course;
+neither was checked against the function that sends. Filed as a candidate for `/promote`, not run
+in this change: a stored setting's claim should be proven at the step that consumes it.
+
+---
+
 ## RC-108 — a member whose address could not be used was listed as one whose address worked, and counted as one          Tracker: none (reported by the academy) · Sources: requests/2026-09-24-issues-leave-the-roster-and-two-filters.md, RC-107, RC-106
 **Date:** 24-Sep-2026 · **Severity:** S2 (a screen stated something untrue about who can be written to; no send behaviour changed) · **Modules:** `app/course/[id].tsx`, `src/data/emailIssues.ts`, `src/data/rosterFilter.ts`
 

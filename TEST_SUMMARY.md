@@ -1,3 +1,29 @@
+## A COURSE SENDS ITS OWN WORDING — 26-Sep-2026
+
+`requests/2026-09-26-send-uses-the-course-wording.md` is the binding record, and **RC-109** is the
+defect: Reach out and Send communication delivered the *Gentle check-in* template's words for a
+course that had saved its own. `send-followups` now renders each recipient from their course's
+wording, resolved by `effective_course_message()`.
+
+FAIL-FIRST: supabase/functions/send-followups/wording.test.ts — **3 of 5 red** with the pre-fix
+behaviour injected into `wordingFor` (`return template;`): "a member of a course with its own
+wording is sent the course's words", "each course keeps its own wording -- one template for one
+course", "the batch records the course's wording when every recipient shares it", each
+`AssertionError: Values are not equal.` The file was restored from a copy and the spec re-run:
+**5 of 5 green**. After code review the snapshot rule changed (a batch that rendered more than
+one wording is recorded as mixed, not as the template): the spec is now 7 cases, all green;
+`deno test` over the tree: 10 passed, 0 failed. The fail-first is an INJECTED one — `wordingFor`
+did not exist before the fix — and the wiring in `index.ts` has no spec (see RC-109 Prevention).
+
+GATES: `npm run check` — lint, typecheck, check:edge (306 files, deno 2.5.6), contrast, icons,
+check:functions PASS. test:unit **1965 pass / 6 fail — the same 6 on the untouched base**
+(`src/data/message.test.ts` token list vs the sender's variable map, and
+`the list-screen filters are untouched`); none reads a line this change touches.
+DB harness: N/A — no migration, `git diff supabase/migrations supabase/tests` EMPTY.
+
+NOT OBSERVED: the delivered email. No live send was made — the Edge Function is not deployed
+until the requester says so.
+
 ## ISSUES LEAVE THE ROSTER, AND THE DROPDOWN GAINS TWO — 24-Sep-2026
 
 `requests/2026-09-24-issues-leave-the-roster-and-two-filters.md` is the binding record, and
