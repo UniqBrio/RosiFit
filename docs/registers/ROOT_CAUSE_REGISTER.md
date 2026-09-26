@@ -59,6 +59,34 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-117 — three DB specs kept pinning behaviour the product had deliberately changed          Tracker: T-137 · Sources: harness run 26-Sep-2026
+**Date:** 26-Sep-2026  ·  **Severity:** S4  ·  **Modules:** DB specs `09_grants`, `12_offering_schedule`, `34_reimport_feedback`
+
+**Symptom** — red in every replay: `09` "authenticated holds exactly the table privileges …
+course_communication want[none] …"; `12` "a staff account cannot set a schedule -- statement was
+ACCEPTED"; `34_reimport_feedback` "the import does not claim to have updated the row … got 1 want 0".
+
+**Root cause** — each change landed without the spec that pinned the old behaviour being updated:
+three tables whose grants were deliberate never joined `09`'s list; the owner's "do not restrict
+staff" (08-Sep, 0038/0050) reversed `12`'s refusal; 0046's back-dating makes a member expected on
+the day that moved her start, which `34_reimport`'s 4th import had not accounted for.
+
+**Fix** — `09`'s list extended; `12` asserts staff can set a schedule (rolled back); `34_reimport`
+pins the back-dated member's promotion on the 4th import (owner decision 26-Sep-2026) and re-homes
+the "nothing to update" cases on a 5th import of the same file. Owner's exemption; no case dropped.
+
+**How to verify** — the harness: `12` 24 PASS, `34_reimport_feedback` 43 PASS; `09`'s grants case
+passes and the file stops at T-138.
+
+**Recurrence risk** — every deliberate behaviour change; the spec pinning the old rule has to move
+in the same PR.
+
+**Prevention** — `db-harness` required on `main` (Gate 2.2).
+
+**Process check** — Yes: merged red. Gate 2.2.
+
+---
+
 ## RC-109 — the course's own wording was saved, previewed and never sent          Tracker: none (reported by the academy) · Sources: requests/2026-09-26-send-uses-the-course-wording.md, 0021_course_communication.sql
 **Date:** 26-Sep-2026  ·  **Severity:** S2  ·  **Modules:** send-followups (Edge Function)
 
