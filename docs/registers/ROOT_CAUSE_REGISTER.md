@@ -59,6 +59,30 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-116 — two DB specs passed only when the suite ran on a Monday          Tracker: T-136 · Sources: harness run 26-Sep-2026
+**Date:** 26-Sep-2026  ·  **Severity:** S4  ·  **Modules:** DB specs `34_member_inactive_from`, `50_member_active_again_from`
+
+**Symptom** — "every attendance record … is still there: got 5 want 6" on a Saturday run.
+
+**Root cause** — both specs built their past window relative to today (`current_date - 7 .. - 2`,
+six days) on a Monday-to-Saturday schedule, so the count of scheduled days in it was six only when
+the window held no Sunday — a Monday run. The number was right on the day each was written. `34`
+also pinned the refusal wording 'she joined on', which 0060 deliberately replaced.
+
+**Fix** — the window is last week's Monday to Saturday, derived from `date_trunc('week', …)`:
+six sessions on any weekday, always in the past. `34`'s copy-lock re-pinned to 0060's wording.
+
+**How to verify** — the harness: `34` 30 PASS, `50` 31 PASS — and the same on any weekday.
+
+**Recurrence risk** — any spec asserting a count over a window computed from `current_date` against
+a weekday schedule. Swept with `grep -ln "current_date - 7" supabase/tests`: besides these two, `10_add_member`
+(a joining date, no count over it) and `23_course_threshold` (the follow-up window passed to
+`follow_up_candidates`, green on this Saturday run, NOT checked across weekdays — a candidate for
+the same fix if it ever reddens on another day).
+
+**Prevention** — prose only.
+
+**Process check** — Yes: merged red on six days of the week. Gate 2.2.
 ## RC-115 — five DB specs ran their steps as a superuser the product never is          Tracker: T-135 · Sources: harness run 26-Sep-2026
 **Date:** 26-Sep-2026  ·  **Severity:** S4  ·  **Modules:** DB specs `22`, `30`, `37`, `40`, `48`
 

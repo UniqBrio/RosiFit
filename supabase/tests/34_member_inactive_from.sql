@@ -59,23 +59,27 @@ commit;
 select t.ok((select inactive_from is null from public.members where full_name = 'Revathi Nair'),
   'a member arrives with no inactive date -- which is what every row written before 0045 carries');
 
+-- THE PAST WINDOW IS LAST WEEK'S MONDAY TO SATURDAY, not "7 to 2 days ago":
+-- on a Mon-Sat schedule that one held six sessions only when it held no
+-- Sunday, i.e. only on a Monday run, so the spec's counts depended on the
+-- day it ran (fixed 26-Sep-2026, T-136). Always six, always in the past.
 begin;
-  select public.generate_sessions(o.id, (current_date - 7)::date, (current_date - 2)::date)
+  select public.generate_sessions(o.id, (date_trunc('week', current_date)::date - 7), (date_trunc('week', current_date)::date - 2))
     from public.course_offerings o
     join public.courses c on c.id = o.course_id
    where c.name = 'Trimester 3 Gentle';
   update public.sessions set status='completed', completed_at=now()
-   where session_date between current_date - 7 and current_date - 2;
+   where session_date between date_trunc('week', current_date)::date - 7 and date_trunc('week', current_date)::date - 2;
   insert into public.attendance_records (session_id, member_id, status, expected)
     select s.id, m.id, 'absent', true
       from public.sessions s, public.members m
      where m.full_name = 'Revathi Nair'
-       and s.session_date between current_date - 7 and current_date - 2;
+       and s.session_date between date_trunc('week', current_date)::date - 7 and date_trunc('week', current_date)::date - 2;
   select public.recompute_member_stats();
 commit;
 
 select t.ok(exists (select 1 from public.follow_up_candidates(
-                      (current_date - 7)::date, (current_date - 2)::date)
+                      (date_trunc('week', current_date)::date - 7), (date_trunc('week', current_date)::date - 2))
                      where full_name = 'Revathi Nair'),
   'she meets the rule, so she is a follow-up candidate -- the fixture is real');
 
@@ -122,7 +126,7 @@ select t.eq(public.member_status_on('inactive', null, current_date + 400), 'inac
 
 -- ------------------------------------------- the engine judges on the day
 select t.ok(exists (select 1 from public.follow_up_candidates(
-                      (current_date - 7)::date, (current_date - 2)::date)
+                      (date_trunc('week', current_date)::date - 7), (date_trunc('week', current_date)::date - 2))
                      where full_name = 'Revathi Nair'),
   'she is STILL a follow-up candidate: her date is a month away and she is owed those follow-ups');
 
@@ -138,7 +142,7 @@ begin;
 commit;
 
 select t.ok(not exists (select 1 from public.follow_up_candidates(
-                          (current_date - 7)::date, (current_date - 2)::date)
+                          (date_trunc('week', current_date)::date - 7), (date_trunc('week', current_date)::date - 2))
                          where full_name = 'Revathi Nair'),
   'the day arrives and she drops out of the candidate list, with nobody pressing anything');
 
@@ -198,7 +202,7 @@ begin;
                         (select id from public.members where full_name = 'Revathi Nair'),
                         'inactive', (current_date - 400)::date)$q$,
     'a departure before her arrival is refused -- she joined 60 days ago',
-    'she joined on');
+    'this member joined on');  -- copy-lock re-pinned to 0060's wording (T-136)
   -- The CHECK says the same thing; the RPC says it to a PERSON, with both
   -- dates in it, because the form that sent it shows this sentence and
   -- cannot show a constraint name.
@@ -233,7 +237,7 @@ commit;
 select t.ok((select inactive_from is null from public.members where full_name = 'Revathi Nair'),
   'marking her active CLEARS the date -- coming back on is not a dated act');
 select t.ok(exists (select 1 from public.follow_up_candidates(
-                      (current_date - 7)::date, (current_date - 2)::date)
+                      (date_trunc('week', current_date)::date - 7), (date_trunc('week', current_date)::date - 2))
                      where full_name = 'Revathi Nair'),
   'and she is straight back in the follow-up rule');
 
