@@ -59,6 +59,35 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-118 — a merge kept the import's "absent" over the day the member actually attended          Tracker: T-139 · Sources: harness run 26-Sep-2026, 0032, 0014
+**Date:** 26-Sep-2026  ·  **Severity:** S2  ·  **Modules:** `merge_member_into` (0032, 0061, 0073, 0080)
+
+**Symptom** — `25_merge_member.sql`: "the 17th now says PRESENT for the member she actually is --
+this is the whole point of the merge -- got absent". In the product: merging a stray the import
+created ("Rani Sham") into the real member left the real member ABSENT on the day the stray was
+marked present.
+
+**Root cause** — 0032's clash rule, "the target already being in that session wins", was written as
+if the target's record were always evidence. Since 0014 the import writes 'absent' for every
+expected member it does not name, so on exactly the day a merge exists for the target DOES hold a
+record — the default mark — and the stray's 'present' was soft-deleted. The spec that said so was
+written with the function and never ran green.
+
+**Fix** — 0080 (in place, anchor-checked, idempotent): before the clash rule, drop the target's
+uncorrected 'absent' where the stray has a live 'present'/'extra' for that session; the existing path
+then moves the stray's record across and recomputes status and expectation. A corrected absent — a
+person's decision — still wins. No table or existing row changes on apply.
+
+**How to verify** — harness: `25` 16 PASS, `58_merge_keeps_a_corrected_absent` 5 PASS. Production,
+after apply: `select position('-- 0080:' in pg_get_functiondef('public.merge_member_into(uuid, uuid)'::regprocedure)) > 0`.
+
+**Recurrence risk** — any rule that treats a system-written default as a person's evidence. The
+import's default 'absent' also meets `set_attendance` (0035), which already ranks a person above
+the file.
+
+**Prevention** — `supabase/tests/25_merge_member.sql` and `58_merge_keeps_a_corrected_absent.sql`.
+
+**Process check** — Yes: 0032 merged with its own spec red. Gate 2.2.
 ## RC-117 — three DB specs kept pinning behaviour the product had deliberately changed          Tracker: T-137 · Sources: harness run 26-Sep-2026
 **Date:** 26-Sep-2026  ·  **Severity:** S4  ·  **Modules:** DB specs `09_grants`, `12_offering_schedule`, `34_reimport_feedback`
 
