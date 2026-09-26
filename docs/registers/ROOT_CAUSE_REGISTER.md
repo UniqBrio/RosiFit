@@ -59,6 +59,36 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-115 — five DB specs ran their steps as a superuser the product never is          Tracker: T-135 · Sources: harness run 26-Sep-2026
+**Date:** 26-Sep-2026  ·  **Severity:** S4  ·  **Modules:** DB specs `22`, `30`, `37`, `40`, `48`
+
+**Symptom** — red in every replay: "rejected, but for the wrong reason" (`22`, `37`), "only name
+and role_label may be changed here" (`30`, `40`), "permission denied for table gone" (`40`),
+"permission denied for view t_pre" (`48`).
+
+**Root cause** — the harness connects as the `postgres` superuser, and since 0015 removed default
+grants, any step a spec does not wrap in `set local role` either skips privileges entirely or
+creates objects no product role can read. Each of these specs left a step on the superuser: the
+refusals then happened for a different reason than the one asserted, and account/enrolment changes
+hit triggers that admit only `service_role`. `48` additionally counted a namesake it had created
+on purpose (16-Sep-2026) as a half-written member.
+
+**Fix** — each step runs as the role that would perform it; temp table and views granted to
+`authenticated`; `22`'s expected reason is the stronger one that actually applies (no INSERT
+privilege); `48`'s count names only the refused member. In place, owner's exemption.
+
+**How to verify** — the harness: `22` 36, `30` 21, `37` 13, `40` 38, `48` 22 PASS.
+
+**Recurrence risk** — every spec: the superuser default is the trap. A spec asserting a refusal
+without `set local role` asserts nothing about the product.
+
+**Prevention** — prose only; a lint for `t.rejects` bodies lacking `set local role` is possible but
+not built here. `db-harness` required on `main` (Gate 2.2) is the backstop.
+
+**Process check** — Yes: merged red. Gate 2.2.
+
+---
+
 ## RC-109 — the course's own wording was saved, previewed and never sent          Tracker: none (reported by the academy) · Sources: requests/2026-09-26-send-uses-the-course-wording.md, 0021_course_communication.sql
 **Date:** 26-Sep-2026  ·  **Severity:** S2  ·  **Modules:** send-followups (Edge Function)
 
