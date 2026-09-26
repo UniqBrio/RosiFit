@@ -59,6 +59,30 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-116 — two DB specs passed only when the suite ran on a Monday          Tracker: T-136 · Sources: harness run 26-Sep-2026
+**Date:** 26-Sep-2026  ·  **Severity:** S4  ·  **Modules:** DB specs `34_member_inactive_from`, `50_member_active_again_from`
+
+**Symptom** — "every attendance record … is still there: got 5 want 6" on a Saturday run.
+
+**Root cause** — both specs built their past window relative to today (`current_date - 7 .. - 2`,
+six days) on a Monday-to-Saturday schedule, so the count of scheduled days in it was six only when
+the window held no Sunday — a Monday run. The number was right on the day each was written. `34`
+also pinned the refusal wording 'she joined on', which 0060 deliberately replaced.
+
+**Fix** — the window is last week's Monday to Saturday, derived from `date_trunc('week', …)`:
+six sessions on any weekday, always in the past. `34`'s copy-lock re-pinned to 0060's wording.
+
+**How to verify** — the harness: `34` 30 PASS, `50` 31 PASS — and the same on any weekday.
+
+**Recurrence risk** — any spec asserting a count over a window computed from `current_date` against
+a weekday schedule. Swept: `grep -n "current_date - 7" supabase/tests` finds these two files only.
+
+**Prevention** — prose only.
+
+**Process check** — Yes: merged red on six days of the week. Gate 2.2.
+
+---
+
 ## RC-109 — the course's own wording was saved, previewed and never sent          Tracker: none (reported by the academy) · Sources: requests/2026-09-26-send-uses-the-course-wording.md, 0021_course_communication.sql
 **Date:** 26-Sep-2026  ·  **Severity:** S2  ·  **Modules:** send-followups (Edge Function)
 
