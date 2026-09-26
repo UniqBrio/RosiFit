@@ -1,3 +1,28 @@
+## THE MESSAGE IS SHOWN ON THE LAST SEND STEP — 26-Sep-2026
+
+`requests/2026-09-26-preview-before-send.md` is the binding record (CHANGE, Track B, scoped). The
+send draft's confirm pop-up and the member pop-up's trigger-prompt confirm step now show the
+course's stored wording filled for the first ticked member (`src/data/sendPreview.ts`, drawn by
+`src/components/MessagePreview.tsx`).
+
+FAIL-FIRST: src/data/sendPreview.test.ts — **3 of 5 red** with two defects injected
+(`firstTicked` returning the first row regardless of the tick; the subject returned unfilled):
+'the first TICKED member in list order, not the first in the list', 'nobody ticked is no preview
+member, never the first row by default', 'every token is filled with the member's own figures and
+this send's period'. The file was restored from a copy: **5 of 5 green**.
+
+GATES: `npm run check` — lint, typecheck, check:edge, contrast, icons, check:functions PASS.
+test:unit **1970 pass / 6 fail — the same 6 that fail on `main`** (message.test.ts token list,
+formDropdownMenu filters); none touches this change. `audit:colors`, `audit:testids`,
+`audit:columns`, `audit:deadweight`, `audit:auditactor`, `audit:boundary` OK, none new.
+`audit:rules` reports 4 violations, all on pre-existing register entries (RC-047, RC-048, RC-073,
+the duplicate RC-107); none names this change. DB harness N/A — no migration.
+
+BROWSER (web export, fixtures, 420×900, both themes chosen through /appearance):
+`/send?id=c1` → Send to 1 → the confirm pop-up shows "PREVIEW · DIVYA RAMESH", the subject and the
+full body above Not yet / Send; `/member/1` → Reach out → Apply → Send to 2 → the confirm step
+shows the same preview above the trigger. Dark and light both rendered; 0 page errors.
+
 ## A COURSE SENDS ITS OWN WORDING — 26-Sep-2026
 
 `requests/2026-09-26-send-uses-the-course-wording.md` is the binding record, and **RC-109** is the

@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — See the message before you send it
+
+**The last step before sending now shows the email itself.** When you press Send on *Send
+communication* or *Reach out*, the confirmation that holds the final Send button shows the
+subject and the full message, exactly as it will arrive, filled in with the first ticked
+member's name, dates and session counts. Everyone else ticked gets the same wording with their
+own details.
+
+**The member list screen is unchanged.** The preview appears only on that last step, so the list
+you tick from stays short, as it has been since 6 September.
+
 ## Unreleased — Each course's emails now use that course's own wording
 
 **Reach out and Send communication were sending the template's words, not the course's.** A

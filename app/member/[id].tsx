@@ -3,7 +3,9 @@ import { View, Text } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
   useMembers, useRules, useSentForPeriod, useCourses, useCourseMessage, useMemberWeek,
+  useAcademyDetails,
 } from '../../src/data/hooks';
+import { sendPreview } from '../../src/data/sendPreview';
 import {
   FollowUpTriggerPanel, FollowUpTriggerPrompt, type TriggerRecipient,
 } from '../../src/components/FollowUpTriggerPanel';
@@ -128,6 +130,7 @@ export default function MemberDetail() {
      a member reads (guardrail 5). */
   const memberCourse = (courses.data ?? []).find(c => c.name === m?.course) ?? null;
   const message = useCourseMessage(memberCourse?.id ?? null, forced);
+  const academy = useAcademyDetails(forced);
   const [warning, setWarning] = useState(false);
   /* The send made from the prompt, once a trigger has been applied. Its own
      state and not the draft's: this dialog now owns a send, and it reports its
@@ -299,6 +302,19 @@ export default function MemberDetail() {
   const promptRecipients: TriggerRecipient[] = split.recipients.map(r => ({
     id: r.id, name: r.name, email: primaryEmail(r), sentAt: sentAll[r.id],
   }));
+  /* The confirm step's preview (requests/2026-09-26-preview-before-send.md):
+     the course's stored wording -- the same `message` the send below passes
+     the template of, and what send-followups renders since RC-109 -- filled
+     for one of the members the prompt lists. */
+  const previewFor = (memberId: string) => {
+    const who = split.recipients.find(r => r.id === memberId);
+    return who && message.data
+      ? sendPreview(message.data, who, {
+          periodFrom: week.from, periodTo: week.to,
+          academyName: academy.data?.name, followUpTrigger: trigger?.threshold,
+        })
+      : null;
+  };
 
   /* THE SEND ITSELF, from this dialog rather than from the prompt: the prompt
      renders a decision, and the one API call that puts email in front of a
@@ -391,7 +407,8 @@ export default function MemberDetail() {
             ?? (message.state === 'error'
               ? 'This course’s wording could not be read, so nothing can be sent from here.'
               : null)}
-          onSend={ids => { void send(ids); }} />
+          onSend={ids => { void send(ids); }}
+          previewFor={previewFor} />
         <ConfirmDialog
           open={warning}
           onClose={() => setWarning(false)}
