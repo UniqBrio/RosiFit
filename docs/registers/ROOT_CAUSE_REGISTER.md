@@ -59,6 +59,35 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-112 — the course list lost its search box and branch filter, and kept their state          Tracker: T-023 · Sources: A:F-28, RV-03
+**Date:** 26-Sep-2026  ·  **Severity:** S3  ·  **Modules:** Attendance tab course list (`app/(tabs)/courses.tsx`)
+
+**Symptom** — `formDropdownMenu.test.ts` "the list-screen filters are untouched" red on `main`:
+`courses.tsx` imported `DropdownRow/Field/Panel/List` and rendered none. On screen, the course list
+had no search and no branch filter, while its empty state still said "Clear one or both" and
+"Choose All branches to see them all" — naming controls that were not there.
+
+**Root cause** — the two controls were removed from the render in an edit this repository's
+squashed history cannot attribute (the tree starts at `1030d47`, 13-Sep), and the `query`,
+`branch`, `branchOpen` state, the branch options and the filter logic were left behind. Nothing
+failed at the time because the only guard was a source-reading spec in a suite that was already
+red (T-001: `gate` never green on `main`).
+
+**Fix** — the search box (`courses-search`) and the Branch field (`courses-filter-branch`, a
+card-row `DropdownList` in a `DropdownPanel`) are rendered again above the list, wired to the
+state that was already there. Built from the same parts as the course screen's member search and
+the Attendance filters; tokens only.
+
+**How to verify** — `npx tsx --test src/components/formDropdownMenu.test.ts` 9/9; in the app, the
+Attendance tab narrows by a typed name and by a chosen branch, and the count label follows.
+
+**Recurrence risk** — any list screen whose filter UI is removed and state kept. `FILTERS` in the
+spec names the three list screens; the other two render their lists.
+
+**Prevention** — `src/components/formDropdownMenu.test.ts` (existing). It only protects once
+`gate` is required on `main` (Gate 2.2).
+
+**Process check** — Yes: a red `gate` hid the regression. Gate 2.2.
 ## RC-111 — a token added to the sender left five message specs pinning the old list          Tracker: T-025 · Sources: RV-03, requests/2026-09-08-follow-up-trigger-on-send-and-reach-out.md
 **Date:** 26-Sep-2026  ·  **Severity:** S3  ·  **Modules:** message tokens (`src/data/message.ts`), gate
 
