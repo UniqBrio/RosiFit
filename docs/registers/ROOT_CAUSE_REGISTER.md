@@ -59,6 +59,28 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-119 — pin_reset_requests enabled row-level security but never forced it          Tracker: T-138 · Sources: harness run 26-Sep-2026, 0015, 0034
+**Date:** 26-Sep-2026  ·  **Severity:** S3  ·  **Modules:** `pin_reset_requests` (0034, 0081)
+
+**Symptom** — `09_grants.sql`: "every table in public forces RLS … got 1 want 0"; the one table is
+`pin_reset_requests`.
+
+**Root cause** — 0015 established FORCE as the rule for every table in `public`; 0034, written
+after, enabled RLS and stopped there. Nothing caught it because `09` never reached that case — it
+stopped earlier on its own stale grants list (T-137).
+
+**Fix** — 0081 forces RLS on the table. One flag; the service role (BYPASSRLS, T-005) and
+superusers are unaffected; no row, policy or grant changes; idempotent.
+
+**How to verify** — harness: `09` (with T-137) 10/10 PASS. Production, after apply:
+`select relforcerowsecurity from pg_class where oid = 'public.pin_reset_requests'::regclass` → true.
+
+**Recurrence risk** — every new table. `09`'s force-RLS case covers the class once `db-harness` is
+required (Gate 2.2).
+
+**Prevention** — `supabase/tests/09_grants.sql` "every table in public forces RLS".
+
+**Process check** — Yes: masked by an earlier red case in the same file (`ON_ERROR_STOP`). Gate 2.2.
 ## RC-118 — a merge kept the import's "absent" over the day the member actually attended          Tracker: T-139 · Sources: harness run 26-Sep-2026, 0032, 0014
 **Date:** 26-Sep-2026  ·  **Severity:** S2  ·  **Modules:** `merge_member_into` (0032, 0061, 0073, 0080)
 
