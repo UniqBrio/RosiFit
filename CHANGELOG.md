@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased — Every follow-up says how to stop them again
+
+**A course that wrote its own wording was sending emails with no visible way to opt out.**
+Postnatal's wording ends at "Regards, RosiFit Team", so since each course started using its own
+words, those emails lost the line every template carries: *"If you would rather not get these
+check-ins, you can stop them here"* with the member's own link. The one-click unsubscribe that
+mail apps offer kept working; the sentence a person can read did not.
+
+**The line is now added to any course wording that does not include one**, in the same words as
+the templates, and the preview before Send shows it. A course that placed its own opt-out keeps
+it exactly as written, and nothing stored on the course is changed.
+
+## Unreleased — See the message before you send it
+
+**The last step before sending now shows the email itself.** When you press Send on *Send
+communication* or *Reach out*, the confirmation that holds the final Send button shows the
+subject and the full message, exactly as it will arrive, filled in with the first ticked
+member's name, dates and session counts. Everyone else ticked gets the same wording with their
+own details.
+
+**The member list screen is unchanged.** The preview appears only on that last step, so the list
+you tick from stays short, as it has been since 6 September.
+
 ## Unreleased — Each course's emails now use that course's own wording
 
 **Reach out and Send communication were sending the template's words, not the course's.** A

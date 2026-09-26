@@ -59,6 +59,45 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-110 — a course's own wording skipped the opt-out line every template carries          Tracker: none (found in session, 26-Sep-2026) · Sources: RC-109, 0066, requests/2026-09-26-every-course-wording-says-how-to-stop.md
+**Date:** 26-Sep-2026  ·  **Severity:** S3  ·  **Modules:** send-followups (Edge Function), send-step preview
+
+**Symptom** — Postnatal's saved wording ends "Regards, RosiFit Team". Once RC-109 made the send use
+it, a Postnatal follow-up would carry no visible way to stop — 0066's *"If you would rather not get
+these check-ins, you can stop them here"* line lives only in the stored templates. The
+List-Unsubscribe headers were still sent. Found before any such email went out: RC-109 is not yet
+deployed.
+
+**Root cause** — 0066 made "every follow-up says how to stop" true by editing the TEMPLATE rows,
+so the guarantee lived in data rather than in the send. RC-109 routed a course's own wording
+around the template, and the guarantee did not travel with it. RC-109's review checked that the
+right words were sent; nobody asked what the template's words had been carrying.
+
+**Fix** — `send-followups` builds every wording it renders and snapshots through `sendable()`
+(`send-followups/wording.ts`), which appends 0066's line verbatim to any body that does not place
+`{{unsubscribe_url}}` itself. The send-step preview appends the same line. No stored wording is
+edited. This also closes 0066's own "STILL OPEN" note: a template created after 0066 now gets the
+line at send too.
+
+**Files** — `supabase/functions/send-followups/{wording.ts,index.ts,wording.test.ts}`,
+`src/data/sendPreview.ts`, `src/data/sendPreview.test.ts`.
+
+**How to verify** — `deno test` in `supabase/functions` (`sendable`, `withUnsubscribeLine`);
+`npx tsx --test src/data/sendPreview.test.ts` — the line pinned to 0066's migration text and to the
+Deno copy. Live, after deploy: a Postnatal Reach out email ends with the opt-out line.
+
+**Recurrence risk** — any guarantee stored in the template rows rather than enforced at send.
+Swept `supabase/migrations` for `update public.email_templates`: 0066 is the only migration that
+edits template CONTENT. The course form's preview (`app/course/edit.tsx`) still shows the wording
+without the line — TD-055's class, recorded there.
+
+**Prevention** — `src/data/sendPreview.test.ts` ("the line is 0066's, verbatim") and
+`send-followups/wording.test.ts` ("a stored wording is made sendable"). The call sites in
+`index.ts` have no rung (the file cannot be imported by a spec) — prose only.
+
+**Process check** — Yes: RC-109's review asked "does the course's wording arrive?" and not "what
+did the template guarantee that the course's wording does not?". Recorded here as the question to
+ask when a send path stops reading a stored row.
 ## RC-112 — the course list lost its search box and branch filter, and kept their state          Tracker: T-023 · Sources: A:F-28, RV-03
 **Date:** 26-Sep-2026  ·  **Severity:** S3  ·  **Modules:** Attendance tab course list (`app/(tabs)/courses.tsx`)
 
