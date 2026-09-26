@@ -50,17 +50,23 @@ commit;
 -- schedule is what actually runs. Neither is reconciled into the other.
 select t.eq((select default_frequency::int from public.courses), 3, 'the course still states 3');
 
--- ------------------------------------------------------ only the super admin
+-- ------------------------------------------------------ staff too (0050)
+-- Re-pointed 26-Sep-2026 (T-137): the owner's instruction of 08-Sep-2026,
+-- "do not restrict staff from any operations within app", made 0038/0050 open
+-- set_offering_schedule to every active app user. This spec still asserted
+-- the refusal. Checked in a rolled-back transaction so the versioning below
+-- still starts from one version.
 begin;
   set local role authenticated;
   set local request.jwt.claim.sub = 'ffffffff-0000-0000-0000-000000000002';
-  select t.rejects($$select public.set_offering_schedule(
-      (select id from public.course_offerings), array[2,4]::smallint[], date '2026-10-01')$$,
-    'a staff account cannot set a schedule', 'super admin');
-commit;
+  select public.set_offering_schedule(
+      (select id from public.course_offerings), array[2,4]::smallint[], date '2026-10-01');
+  select t.eq((select count(*)::int from public.offering_schedules), 2,
+    'a staff account CAN set a schedule -- staff are not restricted (0050)');
+rollback;
 
 select t.eq((select count(*)::int from public.offering_schedules), 1,
-  'and the refusal changed nothing');
+  'and the check was rolled back, so what follows starts from one version');
 
 -- ------------------------------------------------------------- versioning
 begin;
