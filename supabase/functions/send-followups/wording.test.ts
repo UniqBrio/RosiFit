@@ -6,7 +6,7 @@
 // out as "We missed you this week, rosi" -- the template's words.
 
 import { assertEquals } from 'jsr:@std/assert@1';
-import { batchWording, wordingFor, withUnsubscribeLine, UNSUBSCRIBE_LINE, type Wording } from './wording.ts';
+import { batchWording, sendable, wordingFor, withUnsubscribeLine, UNSUBSCRIBE_LINE, type Wording } from './wording.ts';
 
 const TEMPLATE: Wording = {
   subject: 'We missed you this week, {{first_name}}',
@@ -69,4 +69,11 @@ Deno.test("a course's own wording without an opt-out gets 0066's line", () => {
 Deno.test('wording that already places {{unsubscribe_url}} is left exactly as written', () => {
   const own = 'Hello {{first_name}}.\n\nTo stop: {{unsubscribe_url}}';
   assertEquals(withUnsubscribeLine(own), own);
+});
+
+Deno.test('a stored wording is made sendable: the subject untouched, the body with the line', () => {
+  const w = sendable(POSTNATAL.subject, POSTNATAL.body);
+  assertEquals(w.subject, POSTNATAL.subject);
+  assertEquals(w.body.endsWith('you can stop them here:\n{{unsubscribe_url}}'), true);
+  assertEquals(w.body.startsWith(POSTNATAL.body), true);
 });

@@ -75,6 +75,13 @@ export function batchWording(
 export const UNSUBSCRIBE_LINE =
   '\n\n--\nIf you would rather not get these check-ins, you can stop them here:\n{{unsubscribe_url}}';
 
+/** A stored wording as it is SENT: the subject untouched, the body with the
+ *  opt-out line where it has none. index.ts builds every wording it renders
+ *  and snapshots through this, so the rule is reachable by a spec. */
+export function sendable(subject: string, body: string): Wording {
+  return { subject, body: withUnsubscribeLine(body) };
+}
+
 /** The body with the opt-out line, appended only when the wording does not
  *  already place {{unsubscribe_url}} itself -- the same guard 0066 used, so a
  *  course that worded its own opt-out keeps it exactly as written. */

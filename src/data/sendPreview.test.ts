@@ -46,7 +46,7 @@ test('nobody ticked is no preview member, never the first row by default', () =>
   assert.equal(firstTicked([aanchal, rosi], []), null);
 });
 
-test("the course's own wording is shown as stored when it carries no tokens", () => {
+test("the course's own wording is shown as stored, plus the opt-out line, when it carries no tokens", () => {
   const p = sendPreview(POSTNATAL, rosi, WEEK);
   assert.equal(p.subject, POSTNATAL.subject);
   assert.equal(p.body, withLine(POSTNATAL.body));
@@ -117,4 +117,12 @@ test('the preview appends the SAME line the send appends (send-followups/wording
   const m = src.match(/export const UNSUBSCRIBE_LINE =\s*'([^']*)';/);
   assert.ok(m, 'send-followups/wording.ts no longer declares UNSUBSCRIBE_LINE as one string literal');
   assert.equal(JSON.parse(`"${m[1]}"`), UNSUBSCRIBE_LINE);
+});
+
+test("the line is 0066's, verbatim -- a copy-lock on the shipped opt-out wording", () => {
+  const sql = fs.readFileSync(path.join(process.cwd(),
+    'supabase/migrations/0066_every_follow_up_email_says_how_to_stop_it.sql'), 'utf8');
+  const m = sql.match(/body_text\s*\|\|\s*E'([^']*)'/);
+  assert.ok(m, '0066 no longer carries the body_text line as one E-string');
+  assert.equal(m[1].replace(/\\n/g, '\n'), UNSUBSCRIBE_LINE);
 });
