@@ -74,6 +74,8 @@ superusers are unaffected; no row, policy or grant changes; idempotent.
 
 **How to verify** — harness: `09` (with T-137) 10/10 PASS. Production, after apply:
 `select relforcerowsecurity from pg_class where oid = 'public.pin_reset_requests'::regclass` → true.
+**Verified in production 26-Sep-2026** — 0081 applied to RosiFit with the owner's go-ahead, after 0080:
+`relforcerowsecurity` true; tables in `public` not forcing RLS: 0; ledger row for 0081 present.
 
 **Recurrence risk** — every new table. `09`'s force-RLS case covers the class once `db-harness` is
 required (Gate 2.2).
@@ -102,6 +104,9 @@ person's decision — still wins. No table or existing row changes on apply.
 
 **How to verify** — harness: `25` 16 PASS, `58_merge_keeps_a_corrected_absent` 5 PASS. Production,
 after apply: `select position('-- 0080:' in pg_get_functiondef('public.merge_member_into(uuid, uuid)'::regprocedure)) > 0`.
+**Verified in production 26-Sep-2026** — 0080 applied to RosiFit with the owner's go-ahead: the marker
+appears once, the anchor once, 0073's alias upsert and 0061's refusal wording are still in the live
+body, and the ledger row for 0080 is present.
 
 **Recurrence risk** — any rule that treats a system-written default as a person's evidence. The
 import's default 'absent' also meets `set_attendance` (0035), which already ranks a person above
@@ -262,6 +267,9 @@ line at send too.
 **How to verify** — `deno test` in `supabase/functions` (`sendable`, `withUnsubscribeLine`);
 `npx tsx --test src/data/sendPreview.test.ts` — the line pinned to 0066's migration text and to the
 Deno copy. Live, after deploy: a Postnatal Reach out email ends with the opt-out line.
+**Deployed 26-Sep-2026** — `send-followups` v20 (with RC-109), `verify_jwt` true; the bundle read back
+from the platform is byte-identical to `supabase/functions/` in all ten files, `wording.ts` among them.
+The live-email check above is the academy's next Reach out.
 
 **Recurrence risk** — any guarantee stored in the template rows rather than enforced at send.
 Swept `supabase/migrations` for `update public.email_templates`: 0066 is the only migration that
@@ -365,6 +373,9 @@ text a member received. No schema change; no client change — both buttons alre
 **How to verify** — `cd supabase/functions && deno test send-followups/wording.test.ts` (5 pass;
 3 fail with `wordingFor` returning the template, the pre-fix behaviour). Live, after deploy: send
 Reach out to a flagged member of a course with its own wording and read the delivered subject.
+**Deployed 26-Sep-2026** — `send-followups` v20, `verify_jwt` true; read back from the platform and
+diffed by script: all ten files byte-identical to `supabase/functions/`. The delivered-subject check
+above is the academy's next Reach out.
 
 **Recurrence risk** — one send site. Swept with
 `grep -rn "email_templates\|body_text" supabase/functions --include=*.ts`: the only render is in
