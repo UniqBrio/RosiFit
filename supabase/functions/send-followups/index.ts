@@ -1,6 +1,8 @@
-// send-followups: renders the chosen stored template with each recipient's
-// real engine figures and sends via the EmailProvider abstraction. Templates
-// only -- there is no subject/body field this function accepts (C-68).
+// send-followups: renders each recipient's COURSE wording -- stored on the
+// course, or the template the course names (RC-109, effective_course_message)
+// -- with their real engine figures and sends via the EmailProvider
+// abstraction. Stored wording only -- there is no subject/body field this
+// function accepts (C-68).
 // Excluded members are returned and named, never silently dropped (C-76).
 import { handlePreflight } from '../_shared/cors.ts';
 import { json, errorJson, HttpError } from '../_shared/response.ts';
@@ -10,6 +12,7 @@ import { resolveEmailProvider } from './email.ts';
 import { chooseFromAddress, unquoteSecret } from '../_shared/from-address.ts';
 import { buildUnsubscribeUrl } from '../_shared/unsubscribe-token.ts';
 import { runSendLoop, type AdminLike, type PreparedRecipient } from './send-loop.ts';
+import { batchWording, wordingFor, type Wording } from './wording.ts';
 
 /** The mailbox a mail client offers when it cannot use the URL. Named here
  *  rather than derived from the sender, because the sender now varies per
@@ -173,9 +176,31 @@ Deno.serve(async (req) => {
       configSnapshot[cid] = cfg?.[0] ?? null;
     }
 
+    // THE COURSE'S OWN WORDING (RC-109). The subject and body a course's form
+    // saves -- or the template it names -- resolved by the same function the
+    // form preview and the send draft read, once per course. Before this, the
+    // course's sender was read (above) and its wording never was, so the
+    // email left from the course's address with the template's words.
+    // Loud on a failed read, for the reason the sender read is: an error here
+    // is indistinguishable from "no course has its own wording", and that
+    // sends every member the wrong message while reporting success.
+    const templateWording: Wording = { subject: template.subject, body: template.body_text };
+    const wordingByCourse = new Map<string, Wording>();
+    for (const cid of courseIds) {
+      const { data: msg, error: msgErr } = await admin.rpc('effective_course_message', { p_course_id: cid });
+      if (msgErr) throw new HttpError(500, "Could not load the courses' message wording, so nothing was sent.");
+      const row = (msg as Array<{ subject: string; body_text: string }> | null)?.[0];
+      if (row) wordingByCourse.set(cid, { subject: row.subject, body: row.body_text });
+    }
+    const courseOfMember = (id: string): string | undefined => {
+      const enroll = enrollByMember.get(id);
+      return enroll ? offeringById.get(enroll.offering_id as string)?.course_id as string | undefined : undefined;
+    };
+    const snapshot = batchWording(memberIds.map(courseOfMember), wordingByCourse, templateWording);
+
     const { data: batch, error: batchErr } = await admin.from('email_batches').insert({
       client_batch_id: clientBatchId, template_id: templateId,
-      subject_snapshot: template.subject, body_snapshot: template.body_text,
+      subject_snapshot: snapshot.subject, body_snapshot: snapshot.body,
       context: { period_from: periodFrom, period_to: periodTo },
       config_snapshot: configSnapshot, requested_count: memberIds.length, sent_by: caller.id,
     }).select('id').single();
@@ -276,8 +301,9 @@ Deno.serve(async (req) => {
            address because the token commits to THIS member_emails row. */
         unsubscribe_url: unsubscribeUrl,
       };
-      const subject = renderTemplate(template.subject, vars);
-      const text = renderTemplate(template.body_text, vars);
+      const wording = wordingFor(offering?.course_id as string | undefined, wordingByCourse, templateWording);
+      const subject = renderTemplate(wording.subject, vars);
+      const text = renderTemplate(wording.body, vars);
 
       if (!fate.ok) {
         prepared.push({

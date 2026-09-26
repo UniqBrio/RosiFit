@@ -1,0 +1,59 @@
+// WHICH WORDS A RECIPIENT IS SENT (RC-109,
+// requests/2026-09-26-send-uses-the-course-wording.md).
+//
+// The requester's rule: "One template for one course. Every course should
+// follow its own template mentioned in course edit/create form" -- for the
+// member pop-up's Reach out and the course's Send communication alike.
+//
+// Until this file, the function rendered the template the client named and
+// nothing else. The course's own subject and body (course_communication,
+// 0021) were saved, previewed on the form and shown as the course's in the
+// draft -- and never read by the one step that sends. The course's SENDER was
+// wired in on 07-Sep; its WORDING was not, so the email left from the right
+// address with the wrong words.
+//
+// `effective_course_message()` (0021) has always been the resolver for this:
+// the course's own wording where set, else the template the course names,
+// else the default template. Its own comment calls it the resolver behind
+// "the batch" too; this is the batch finally asking it.
+//
+// Kept out of index.ts for the reason send-loop.ts is: index.ts calls
+// Deno.serve at module scope, so a spec cannot import it.
+
+export type Wording = { subject: string; body: string };
+
+/**
+ * The words one recipient is rendered from: their course's resolved wording,
+ * or -- when the member has no course, or the resolver returned no row --
+ * the template the send was asked for. That fallback is not a guess: with no
+ * course there is no course wording to prefer, and the template is what the
+ * function has always sent.
+ */
+export function wordingFor(
+  courseId: string | null | undefined,
+  byCourse: ReadonlyMap<string, Wording>,
+  template: Wording,
+): Wording {
+  return (courseId ? byCourse.get(courseId) : undefined) ?? template;
+}
+
+/**
+ * The words `email_batches` records for the whole batch. A batch is answerable
+ * for what it SENT, so when every recipient's course resolves to one wording
+ * that wording is the snapshot -- which is every batch either send screen can
+ * start, since both send for one course. A batch spanning courses with
+ * different wordings has no single truthful answer; it keeps the template's,
+ * as before, and every screen that could start one is disabled today (TD-033).
+ */
+export function batchWording(
+  courseIds: ReadonlyArray<string | null | undefined>,
+  byCourse: ReadonlyMap<string, Wording>,
+  template: Wording,
+): Wording {
+  const seen = new Map<string, Wording>();
+  for (const id of courseIds) {
+    const w = wordingFor(id, byCourse, template);
+    seen.set(`${w.subject}\u0000${w.body}`, w);
+  }
+  return seen.size === 1 ? [...seen.values()][0] : template;
+}

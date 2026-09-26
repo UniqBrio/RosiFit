@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased — Each course's emails now use that course's own wording
+
+**Reach out and Send communication were sending the template's words, not the course's.** A
+course whose form said *"Live class attendance update — Hi Ma, …"* still sent *"We missed you
+this week"*, the original *Gentle check-in* text. The address it came from was the course's own;
+only the words were wrong.
+
+**The course's wording was saved and shown, but the step that sends never read it.** It now
+does. Every email goes out in the wording that member's course shows in its edit form — its own
+wording where the course has some, otherwise the template the course picked. That holds for one
+member (Reach out) and for the whole course (Send communication), and the send history now
+records the wording that was actually sent.
+
 ## Unreleased — A big course's attendance loads again
 
 **Every card on Postnatal's roster said "Attendance for this week could not be loaded."** The
