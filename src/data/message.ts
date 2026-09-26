@@ -101,7 +101,7 @@ export const MESSAGE_TOKENS: {
      not say. It resolves to the count IN FORCE FOR HER COURSE at the moment
      the send runs -- so a trigger changed just before a send is the number the
      email carries, not the one it was written under. */
-  { token: '{{follow_up_trigger}}', means: 'the trigger that listed them', chip: 'Follow-up trigger', everyday: false, subjectLine: false },
+  { token: '{{follow_up_trigger}}', means: 'the follow-up trigger that listed them', chip: 'Trigger', everyday: false, subjectLine: false },
   { token: '{{last_attendance_date}}', means: 'when they were last present', chip: 'Last present', everyday: false, subjectLine: false },
   { token: '{{academy_name}}', means: 'the academy name', chip: 'Academy name', everyday: true, subjectLine: false },
 ];
