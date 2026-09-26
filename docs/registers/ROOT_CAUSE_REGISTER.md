@@ -86,6 +86,149 @@ without `set local role` asserts nothing about the product.
 not built here. `db-harness` required on `main` (Gate 2.2) is the backstop.
 
 **Process check** — Yes: merged red. Gate 2.2.
+## RC-114 — three DB specs could never pass their own setup          Tracker: T-134 · Sources: harness run 26-Sep-2026
+**Date:** 26-Sep-2026  ·  **Severity:** S4  ·  **Modules:** DB specs `11_holiday_delete`, `23_course_threshold`, `36_hard_delete_course`
+
+**Symptom** — each red at its setup in every replay: `duplicate key … sessions_unique_live`,
+`duplicate key … email_templates_name`, `conflicting key value violates exclusion constraint
+member_enrollments_member_id_daterange_excl`.
+
+**Root cause** — each spec's fixture broke a constraint that already existed when it was written
+(0007's one live session per offering per day, 0009's seeded template name, 0006's one enrolment at
+a time), so none ever reached its assertions. `ON_ERROR_STOP=1` then hid what lay behind:
+`11`'s count of 3 matched no reading of its setup; `36` had a `perform` outside PL/pgSQL and
+two assertions of 0047's rule that 0064 replaced on the requester's instruction (09-Sep-2026).
+
+**Fix** — fixtures corrected to the constraints; `11`'s count to 2 (with the arithmetic stated);
+`36`'s `perform` → `select` and its member-survival cases re-pointed to 0064. In place, under the
+owner's exemption for specs that never passed.
+
+**How to verify** — the harness: `11` 21 PASS, `23` 13 PASS, `36` 39 PASS.
+
+**Recurrence risk** — any spec merged without a green `db-harness`. Same class as RC-113.
+
+**Prevention** — `db-harness` required on `main` (Gate 2.2).
+
+**Process check** — Yes: all three merged red. Gate 2.2.
+## RC-113 — two attendance specs had disagreed with their own migrations since they were written          Tracker: T-133 · Sources: T-126, harness run 26-Sep-2026
+**Date:** 26-Sep-2026  ·  **Severity:** S4  ·  **Modules:** DB specs `27_set_attendance.sql`, `35_attendance_backdates_membership.sql`
+
+**Symptom** — both red in every `db-harness` replay: `27` "absent on a day she was not expected is
+refused … statement was ACCEPTED"; `35` `column reference "status" is ambiguous`.
+
+**Root cause** — `27` asserted a rule 0035 never implemented: 0035 creates a day off the schedule as
+an `all_enrolled` session, so the member IS expected and both 'absent' and 'present' are ordinary
+marks. `35` selected bare `status`/`expected` across `attendance_records join members`, and
+`members.status` has existed since 0006; behind that, its `a_session` helper inserted a second live
+session on an already-used date, which `sessions_unique_live` (0007) refuses.
+
+**Fix** — owner decision 26-Sep-2026, "Accept it": `27`'s two ad-hoc-day assertions re-pointed to
+0035's rule (absent accepted; present stored as present). `35`: columns qualified; `a_session`
+reuses a live session on the date. Edited in place under the owner's exemption for specs that never
+passed; no assertion removed.
+
+**How to verify** — the harness: `27` 28 PASS, `35` 14 PASS.
+
+**Recurrence risk** — any spec written beside its migration without being run: these two never
+passed. `ON_ERROR_STOP=1` also hides every assertion after a file's first failure, as `35`'s second
+error shows.
+
+**Prevention** — `db-harness` in CI; it only protects once it is required on `main` (Gate 2.2).
+
+**Process check** — Yes: both merged on a red `db-harness`. Gate 2.2.
+## RC-110 — a course's own wording skipped the opt-out line every template carries          Tracker: none (found in session, 26-Sep-2026) · Sources: RC-109, 0066, requests/2026-09-26-every-course-wording-says-how-to-stop.md
+**Date:** 26-Sep-2026  ·  **Severity:** S3  ·  **Modules:** send-followups (Edge Function), send-step preview
+
+**Symptom** — Postnatal's saved wording ends "Regards, RosiFit Team". Once RC-109 made the send use
+it, a Postnatal follow-up would carry no visible way to stop — 0066's *"If you would rather not get
+these check-ins, you can stop them here"* line lives only in the stored templates. The
+List-Unsubscribe headers were still sent. Found before any such email went out: RC-109 is not yet
+deployed.
+
+**Root cause** — 0066 made "every follow-up says how to stop" true by editing the TEMPLATE rows,
+so the guarantee lived in data rather than in the send. RC-109 routed a course's own wording
+around the template, and the guarantee did not travel with it. RC-109's review checked that the
+right words were sent; nobody asked what the template's words had been carrying.
+
+**Fix** — `send-followups` builds every wording it renders and snapshots through `sendable()`
+(`send-followups/wording.ts`), which appends 0066's line verbatim to any body that does not place
+`{{unsubscribe_url}}` itself. The send-step preview appends the same line. No stored wording is
+edited. This also closes 0066's own "STILL OPEN" note: a template created after 0066 now gets the
+line at send too.
+
+**Files** — `supabase/functions/send-followups/{wording.ts,index.ts,wording.test.ts}`,
+`src/data/sendPreview.ts`, `src/data/sendPreview.test.ts`.
+
+**How to verify** — `deno test` in `supabase/functions` (`sendable`, `withUnsubscribeLine`);
+`npx tsx --test src/data/sendPreview.test.ts` — the line pinned to 0066's migration text and to the
+Deno copy. Live, after deploy: a Postnatal Reach out email ends with the opt-out line.
+
+**Recurrence risk** — any guarantee stored in the template rows rather than enforced at send.
+Swept `supabase/migrations` for `update public.email_templates`: 0066 is the only migration that
+edits template CONTENT. The course form's preview (`app/course/edit.tsx`) still shows the wording
+without the line — TD-055's class, recorded there.
+
+**Prevention** — `src/data/sendPreview.test.ts` ("the line is 0066's, verbatim") and
+`send-followups/wording.test.ts` ("a stored wording is made sendable"). The call sites in
+`index.ts` have no rung (the file cannot be imported by a spec) — prose only.
+
+**Process check** — Yes: RC-109's review asked "does the course's wording arrive?" and not "what
+did the template guarantee that the course's wording does not?". Recorded here as the question to
+ask when a send path stops reading a stored row.
+## RC-112 — the course list lost its search box and branch filter, and kept their state          Tracker: T-023 · Sources: A:F-28, RV-03
+**Date:** 26-Sep-2026  ·  **Severity:** S3  ·  **Modules:** Attendance tab course list (`app/(tabs)/courses.tsx`)
+
+**Symptom** — `formDropdownMenu.test.ts` "the list-screen filters are untouched" red on `main`:
+`courses.tsx` imported `DropdownRow/Field/Panel/List` and rendered none. On screen, the course list
+had no search and no branch filter, while its empty state still said "Clear one or both" and
+"Choose All branches to see them all" — naming controls that were not there.
+
+**Root cause** — the two controls were removed from the render in an edit this repository's
+squashed history cannot attribute (the tree starts at `1030d47`, 13-Sep), and the `query`,
+`branch`, `branchOpen` state, the branch options and the filter logic were left behind. Nothing
+failed at the time because the only guard was a source-reading spec in a suite that was already
+red (T-001: `gate` never green on `main`).
+
+**Fix** — the search box (`courses-search`) and the Branch field (`courses-filter-branch`, a
+card-row `DropdownList` in a `DropdownPanel`) are rendered again above the list, wired to the
+state that was already there. Built from the same parts as the course screen's member search and
+the Attendance filters; tokens only.
+
+**How to verify** — `npx tsx --test src/components/formDropdownMenu.test.ts` 9/9; in the app, the
+Attendance tab narrows by a typed name and by a chosen branch, and the count label follows.
+
+**Recurrence risk** — any list screen whose filter UI is removed and state kept. `FILTERS` in the
+spec names the three list screens; the other two render their lists.
+
+**Prevention** — `src/components/formDropdownMenu.test.ts` (existing). It only protects once
+`gate` is required on `main` (Gate 2.2).
+
+**Process check** — Yes: a red `gate` hid the regression. Gate 2.2.
+## RC-111 — a token added to the sender left five message specs pinning the old list          Tracker: T-025 · Sources: RV-03, requests/2026-09-08-follow-up-trigger-on-send-and-reach-out.md
+**Date:** 26-Sep-2026  ·  **Severity:** S3  ·  **Modules:** message tokens (`src/data/message.ts`), gate
+
+**Symptom** — `test:unit` red on `main` since `{{follow_up_trigger}}` landed: five `message.test.ts`
+cases (the token list against the sender's map, three counts, and the chip-length rule), which kept
+`gate` red on every PR.
+
+**Root cause** — the 08-Sep change added a token to `MESSAGE_TOKENS` and to send-followups' `vars`
+without running the spec file that pins both, so four locks still named the 13-token list, and the
+new chip label ("Follow-up trigger", 17 characters) broke a 16-character rule nobody saw fail.
+
+**Fix** — the four locks re-pinned to the 14-token list (only literals moved); the chip label
+shortened to "Trigger" so the rule holds, with its spoken meaning now "the follow-up trigger that
+listed them". Files: `src/data/message.ts`, `src/data/message.test.ts`.
+
+**How to verify** — `npx tsx --test src/data/message.test.ts`: 60 pass, 0 fail.
+
+**Recurrence risk** — any token added to the sender's map; the spec already names that map, so
+the class is covered once `gate` is honoured (Gate 2.2 makes it required).
+
+**Prevention** — `src/data/message.test.ts` "the token list IS the sender's variable map".
+Enforcement is `gate` itself being required on `main` (T-001's finding: 0 green runs).
+
+**Process check** — Yes: the change merged on a red `gate`. A required check would have stopped
+it; that is Gate 2.2, not this row.
 
 ---
 
