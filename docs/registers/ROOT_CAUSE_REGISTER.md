@@ -75,7 +75,10 @@ six sessions on any weekday, always in the past. `34`'s copy-lock re-pinned to 0
 **How to verify** — the harness: `34` 30 PASS, `50` 31 PASS — and the same on any weekday.
 
 **Recurrence risk** — any spec asserting a count over a window computed from `current_date` against
-a weekday schedule. Swept: `grep -n "current_date - 7" supabase/tests` finds these two files only.
+a weekday schedule. Swept with `grep -ln "current_date - 7" supabase/tests`: besides these two, `10_add_member`
+(a joining date, no count over it) and `23_course_threshold` (the follow-up window passed to
+`follow_up_candidates`, green on this Saturday run, NOT checked across weekdays — a candidate for
+the same fix if it ever reddens on another day).
 
 **Prevention** — prose only.
 
