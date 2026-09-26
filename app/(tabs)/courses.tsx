@@ -209,6 +209,48 @@ export default function Courses() {
           to date got through — src/components/FreshnessLine.tsx. */}
       <FreshnessLine read={courses} testID="courses-freshness" />
 
+      {/* SEARCH AND BRANCH, restored (T-023). Both filters' state, the branch
+          options and the "which filter emptied the list" note below were all
+          still here with nothing on screen to set them -- the list-screen
+          filter rule's own controls, the ones formDropdownMenu.test.ts
+          requires (a card-row DropdownList, never a form's menu). */}
+      {all.length > 0 ? (
+        <DropdownRow open={branchOpen} style={{ marginTop: SPACE.md }}
+          dismiss={{ onPress: () => setBranchOpen(false), testID: 'courses-filter-dismiss' }}>
+          <View style={{ flexDirection: compact ? 'column' : 'row', gap: SPACE.sm,
+            alignItems: compact ? 'stretch' : 'flex-end' }}>
+            <View style={{
+              flex: compact ? undefined : 1, minWidth: 0,
+              flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
+              height: 42, borderRadius: RADIUS.md, backgroundColor: theme.surface,
+              borderWidth: 1, borderColor: theme.lineStrong, paddingHorizontal: 12,
+            }}>
+              <Icon name="search" size={18} color={theme.muted} />
+              <TextInput testID="courses-search"
+                value={query} onChangeText={setQuery}
+                placeholder="Search courses"
+                placeholderTextColor={theme.muted}
+                accessibilityLabel="Search the courses by name"
+                selectionColor={theme.accent}
+                style={{ flex: 1, minWidth: 0, color: theme.fgStrong, fontSize: 13.5, fontWeight: '600',
+                  outlineWidth: 0, outlineStyle: 'solid' }} />
+            </View>
+            <DropdownField testID="courses-filter-branch"
+              label="Branch" value={branch} open={branchOpen}
+              highlight={branch !== ALL_BRANCHES}
+              onPress={() => setBranchOpen(o => !o)}
+              style={compact ? undefined : { width: 220 }} />
+          </View>
+          {branchOpen ? (
+            <DropdownPanel>
+              <DropdownList testID="courses-branch"
+                options={branchOptions.map(label => ({ label }))} value={branch}
+                onSelect={l => { setBranch(l); setBranchOpen(false); }} />
+            </DropdownPanel>
+          ) : null}
+        </DropdownRow>
+      ) : null}
+
       {all.length === 0 && (
         <EmptyState
           title="No courses yet"

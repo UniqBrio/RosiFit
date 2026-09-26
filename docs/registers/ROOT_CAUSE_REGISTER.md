@@ -85,6 +85,99 @@ error shows.
 **Prevention** — `db-harness` in CI; it only protects once it is required on `main` (Gate 2.2).
 
 **Process check** — Yes: both merged on a red `db-harness`. Gate 2.2.
+## RC-110 — a course's own wording skipped the opt-out line every template carries          Tracker: none (found in session, 26-Sep-2026) · Sources: RC-109, 0066, requests/2026-09-26-every-course-wording-says-how-to-stop.md
+**Date:** 26-Sep-2026  ·  **Severity:** S3  ·  **Modules:** send-followups (Edge Function), send-step preview
+
+**Symptom** — Postnatal's saved wording ends "Regards, RosiFit Team". Once RC-109 made the send use
+it, a Postnatal follow-up would carry no visible way to stop — 0066's *"If you would rather not get
+these check-ins, you can stop them here"* line lives only in the stored templates. The
+List-Unsubscribe headers were still sent. Found before any such email went out: RC-109 is not yet
+deployed.
+
+**Root cause** — 0066 made "every follow-up says how to stop" true by editing the TEMPLATE rows,
+so the guarantee lived in data rather than in the send. RC-109 routed a course's own wording
+around the template, and the guarantee did not travel with it. RC-109's review checked that the
+right words were sent; nobody asked what the template's words had been carrying.
+
+**Fix** — `send-followups` builds every wording it renders and snapshots through `sendable()`
+(`send-followups/wording.ts`), which appends 0066's line verbatim to any body that does not place
+`{{unsubscribe_url}}` itself. The send-step preview appends the same line. No stored wording is
+edited. This also closes 0066's own "STILL OPEN" note: a template created after 0066 now gets the
+line at send too.
+
+**Files** — `supabase/functions/send-followups/{wording.ts,index.ts,wording.test.ts}`,
+`src/data/sendPreview.ts`, `src/data/sendPreview.test.ts`.
+
+**How to verify** — `deno test` in `supabase/functions` (`sendable`, `withUnsubscribeLine`);
+`npx tsx --test src/data/sendPreview.test.ts` — the line pinned to 0066's migration text and to the
+Deno copy. Live, after deploy: a Postnatal Reach out email ends with the opt-out line.
+
+**Recurrence risk** — any guarantee stored in the template rows rather than enforced at send.
+Swept `supabase/migrations` for `update public.email_templates`: 0066 is the only migration that
+edits template CONTENT. The course form's preview (`app/course/edit.tsx`) still shows the wording
+without the line — TD-055's class, recorded there.
+
+**Prevention** — `src/data/sendPreview.test.ts` ("the line is 0066's, verbatim") and
+`send-followups/wording.test.ts` ("a stored wording is made sendable"). The call sites in
+`index.ts` have no rung (the file cannot be imported by a spec) — prose only.
+
+**Process check** — Yes: RC-109's review asked "does the course's wording arrive?" and not "what
+did the template guarantee that the course's wording does not?". Recorded here as the question to
+ask when a send path stops reading a stored row.
+## RC-112 — the course list lost its search box and branch filter, and kept their state          Tracker: T-023 · Sources: A:F-28, RV-03
+**Date:** 26-Sep-2026  ·  **Severity:** S3  ·  **Modules:** Attendance tab course list (`app/(tabs)/courses.tsx`)
+
+**Symptom** — `formDropdownMenu.test.ts` "the list-screen filters are untouched" red on `main`:
+`courses.tsx` imported `DropdownRow/Field/Panel/List` and rendered none. On screen, the course list
+had no search and no branch filter, while its empty state still said "Clear one or both" and
+"Choose All branches to see them all" — naming controls that were not there.
+
+**Root cause** — the two controls were removed from the render in an edit this repository's
+squashed history cannot attribute (the tree starts at `1030d47`, 13-Sep), and the `query`,
+`branch`, `branchOpen` state, the branch options and the filter logic were left behind. Nothing
+failed at the time because the only guard was a source-reading spec in a suite that was already
+red (T-001: `gate` never green on `main`).
+
+**Fix** — the search box (`courses-search`) and the Branch field (`courses-filter-branch`, a
+card-row `DropdownList` in a `DropdownPanel`) are rendered again above the list, wired to the
+state that was already there. Built from the same parts as the course screen's member search and
+the Attendance filters; tokens only.
+
+**How to verify** — `npx tsx --test src/components/formDropdownMenu.test.ts` 9/9; in the app, the
+Attendance tab narrows by a typed name and by a chosen branch, and the count label follows.
+
+**Recurrence risk** — any list screen whose filter UI is removed and state kept. `FILTERS` in the
+spec names the three list screens; the other two render their lists.
+
+**Prevention** — `src/components/formDropdownMenu.test.ts` (existing). It only protects once
+`gate` is required on `main` (Gate 2.2).
+
+**Process check** — Yes: a red `gate` hid the regression. Gate 2.2.
+## RC-111 — a token added to the sender left five message specs pinning the old list          Tracker: T-025 · Sources: RV-03, requests/2026-09-08-follow-up-trigger-on-send-and-reach-out.md
+**Date:** 26-Sep-2026  ·  **Severity:** S3  ·  **Modules:** message tokens (`src/data/message.ts`), gate
+
+**Symptom** — `test:unit` red on `main` since `{{follow_up_trigger}}` landed: five `message.test.ts`
+cases (the token list against the sender's map, three counts, and the chip-length rule), which kept
+`gate` red on every PR.
+
+**Root cause** — the 08-Sep change added a token to `MESSAGE_TOKENS` and to send-followups' `vars`
+without running the spec file that pins both, so four locks still named the 13-token list, and the
+new chip label ("Follow-up trigger", 17 characters) broke a 16-character rule nobody saw fail.
+
+**Fix** — the four locks re-pinned to the 14-token list (only literals moved); the chip label
+shortened to "Trigger" so the rule holds, with its spoken meaning now "the follow-up trigger that
+listed them". Files: `src/data/message.ts`, `src/data/message.test.ts`.
+
+**How to verify** — `npx tsx --test src/data/message.test.ts`: 60 pass, 0 fail.
+
+**Recurrence risk** — any token added to the sender's map; the spec already names that map, so
+the class is covered once `gate` is honoured (Gate 2.2 makes it required).
+
+**Prevention** — `src/data/message.test.ts` "the token list IS the sender's variable map".
+Enforcement is `gate` itself being required on `main` (T-001's finding: 0 green runs).
+
+**Process check** — Yes: the change merged on a red `gate`. A required check would have stopped
+it; that is Gate 2.2, not this row.
 
 ---
 
