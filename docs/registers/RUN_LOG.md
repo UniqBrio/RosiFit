@@ -88,6 +88,8 @@ should start by reading this table rather than by guessing which part felt slow.
 
 | ID | Action | Type | Scale | Started | Ended | Total | Stages | Gate | Verdict | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
+| R-023 | The old failing unit and database tests need a separate fix - Yes (T-023) | BUG | scoped | 2026-09-26 05:06 | 2026-09-26 05:06 | 0s elapsed · active: no marks | - | 26.0s | PASS | - |
+| R-022 | The old failing unit and database tests need a separate fix - Yes (T-025) | BUG | micro | 2026-09-26 05:01 | 2026-09-26 05:01 | 0s elapsed · active: no marks | - | 26.0s | PASS | - |
 | R-023 | Postnatal's wording has no visible unsubscribe line. Is that mandatory. If yes, add it. | CHANGE | scoped | 2026-09-26 04:51 | 2026-09-26 04:53 | 2m elapsed · active: no marks | - | 26.0s | PASS | - |
 | R-022 | It would be easier if the user sees what content will be sent before hitting send button either using Send communication or Reach out button. Quickly show the message in the last screen where final send button exists. | CHANGE | scoped | 2026-09-26 04:28 | 2026-09-26 04:42 | 14m active · 15m elapsed | verify 11m | 26.0s | PASS | - |
 | R-021 | When the email is sent using Reach out it triggers the old email template instead of using the latest corrected email content. One template for one course. Every course should follow its own template mentioned in course edit/create form, for Reach out and Send communication. | BUG | scoped | 2026-09-26 04:07 | 2026-09-26 04:16 | 10m active · 10m elapsed | ground 2m · verify 7m · gate 22s | 26.0s | PASS | - |
