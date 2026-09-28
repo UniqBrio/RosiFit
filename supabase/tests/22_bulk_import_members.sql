@@ -121,7 +121,10 @@ select t.rejects($$
   set local role authenticated;
   set local request.jwt.claim.sub = 'a0000000-0000-0000-0000-000000000001';
   insert into public.member_import_runs (file_name) values ('forged.xlsx')$$,
-  'nobody writes a run by hand -- there is no insert policy', 'row-level security');
+  -- Refused one step BEFORE row-level security: 0028 grants authenticated
+  -- SELECT only and 0015 removed default grants, so there is no INSERT
+  -- privilege to reach a policy with (re-pointed 26-Sep-2026, T-135).
+  'nobody writes a run by hand -- there is no insert privilege, let alone a policy', 'permission denied');
 
 select t.ok(exists (select 1 from public.audit_logs
              where action='member.bulk_imported' and actor_app_user_id='a0000000-1111-0000-0000-000000000001'),

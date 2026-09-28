@@ -41,6 +41,8 @@ create or replace view public.t_pre as
 create or replace view public.t_post as
   select o.id from public.course_offerings o join public.courses c on c.id=o.course_id
    where c.name='Postnatal Flow';
+-- Read as `authenticated` below; 0015 removed default grants (T-135).
+grant select on public.t_pre, public.t_post to authenticated;
 
 -- ================================================ the academy-wide rule is gone
 begin;
@@ -106,8 +108,11 @@ begin;
     'the same ADDRESS in the same course is refused, whatever case it is typed in',
     'already on another member of this course');
 
+  -- Only the REFUSED member is counted: 'Divya  RAMESH' is created on purpose
+  -- above as an allowed namesake (16-Sep-2026), so counting that name too read
+  -- the deliberate row as a half-written one (T-135).
   select t.eq((select count(*)::int from public.members where deleted_at is null
-                and full_name in ('Divya  RAMESH','Somebody Else')), 0,
+                and full_name = 'Somebody Else'), 0,
     'ALL OR NONE survives the new refusal — no half-written member is left behind');
 rollback;
 
@@ -141,8 +146,12 @@ begin;
 
   select public.create_member('Moved On', (select id from public.t_pre), current_date - 60,
     array['Moved']::text[], '{}'::text[], null);
+  -- Ended as service_role: authenticated holds no UPDATE on member_enrollments
+  -- (enrolments change through RPCs), so this setup step is the system's (T-135).
+  set local role service_role;
   update public.member_enrollments set status='ended', effective_to = current_date - 1
    where member_id = (select id from public.members where full_name='Moved On');
+  set local role authenticated;
 
   -- No LIVE enrolment now, so they are a candidate for every course again --
   -- the same answer as Stray Member above, reached a different way.
