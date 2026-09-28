@@ -69,10 +69,17 @@ begin
 end $$;
 
 -- One completed session on a given date, for an attendance row to hang off.
+-- Reused when the date already has one: sessions_unique_live (0007) allows one
+-- live session per offering per day, and two cases below share a date (T-133).
 create or replace function pg_temp.a_session(p_date date, p_course text default 'Prenatal Flow')
 returns uuid language plpgsql as $$
 declare v_id uuid;
 begin
+  select s.id into v_id from public.sessions s
+    join public.course_offerings o on o.id = s.offering_id
+    join public.courses c on c.id = o.course_id
+   where c.name = p_course and s.session_date = p_date and s.deleted_at is null;
+  if v_id is not null then return v_id; end if;
   insert into public.sessions (offering_id, session_date, status, source)
   select o.id, p_date, 'completed', 'import'
     from public.course_offerings o
@@ -120,11 +127,11 @@ select t.eq((select e.effective_from from public.member_enrollments e
 -- expected AT THE TIME, and back-dating her membership does not retroactively
 -- make anybody expect her. 'extra' is never counted as a miss, so nothing
 -- inflates.
-select t.eq((select status from public.attendance_records ar
+select t.eq((select ar.status from public.attendance_records ar
               join public.members m on m.id = ar.member_id
              where m.full_name = 'Anitha Rajesh'), 'extra',
   'the attendance row keeps the status the caller resolved');
-select t.eq((select expected from public.attendance_records ar
+select t.eq((select ar.expected from public.attendance_records ar
               join public.members m on m.id = ar.member_id
              where m.full_name = 'Anitha Rajesh'), false,
   'and keeps its expectation -- the correction is to the membership, never to the register');

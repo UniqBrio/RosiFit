@@ -120,7 +120,7 @@ test('the token list IS the sender’s variable map, name for name', () => {
     'first_name', 'member_name', 'course_name', 'branch_name',
     'period_from', 'period_to', 'expected_sessions', 'attended_sessions',
     'missed_sessions', 'attendance_pct', 'consecutive_missed',
-    'last_attendance_date', 'academy_name',
+    'follow_up_trigger', 'last_attendance_date', 'academy_name',
   ];
   assert.deepEqual(MESSAGE_TOKENS.map(t => t.token.slice(2, -2)), sender);
 });
@@ -300,7 +300,7 @@ test('an empty course name is left to the form to report, not said twice', () =>
 test('the everyday seven are a SUBSET — no token was dropped', () => {
   // The list above still has to be the sender's map name for name; this only
   // says which of it the row offers first.
-  assert.equal(MESSAGE_TOKENS.length, 13);
+  assert.equal(MESSAGE_TOKENS.length, 14);
   for (const t of EVERYDAY_TOKENS) {
     assert.ok(MESSAGE_TOKENS.includes(t), `${t.token} is not in the full list`);
   }
@@ -323,7 +323,7 @@ test('the six behind the More chip still fill — hidden is not unknown', () => 
   // The one way this change could break an academy: wording already written
   // with {{attendance_pct}} must keep resolving in the preview and the inbox.
   const rest = MESSAGE_TOKENS.filter(t => !t.everyday);
-  assert.equal(rest.length, 6);
+  assert.equal(rest.length, 7);
   const all = rest.reduce(
     (acc, t) => insertToken(acc.text, t.token, -1, -1), { text: '', caret: 0 });
   assert.deepEqual(unknownTokens(all.text), []);
@@ -364,7 +364,7 @@ test('every token the subject row hides is still reachable and still fills', () 
   // The More chip opens the FULL thirteen on both rows, so nothing became
   // unreachable from the subject — it stopped being suggested there.
   const behindMore = MESSAGE_TOKENS.filter(t => !SUBJECT_TOKENS.includes(t));
-  assert.equal(behindMore.length, 12);
+  assert.equal(behindMore.length, 13);
   const all = behindMore.reduce(
     (acc, t) => insertToken(acc.text, t.token, -1, -1), { text: '', caret: 0 });
   assert.deepEqual(unknownTokens(all.text), []);
