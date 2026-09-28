@@ -481,10 +481,14 @@ export function AnchoredPicker({ open, onClose, label, placeholder, options, val
  * that restates the count AND the exclusions before anything leaves. "Not
  * yet" is the canvas' own wording for the way out.
  */
-export function ConfirmDialog({ open, onClose, title, body, cancelLabel = 'Not yet', confirmLabel, onConfirm, emphasis = 'confirm' }:
+export function ConfirmDialog({ open, onClose, title, body, cancelLabel = 'Not yet', confirmLabel, onConfirm, emphasis = 'confirm', detail }:
   {
     open: boolean; onClose: () => void; title: string; body: string;
     cancelLabel?: string; confirmLabel: string; onConfirm: () => void;
+    /** Drawn under the body and SCROLLED there, so something long -- the
+     *  send's message preview -- never pushes the two buttons off a phone
+     *  screen. Absent, the dialog is exactly what it was. */
+    detail?: React.ReactNode;
     /** Which answer is the filled one. Defaults to the confirm button, which
      *  is what every dialog here did before the member deletion asked for the
      *  other; see src/components/confirmEmphasis.ts. */
@@ -533,9 +537,13 @@ export function ConfirmDialog({ open, onClose, title, body, cancelLabel = 'Not y
         <View accessibilityViewIsModal style={{
           width: '100%', maxWidth: 420, borderRadius: 24, padding: 22,
           backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
+          // A `detail` is the part that gives way on a short screen, never the
+          // buttons; without a detail nothing here is tall enough to reach it.
+          ...(detail ? { maxHeight: '90%' as const } : null),
         }}>
           <Text style={{ fontSize: 20, fontWeight: '800', color: theme.fgStrong, lineHeight: 26 }}>{title}</Text>
           <Text style={{ fontSize: 13, color: theme.muted, lineHeight: 20, marginTop: SPACE.md }}>{body}</Text>
+          {detail ? <ScrollView style={{ maxHeight: 320, flexShrink: 1 }}>{detail}</ScrollView> : null}
           <View style={{ flexDirection: 'row', gap: 10, marginTop: SPACE.xl }}>
             <Pressable onPress={onClose} accessibilityRole="button"
               style={({ pressed }) => ({

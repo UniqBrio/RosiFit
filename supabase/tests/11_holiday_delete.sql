@@ -30,19 +30,22 @@ select o.id, d::date, 'scheduled'
   cross join generate_series('2026-11-02'::date,'2026-11-05'::date,'1 day') d
  where c.name='Holiday Test Course';
 
-insert into public.sessions (offering_id, session_date, status)
-select o.id, '2026-11-03'::date, 'completed'
+-- The COMPLETED and CANCELLED ones are TRY's own sessions on those days, set
+-- to that status -- not second sessions beside them: sessions_unique_live
+-- (0007) allows one live session per offering per day (fixed 26-Sep-2026).
+update public.sessions s set status = 'completed'
   from public.course_offerings o
   join public.courses c on c.id = o.course_id
   join public.branches b on b.id = o.branch_id
- where c.name='Holiday Test Course' and b.code='TRY';
+ where s.offering_id = o.id and c.name='Holiday Test Course' and b.code='TRY'
+   and s.session_date = '2026-11-03';
 
-insert into public.sessions (offering_id, session_date, status)
-select o.id, '2026-11-04'::date, 'cancelled'
+update public.sessions s set status = 'cancelled'
   from public.course_offerings o
   join public.courses c on c.id = o.course_id
   join public.branches b on b.id = o.branch_id
- where c.name='Holiday Test Course' and b.code='TRY';
+ where s.offering_id = o.id and c.name='Holiday Test Course' and b.code='TRY'
+   and s.session_date = '2026-11-04';
 
 -- outside the range on purpose: the blast radius is the range, not the course
 insert into public.sessions (offering_id, session_date, status)
@@ -62,7 +65,10 @@ commit;
 
 select t.eq((select count(*)::int from public.sessions
               where status='holiday' and session_date between '2026-11-03' and '2026-11-04'),
-  3, 'inserting a holiday marks every scheduled session in the range, both branches');
+  -- 2: ERD's scheduled 03 and 04. TRY's two days in the range are its
+  -- COMPLETED and CANCELLED sessions, which the next two cases say stay put.
+  -- (Was 3, which the setup never produced under any reading; 26-Sep-2026.)
+  2, 'inserting a holiday marks every scheduled session in the range, both branches');
 
 select t.eq((select count(*)::int from public.sessions where status='completed'), 1,
   'a COMPLETED session is never converted by a holiday (C-92)');

@@ -95,6 +95,8 @@ commit;
 -- left to look it up in -- which is itself the claim this file makes.
 create temp table gone as
 select id from public.members where member_code='RF-000960';
+-- Read below as `authenticated`, and a temp table is its creator's (T-135).
+grant select on gone to authenticated;
 
 -- --------------------------------------------------------------- the preview
 -- What the confirmation is allowed to say, BEFORE the tap. Read-only and
@@ -258,6 +260,7 @@ select t.rejects($$
   'purge_member is service_role only -- it has no guard of its own', 'permission denied');
 
 begin;
+  set local role service_role;  -- 0003: only service_role disables an account (T-135)
   update public.app_users set is_active = false
    where auth_user_id = 'eeeeeeee-0000-0000-0000-000000000002';
 commit;
