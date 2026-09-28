@@ -549,7 +549,9 @@ The members the rule flagged this week, and the two dialogs that email them.
 
 **Rules and validations** — **there is no free-form composing anywhere in this flow** (DR-5). The
 wording comes from the course's stored message and only the member's own figures are substituted;
-the send draft shows no wording at all and has no field to type one. The reason shown on the
+the send draft's list shows no wording and has no field to type one; the final confirmation shows
+the stored wording READ-ONLY, filled for the first ticked member (26-Sep-2026,
+`requests/2026-09-26-preview-before-send.md`). The reason shown on the
 weekly list names the *condition* that fired, not the rule, so the row explains itself. A short
 send states itself: the heading counts what is ticked out of the whole flagged set, and the
 confirmation names how many flagged members will not be contacted and how many are being written

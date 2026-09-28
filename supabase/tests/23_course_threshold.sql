@@ -12,8 +12,9 @@ begin;
     values ('b0000000-1111-0000-0000-000000000001',
             'b0000000-0000-0000-0000-000000000001','super_admin','Rosi Owner','+919994871158');
   insert into public.branches (name, code, city) values ('Velachery','VEL','Chennai');
-  insert into public.email_templates (name, subject, body_text, is_active)
-    values ('Gentle check-in', 'We missed you, {{first_name}}', 'Hello {{first_name}}.', true);
+  -- The template is 0009's seeded 'Gentle check-in' -- the only row, which
+  -- `(select id from public.email_templates)` below relies on. Inserting it
+  -- again broke email_templates_name, so this spec never ran (26-Sep-2026).
 commit;
 
 -- ===================================================== the default is still 4

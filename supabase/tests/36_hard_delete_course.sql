@@ -29,18 +29,23 @@ begin;
     select c.id, b.id, '06:00','07:00' from public.courses c, public.branches b;
 
   -- TWO members, and the second one is the whole point of the neighbour
-  -- course: she is in both, so this deletion must take exactly half of her
-  -- history and leave the other half standing.
+  -- course: the member has been in both, so this deletion must take exactly
+  -- half of that history and leave the other half standing. One course AT A
+  -- TIME -- member_enrollments' exclusion constraint (0006) refuses two
+  -- overlapping enrolments -- so the purged course runs to 10 Aug and the
+  -- neighbour course from 11 Aug, each covering its own session below
+  -- (fixed 26-Sep-2026; overlapping dates meant this spec never ran).
   insert into public.members (member_code, full_name) values
     ('RF-000950','Purged Only Member'),
     ('RF-000951','Both Courses Member');
-  insert into public.member_enrollments (member_id, offering_id, effective_from)
-    select m.id, o.id, '2026-08-01'
+  insert into public.member_enrollments (member_id, offering_id, effective_from, effective_to)
+    select m.id, o.id, '2026-08-01',
+           case when m.member_code = 'RF-000951' then '2026-08-10'::date end
       from public.members m, public.course_offerings o
       join public.courses c on c.id = o.course_id
      where m.member_code in ('RF-000950','RF-000951') and c.name = 'Purged Course';
   insert into public.member_enrollments (member_id, offering_id, effective_from)
-    select m.id, o.id, '2026-08-01'
+    select m.id, o.id, '2026-08-11'
       from public.members m, public.course_offerings o
       join public.courses c on c.id = o.course_id
      where m.member_code = 'RF-000951' and c.name = 'Neighbour Course';
@@ -111,7 +116,7 @@ begin;
       join public.courses c on c.id = o.course_id
      where c.name = 'Purged Course';
 
-  perform public.recompute_member_stats();
+  select public.recompute_member_stats();
 commit;
 
 -- ------------------------------------------------------------- the preview
@@ -185,8 +190,12 @@ select t.eq((select count(*)::int from public.member_enrollments e
   'the enrolments are deleted, not ended -- there is no history left for them to protect');
 
 -- ---------------------------------------------------------- what survives
-select t.eq((select count(*)::int from public.members where member_code in ('RF-000950','RF-000951')), 2,
-  'both MEMBERS survive -- they were enrolled, not owned');
+-- Re-pointed 26-Sep-2026 to 0064 (the requester, 09-Sep-2026): a member goes
+-- with the course when it was the WHOLE of their membership. This spec was
+-- written for 0047, which spared every member, and never ran far enough to see
+-- the change.
+select t.eq((select count(*)::int from public.members where member_code in ('RF-000950','RF-000951')), 1,
+  'only the member in another course survives -- the course was the whole of the other one (0064)');
 
 select t.eq((select count(*)::int from public.attendance_records a
               join public.members m on m.id = a.member_id
@@ -209,10 +218,10 @@ select t.ok((select default_offering_id from public.member_import_runs) is null,
 -- ------------------------------------------------------------- the cache
 -- member_stats is what the follow-up list is derived from. Left stale, the
 -- academy goes on emailing members about sessions that no longer exist.
-select t.eq((select sessions_attended from public.member_stats ms
+select t.eq((select count(*)::int from public.member_stats ms
               join public.members m on m.id = ms.member_id
              where m.member_code = 'RF-000950'), 0,
-  'the member who was only in the deleted course is recomputed to nothing');
+  'the member who was only in the deleted course has no stats left -- the member went with it (0064)');
 select t.eq((select sessions_attended from public.member_stats ms
               join public.members m on m.id = ms.member_id
              where m.member_code = 'RF-000951'), 1,
