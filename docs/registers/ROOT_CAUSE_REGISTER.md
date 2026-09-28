@@ -59,6 +59,347 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-119 — pin_reset_requests enabled row-level security but never forced it          Tracker: T-138 · Sources: harness run 26-Sep-2026, 0015, 0034
+**Date:** 26-Sep-2026  ·  **Severity:** S3  ·  **Modules:** `pin_reset_requests` (0034, 0081)
+
+**Symptom** — `09_grants.sql`: "every table in public forces RLS … got 1 want 0"; the one table is
+`pin_reset_requests`.
+
+**Root cause** — 0015 established FORCE as the rule for every table in `public`; 0034, written
+after, enabled RLS and stopped there. Nothing caught it because `09` never reached that case — it
+stopped earlier on its own stale grants list (T-137).
+
+**Fix** — 0081 forces RLS on the table. One flag; the service role (BYPASSRLS, T-005) and
+superusers are unaffected; no row, policy or grant changes; idempotent.
+
+**How to verify** — harness: `09` (with T-137) 10/10 PASS. Production, after apply:
+`select relforcerowsecurity from pg_class where oid = 'public.pin_reset_requests'::regclass` → true.
+**Verified in production 26-Sep-2026** — 0081 applied to RosiFit with the owner's go-ahead, after 0080:
+`relforcerowsecurity` true; tables in `public` not forcing RLS: 0; ledger row for 0081 present.
+
+**Recurrence risk** — every new table. `09`'s force-RLS case covers the class once `db-harness` is
+required (Gate 2.2).
+
+**Prevention** — `supabase/tests/09_grants.sql` "every table in public forces RLS".
+
+**Process check** — Yes: masked by an earlier red case in the same file (`ON_ERROR_STOP`). Gate 2.2.
+## RC-118 — a merge kept the import's "absent" over the day the member actually attended          Tracker: T-139 · Sources: harness run 26-Sep-2026, 0032, 0014
+**Date:** 26-Sep-2026  ·  **Severity:** S2  ·  **Modules:** `merge_member_into` (0032, 0061, 0073, 0080)
+
+**Symptom** — `25_merge_member.sql`: "the 17th now says PRESENT for the member she actually is --
+this is the whole point of the merge -- got absent". In the product: merging a stray the import
+created ("Rani Sham") into the real member left the real member ABSENT on the day the stray was
+marked present.
+
+**Root cause** — 0032's clash rule, "the target already being in that session wins", was written as
+if the target's record were always evidence. Since 0014 the import writes 'absent' for every
+expected member it does not name, so on exactly the day a merge exists for the target DOES hold a
+record — the default mark — and the stray's 'present' was soft-deleted. The spec that said so was
+written with the function and never ran green.
+
+**Fix** — 0080 (in place, anchor-checked, idempotent): before the clash rule, drop the target's
+uncorrected 'absent' where the stray has a live 'present'/'extra' for that session; the existing path
+then moves the stray's record across and recomputes status and expectation. A corrected absent — a
+person's decision — still wins. No table or existing row changes on apply.
+
+**How to verify** — harness: `25` 16 PASS, `58_merge_keeps_a_corrected_absent` 5 PASS. Production,
+after apply: `select position('-- 0080:' in pg_get_functiondef('public.merge_member_into(uuid, uuid)'::regprocedure)) > 0`.
+**Verified in production 26-Sep-2026** — 0080 applied to RosiFit with the owner's go-ahead: the marker
+appears once, the anchor once, 0073's alias upsert and 0061's refusal wording are still in the live
+body, and the ledger row for 0080 is present.
+
+**Recurrence risk** — any rule that treats a system-written default as a person's evidence. The
+import's default 'absent' also meets `set_attendance` (0035), which already ranks a person above
+the file.
+
+**Prevention** — `supabase/tests/25_merge_member.sql` and `58_merge_keeps_a_corrected_absent.sql`.
+
+**Process check** — Yes: 0032 merged with its own spec red. Gate 2.2.
+## RC-117 — three DB specs kept pinning behaviour the product had deliberately changed          Tracker: T-137 · Sources: harness run 26-Sep-2026
+**Date:** 26-Sep-2026  ·  **Severity:** S4  ·  **Modules:** DB specs `09_grants`, `12_offering_schedule`, `34_reimport_feedback`
+
+**Symptom** — red in every replay: `09` "authenticated holds exactly the table privileges …
+course_communication want[none] …"; `12` "a staff account cannot set a schedule -- statement was
+ACCEPTED"; `34_reimport_feedback` "the import does not claim to have updated the row … got 1 want 0".
+
+**Root cause** — each change landed without the spec that pinned the old behaviour being updated:
+three tables whose grants were deliberate never joined `09`'s list; the owner's "do not restrict
+staff" (08-Sep, 0038/0050) reversed `12`'s refusal; 0046's back-dating makes a member expected on
+the day that moved her start, which `34_reimport`'s 4th import had not accounted for.
+
+**Fix** — `09`'s list extended; `12` asserts staff can set a schedule (rolled back); `34_reimport`
+pins the back-dated member's promotion on the 4th import (owner decision 26-Sep-2026) and re-homes
+the "nothing to update" cases on a 5th import of the same file. Owner's exemption; no case dropped.
+
+**How to verify** — the harness: `12` 24 PASS, `34_reimport_feedback` 43 PASS; `09`'s grants case
+passes and the file stops at T-138.
+
+**Recurrence risk** — every deliberate behaviour change; the spec pinning the old rule has to move
+in the same PR.
+
+**Prevention** — `db-harness` required on `main` (Gate 2.2).
+
+**Process check** — Yes: merged red. Gate 2.2.
+## RC-116 — two DB specs passed only when the suite ran on a Monday          Tracker: T-136 · Sources: harness run 26-Sep-2026
+**Date:** 26-Sep-2026  ·  **Severity:** S4  ·  **Modules:** DB specs `34_member_inactive_from`, `50_member_active_again_from`
+
+**Symptom** — "every attendance record … is still there: got 5 want 6" on a Saturday run.
+
+**Root cause** — both specs built their past window relative to today (`current_date - 7 .. - 2`,
+six days) on a Monday-to-Saturday schedule, so the count of scheduled days in it was six only when
+the window held no Sunday — a Monday run. The number was right on the day each was written. `34`
+also pinned the refusal wording 'she joined on', which 0060 deliberately replaced.
+
+**Fix** — the window is last week's Monday to Saturday, derived from `date_trunc('week', …)`:
+six sessions on any weekday, always in the past. `34`'s copy-lock re-pinned to 0060's wording.
+
+**How to verify** — the harness: `34` 30 PASS, `50` 31 PASS — and the same on any weekday.
+
+**Recurrence risk** — any spec asserting a count over a window computed from `current_date` against
+a weekday schedule. Swept with `grep -ln "current_date - 7" supabase/tests`: besides these two, `10_add_member`
+(a joining date, no count over it) and `23_course_threshold` (the follow-up window passed to
+`follow_up_candidates`, green on this Saturday run, NOT checked across weekdays — a candidate for
+the same fix if it ever reddens on another day).
+
+**Prevention** — prose only.
+
+**Process check** — Yes: merged red on six days of the week. Gate 2.2.
+## RC-115 — five DB specs ran their steps as a superuser the product never is          Tracker: T-135 · Sources: harness run 26-Sep-2026
+**Date:** 26-Sep-2026  ·  **Severity:** S4  ·  **Modules:** DB specs `22`, `30`, `37`, `40`, `48`
+
+**Symptom** — red in every replay: "rejected, but for the wrong reason" (`22`, `37`), "only name
+and role_label may be changed here" (`30`, `40`), "permission denied for table gone" (`40`),
+"permission denied for view t_pre" (`48`).
+
+**Root cause** — the harness connects as the `postgres` superuser, and since 0015 removed default
+grants, any step a spec does not wrap in `set local role` either skips privileges entirely or
+creates objects no product role can read. Each of these specs left a step on the superuser: the
+refusals then happened for a different reason than the one asserted, and account/enrolment changes
+hit triggers that admit only `service_role`. `48` additionally counted a namesake it had created
+on purpose (16-Sep-2026) as a half-written member.
+
+**Fix** — each step runs as the role that would perform it; temp table and views granted to
+`authenticated`; `22`'s expected reason is the stronger one that actually applies (no INSERT
+privilege); `48`'s count names only the refused member. In place, owner's exemption.
+
+**How to verify** — the harness: `22` 36, `30` 21, `37` 13, `40` 38, `48` 22 PASS.
+
+**Recurrence risk** — every spec: the superuser default is the trap. A spec asserting a refusal
+without `set local role` asserts nothing about the product.
+
+**Prevention** — prose only; a lint for `t.rejects` bodies lacking `set local role` is possible but
+not built here. `db-harness` required on `main` (Gate 2.2) is the backstop.
+
+**Process check** — Yes: merged red. Gate 2.2.
+## RC-114 — three DB specs could never pass their own setup          Tracker: T-134 · Sources: harness run 26-Sep-2026
+**Date:** 26-Sep-2026  ·  **Severity:** S4  ·  **Modules:** DB specs `11_holiday_delete`, `23_course_threshold`, `36_hard_delete_course`
+
+**Symptom** — each red at its setup in every replay: `duplicate key … sessions_unique_live`,
+`duplicate key … email_templates_name`, `conflicting key value violates exclusion constraint
+member_enrollments_member_id_daterange_excl`.
+
+**Root cause** — each spec's fixture broke a constraint that already existed when it was written
+(0007's one live session per offering per day, 0009's seeded template name, 0006's one enrolment at
+a time), so none ever reached its assertions. `ON_ERROR_STOP=1` then hid what lay behind:
+`11`'s count of 3 matched no reading of its setup; `36` had a `perform` outside PL/pgSQL and
+two assertions of 0047's rule that 0064 replaced on the requester's instruction (09-Sep-2026).
+
+**Fix** — fixtures corrected to the constraints; `11`'s count to 2 (with the arithmetic stated);
+`36`'s `perform` → `select` and its member-survival cases re-pointed to 0064. In place, under the
+owner's exemption for specs that never passed.
+
+**How to verify** — the harness: `11` 21 PASS, `23` 13 PASS, `36` 39 PASS.
+
+**Recurrence risk** — any spec merged without a green `db-harness`. Same class as RC-113.
+
+**Prevention** — `db-harness` required on `main` (Gate 2.2).
+
+**Process check** — Yes: all three merged red. Gate 2.2.
+## RC-113 — two attendance specs had disagreed with their own migrations since they were written          Tracker: T-133 · Sources: T-126, harness run 26-Sep-2026
+**Date:** 26-Sep-2026  ·  **Severity:** S4  ·  **Modules:** DB specs `27_set_attendance.sql`, `35_attendance_backdates_membership.sql`
+
+**Symptom** — both red in every `db-harness` replay: `27` "absent on a day she was not expected is
+refused … statement was ACCEPTED"; `35` `column reference "status" is ambiguous`.
+
+**Root cause** — `27` asserted a rule 0035 never implemented: 0035 creates a day off the schedule as
+an `all_enrolled` session, so the member IS expected and both 'absent' and 'present' are ordinary
+marks. `35` selected bare `status`/`expected` across `attendance_records join members`, and
+`members.status` has existed since 0006; behind that, its `a_session` helper inserted a second live
+session on an already-used date, which `sessions_unique_live` (0007) refuses.
+
+**Fix** — owner decision 26-Sep-2026, "Accept it": `27`'s two ad-hoc-day assertions re-pointed to
+0035's rule (absent accepted; present stored as present). `35`: columns qualified; `a_session`
+reuses a live session on the date. Edited in place under the owner's exemption for specs that never
+passed; no assertion removed.
+
+**How to verify** — the harness: `27` 28 PASS, `35` 14 PASS.
+
+**Recurrence risk** — any spec written beside its migration without being run: these two never
+passed. `ON_ERROR_STOP=1` also hides every assertion after a file's first failure, as `35`'s second
+error shows.
+
+**Prevention** — `db-harness` in CI; it only protects once it is required on `main` (Gate 2.2).
+
+**Process check** — Yes: both merged on a red `db-harness`. Gate 2.2.
+## RC-110 — a course's own wording skipped the opt-out line every template carries          Tracker: none (found in session, 26-Sep-2026) · Sources: RC-109, 0066, requests/2026-09-26-every-course-wording-says-how-to-stop.md
+**Date:** 26-Sep-2026  ·  **Severity:** S3  ·  **Modules:** send-followups (Edge Function), send-step preview
+
+**Symptom** — Postnatal's saved wording ends "Regards, RosiFit Team". Once RC-109 made the send use
+it, a Postnatal follow-up would carry no visible way to stop — 0066's *"If you would rather not get
+these check-ins, you can stop them here"* line lives only in the stored templates. The
+List-Unsubscribe headers were still sent. Found before any such email went out: RC-109 is not yet
+deployed.
+
+**Root cause** — 0066 made "every follow-up says how to stop" true by editing the TEMPLATE rows,
+so the guarantee lived in data rather than in the send. RC-109 routed a course's own wording
+around the template, and the guarantee did not travel with it. RC-109's review checked that the
+right words were sent; nobody asked what the template's words had been carrying.
+
+**Fix** — `send-followups` builds every wording it renders and snapshots through `sendable()`
+(`send-followups/wording.ts`), which appends 0066's line verbatim to any body that does not place
+`{{unsubscribe_url}}` itself. The send-step preview appends the same line. No stored wording is
+edited. This also closes 0066's own "STILL OPEN" note: a template created after 0066 now gets the
+line at send too.
+
+**Files** — `supabase/functions/send-followups/{wording.ts,index.ts,wording.test.ts}`,
+`src/data/sendPreview.ts`, `src/data/sendPreview.test.ts`.
+
+**How to verify** — `deno test` in `supabase/functions` (`sendable`, `withUnsubscribeLine`);
+`npx tsx --test src/data/sendPreview.test.ts` — the line pinned to 0066's migration text and to the
+Deno copy. Live, after deploy: a Postnatal Reach out email ends with the opt-out line.
+**Deployed 26-Sep-2026** — `send-followups` v20 (with RC-109), `verify_jwt` true; the bundle read back
+from the platform is byte-identical to `supabase/functions/` in all ten files, `wording.ts` among them.
+The live-email check above is the academy's next Reach out.
+
+**Recurrence risk** — any guarantee stored in the template rows rather than enforced at send.
+Swept `supabase/migrations` for `update public.email_templates`: 0066 is the only migration that
+edits template CONTENT. The course form's preview (`app/course/edit.tsx`) still shows the wording
+without the line — TD-055's class, recorded there.
+
+**Prevention** — `src/data/sendPreview.test.ts` ("the line is 0066's, verbatim") and
+`send-followups/wording.test.ts` ("a stored wording is made sendable"). The call sites in
+`index.ts` have no rung (the file cannot be imported by a spec) — prose only.
+
+**Process check** — Yes: RC-109's review asked "does the course's wording arrive?" and not "what
+did the template guarantee that the course's wording does not?". Recorded here as the question to
+ask when a send path stops reading a stored row.
+## RC-112 — the course list lost its search box and branch filter, and kept their state          Tracker: T-023 · Sources: A:F-28, RV-03
+**Date:** 26-Sep-2026  ·  **Severity:** S3  ·  **Modules:** Attendance tab course list (`app/(tabs)/courses.tsx`)
+
+**Symptom** — `formDropdownMenu.test.ts` "the list-screen filters are untouched" red on `main`:
+`courses.tsx` imported `DropdownRow/Field/Panel/List` and rendered none. On screen, the course list
+had no search and no branch filter, while its empty state still said "Clear one or both" and
+"Choose All branches to see them all" — naming controls that were not there.
+
+**Root cause** — the two controls were removed from the render in an edit this repository's
+squashed history cannot attribute (the tree starts at `1030d47`, 13-Sep), and the `query`,
+`branch`, `branchOpen` state, the branch options and the filter logic were left behind. Nothing
+failed at the time because the only guard was a source-reading spec in a suite that was already
+red (T-001: `gate` never green on `main`).
+
+**Fix** — the search box (`courses-search`) and the Branch field (`courses-filter-branch`, a
+card-row `DropdownList` in a `DropdownPanel`) are rendered again above the list, wired to the
+state that was already there. Built from the same parts as the course screen's member search and
+the Attendance filters; tokens only.
+
+**How to verify** — `npx tsx --test src/components/formDropdownMenu.test.ts` 9/9; in the app, the
+Attendance tab narrows by a typed name and by a chosen branch, and the count label follows.
+
+**Recurrence risk** — any list screen whose filter UI is removed and state kept. `FILTERS` in the
+spec names the three list screens; the other two render their lists.
+
+**Prevention** — `src/components/formDropdownMenu.test.ts` (existing). It only protects once
+`gate` is required on `main` (Gate 2.2).
+
+**Process check** — Yes: a red `gate` hid the regression. Gate 2.2.
+## RC-111 — a token added to the sender left five message specs pinning the old list          Tracker: T-025 · Sources: RV-03, requests/2026-09-08-follow-up-trigger-on-send-and-reach-out.md
+**Date:** 26-Sep-2026  ·  **Severity:** S3  ·  **Modules:** message tokens (`src/data/message.ts`), gate
+
+**Symptom** — `test:unit` red on `main` since `{{follow_up_trigger}}` landed: five `message.test.ts`
+cases (the token list against the sender's map, three counts, and the chip-length rule), which kept
+`gate` red on every PR.
+
+**Root cause** — the 08-Sep change added a token to `MESSAGE_TOKENS` and to send-followups' `vars`
+without running the spec file that pins both, so four locks still named the 13-token list, and the
+new chip label ("Follow-up trigger", 17 characters) broke a 16-character rule nobody saw fail.
+
+**Fix** — the four locks re-pinned to the 14-token list (only literals moved); the chip label
+shortened to "Trigger" so the rule holds, with its spoken meaning now "the follow-up trigger that
+listed them". Files: `src/data/message.ts`, `src/data/message.test.ts`.
+
+**How to verify** — `npx tsx --test src/data/message.test.ts`: 60 pass, 0 fail.
+
+**Recurrence risk** — any token added to the sender's map; the spec already names that map, so
+the class is covered once `gate` is honoured (Gate 2.2 makes it required).
+
+**Prevention** — `src/data/message.test.ts` "the token list IS the sender's variable map".
+Enforcement is `gate` itself being required on `main` (T-001's finding: 0 green runs).
+
+**Process check** — Yes: the change merged on a red `gate`. A required check would have stopped
+it; that is Gate 2.2, not this row.
+
+---
+
+## RC-109 — the course's own wording was saved, previewed and never sent          Tracker: none (reported by the academy) · Sources: requests/2026-09-26-send-uses-the-course-wording.md, 0021_course_communication.sql
+**Date:** 26-Sep-2026  ·  **Severity:** S2  ·  **Modules:** send-followups (Edge Function)
+
+**Symptom** — "When the email is sent to rcflive1@gmail.com (using "Reach out" button) … it
+triggers the old email template(content) instead of using the latest corrected email content."
+The delivered email read "We missed you this week, rosi" / "You were down for 4 sessions in
+Postnatal …" — the seeded *Gentle check-in* template — while the Postnatal course form showed its
+saved wording "Live class attendance update" / "Hi Ma, …". The from-address was the course's own.
+
+**Root cause** — `send-followups` rendered the one template the client named (`email_templates`
+by `template_id`) for every recipient, and read `course_communication` only for `from_email`.
+The course's `subject` and `body_text` (0021) were written by the course form, read by its
+preview through `effective_course_message()`, and read by nobody who sends — so every course
+sent its template's words regardless of what the form said. The sender half was wired on
+07-Sep-2026; the wording half of the same row never was. That is also why the address was right
+and the words were wrong: exactly the selectivity reported.
+
+**Fix** — the function now resolves each course through `effective_course_message()` (the
+resolver 0021 already names as the one behind "the batch") once per course, fails loud if that
+read errors, and renders each recipient from the member's own course wording
+(`send-followups/wording.ts`, `wordingFor`). A member with no course keeps the template the send
+asked for. `email_batches.subject_snapshot` / `body_snapshot` now record the wording actually
+rendered when the rendered recipients share one (`batchWording`), which is every batch either
+send screen starts; a batch that rendered more than one wording keeps the template's words in
+those NOT NULL columns and says `context.wording = 'mixed'`, so the snapshot never passes for
+text a member received. No schema change; no client change — both buttons already call this one function.
+
+**Files** — `supabase/functions/send-followups/index.ts`, `supabase/functions/send-followups/wording.ts`,
+`supabase/functions/send-followups/wording.test.ts`.
+
+**How to verify** — `cd supabase/functions && deno test send-followups/wording.test.ts` (5 pass;
+3 fail with `wordingFor` returning the template, the pre-fix behaviour). Live, after deploy: send
+Reach out to a flagged member of a course with its own wording and read the delivered subject.
+**Deployed 26-Sep-2026** — `send-followups` v20, `verify_jwt` true; read back from the platform and
+diffed by script: all ten files byte-identical to `supabase/functions/`. The delivered-subject check
+above is the academy's next Reach out.
+
+**Recurrence risk** — one send site. Swept with
+`grep -rn "email_templates\|body_text" supabase/functions --include=*.ts`: the only render is in
+`send-followups/index.ts`, now through `wordingFor`. The class — a course setting the form saves
+that the sender never reads — has now happened twice on the same row (sender, then wording).
+
+**Known gaps, not widened into this fix** (code review, 26-Sep-2026) —
+- The 409 for an inactive template checks the `template_id` the caller passes, not the template
+  the course's wording resolves from; `effective_course_message()` does not check `is_active`.
+  Unreachable from the app — both screens pass the resolver's own `template_id` — but a direct
+  API caller can pass one active id and send a course the words of an inactive one, and
+  `email_batches.template_id` then names the passed template.
+- A member with more than one `active` enrolment row (0039 can leave a current row and a later
+  one) gets whichever row the read returned last — pre-existing, now also choosing the wording.
+  0039 keeps those rows within one course, so the wording matches in practice.
+
+**Prevention** — `supabase/functions/send-followups/wording.test.ts` pins the resolution rule.
+The wiring in `index.ts` has no rung: the file calls `Deno.serve` at module scope and the CI
+`deno test` runs without read permission, so no spec can import or scan it — prose only.
+
+**Process check** — Yes. 0021's comment claimed the resolver was "behind … the batch" and
+`FEATURE_TRUTH.md` claimed the per-member draft used the wording resolved from the member's own course;
+neither was checked against the function that sends. Filed as a candidate for `/promote`, not run
+in this change: a stored setting's claim should be proven at the step that consumes it.
 ## RC-076 — nine components asked for the same identity, and the browser made them queue          Tracker: T-405 · Sources: RUN_app-feels-slow.md #3, requests/2026-09-24-app-feels-slow-measure-first.md
 **Date:** 25-Sep-2026 · **Severity:** S2 · **Modules:** `src/data/session.ts`, `src/data/sharedRead.ts`
 
@@ -75,6 +416,9 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 **Class** — Any identical GET issued by several components at once is serialized the same way: `courses` ×7, `follow_up_config` ×5, `sessions` ×5 and more in the same trace. That is **T-406**; this entry closes the identity read only.
 
 **How to verify** — `node scripts/perf/stand-in-api.js` + `node scripts/perf/cold-start.js /` against a build pointed at it: `app_users` appears twice, in parallel. In production: a cold start in `edge_logs` shows at most two `app_users` requests.
+
+---
+
 
 ---
 
@@ -100,6 +444,9 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 **Verified in production, 24-Sep-2026 09:14–09:18 UTC** — applied as ledger `20260924091428`; guard and equivalence check passed in the apply; `pg_policies` 62 with 0 bare calls; `EXPLAIN ANALYZE` 1,000-row `member_stats` as `authenticated` shows `InitPlan 1`, **102 ms → 2.7 ms**; `course_week_day_status` **211 → 12.0 ms**; member-list page read avg at the edge **648 → 120 ms**; per-persona visibility (owner / staff / unknown) as specified. The `auth_rls_initplan` advisor output did not change.
 
 **How to verify** — after the production apply: `pg_policies` count 62, zero bare calls (the spec-58 query); `EXPLAIN ANALYZE` of a 1,000-row `member_stats` read as `authenticated` shows an InitPlan and ~1 ms; member-list page-read average in `pg_stat_statements` after a reset. Before/after table in `RUN_app-feels-slow.md`.
+
+---
+
 ## RC-108 — a member whose address could not be used was listed as one whose address worked, and counted as one          Tracker: none (reported by the academy) · Sources: requests/2026-09-24-issues-leave-the-roster-and-two-filters.md, RC-107, RC-106
 **Date:** 24-Sep-2026 · **Severity:** S2 (a screen stated something untrue about who can be written to; no send behaviour changed) · **Modules:** `app/course/[id].tsx`, `src/data/emailIssues.ts`, `src/data/rosterFilter.ts`
 
