@@ -18,6 +18,14 @@
 //   POST  a mail client acted on the List-Unsubscribe-Post header (RFC 8058
 //         one-click) -> 200 and an empty body, which is all it reads
 //
+// AND ONE WAY BACK: POST with `a=resubscribe` is the "Resubscribe" button on
+// the confirmation page, carrying the same signed link. It reverses an
+// unsubscribe and nothing else -- a bounce or a spam report is not the
+// member's click to undo here -- and answers with a redirect to /resubscribed.
+// An opt-out stays the member's alone to undo: the signed link is the proof
+// that this is the member, exactly as it is for the opt-out itself. A mail
+// client's one-click POST never carries `a`, so it can only ever unsubscribe.
+//
 // WHAT AN INVALID LINK IS TOLD: that the link did not work, and nothing else.
 // Never whether the id existed. "No such member" and "wrong signature" have
 // to be one answer, or the endpoint becomes a way to test whether a UUID is
@@ -25,7 +33,7 @@
 import { adminClient } from '../_shared/db.ts';
 import { unquoteSecret } from '../_shared/from-address.ts';
 import { unsubscribeTokenValid } from '../_shared/unsubscribe-token.ts';
-import { appOrigin, landing } from './landing.ts';
+import { appOrigin, landing, resubscribeStep } from './landing.ts';
 
 const UNSUBSCRIBE_SECRET = (() => {
   // unquoteSecret for the reason SETUP.md records: a secret set through a
@@ -47,6 +55,10 @@ if (!APP_ORIGIN) {
   console.error('unsubscribe: APP_ORIGIN is not an https origin -- answering in plain text instead of redirecting.');
 }
 
+/** This function's own public address, which the confirmation page posts the
+ *  Resubscribe button back to. SUPABASE_URL is injected by the runtime. */
+const FUNCTION_URL = `${(Deno.env.get('SUPABASE_URL') ?? '').replace(/\/+$/, '')}/functions/v1/unsubscribe`;
+
 Deno.serve(async (req) => {
   const method = req.method;
   if (method !== 'GET' && method !== 'POST') {
@@ -56,6 +68,10 @@ Deno.serve(async (req) => {
   // the status code. The body is drained and discarded rather than parsed:
   // there is nothing in it this endpoint needs, and the id is in the URL.
   if (method === 'POST') await req.text().catch(() => '');
+
+  const url = new URL(req.url);
+  // The page's button, not a mail client: see the header.
+  const resubscribe = method === 'POST' && url.searchParams.get('a') === 'resubscribe';
 
   const db = adminClient();
 
@@ -72,7 +88,7 @@ Deno.serve(async (req) => {
   // The words are kept here, beside the decision, for the plain-text answer;
   // the app's pages carry the same sentences (public/unsubscribed.html,
   // public/unsubscribe-failed.html).
-  const neutral = () => method === 'POST'
+  const neutral = () => method === 'POST' && !resubscribe
     ? new Response(null, { status: 200 })
     : landing('failed', APP_ORIGIN, {
       heading: 'This link did not work',
@@ -81,16 +97,22 @@ Deno.serve(async (req) => {
       academy,
     });
 
-  const confirmed = () => method === 'POST'
+  // `offerUndo` only where there is an address to put back: a correctly signed
+  // link whose row has gone is confirmed, but has nothing to resubscribe.
+  const confirmed = (offerUndo: boolean) => method === 'POST'
     ? new Response(null, { status: 200 })
     : landing('unsubscribed', APP_ORIGIN, {
       heading: 'You are unsubscribed',
-      body: 'We will not send any more attendance follow-ups to this address. '
-        + 'If this was a mistake, reply to any earlier email and we will turn them back on.',
+      body: 'We will not send any more attendance follow-ups to this address.',
       academy,
-    });
+    }, offerUndo ? { e: memberEmailId, t: token, fn: FUNCTION_URL } : undefined);
 
-  const url = new URL(req.url);
+  const resubscribed = () => landing('resubscribed', APP_ORIGIN, {
+    heading: 'You are subscribed again',
+    body: 'We will send attendance follow-ups to this address again.',
+    academy,
+  });
+
   const memberEmailId = url.searchParams.get('e') ?? '';
   const token = url.searchParams.get('t') ?? '';
 
@@ -118,11 +140,43 @@ Deno.serve(async (req) => {
   // there is nothing to hide from its holder, and the promise it makes is
   // already true -- a deleted address cannot be mailed. Telling that person
   // "this link did not work" would invite them to try again.
-  if (!row) return confirmed();
+  if (resubscribe) {
+    // The rule is resubscribeStep's (landing.ts, with its spec). No address
+    // left, or a bounce or spam report, gets the link-did-not-work page rather
+    // than a claim of a subscription that is not there; already on is the
+    // same answer as done, with no write and no second audit row.
+    const step = resubscribeStep(row?.status);
+    if (step === 'already') return resubscribed();
+    if (step !== 'write' || !row) return neutral();
+
+    // 'unknown', as reinstate_member_email (0078) and every new address use:
+    // the next send finds out afresh whether the address takes mail.
+    const { error: backErr } = await db.from('member_emails')
+      .update({ status: 'unknown' })
+      .eq('id', row.id)
+      .eq('status', 'unsubscribed')
+      .is('deleted_at', null);
+    if (backErr) {
+      console.error('unsubscribe: could not save the resubscribe', backErr.message);
+      return neutral();
+    }
+    // The member's own act, filed the way the opt-out is (audit_log_anon, 0065).
+    const { error: backAuditErr } = await db.rpc('audit_log_anon', {
+      p_action: 'communication.resubscribed',
+      p_entity_type: 'member_email',
+      p_entity_id: row.id,
+      p_changes: [{ field: 'status', old: row.status, new: 'unknown' }],
+      p_metadata: { member_id: row.member_id, via: 'resubscribe_button' },
+    });
+    if (backAuditErr) console.error('unsubscribe: could not audit the resubscribe', backAuditErr.message);
+    return resubscribed();
+  }
+
+  if (!row) return confirmed(false);
 
   // Idempotent, and quiet about it. Clicking twice must not error, and must
   // not write a second audit row saying something changed when nothing did.
-  if (row.status === 'unsubscribed') return confirmed();
+  if (row.status === 'unsubscribed') return confirmed(true);
 
   const { error: updErr } = await db.from('member_emails')
     .update({ status: 'unsubscribed' })
@@ -149,5 +203,5 @@ Deno.serve(async (req) => {
   // that invites a second click, which is a no-op anyway.
   if (auditErr) console.error('unsubscribe: could not audit the opt-out', auditErr.message);
 
-  return confirmed();
+  return confirmed(true);
 });

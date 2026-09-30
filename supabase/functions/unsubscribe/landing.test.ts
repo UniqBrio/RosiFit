@@ -50,3 +50,33 @@ Deno.test('with no origin to send to, the words come back as text -- never as HT
 // The source-reading half -- index.ts serves no HTML, and both app pages exist --
 // is src/data/unsubscribeLanding.test.ts: CI runs `deno test` with no read
 // permission, and the Node suite is where this project's source specs live.
+
+// ------------------------------------------------ the way back (Resubscribe)
+// Imported here rather than by editing the import above: specs are append-only.
+import { resubscribeStep } from './landing.ts';
+
+Deno.test('the confirmation carries the signed pair and the function address, so the page can offer Resubscribe', () => {
+  const res = landing('unsubscribed', 'https://rosi-fit.vercel.app', WORDS,
+    { e: 'id-1', t: 'a+b/c', fn: 'https://ref.supabase.co/functions/v1/unsubscribe' });
+  const loc = new URL(res.headers.get('Location')!);
+  assertEquals(loc.pathname, '/unsubscribed');
+  assertEquals(loc.searchParams.get('e'), 'id-1');
+  assertEquals(loc.searchParams.get('t'), 'a+b/c');
+  assertEquals(loc.searchParams.get('fn'), 'https://ref.supabase.co/functions/v1/unsubscribe');
+});
+
+Deno.test('a resubscribe lands on its own page', () => {
+  const res = landing('resubscribed', 'https://rosi-fit.vercel.app', WORDS);
+  assertEquals(new URL(res.headers.get('Location')!).pathname, LANDING_PATH.resubscribed);
+  assertEquals(LANDING_PATH.resubscribed, '/resubscribed');
+});
+
+Deno.test('Resubscribe undoes an unsubscribe and nothing else', () => {
+  assertEquals(resubscribeStep('unsubscribed'), 'write');
+  assertEquals(resubscribeStep('unknown'), 'already');
+  assertEquals(resubscribeStep('valid'), 'already');
+  assertEquals(resubscribeStep('bounced'), 'refuse');
+  assertEquals(resubscribeStep('complained'), 'refuse');
+  assertEquals(resubscribeStep(null), 'missing');
+  assertEquals(resubscribeStep(undefined), 'missing');
+});

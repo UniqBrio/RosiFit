@@ -24,13 +24,22 @@
  *  by the APP_ORIGIN secret on any other deployment. */
 export const DEFAULT_APP_ORIGIN = 'https://rosi-fit.vercel.app';
 
-export type Outcome = 'unsubscribed' | 'failed';
+export type Outcome = 'unsubscribed' | 'failed' | 'resubscribed';
 
 /** The static pages, one per outcome, at their clean URLs (vercel.json). */
 export const LANDING_PATH: Record<Outcome, string> = {
   unsubscribed: '/unsubscribed',
   failed: '/unsubscribe-failed',
+  resubscribed: '/resubscribed',
 };
+
+/**
+ * What the confirmation page needs to offer "Resubscribe": the same signed
+ * pair the email's link carried, and where to post it back to. Nothing here
+ * is new to the person holding it -- `e` and `t` are the link they clicked --
+ * and the page accepts `fn` only in the shape of this function's own address.
+ */
+export type Undo = { e: string; t: string; fn: string };
 
 /** `https://host[:port]` and nothing after it. */
 const ORIGIN = /^https:\/\/[a-z0-9.-]+(:\d+)?$/i;
@@ -55,9 +64,12 @@ export type Words = { heading: string; body: string; academy: string };
  * platform would turn any HTML into anyway, and which reads as a sentence
  * rather than as source code.
  */
-export function landing(outcome: Outcome, origin: string | null, words: Words): Response {
+export function landing(outcome: Outcome, origin: string | null, words: Words, undo?: Undo): Response {
   if (origin) {
-    const target = `${origin}${LANDING_PATH[outcome]}?academy=${encodeURIComponent(words.academy)}`;
+    const target = `${origin}${LANDING_PATH[outcome]}?academy=${encodeURIComponent(words.academy)}`
+      + (undo
+        ? `&e=${encodeURIComponent(undo.e)}&t=${encodeURIComponent(undo.t)}&fn=${encodeURIComponent(undo.fn)}`
+        : '');
     return new Response(null, {
       status: 303,
       headers: { Location: target, 'Cache-Control': 'no-store' },
@@ -67,4 +79,22 @@ export function landing(outcome: Outcome, origin: string | null, words: Words): 
     status: 200,
     headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
   });
+}
+
+/**
+ * What the Resubscribe button may do to an address, by its current status --
+ * the whole rule, here so it is tested without a database.
+ *
+ *   write    it was unsubscribed: put it back ('unknown', as 0078 does)
+ *   already  it is on already -- a second press, an old tab: say so, write nothing
+ *   refuse   a bounce or a spam report: not what this button undoes
+ *   missing  the address is gone: there is nothing to put back
+ */
+export type ResubscribeStep = 'write' | 'already' | 'refuse' | 'missing';
+
+export function resubscribeStep(status: string | null | undefined): ResubscribeStep {
+  if (status == null) return 'missing';
+  if (status === 'unsubscribed') return 'write';
+  if (status === 'unknown' || status === 'valid') return 'already';
+  return 'refuse';
 }

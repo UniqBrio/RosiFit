@@ -1,3 +1,21 @@
+## A MEMBER WHO UNSUBSCRIBED BY MISTAKE CAN RESUBSCRIBE — 30-Sep-2026
+
+`requests/2026-09-30-resubscribe-button.md` (CHANGE, scoped). `/unsubscribed` shows "Did you
+unsubscribe by mistake?" and a Resubscribe button when the link carried the signed pair; the button
+POSTs back to `unsubscribe` with `a=resubscribe`, which puts an UNSUBSCRIBED address back to
+'unknown' (only that status), audits `communication.resubscribed` as the member's own act, and
+lands on the new `/resubscribed`. The confirmation no longer promises "reply ... and we will turn
+them back on", which 0078 forbids anyone to do.
+
+FAIL-FIRST: src/data/unsubscribeLanding.test.ts - "the confirmation no longer promises a reply can undo it" (4 of 9 red on the previous pages and function); 9 of 9 green.
+FAIL-FIRST: src/data/auditActionCoverage.test.ts - "communication.resubscribed ... -> guessed as \"Member email address — communication resubscribed\"" (red until auditPlain.ts named it); green.
+NOT OBSERVED FAILING: supabase/functions/unsubscribe/landing.test.ts - the three appended cases cover new code (`resubscribeStep`, the `undo` parameter, `/resubscribed`); 9 of 9 green under `deno test`.
+Page behaviour in Chromium (--dump-dom): with the signed pair and a Supabase `fn` the form action is `.../functions/v1/unsubscribe?e=a%26b&t=x%2By&a=resubscribe`; with a foreign `fn`, or no parameters, the form stays hidden. Rendered light and dark.
+NOT RUN end to end against a live function: this sandbox cannot reach supabase.co, and a real signed link needs the production secret.
+
+GATES: `npm run check` — lint, typecheck, check:edge, contrast, icons, functions PASS; test:unit PASS
+after the audit wording was added. `npm run gate` FAIL only on the five steps red since 24-Sep.
+
 ## THE UNSUBSCRIBE PAGES CARRY THE ROSIFIT BRAND — 30-Sep-2026
 
 `requests/2026-09-30-unsubscribe-page-branded.md` (CHANGE, micro). Both pages now show the RosiFit
@@ -316,6 +334,56 @@ and the count beside it dropped by one" is asserted by reading `app/course/[id].
 three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
 preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
 all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-09-30 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 40.6s total - slowest G7 Unit + pure specs (24.0s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (85ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (77ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (74ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (136ms)
+- **G5 Types** - PASS (9.9s)
+- **G6 Lint** - FAIL (5.6s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (24.0s)
+- **G8 Functional / integration** - FAIL (224ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (88ms)
+- **G10 Backward compatibility (fixtures)** - PASS (160ms)
+- **G11 Wide tables are configurable** - PASS (77ms)
+- **G12 Installable as an application** - PASS (105ms)
+- **G13 Approved design still being built** - PASS (91ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

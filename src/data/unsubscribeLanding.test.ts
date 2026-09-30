@@ -79,3 +79,49 @@ test('both pages carry the RosiFit logo from the app host, not a bare page', () 
     assert.match(read(file), /<img src="\/rosifit-logo\.png"/, `${file} must show the logo`);
   }
 });
+
+// ------------------------------------------------ the way back (Resubscribe)
+// "How will the end user subscribe back once they hit unsubscribe ... by
+// mistake" (requests/2026-09-30-resubscribe-button.md). The page used to say
+// "reply to any earlier email and we will turn them back on", and nobody
+// could: 0078 refuses to reinstate an opt-out, because only the member may
+// undo one. The button is the member's own undo, through the signed link.
+
+test('the resubscribed page exists, branded, and says what the function would have said', () => {
+  const src = read('supabase/functions/unsubscribe/index.ts');
+  assert.match(src, /heading: 'You are subscribed again'/);
+  assert.match(src, /body: 'We will send attendance follow-ups to this address again\.'/);
+  const html = read('public/resubscribed.html');
+  assert.match(html, /<h1>You are subscribed again<\/h1>/);
+  assert.match(html, /<p>We will send attendance follow-ups to this address again\.<\/p>/);
+  assert.match(html, /<img src="\/rosifit-logo\.png"/);
+  assert.match(html, /prefers-color-scheme: dark/);
+  assert.doesNotMatch(html, /innerHTML/);
+});
+
+test('the confirmation no longer promises a reply can undo it', () => {
+  for (const file of ['public/unsubscribed.html', 'supabase/functions/unsubscribe/index.ts']) {
+    assert.doesNotMatch(read(file), /reply to any earlier email and we will turn them back on/,
+      `${file} must not promise what no one in the academy is allowed to do`);
+  }
+});
+
+test('Resubscribe posts back only to a Supabase unsubscribe function, and starts hidden', () => {
+  const html = read('public/unsubscribed.html');
+  assert.match(html, /<form class="undo" id="undo" method="post" hidden>/,
+    'no signed link, no button -- a direct visit has nothing to undo');
+  assert.match(html, /<button type="submit">Resubscribe<\/button>/);
+  assert.ok(html.includes('/^https:\\/\\/[a-z0-9-]+\\.supabase\\.co\\/functions\\/v1\\/unsubscribe$/.test(fn)'),
+    'the page must refuse any other address for the button to post to');
+  assert.match(html, /&a=resubscribe/);
+  assert.match(html, /<meta name="referrer" content="no-referrer">/,
+    'the signed pair must not leak in a Referer header');
+});
+
+test('only a POST that asks for it can resubscribe -- a mail client\'s one-click never can', () => {
+  const src = read('supabase/functions/unsubscribe/index.ts');
+  assert.match(src, /const resubscribe = method === 'POST' && url\.searchParams\.get\('a'\) === 'resubscribe';/);
+  assert.match(src, /resubscribeStep\(row\?\.status\)/, 'the decision must be the tested one in landing.ts');
+  assert.match(src, /\.eq\('status', 'unsubscribed'\)/, 'the write must only ever move an unsubscribed row');
+  assert.match(src, /p_action: 'communication\.resubscribed'/, 'the member\'s undo is audited like the opt-out');
+});

@@ -38,7 +38,14 @@ what the user reads is a product decision, and they are allowed to differ.
 | The same state, as the **word on a member card** | `Member unsubscribed` | Opted out, Unsubscribed member, Unsubscribed | PROVISIONAL | 1 (`src/data/emailStatus.ts` `emailStateWord`) | 2026-09-24 |
 | An address whose owner reported email as spam — **group heading** | `Spam Reported` | Complained, Marked spam, Junk | PROVISIONAL | 1 (`src/data/emailIssues.ts` heading) | 2026-09-24 |
 | The same state, as the **word on a member card** | `Marked as spam` | Complained, Spam complaint, Spam Reported | PROVISIONAL | 1 (`src/data/emailStatus.ts` `emailStateWord`) | 2026-09-24 |
+| The member's own undo of an opt-out, on the unsubscribe confirmation page — **button** | `Resubscribe` | Opt back in, Turn back on, Undo, Re-enable | PROVISIONAL | 1 (`public/unsubscribed.html`) | 2026-09-30 |
+| The state after that undo — **page heading** | `You are subscribed again` | Opted in, Re-enabled, Turned back on | PROVISIONAL | 2 (`public/resubscribed.html`, `supabase/functions/unsubscribe/index.ts`) | 2026-09-30 |
 | Enrolled on a course but not on today's register — inactive today, or not joined yet (course card) | `N not on today’s register` | Inactive, not active, off the register, not active today | PROVISIONAL — the course screen names the two groups separately ("joined later", Inactive); the card needs one word for both, and "inactive" is wrong for a member who joins later, whose pill reads Active | 1 (`src/data/course.ts` `courseSummary`) | 2026-09-30 |
+
+_**`Resubscribe` and `subscribed again` differ on purpose**, the short/long pairing the rows below
+record for the suppression states: the button is the ACTION (one word, beside a question that names
+it — "Did you unsubscribe by mistake?"), the heading is the STATE it leaves the member in. A later
+staff-side way to do the same thing should reuse `Resubscribe`, not coin a third word (30-Sep-2026)._
 
 _The stale wording was `Updated at <time> · could not refresh` when these rows were first
 written; it is `Last updated <time> · Couldn’t refresh` as shipped, set by the requester when the
