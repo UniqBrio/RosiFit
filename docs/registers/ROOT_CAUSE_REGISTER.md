@@ -90,6 +90,9 @@ read back from the platform carries `landing.ts` and the redirecting `index.ts`.
 academy's: this sandbox cannot reach either host.
 **Seen live 30-Sep-2026** by the owner: `rosi-fit.vercel.app/unsubscribed` renders the page (heading and
 body), not source.
+**Dressed as the app 30-Sep-2026** at the owner's request ("it should be professional with rosifit logo"):
+logo on the app's header gradient, the app's tokens in both themes, wording unchanged
+(`requests/2026-09-30-unsubscribe-page-branded.md`).
 
 **Recurrence risk** — any Edge Function that answers a browser GET with HTML. Swept with
 `grep -rln "text/html" supabase/functions`: `unsubscribe` was the only one.
