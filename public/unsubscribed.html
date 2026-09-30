@@ -15,8 +15,9 @@
   THE WAY BACK: when the link carried the signed pair (`e`, `t`) and the
   function's own address (`fn`), a Resubscribe button posts them back to it
   -- the member's own undo, through the same signature that made the opt-out.
-  `fn` is accepted only in the shape of a Supabase unsubscribe function, so a
-  crafted link cannot point the button anywhere else. Every value from the
+  `fn` is accepted only as THIS project's unsubscribe function, so a crafted
+  link cannot point the button at anybody else's. The pair is cleared from
+  the address bar and history once read. Every value from the
   URL is set as text or as a URL attribute, never as markup, and no-referrer
   keeps the pair out of any request this page makes.
   Opened from a mail client, often on a phone, by a member who has no account:
@@ -105,11 +106,15 @@
       if (academy) document.getElementById('academy').textContent = academy.slice(0, 120);
       var q = new URLSearchParams(location.search);
       var e = q.get('e'), t = q.get('t'), fn = q.get('fn');
-      if (e && t && fn && /^https:\/\/[a-z0-9-]+\.supabase\.co\/functions\/v1\/unsubscribe$/.test(fn)) {
+      if (e && t && fn && /^https:\/\/lhpzhkzbnquwjljmbylo\.supabase\.co\/functions\/v1\/unsubscribe$/.test(fn)) {
         var form = document.getElementById('undo');
         form.action = fn + '?e=' + encodeURIComponent(e) + '&t=' + encodeURIComponent(t) + '&a=resubscribe';
         form.addEventListener('submit', function () { form.querySelector('button').disabled = true; });
         form.hidden = false;
+      }
+      // The pair is read; keep it out of the address bar and history.
+      if (e || t || fn) {
+        history.replaceState(null, '', location.pathname + (academy ? '?academy=' + encodeURIComponent(academy) : ''));
       }
     } catch (e) { /* the sentences above stand on their own */ }
   })();

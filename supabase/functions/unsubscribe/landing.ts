@@ -15,8 +15,10 @@
 // (`public/unsubscribed.html`, `public/unsubscribe-failed.html`), which is
 // ordinary static hosting with no such rule. The opt-out itself is still
 // decided and written here, before the redirect -- the page is only what the
-// person reads afterwards, and it takes nothing from the URL but the
-// academy's name.
+// person reads afterwards. It takes the academy's name from the URL and, on
+// the confirmation only, the signed pair and this function's address for the
+// Resubscribe button (`Undo`, below); the page clears those from the address
+// bar and history as soon as it has read them.
 //
 // Pure: no Deno globals, so it is testable without a request or a database.
 
@@ -92,9 +94,28 @@ export function landing(outcome: Outcome, origin: string | null, words: Words, u
  */
 export type ResubscribeStep = 'write' | 'already' | 'refuse' | 'missing';
 
-export function resubscribeStep(status: string | null | undefined): ResubscribeStep {
+/** An address the academy may write to -- the two states `emailUsable` accepts. */
+const USABLE = new Set(['unknown', 'valid']);
+
+/**
+ * `before` is what the address was just before the member unsubscribed, read
+ * from that opt-out's own audit row (`changes[0].old`). It closes the two-step
+ * route round the rule: a bounced or spam-reported address that is then
+ * unsubscribed must not come back as sendable through this button -- a
+ * bounce is the mail system's, a spam report is 0078's "only the member can
+ * ask", and neither is undone by a click on a page. No such row (an opt-out
+ * this function did not write) is refused for the same reason.
+ */
+export function resubscribeStep(
+  status: string | null | undefined, before?: string | null,
+): ResubscribeStep {
   if (status == null) return 'missing';
-  if (status === 'unsubscribed') return 'write';
-  if (status === 'unknown' || status === 'valid') return 'already';
-  return 'refuse';
+  if (USABLE.has(status)) return 'already';
+  if (status !== 'unsubscribed') return 'refuse';
+  return before != null && USABLE.has(before) ? 'write' : 'refuse';
 }
+
+/** Whether the confirmation may offer the button at all: the same rule, asked
+ *  before anybody presses it, so the page never offers what the POST refuses. */
+export const mayOfferResubscribe = (before: string | null | undefined): boolean =>
+  before != null && USABLE.has(before);

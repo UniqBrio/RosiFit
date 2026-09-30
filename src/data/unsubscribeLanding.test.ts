@@ -111,8 +111,9 @@ test('Resubscribe posts back only to a Supabase unsubscribe function, and starts
   assert.match(html, /<form class="undo" id="undo" method="post" hidden>/,
     'no signed link, no button -- a direct visit has nothing to undo');
   assert.match(html, /<button type="submit">Resubscribe<\/button>/);
-  assert.ok(html.includes('/^https:\\/\\/[a-z0-9-]+\\.supabase\\.co\\/functions\\/v1\\/unsubscribe$/.test(fn)'),
-    'the page must refuse any other address for the button to post to');
+  assert.ok(html.includes('/^https:\\/\\/lhpzhkzbnquwjljmbylo\\.supabase\\.co\\/functions\\/v1\\/unsubscribe$/.test(fn)'),
+    'the page must refuse any address but this project\'s own function');
+  assert.match(html, /history\.replaceState/, 'the signed pair must not stay in the address bar or history');
   assert.match(html, /&a=resubscribe/);
   assert.match(html, /<meta name="referrer" content="no-referrer">/,
     'the signed pair must not leak in a Referer header');
@@ -121,7 +122,9 @@ test('Resubscribe posts back only to a Supabase unsubscribe function, and starts
 test('only a POST that asks for it can resubscribe -- a mail client\'s one-click never can', () => {
   const src = read('supabase/functions/unsubscribe/index.ts');
   assert.match(src, /const resubscribe = method === 'POST' && url\.searchParams\.get\('a'\) === 'resubscribe';/);
-  assert.match(src, /resubscribeStep\(row\?\.status\)/, 'the decision must be the tested one in landing.ts');
+  assert.match(src, /resubscribeStep\(row\?\.status, await statusBeforeOptOut\(\)\)/,
+    'the decision must be the tested one in landing.ts, fed the status before the opt-out');
+  assert.match(src, /\.select\('id'\);/, 'success must be read from the rows the write actually moved');
   assert.match(src, /\.eq\('status', 'unsubscribed'\)/, 'the write must only ever move an unsubscribed row');
   assert.match(src, /p_action: 'communication\.resubscribed'/, 'the member\'s undo is audited like the opt-out');
 });

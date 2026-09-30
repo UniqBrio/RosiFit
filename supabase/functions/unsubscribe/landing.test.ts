@@ -53,7 +53,7 @@ Deno.test('with no origin to send to, the words come back as text -- never as HT
 
 // ------------------------------------------------ the way back (Resubscribe)
 // Imported here rather than by editing the import above: specs are append-only.
-import { resubscribeStep } from './landing.ts';
+import { mayOfferResubscribe, resubscribeStep } from './landing.ts';
 
 Deno.test('the confirmation carries the signed pair and the function address, so the page can offer Resubscribe', () => {
   const res = landing('unsubscribed', 'https://rosi-fit.vercel.app', WORDS,
@@ -72,11 +72,30 @@ Deno.test('a resubscribe lands on its own page', () => {
 });
 
 Deno.test('Resubscribe undoes an unsubscribe and nothing else', () => {
-  assertEquals(resubscribeStep('unsubscribed'), 'write');
+  assertEquals(resubscribeStep('unsubscribed', 'unknown'), 'write');
+  assertEquals(resubscribeStep('unsubscribed', 'valid'), 'write');
   assertEquals(resubscribeStep('unknown'), 'already');
   assertEquals(resubscribeStep('valid'), 'already');
   assertEquals(resubscribeStep('bounced'), 'refuse');
   assertEquals(resubscribeStep('complained'), 'refuse');
   assertEquals(resubscribeStep(null), 'missing');
   assertEquals(resubscribeStep(undefined), 'missing');
+});
+
+Deno.test('an address that was bounced or spam-reported before the opt-out stays off', () => {
+  // The two-step route: complained -> (click unsubscribe) -> unsubscribed ->
+  // (press Resubscribe) must NOT end at a sendable address.
+  assertEquals(resubscribeStep('unsubscribed', 'complained'), 'refuse');
+  assertEquals(resubscribeStep('unsubscribed', 'bounced'), 'refuse');
+  // No record of what it was before: refused, not guessed.
+  assertEquals(resubscribeStep('unsubscribed', null), 'refuse');
+  assertEquals(resubscribeStep('unsubscribed'), 'refuse');
+});
+
+Deno.test('the page offers the button only where the press would be honoured', () => {
+  assertEquals(mayOfferResubscribe('unknown'), true);
+  assertEquals(mayOfferResubscribe('valid'), true);
+  assertEquals(mayOfferResubscribe('bounced'), false);
+  assertEquals(mayOfferResubscribe('complained'), false);
+  assertEquals(mayOfferResubscribe(null), false);
 });

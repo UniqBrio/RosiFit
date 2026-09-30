@@ -340,6 +340,56 @@ all found by a person using the app, which is three for three, and RC-108's proc
 ## Gate run - 2026-09-30 - VERDICT: FAIL
 
 Steps: 8 pass, 5 fail, 0 blocked.
+Time: 39.2s total - slowest G7 Unit + pure specs (23.2s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (77ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (81ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (85ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (126ms)
+- **G5 Types** - PASS (9.8s)
+- **G6 Lint** - FAIL (5.1s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (23.2s)
+- **G8 Functional / integration** - FAIL (210ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (85ms)
+- **G10 Backward compatibility (fixtures)** - PASS (169ms)
+- **G11 Wide tables are configurable** - PASS (77ms)
+- **G12 Installable as an application** - PASS (98ms)
+- **G13 Approved design still being built** - PASS (76ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-30 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
 Time: 40.6s total - slowest G7 Unit + pure specs (24.0s).
 Application steps ran in .
 

@@ -33,7 +33,7 @@
 import { adminClient } from '../_shared/db.ts';
 import { unquoteSecret } from '../_shared/from-address.ts';
 import { unsubscribeTokenValid } from '../_shared/unsubscribe-token.ts';
-import { appOrigin, landing, resubscribeStep } from './landing.ts';
+import { appOrigin, landing, mayOfferResubscribe, resubscribeStep } from './landing.ts';
 
 const UNSUBSCRIBE_SECRET = (() => {
   // unquoteSecret for the reason SETUP.md records: a secret set through a
@@ -70,6 +70,9 @@ Deno.serve(async (req) => {
   if (method === 'POST') await req.text().catch(() => '');
 
   const url = new URL(req.url);
+  // Read before any closure below captures them.
+  const memberEmailId = url.searchParams.get('e') ?? '';
+  const token = url.searchParams.get('t') ?? '';
   // The page's button, not a mail client: see the header.
   const resubscribe = method === 'POST' && url.searchParams.get('a') === 'resubscribe';
 
@@ -113,9 +116,6 @@ Deno.serve(async (req) => {
     academy,
   });
 
-  const memberEmailId = url.searchParams.get('e') ?? '';
-  const token = url.searchParams.get('t') ?? '';
-
   if (!UNSUBSCRIBE_SECRET) {
     // Refuse rather than pretend. Without the key no signature can be
     // checked, and answering "you are unsubscribed" to a link this
@@ -140,25 +140,56 @@ Deno.serve(async (req) => {
   // there is nothing to hide from its holder, and the promise it makes is
   // already true -- a deleted address cannot be mailed. Telling that person
   // "this link did not work" would invite them to try again.
+  // What the address was just before the member's latest opt-out, from that
+  // opt-out's own audit row. Read only for an address that IS unsubscribed:
+  // it decides whether the page offers Resubscribe, and whether a press of it
+  // is honoured. Null when there is no such row, which offers nothing.
+  const statusBeforeOptOut = async (): Promise<string | null> => {
+    if (!row || row.status !== 'unsubscribed') return null;
+    const { data, error } = await db.from('audit_logs')
+      .select('changes')
+      .eq('action', 'communication.unsubscribed')
+      .eq('entity_id', row.id)
+      .order('occurred_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      console.error('unsubscribe: could not read the opt-out history', error.message);
+      return null;
+    }
+    const first = Array.isArray(data?.changes) ? data.changes[0] : null;
+    return first && typeof first.old === 'string' ? first.old : null;
+  };
+
   if (resubscribe) {
     // The rule is resubscribeStep's (landing.ts, with its spec). No address
-    // left, or a bounce or spam report, gets the link-did-not-work page rather
-    // than a claim of a subscription that is not there; already on is the
-    // same answer as done, with no write and no second audit row.
-    const step = resubscribeStep(row?.status);
+    // left, a bounce or spam report -- now or just before the opt-out -- gets
+    // the link-did-not-work page rather than a claim of a subscription that
+    // is not there; already on is the same answer as done, with no write and
+    // no second audit row.
+    const step = resubscribeStep(row?.status, await statusBeforeOptOut());
     if (step === 'already') return resubscribed();
     if (step !== 'write' || !row) return neutral();
 
     // 'unknown', as reinstate_member_email (0078) and every new address use:
     // the next send finds out afresh whether the address takes mail.
-    const { error: backErr } = await db.from('member_emails')
+    const { data: moved, error: backErr } = await db.from('member_emails')
       .update({ status: 'unknown' })
       .eq('id', row.id)
       .eq('status', 'unsubscribed')
-      .is('deleted_at', null);
+      .is('deleted_at', null)
+      .select('id');
     if (backErr) {
       console.error('unsubscribe: could not save the resubscribe', backErr.message);
       return neutral();
+    }
+    // Nothing moved: a second press raced this one, or the status changed in
+    // between. No audit row for a change that did not happen; the page then
+    // says whatever the address now is.
+    if (!moved || moved.length === 0) {
+      const { data: now } = await db.from('member_emails').select('status')
+        .eq('id', row.id).is('deleted_at', null).maybeSingle();
+      return now && (now.status === 'unknown' || now.status === 'valid') ? resubscribed() : neutral();
     }
     // The member's own act, filed the way the opt-out is (audit_log_anon, 0065).
     const { error: backAuditErr } = await db.rpc('audit_log_anon', {
@@ -176,7 +207,8 @@ Deno.serve(async (req) => {
 
   // Idempotent, and quiet about it. Clicking twice must not error, and must
   // not write a second audit row saying something changed when nothing did.
-  if (row.status === 'unsubscribed') return confirmed(true);
+  // The button is offered only where pressing it would be honoured.
+  if (row.status === 'unsubscribed') return confirmed(mayOfferResubscribe(await statusBeforeOptOut()));
 
   const { error: updErr } = await db.from('member_emails')
     .update({ status: 'unsubscribed' })
@@ -203,5 +235,7 @@ Deno.serve(async (req) => {
   // that invites a second click, which is a no-op anyway.
   if (auditErr) console.error('unsubscribe: could not audit the opt-out', auditErr.message);
 
-  return confirmed(true);
+  // Offered only when the address could be written to before this opt-out: a
+  // bounced or spam-reported address unsubscribed now is not one to put back.
+  return confirmed(mayOfferResubscribe(row.status));
 });

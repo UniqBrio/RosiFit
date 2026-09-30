@@ -313,6 +313,14 @@ gap admitted.
   host to redirect to; unset means `https://rosi-fit.vercel.app`. Set to
   anything that is not an https origin, the function answers in plain text
   instead and logs why.
+  **Resubscribe (30-Sep-2026, `requests/2026-09-30-resubscribe-button.md`):**
+  a POST carrying `a=resubscribe` and the same signed pair puts an
+  UNSUBSCRIBED address back to `unknown`, audited `communication.resubscribed`
+  (anon). Only when the address was usable before that opt-out, read from the
+  opt-out's own audit row -- a bounce or spam report is never undone this way.
+  The confirmation page offers the button only then, posts only to this
+  project's function, and clears the pair from the address bar. The one-click
+  POST (no `a`) can never resubscribe.
 
 ### Secrets this adds
 `SES_SNS_TOPIC_ARN`, `SES_FEEDBACK_SECRET`, `UNSUBSCRIBE_SECRET`. All three are
