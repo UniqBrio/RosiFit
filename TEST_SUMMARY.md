@@ -1,3 +1,31 @@
+## THREE REPORTED DEFECTS: MERGE FIGURES, COURSE-CARD EMAIL SPLIT, UNSUBSCRIBE PAGE — 30-Sep-2026
+
+`requests/2026-09-30-merge-leaves-member-absent.md` (T-140, RC-120, round 2 of RC-118),
+`requests/2026-09-30-course-card-no-email-count.md` (T-141, RC-121),
+`requests/2026-09-30-unsubscribe-link-shows-html.md` (T-142, RC-122). Track C, auto mode.
+
+FAIL-FIRST: supabase/tests/59_merge_recomputes_member_figures.sql - "attended 1, not 0 got 0 want 1" (3 of 12 red replayed without 0082; with 0082 minus its session refresh: "and no absent left over from the import's default mark got 1 want 0", 2 red); 12 of 12 green.
+FAIL-FIRST: src/data/mergeRefreshesAttendance.test.ts - "the day register must be told too, or the merged-into member keeps reading Absent" (2 of 2 red pre-fix); 2 of 2 green.
+FAIL-FIRST: src/data/courseCardEmailSplit.test.ts - "the inactive member and the one not yet joined are not on the course screen, and a bounce is not \"no address\"" (3 of 4 red on the pre-fix courseSummary); 4 of 4 green. `src/data/course.test.ts` unchanged, green.
+FAIL-FIRST: src/data/unsubscribeLanding.test.ts - "a text/html answer is rewritten to text/plain by the platform and shows as source" (red on the pre-fix index.ts); 4 of 4 green.
+NOT OBSERVED FAILING: supabase/functions/unsubscribe/landing.test.ts - new module, no prior behaviour; 6 of 6 green under `deno test`.
+Pages rendered in Chromium, light and dark; a markup-bearing academy name printed as text. Rendering
+found one defect in the new page itself (a top-level `var name` is `window.name`, which printed
+"null" with no academy) — fixed and pinned.
+
+GATES: `npm run check` — all 7 PASS (lint, typecheck, check:edge, test:unit **1993 pass / 0 fail**,
+contrast, icons, check:functions). `npm run gate` — FAIL on G1/G2/G3 (`design/tokens.json` absent),
+G6 (an unused eslint-disable in `scripts/conformance.mjs`) and G8 (no `test:functional` script):
+the same five as the 24-Sep runs, none in a file this change touches; G7 now PASS.
+`npm run test:db` — every file green except **39_staff_are_not_restricted, 52_import_recomputes_only_its_own,
+53_harness_body_matches_production**, which fail identically with 0082 removed (pre-existing on
+`main`; 53 is T-132's). `59` 12/12, `25` 16/16, `58` 5/5.
+Review: copy-gate-reviewer — "not active today" renamed "not on today’s register" (it also covered
+a member who joins later), lexicon row added, failure page comment corrected, a spec now pins each
+page's body to the function's words; wording confirmed unchanged from `HEAD`. code-reviewer — M1: the merge also left the SESSION counts
+stale (`refresh_session_counts`, which every other attendance writer calls); 0082 now refreshes each
+session it touched, and `59` asserts the counts. Low findings recorded in RC-122.
+
 ## EVERY COURSE WORDING SAYS HOW TO STOP — 26-Sep-2026
 
 `requests/2026-09-26-every-course-wording-says-how-to-stop.md` (CHANGE, scoped). `send-followups`
@@ -274,6 +302,56 @@ and the count beside it dropped by one" is asserted by reading `app/course/[id].
 three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
 preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
 all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-09-30 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 30.8s total - slowest G7 Unit + pure specs (19.7s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (65ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (46ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (69ms)
+- **G5 Types** - PASS (7.0s)
+- **G6 Lint** - FAIL (3.2s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (19.7s)
+- **G8 Functional / integration** - FAIL (127ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (56ms)
+- **G10 Backward compatibility (fixtures)** - PASS (122ms)
+- **G11 Wide tables are configurable** - PASS (53ms)
+- **G12 Installable as an application** - PASS (87ms)
+- **G13 Approved design still being built** - PASS (52ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

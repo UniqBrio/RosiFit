@@ -3565,6 +3565,7 @@ export async function mergeMemberInto(strayId: string, targetId: string):
     };
     MEMBERS.splice(si, 1);
     membersChanged();
+    attendanceChanged();
     return { display_name: stray.name, attendance_moved: moved };
   }
 
@@ -3579,6 +3580,11 @@ export async function mergeMemberInto(strayId: string, targetId: string):
     throw new Error(personReadable(error.message ?? '', MERGE_FAILED));
   }
   membersChanged();
+  // AND the attendance, because that is the half of the merge somebody is
+  // looking at: the course screen's day chips and the member's week are read
+  // by hooks that listen for attendance, not members, so the member the
+  // present moved to went on reading Absent until the screen was reopened.
+  attendanceChanged();
   const result = (data ?? {}) as { display_name?: string; attendance_moved?: number };
   return {
     display_name: result.display_name ?? '',

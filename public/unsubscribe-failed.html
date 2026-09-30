@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>This link did not work</title>
+<!--
+  Where the unsubscribe link lands (supabase/functions/unsubscribe/landing.ts
+  says why this page is served by the app and not by the function).
+  Opened from a mail client, often on a phone, by a member who has no account:
+  no assets, no app bundle, nothing to wait for. 16px minimum, one column.
+  Reached when the link could not be honoured -- nothing was changed. The
+  page reads nothing from its URL but the academy's name, which is set as
+  text and never as markup.
+  Contrast, both themes: #1a1a1a on #ffffff 17.4:1, #4a4a4a on #ffffff 8.9:1;
+  #f2f2f2 on #121212 16.7:1, #b3b3b3 on #121212 8.9:1.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; padding: 32px 20px; background: #ffffff; color: #1a1a1a;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    font-size: 16px; line-height: 1.6; }
+  main { max-width: 34em; margin: 0 auto; }
+  h1 { margin: 0 0 16px; font-size: 22px; line-height: 1.3; font-weight: 600; }
+  p { margin: 0 0 16px; }
+  .academy { margin: 24px 0 0; font-size: 14px; color: #4a4a4a; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #121212; color: #f2f2f2; }
+    .academy { color: #b3b3b3; }
+  }
+</style>
+</head>
+<body>
+<main>
+<h1>This link did not work</h1>
+<p>The link may be incomplete or out of date. Try copying the whole address from the email, or reply to it and we will sort it out.</p>
+<p class="academy" id="academy"></p>
+</main>
+<script>
+  /* Inside a function on purpose: a top-level `var name` IS window.name, which
+     turns a missing parameter into the word "null" on the page. */
+  (function () {
+    try {
+      var academy = new URLSearchParams(location.search).get('academy');
+      if (academy) document.getElementById('academy').textContent = academy.slice(0, 120);
+    } catch (e) { /* the sentences above stand on their own */ }
+  })();
+</script>
+</body>
+</html>
