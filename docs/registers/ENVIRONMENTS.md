@@ -302,10 +302,17 @@ gap admitted.
   departure from the supplied reference, which skipped the ARN check when the
   variable was unset.
 - **`unsubscribe`** — opt-out from a signed link, no login. `?e=<member_email_id>`
-  `&t=<HMAC-SHA256 under UNSUBSCRIBE_SECRET>`, constant-time. GET returns a
-  confirmation page; POST with any body is RFC 8058 one-click and returns 200
-  empty. Idempotent, and an invalid token gets the same page as an id that
-  does not exist.
+  `&t=<HMAC-SHA256 under UNSUBSCRIBE_SECRET>`, constant-time. GET answers
+  with a 303 to a static page on the APP's host (`/unsubscribed` or
+  `/unsubscribe-failed`, from `public/`) -- since 30-Sep-2026 (RC-122): the
+  platform rewrites `text/html` to `text/plain` on the default `supabase.co`
+  domain, so the page it used to serve arrived as source code. POST with any
+  body is RFC 8058 one-click and returns 200 empty. Idempotent, and an
+  invalid token gets the same answer as an id that does not exist.
+  **Optional secret `APP_ORIGIN`** (`https://host`, no path) names the app
+  host to redirect to; unset means `https://rosi-fit.vercel.app`. Set to
+  anything that is not an https origin, the function answers in plain text
+  instead and logs why.
 
 ### Secrets this adds
 `SES_SNS_TOPIC_ARN`, `SES_FEEDBACK_SECRET`, `UNSUBSCRIBE_SECRET`. All three are

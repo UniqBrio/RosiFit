@@ -38,6 +38,7 @@ what the user reads is a product decision, and they are allowed to differ.
 | The same state, as the **word on a member card** | `Member unsubscribed` | Opted out, Unsubscribed member, Unsubscribed | PROVISIONAL | 1 (`src/data/emailStatus.ts` `emailStateWord`) | 2026-09-24 |
 | An address whose owner reported email as spam — **group heading** | `Spam Reported` | Complained, Marked spam, Junk | PROVISIONAL | 1 (`src/data/emailIssues.ts` heading) | 2026-09-24 |
 | The same state, as the **word on a member card** | `Marked as spam` | Complained, Spam complaint, Spam Reported | PROVISIONAL | 1 (`src/data/emailStatus.ts` `emailStateWord`) | 2026-09-24 |
+| Enrolled on a course but not on today's register — inactive today, or not joined yet (course card) | `N not on today’s register` | Inactive, not active, off the register, not active today | PROVISIONAL — the course screen names the two groups separately ("joined later", Inactive); the card needs one word for both, and "inactive" is wrong for a member who joins later, whose pill reads Active | 1 (`src/data/course.ts` `courseSummary`) | 2026-09-30 |
 
 _The stale wording was `Updated at <time> · could not refresh` when these rows were first
 written; it is `Last updated <time> · Couldn’t refresh` as shipped, set by the requester when the

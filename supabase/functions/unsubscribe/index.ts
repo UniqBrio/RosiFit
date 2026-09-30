@@ -13,7 +13,8 @@
 // clear, because clearing it would be mailing somebody who asked not to be.
 //
 // TWO METHODS, ONE EFFECT:
-//   GET   a person clicked the link  -> a small confirmation page
+//   GET   a person clicked the link  -> redirected to a confirmation page on
+//         the app's own host (landing.ts says why it is not served from here)
 //   POST  a mail client acted on the List-Unsubscribe-Post header (RFC 8058
 //         one-click) -> 200 and an empty body, which is all it reads
 //
@@ -24,6 +25,7 @@
 import { adminClient } from '../_shared/db.ts';
 import { unquoteSecret } from '../_shared/from-address.ts';
 import { unsubscribeTokenValid } from '../_shared/unsubscribe-token.ts';
+import { appOrigin, landing } from './landing.ts';
 
 const UNSUBSCRIBE_SECRET = (() => {
   // unquoteSecret for the reason SETUP.md records: a secret set through a
@@ -34,45 +36,15 @@ const UNSUBSCRIBE_SECRET = (() => {
   return raw ? unquoteSecret(raw) : '';
 })();
 
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
 /**
- * The page, both outcomes.
- *
- * Inline styles and no assets on purpose: this is opened from a mail client's
- * browser, often on a phone, often on a bad connection, and a stylesheet that
- * has not arrived would leave the member staring at unstyled text wondering
- * whether it worked. 16px minimum, one column, generous line height.
- *
- * Colours are literal here and only here. src/theme/tokens.ts is a React
- * Native module an Edge Function cannot import, and this page renders in a
- * browser that never loads the app -- so the token gate does not reach it.
- * They are plain near-black on white, which needs no measurement to clear
- * 4.5:1 (#1a1a1a on #ffffff is 16.1:1).
+ * Where GET sends the person afterwards. Read once, like the secret above:
+ * APP_ORIGIN when this deployment sets one, the recorded production host when
+ * it does not, and null -- plain text, no redirect -- when it is set to
+ * something that is not an https origin.
  */
-function page(heading: string, body: string, academy: string): Response {
-  const html = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(heading)}</title>
-</head>
-<body style="margin:0;padding:32px 20px;background:#ffffff;color:#1a1a1a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.6;">
-<div style="max-width:34em;margin:0 auto;">
-<h1 style="margin:0 0 16px;font-size:22px;line-height:1.3;font-weight:600;">${escapeHtml(heading)}</h1>
-<p style="margin:0 0 16px;">${escapeHtml(body)}</p>
-<p style="margin:24px 0 0;font-size:14px;color:#4a4a4a;">${escapeHtml(academy)}</p>
-</div>
-</body>
-</html>`;
-  return new Response(html, {
-    status: 200,
-    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
-  });
+const APP_ORIGIN = appOrigin(Deno.env.get('APP_ORIGIN'));
+if (!APP_ORIGIN) {
+  console.error('unsubscribe: APP_ORIGIN is not an https origin -- answering in plain text instead of redirecting.');
 }
 
 Deno.serve(async (req) => {
@@ -97,21 +69,26 @@ Deno.serve(async (req) => {
 
   // ONE answer for every way this can fail. Built once so no branch can drift
   // into saying something more specific than another.
+  // The words are kept here, beside the decision, for the plain-text answer;
+  // the app's pages carry the same sentences (public/unsubscribed.html,
+  // public/unsubscribe-failed.html).
   const neutral = () => method === 'POST'
     ? new Response(null, { status: 200 })
-    : page(
-      'This link did not work',
-      'The link may be incomplete or out of date. Try copying the whole address '
-      + 'from the email, or reply to it and we will sort it out.',
-      academy);
+    : landing('failed', APP_ORIGIN, {
+      heading: 'This link did not work',
+      body: 'The link may be incomplete or out of date. Try copying the whole address '
+        + 'from the email, or reply to it and we will sort it out.',
+      academy,
+    });
 
   const confirmed = () => method === 'POST'
     ? new Response(null, { status: 200 })
-    : page(
-      'You are unsubscribed',
-      'We will not send any more attendance follow-ups to this address. '
-      + 'If this was a mistake, reply to any earlier email and we will turn them back on.',
-      academy);
+    : landing('unsubscribed', APP_ORIGIN, {
+      heading: 'You are unsubscribed',
+      body: 'We will not send any more attendance follow-ups to this address. '
+        + 'If this was a mistake, reply to any earlier email and we will turn them back on.',
+      academy,
+    });
 
   const url = new URL(req.url);
   const memberEmailId = url.searchParams.get('e') ?? '';
