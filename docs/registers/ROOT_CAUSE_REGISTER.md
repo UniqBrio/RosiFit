@@ -85,6 +85,9 @@ answers the same sentences as plain text rather than redirecting somewhere unint
 `npx tsx --test src/data/unsubscribeLanding.test.ts` (3 pass; "answers no GET with HTML" failed on
 the pre-fix function). Live, after deploy: an unsubscribe link from a real email ends on
 `rosi-fit.vercel.app/unsubscribed` showing a readable page.
+**Deployed 30-Sep-2026** — `unsubscribe` v6, `verify_jwt` false, after PR #58's Vercel build; the bundle
+read back from the platform carries `landing.ts` and the redirecting `index.ts`. The live click is the
+academy's: this sandbox cannot reach either host.
 
 **Recurrence risk** — any Edge Function that answers a browser GET with HTML. Swept with
 `grep -rln "text/html" supabase/functions`: `unsubscribe` was the only one.
