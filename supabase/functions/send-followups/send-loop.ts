@@ -73,6 +73,22 @@ function describeWriteFailure(err: unknown): string {
     : 'Could not record this message, so it was not sent.';
 }
 
+/**
+ * The template values as they are RECORDED -- everything but the member's
+ * signed unsubscribe link.
+ *
+ * `email_messages` is readable by every signed-in account (0009,
+ * `messages_read`), and since the Resubscribe button the link can undo an
+ * opt-out as well as make one. A stored copy would let staff do what only the
+ * member may (requests/2026-09-30-resubscribe-button.md). The email itself
+ * still carries the link; only this record of it does not. Nothing reads
+ * `variables` back to send, so dropping the key costs no behaviour.
+ */
+export function storableVars(vars: Record<string, string>): Record<string, string> {
+  const { unsubscribe_url: _dropped, ...kept } = vars;
+  return kept;
+}
+
 export async function runSendLoop(
   admin: AdminLike,
   provider: SendingProvider,
@@ -87,7 +103,7 @@ export async function runSendLoop(
     if (r.kind === 'excluded') {
       await admin.from('email_messages').insert({
         batch_id: batchId, member_id: r.memberId, to_email: r.toEmail,
-        subject: r.subject, variables: r.vars, status: 'excluded', exclusion_reason: r.reason,
+        subject: r.subject, variables: storableVars(r.vars), status: 'excluded', exclusion_reason: r.reason,
         from_email: r.fromAddress ?? null,
       }).select('id').single();
       results.push({ member_id: r.memberId, name: r.name, status: 'excluded', reason: r.reason });
@@ -97,7 +113,7 @@ export async function runSendLoop(
 
     const { data: msgRow, error: msgErr } = await admin.from('email_messages').insert({
       batch_id: batchId, member_id: r.memberId, to_email: r.toEmail,
-      subject: r.subject, variables: r.vars, status: 'sending',
+      subject: r.subject, variables: storableVars(r.vars), status: 'sending',
       // RECORDED, not inferred. The sender now varies per course, so "which
       // address did this go out as" stops being answerable from the current
       // value of a secret and has to be written down per message.

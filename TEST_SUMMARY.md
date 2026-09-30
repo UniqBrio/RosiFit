@@ -1,3 +1,32 @@
+## RESUBSCRIBE: NO STORED COPY OF THE UNSUBSCRIBE LINK — 30-Sep-2026
+
+code-reviewer H1 on `requests/2026-09-30-resubscribe-button.md`; owner: "Close it first". The signed
+link can undo an opt-out now, and copies sat where staff can read them: production had it in 821 of
+822 `email_messages.variables` (readable by every signed-in account) and 24 of 26 `email_events`
+payloads (SES echoes List-Unsubscribe; super admin only). Fixed at both writers and in the data:
+`send-loop.ts` records `storableVars(vars)` (everything but `unsubscribe_url`); `ses-feedback`
+records `withoutUnsubscribeLinks(payload)`; migration **0083** removes the copies already written.
+
+FAIL-FIRST: supabase/functions/send-followups/send-loop.test.ts - "no stored message row carries the unsubscribe link, sent or excluded" (red before storableVars); 4 of 4 green.
+FAIL-FIRST: supabase/tests/60_stored_messages_keep_no_unsubscribe_link.sql - "no stored message keeps the unsubscribe link  got 1 want 0" (3 of 7 red with 0083 emptied); 7 of 7 green, idempotent.
+NOT OBSERVED FAILING: src/data/unsubscribeToken.test.ts - the two appended cases cover a new export (`withoutUnsubscribeLinks`); 11 of 11 green.
+
+GATES: `npm run check` ALL 7 PASS (test:unit 2001 / 0); `deno test` 25 / 0. `npm run gate` FAIL only
+on the five steps red since 24-Sep; G7 PASS.
+
+## RESUBSCRIBE: CODE-REVIEW FIXES — 30-Sep-2026
+
+code-reviewer on `requests/2026-09-30-resubscribe-button.md` (REQUEST CHANGES), fixed in 8114703:
+M3 a bounced or spam-reported address could come back through unsubscribe-then-Resubscribe —
+`resubscribeStep` now also needs the status BEFORE the opt-out (from that opt-out's
+`communication.unsubscribed` audit row) to have been usable, and the page offers the button only then
+(`mayOfferResubscribe`); L5 `fn` pinned to this project's function; L6 success read from the rows the
+guarded update moved; L7 `e`/`t` read before the closures that capture them; M4 the page clears the
+signed pair from the address bar and history. (This entry was written with 8114703 but lost to a
+blocked commit command; recorded now.)
+
+FAIL-FIRST: supabase/functions/unsubscribe/landing.test.ts - "an address that was bounced or spam-reported before the opt-out stays off" (resubscribeStep('unsubscribed','complained') returned 'write' on the first version); 11 of 11 green.
+
 ## A MEMBER WHO UNSUBSCRIBED BY MISTAKE CAN RESUBSCRIBE — 30-Sep-2026
 
 `requests/2026-09-30-resubscribe-button.md` (CHANGE, scoped). `/unsubscribed` shows "Did you
@@ -334,6 +363,56 @@ and the count beside it dropped by one" is asserted by reading `app/course/[id].
 three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
 preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
 all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-09-30 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 45.0s total - slowest G7 Unit + pure specs (26.9s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (69ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (74ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (68ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (115ms)
+- **G5 Types** - PASS (10.9s)
+- **G6 Lint** - FAIL (6.1s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (26.9s)
+- **G8 Functional / integration** - FAIL (204ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (86ms)
+- **G10 Backward compatibility (fixtures)** - PASS (204ms)
+- **G11 Wide tables are configurable** - PASS (88ms)
+- **G12 Installable as an application** - PASS (117ms)
+- **G13 Approved design still being built** - PASS (68ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

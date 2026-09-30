@@ -321,6 +321,10 @@ gap admitted.
   The confirmation page offers the button only then, posts only to this
   project's function, and clears the pair from the address bar. The one-click
   POST (no `a`) can never resubscribe.
+  **No stored copy of the link (0083):** because the link can now undo an
+  opt-out, `send-followups` no longer records `unsubscribe_url` in
+  `email_messages.variables`, `ses-feedback` strips it from the SES payload it
+  records, and 0083 removes the copies already stored.
 
 ### Secrets this adds
 `SES_SNS_TOPIC_ARN`, `SES_FEEDBACK_SECRET`, `UNSUBSCRIBE_SECRET`. All three are

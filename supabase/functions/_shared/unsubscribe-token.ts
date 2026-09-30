@@ -73,3 +73,26 @@ export async function buildUnsubscribeUrl(
   const base = functionsBase.replace(/\/+$/, '');
   return `${base}/unsubscribe?e=${encodeURIComponent(memberEmailId)}&t=${encodeURIComponent(token)}`;
 }
+
+/**
+ * A stored copy of anything with every unsubscribe link taken out.
+ *
+ * Since the Resubscribe button (requests/2026-09-30-resubscribe-button.md)
+ * the signed link can UNDO an opt-out as well as make one, so a copy of it
+ * kept where staff can read it would let staff do what only the member may.
+ * The email carries the link; nothing the academy STORES about the email
+ * should. SES echoes the message headers -- List-Unsubscribe among them -- in
+ * every bounce and complaint notification, which is why `ses-feedback` runs
+ * its payload through this before recording it.
+ *
+ * Pure and Deno-global-free, like everything else in this file.
+ */
+export const UNSUBSCRIBE_LINK_REMOVED = '[unsubscribe link removed]';
+const UNSUBSCRIBE_LINK = /https?:\/\/[^\s"'<>\\]*\/functions\/v1\/unsubscribe\?[^\s"'<>\\]*/g;
+
+export function withoutUnsubscribeLinks<T>(value: T): T {
+  const text = JSON.stringify(value);
+  if (text === undefined || !UNSUBSCRIBE_LINK.test(text)) return value;
+  UNSUBSCRIBE_LINK.lastIndex = 0;
+  return JSON.parse(text.replace(UNSUBSCRIBE_LINK, UNSUBSCRIBE_LINK_REMOVED)) as T;
+}
