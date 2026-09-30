@@ -69,3 +69,13 @@ test('each page carries, word for word, the sentence the function would have sai
       `${file} must say what the plain-text answer says, so the two cannot drift`);
   }
 });
+
+test('both pages carry the RosiFit logo from the app host, not a bare page', () => {
+  // "the page is plain it should be professional with rosifit logo right?"
+  // (requests/2026-09-30-unsubscribe-page-branded.md). The logo is served
+  // from public/, so it deploys with the pages and needs no app bundle.
+  assert.ok(fs.existsSync(path.join(ROOT, 'public/rosifit-logo.png')), 'public/rosifit-logo.png must ship');
+  for (const file of ['public/unsubscribed.html', 'public/unsubscribe-failed.html']) {
+    assert.match(read(file), /<img src="\/rosifit-logo\.png"/, `${file} must show the logo`);
+  }
+});

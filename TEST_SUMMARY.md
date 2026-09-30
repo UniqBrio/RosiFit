@@ -1,3 +1,17 @@
+## THE UNSUBSCRIBE PAGES CARRY THE ROSIFIT BRAND — 30-Sep-2026
+
+`requests/2026-09-30-unsubscribe-page-branded.md` (CHANGE, micro). Both pages now show the RosiFit
+logo (`public/rosifit-logo.png`, a copy of `assets/rosifit-logo.png`) on the app's plum header
+gradient, with the words in a card and the app's tokens for both themes. Wording unchanged.
+
+FAIL-FIRST: src/data/unsubscribeLanding.test.ts - "public/rosifit-logo.png must ship" (1 of 5 red on the previous pages); 5 of 5 green.
+Rendered in Chromium at 800 and 500 wide, light and dark. Text pairs measured and written in each
+page's header (lowest 4.5:1, the pink check on its tinted circle).
+
+GATES: `npm run check` 7/7 PASS. `npm run gate` FAIL on the same five steps as every run since
+24-Sep (G1/G2/G3 no `design/tokens.json`, G6 `scripts/conformance.mjs`, G8 no `test:functional`);
+none in a file this change touches.
+
 ## THREE REPORTED DEFECTS: MERGE FIGURES, COURSE-CARD EMAIL SPLIT, UNSUBSCRIBE PAGE — 30-Sep-2026
 
 `requests/2026-09-30-merge-leaves-member-absent.md` (T-140, RC-120, round 2 of RC-118),
@@ -302,6 +316,56 @@ and the count beside it dropped by one" is asserted by reading `app/course/[id].
 three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
 preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
 all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-09-30 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 29.3s total - slowest G7 Unit + pure specs (18.7s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (69ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (55ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (54ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (78ms)
+- **G5 Types** - PASS (6.4s)
+- **G6 Lint** - FAIL (3.4s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (18.7s)
+- **G8 Functional / integration** - FAIL (134ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (56ms)
+- **G10 Backward compatibility (fixtures)** - PASS (118ms)
+- **G11 Wide tables are configurable** - PASS (58ms)
+- **G12 Installable as an application** - PASS (81ms)
+- **G13 Approved design still being built** - PASS (56ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
