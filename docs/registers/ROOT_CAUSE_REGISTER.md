@@ -160,6 +160,11 @@ one-off `select public.recompute_member_stats();` repairs them, only with the ow
 **How to verify** — harness: `59` 12 PASS (without 0082: attended 0, streak 1, last present NULL —
 3 FAIL; without the session refresh: absent_count 1, expected_count 2 — 2 FAIL); `npx tsx --test src/data/mergeRefreshesAttendance.test.ts` (2 pass; both failed pre-fix).
 Production, after apply: `select position('-- 0082:' in pg_get_functiondef('public.merge_member_into(uuid, uuid)'::regprocedure)) > 0`.
+**Verified in production 30-Sep-2026** — 0082 applied with the owner's go-ahead: marker once, anchor once,
+0080's rule and 0073's alias upsert still in the live body, EXECUTE for `authenticated` and not `anon`,
+ledger row present. Owner-approved repair, scoped to the 2 live members merges had landed on and their
+4 sessions (not the academy-wide `recompute_member_stats()`). The 3 merges from before 0080 had dropped
+the stray's present; each of those days was later reset, so no wrong absent remains to correct.
 
 **Recurrence risk** — swept both halves. Server: every `public` function that writes
 `attendance_records` (`prosrc ~* '(update|insert into|delete from)\s+public\.attendance_records'`):
