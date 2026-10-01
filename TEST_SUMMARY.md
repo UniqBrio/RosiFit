@@ -1,3 +1,24 @@
+## UNSUBSCRIBE / RESUBSCRIBE FOR BOTH THE BODY LINK AND GMAIL'S UNSUBSCRIBE — 01-Oct-2026
+
+`requests/2026-10-01-resubscribe-recovery-and-gmail-one-click.md` (CHANGE, scoped, correction round 1
+of the resubscribe button). List-Unsubscribe now carries the signed HTTPS link only (the mailto went
+to a mailbox nothing reads); the opt-out no longer overwrites a spam report; the prior status comes
+from the row audit every writer produces (0084 `email_status_before_opt_out`); staff can "Turn
+follow-ups back on" (0084 `staff_resubscribe_member_email`, audited `communication.staff_resubscribe`
+with member, address, old/new, actor, time, source, note); re-entering an opted-out or spam-reported
+address arrives suppressed (0084 BEFORE INSERT trigger).
+
+FAIL-FIRST: supabase/tests/61_email_resubscribe_recovery.sql - "function public.email_status_before_opt_out(uuid) does not exist" with 0084 removed; 29 of 29 green with it.
+FAIL-FIRST: src/data/unsubscribeHandler.test.ts - 7 of 15 red against HEAD's unsubscribe/index.ts, including "spam-reported: the opt-out is confirmed and the complaint is NOT overwritten" (status went 'complained' -> 'unsubscribed'); 6 of the 7 also because HEAD read the prior status from `audit_logs` with .order(), which the fake does not model. 15 of 15 green against the changed index.ts.
+FAIL-FIRST: src/data/unsubscribeToken.test.ts - the two appended cases, 2 of 13 red with the mailto restored in listUnsubscribeHeaders ("no mailto: a mail client can only reach the endpoint that writes the opt-out"); 13 of 13 green.
+NOT OBSERVED FAILING: src/data/staffResubscribe.test.ts - covers a new module and a new RPC wrapper; no prior behaviour to fail against. 4 of 4 green.
+NOT OBSERVED FAILING: src/data/sendSuppression.test.ts - covers suppressionReason, extracted from send-followups' inline ternary with the same three reasons; 3 of 3 green.
+
+GATES: `npm run check` ALL 7 PASS (test:unit 2025 / 0). `deno check` on unsubscribe, send-followups and
+the shared token module clean; `deno test` 25 / 0. `npm run test:db`: every file green except 39, 52
+and 53, which fail identically with 0084 removed (pre-existing, as on 30-Sep). `npm run gate` FAIL only
+on the five steps red since 24-Sep (G1/G2/G3/G6/G8).
+
 ## RESUBSCRIBE: NO STORED COPY OF THE UNSUBSCRIBE LINK — 30-Sep-2026
 
 code-reviewer H1 on `requests/2026-09-30-resubscribe-button.md`; owner: "Close it first". The signed
@@ -363,6 +384,56 @@ and the count beside it dropped by one" is asserted by reading `app/course/[id].
 three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
 preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
 all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-10-01 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 38.4s total - slowest G7 Unit + pure specs (23.8s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (90ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (84ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (74ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (91ms)
+- **G5 Types** - PASS (8.4s)
+- **G6 Lint** - FAIL (5.1s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (23.8s)
+- **G8 Functional / integration** - FAIL (250ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (79ms)
+- **G10 Backward compatibility (fixtures)** - PASS (176ms)
+- **G11 Wide tables are configurable** - PASS (85ms)
+- **G12 Installable as an application** - PASS (123ms)
+- **G13 Approved design still being built** - PASS (87ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

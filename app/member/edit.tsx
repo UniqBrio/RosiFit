@@ -17,8 +17,10 @@ import { DAY_NAMES, type MemberStatus } from '../../src/data/mock';
 import { memberWeekdays, openingDays } from '../../src/data/memberDays';
 import { useCourses, useMembers } from '../../src/data/hooks';
 import {
-  createMember, updateMember, setMemberStatus, setMemberActiveFrom,
+  createMember, updateMember, setMemberStatus, setMemberActiveFrom, staffResubscribeEmail,
 } from '../../src/data/repository';
+import { offersStaffResubscribe, type ResubscribeSource } from '../../src/data/staffResubscribe';
+import { StaffResubscribeDialog } from '../../src/components/StaffResubscribeDialog';
 import {
   emailUsable, emailStateWord, isDeliveryFailure, suppressedOnRecord, normalizeEmail,
   entryRefusal,
@@ -157,6 +159,10 @@ export default function MemberEdit() {
   const [aliasDraft, setAliasDraft] = useState('');
   const [emails, setEmails] = useState(existing?.emails ?? []);
   const [emailDraft, setEmailDraft] = useState('');
+  // Turn Follow-ups Back On (0084): which address the dialog is open for.
+  const [resubscribing, setResubscribing] = useState<{ id: string; address: string } | null>(null);
+  const [resubscribeSaving, setResubscribeSaving] = useState(false);
+  const [resubscribeRefusal, setResubscribeRefusal] = useState<string | null>(null);
   const [days, setDays] = useState<string[]>([]);
   /**
    * Her status as this form currently proposes it -- a PENDING value like
@@ -707,6 +713,25 @@ export default function MemberEdit() {
       : inactiveFromError ? inactiveFromError
       : `${course} · ${branch}`;
 
+  // Saved at once, by row id, and reflected in the list without waiting for
+  // Save: the address is the database's to change here, not the form's.
+  async function turnFollowUpsBackOn(source: ResubscribeSource, note: string) {
+    if (!resubscribing) return;
+    setResubscribeSaving(true);
+    setResubscribeRefusal(null);
+    try {
+      await staffResubscribeEmail(resubscribing.id, source, note);
+      const id = resubscribing.id;
+      setEmails(p => p.map(x => (x.id === id ? { ...x, status: 'unknown' } : x)));
+      flash(`Follow-ups are on again for ${resubscribing.address}`);
+      setResubscribing(null);
+    } catch (err) {
+      setResubscribeRefusal(err instanceof Error ? err.message : String(err));
+    } finally {
+      setResubscribeSaving(false);
+    }
+  }
+
   return (
     <FormDialog
       title={title} subtitle={subtitle}
@@ -750,6 +775,10 @@ export default function MemberEdit() {
           ? `${course} does not run at any branch yet. Add an offering for it and the member can join there.`
           : 'Choose the course first — the branches are the ones that course runs at.'}
         onSelect={l => { setBranch(l); setPicker(null); }} />
+      <StaffResubscribeDialog open={!!resubscribing} address={resubscribing?.address ?? ''}
+        saving={resubscribeSaving} refusal={resubscribeRefusal}
+        onClose={() => { if (!resubscribeSaving) setResubscribing(null); }}
+        onConfirm={(source, note) => void turnFollowUpsBackOn(source, note)} />
       </>}
     >
       {pending ? (
@@ -1099,6 +1128,22 @@ export default function MemberEdit() {
                       : 'nothing can be sent here'}`
                   : e.primary ? 'PRIMARY — sends go here' : 'kept on file'}
               </Text>
+              {/* The way back from an opt-out when the member asks the
+                  academy -- Gmail's one-click leaves no page to press
+                  Resubscribe on (requests/2026-10-01-resubscribe-recovery-and-gmail-one-click.md).
+                  Saved straight away through its own RPC, never through the
+                  form's Save: re-entering the address is not a way back. */}
+              {offersStaffResubscribe(e) ? (
+                <Pressable testID={`member-email-resubscribe-${e.address}`}
+                  onPress={() => { setResubscribeRefusal(null); setResubscribing({ id: e.id!, address: e.address }); }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Turn follow-ups back on for ${e.address}`}
+                  style={{ minHeight: TAP_MIN, justifyContent: 'center', alignSelf: 'flex-start' }}>
+                  <Text style={{ fontSize: 12.5, fontWeight: '800', color: theme.accentInk }}>
+                    Turn follow-ups back on
+                  </Text>
+                </Pressable>
+              ) : null}
             </View>
             <Pressable
               testID={`member-email-remove-${e.address}`}

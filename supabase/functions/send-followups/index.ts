@@ -10,15 +10,9 @@ import { adminClient } from '../_shared/db.ts';
 import { requireCaller } from '../_shared/authz.ts';
 import { resolveEmailProvider } from './email.ts';
 import { chooseFromAddress, unquoteSecret } from '../_shared/from-address.ts';
-import { buildUnsubscribeUrl } from '../_shared/unsubscribe-token.ts';
-import { runSendLoop, type AdminLike, type PreparedRecipient } from './send-loop.ts';
+import { buildUnsubscribeUrl, listUnsubscribeHeaders } from '../_shared/unsubscribe-token.ts';
+import { runSendLoop, suppressionReason, type AdminLike, type PreparedRecipient } from './send-loop.ts';
 import { batchWording, sendable, wordingFor, type Wording } from './wording.ts';
-
-/** The mailbox a mail client offers when it cannot use the URL. Named here
- *  rather than derived from the sender, because the sender now varies per
- *  course and List-Unsubscribe must point at one place the academy actually
- *  reads. */
-const UNSUBSCRIBE_MAILTO = 'unsubscribe@getfit.rosifit.com';
 
 function renderTemplate(tpl: string, vars: Record<string, string>): string {
   return tpl.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] ?? `{{${k}}}`);
@@ -266,9 +260,8 @@ Deno.serve(async (req) => {
               `${courseName} sends from "${fromChoice.badValue}", which is not an email address. `
               + 'Set a valid From Email ID on the course.' }
         : !emailRow ? { ok: false, reason: 'No email on file' }
-        : emailRow.status === 'bounced' ? { ok: false, reason: 'Primary email has bounced' }
-        : emailRow.status === 'unsubscribed' ? { ok: false, reason: 'Unsubscribed' }
-        : emailRow.status === 'complained' ? { ok: false, reason: 'Marked as spam previously' }
+        : suppressionReason(emailRow.status as string)
+          ? { ok: false, reason: suppressionReason(emailRow.status as string)! }
         : { ok: true, email: emailRow.email as string };
 
       // Signed per ADDRESS, so it is built per recipient and never once for
@@ -328,18 +321,14 @@ Deno.serve(async (req) => {
       prepared.push({
         kind: 'send', memberId: id, name: member.full_name, toEmail: fate.email,
         subject, text, vars, fromAddress: fromAddress ?? undefined,
-        // RFC 8058. The mailto is the fallback for a client that will not use
-        // the URL; the URL is this member's own signed link, the same one the
-        // body carries.
+        // RFC 8058. The URL is this member's own signed link, the same one the
+        // body carries; no mailto (listUnsubscribeHeaders says why).
         //
         // List-Unsubscribe-Post is advertised ONLY because the POST branch of
         // the `unsubscribe` function honours it -- a one-click header on an
         // endpoint that ignores POST is worse than no header at all: the mail
         // client reports success to the member and nothing has changed.
-        headers: [
-          { name: 'List-Unsubscribe', value: `<mailto:${UNSUBSCRIBE_MAILTO}>, <${unsubscribeUrl}>` },
-          { name: 'List-Unsubscribe-Post', value: 'List-Unsubscribe=One-Click' },
-        ],
+        headers: listUnsubscribeHeaders(unsubscribeUrl),
       });
     }
 

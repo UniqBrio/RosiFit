@@ -11,6 +11,22 @@
 // write onwards lives here. That keeps one thing in each place: index.ts
 // decides what each member is told, this file decides what is recorded.
 
+/**
+ * Why an address on file may not be written to, or null when it may. The one
+ * place the send path reads `member_emails.status`: 'unknown' and 'valid' --
+ * including an address a member or staff turned back on -- are sendable;
+ * every suppression keeps its own reason.
+ */
+export function suppressionReason(status: string | null | undefined): string | null {
+  switch (status) {
+    case 'bounced': return 'Primary email has bounced';
+    case 'unsubscribed': return 'Unsubscribed';
+    case 'complained': return 'Marked as spam previously';
+    case 'unknown': case 'valid': return null;
+    default: return 'Email status is not recognised';
+  }
+}
+
 /** Mirrors EmailMessage in ./email.ts. Restated so a test of the loop does not
  *  pull the SES client into its module graph. */
 export type OutgoingEmail = {
