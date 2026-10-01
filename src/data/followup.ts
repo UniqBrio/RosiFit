@@ -170,7 +170,7 @@ export const isReachable = (m: Member): boolean =>
  * Now that the state is carried, the sentence can say which it is, and the
  * difference is the whole point: "no email on file" is something the academy
  * fixes by asking the member; a bounce is something it fixes on the Edit form;
- * an opt-out is not something it may fix at all.
+ * an opt-out is undone only when the member asks (staff Resubscribe).
  *
  * Only ever called for a member `isReachable` has already answered no for.
  */

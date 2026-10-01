@@ -116,3 +116,22 @@ test('a payload with no link comes back as it was', () => {
   assert.equal(withoutUnsubscribeLinks(plain), plain);
   assert.equal(withoutUnsubscribeLinks(null), null);
 });
+
+// ------------------------------------------- the headers Gmail reads (RFC 8058)
+// Appended 01-Oct-2026 (requests/2026-10-01-resubscribe-recovery-and-gmail-one-click.md).
+import { listUnsubscribeHeaders } from '../../supabase/functions/_shared/unsubscribe-token.ts';
+
+test('List-Unsubscribe carries the signed HTTPS link ONLY, with the one-click flag beside it', async () => {
+  const url = await buildUnsubscribeUrl(ID, SECRET, 'https://x.supabase.co/functions/v1');
+  assert.deepEqual(listUnsubscribeHeaders(url), [
+    { name: 'List-Unsubscribe', value: `<${url}>` },
+    { name: 'List-Unsubscribe-Post', value: 'List-Unsubscribe=One-Click' },
+  ]);
+});
+
+test('no mailto: a mail client can only reach the endpoint that writes the opt-out', async () => {
+  // The mailto used to lead the header and pointed at a mailbox nothing
+  // reads -- an opt-out sent there was lost.
+  const url = await buildUnsubscribeUrl(ID, SECRET, 'https://x.supabase.co/functions/v1');
+  for (const h of listUnsubscribeHeaders(url)) assert.doesNotMatch(h.value, /mailto:/i);
+});

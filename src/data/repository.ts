@@ -47,6 +47,7 @@ import {
   type AttendanceRow, type AttendanceStatus, type Holiday, type MemberSession,
 } from './mock';
 import { type EmailStatus, emailUsable } from './emailStatus';
+import type { ResubscribeSource } from './staffResubscribe';
 import { memberWeek, NO_SESSIONS_ROW, type MemberWeekSession } from './memberWeek';
 // Every read below that is unbounded BY CONSTRUCTION -- a whole table, or an
 // id list of member scale -- goes through this. PostgREST stops at 1000 rows
@@ -3482,6 +3483,79 @@ export async function reinstateMemberEmail(memberEmailId: string): Promise<void>
   // notification moves the card, the roster row and the follow-up counts
   // together (guardrail 1).
   membersChanged();
+}
+
+/** One live address a member unsubscribed, for a screen whose rows carry no
+ *  address of their own. */
+export type UnsubscribedAddress = { memberId: string; id: string; address: string; status: EmailStatus };
+
+/**
+ * THE ADDRESSES STAFF MAY TURN BACK ON, and nothing else -- for Attendance,
+ * whose rows carry no email (requests/2026-10-01-staff-resubscribe-everywhere.md).
+ * A narrow read of the live unsubscribed rows (27 on production, 01-Oct-2026)
+ * rather than the whole member list, whose seven paged reads the register
+ * never needed. `status` is carried, not assumed, so the screen still asks
+ * the shared rule (`resubscribableAddresses`) rather than trusting the filter.
+ */
+export async function fetchUnsubscribedAddresses(): Promise<UnsubscribedAddress[]> {
+  if (!isConfigured) {
+    return MEMBERS.flatMap(m => m.emails
+      .filter(e => e.status === 'unsubscribed' && e.id)
+      .map(e => ({ memberId: m.id, id: e.id as string, address: e.address, status: e.status as EmailStatus })));
+  }
+  const rows = await paged('unsubscribed addresses', () => supabase.from('member_emails')
+    .select('id, member_id, email, status').eq('status', 'unsubscribed').is('deleted_at', null), 'id');
+  return rows.map(r => ({
+    memberId: r.member_id as string,
+    id: r.id as string,
+    address: r.email as string,
+    status: (r.status ?? 'unknown') as EmailStatus,
+  }));
+}
+
+/**
+ * TURN FOLLOW-UPS BACK ON for one opted-out address, because the member asked
+ * the academy (0084, requests/2026-10-01-resubscribe-recovery-and-gmail-one-click.md).
+ * By row id, as reinstateMemberEmail is. The refusals -- bounce, spam report,
+ * no source, a user who may not -- are the database's, in its own words.
+ *
+ * Resolves 'already' when somebody got there first: the address is on and
+ * nothing was written, which the form reports as done.
+ */
+export async function staffResubscribeEmail(
+  memberEmailId: string, source: ResubscribeSource, note: string,
+): Promise<'resubscribed' | 'already'> {
+  if (!isConfigured) {
+    for (const m of MEMBERS) {
+      const hit = m.emails.find(e => e.id === memberEmailId);
+      if (!hit) continue;
+      if (hit.status === 'unknown' || hit.status === 'valid' || hit.status === undefined) return 'already';
+      if (hit.status !== 'unsubscribed') {
+        throw new Error('Follow-ups can be turned back on only for an address the member unsubscribed. Nothing has been saved.');
+      }
+      hit.status = 'unknown';
+      membersChanged();
+      return 'resubscribed';
+    }
+    throw new Error('That address is not on the member\'s record. Nothing has been saved.');
+  }
+
+  const { data, error } = await supabase.rpc('staff_resubscribe_member_email', {
+    p_member_email_id: memberEmailId,
+    p_source: source,
+    p_note: note.trim() || null,
+  });
+  if (error) {
+    console.error('staffResubscribeEmail:', error.message);
+    // 0084's subscription refusal is 0078's wording, which reads as the
+    // MEMBER's email subscription inside this dialog. Said plainly instead.
+    if (/not writable|only a signed-in/i.test(error.message)) {
+      throw new Error('Follow-ups can only be turned back on by an active account, and only while the academy’s subscription is active. Nothing has been saved.');
+    }
+    throw new Error(memberWriteError(error));
+  }
+  membersChanged();
+  return data === 'already' ? 'already' : 'resubscribed';
 }
 
 export async function addMemberAlias(memberId: string, alias: string): Promise<void> {

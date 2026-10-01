@@ -75,6 +75,25 @@ export async function buildUnsubscribeUrl(
 }
 
 /**
+ * The RFC 2369 / RFC 8058 header pair every follow-up carries -- what Gmail
+ * reads to draw its own "Unsubscribe" beside the sender, and to POST
+ * `List-Unsubscribe=One-Click` to the URL when it is clicked.
+ *
+ * The HTTPS URL ONLY. It used to lead with `<mailto:unsubscribe@...>`, which
+ * no process here reads: a client that took the mailto (Gmail does when it
+ * will not one-click) sent the request into a mailbox nobody actions, and the
+ * member stayed subscribed. With the URL alone, every route a mail client can
+ * take -- one-click POST, or opening the link -- reaches the endpoint that
+ * writes the opt-out.
+ */
+export function listUnsubscribeHeaders(unsubscribeUrl: string): Array<{ name: string; value: string }> {
+  return [
+    { name: 'List-Unsubscribe', value: `<${unsubscribeUrl}>` },
+    { name: 'List-Unsubscribe-Post', value: 'List-Unsubscribe=One-Click' },
+  ];
+}
+
+/**
  * A stored copy of anything with every unsubscribe link taken out.
  *
  * Since the Resubscribe button (requests/2026-09-30-resubscribe-button.md)

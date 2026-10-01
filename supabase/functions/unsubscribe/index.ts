@@ -16,7 +16,16 @@
 //   GET   a person clicked the link  -> redirected to a confirmation page on
 //         the app's own host (landing.ts says why it is not served from here)
 //   POST  a mail client acted on the List-Unsubscribe-Post header (RFC 8058
-//         one-click) -> 200 and an empty body, which is all it reads
+//         one-click: Gmail's own "Unsubscribe" beside the sender) -> 200 and
+//         an empty body, which is all it reads. No cookie, session,
+//         Authorization header or redirect is needed or given.
+// Both make the SAME write to the same row with the same audit action: one
+// subscription state, two ways in.
+//
+// THE OPT-OUT NEVER WEAKENS A SUPPRESSION. 'unknown', 'valid' and 'bounced'
+// become 'unsubscribed' (the member's word outranks a bounce, and the bounce
+// stays readable as the opt-out's "before"). 'complained' is left as it is: a
+// spam report already stops every send and is the stronger record.
 //
 // AND ONE WAY BACK: POST with `a=resubscribe` is the "Resubscribe" button on
 // the confirmation page, carrying the same signed link. It reverses an
@@ -140,25 +149,23 @@ Deno.serve(async (req) => {
   // there is nothing to hide from its holder, and the promise it makes is
   // already true -- a deleted address cannot be mailed. Telling that person
   // "this link did not work" would invite them to try again.
-  // What the address was just before the member's latest opt-out, from that
-  // opt-out's own audit row. Read only for an address that IS unsubscribed:
-  // it decides whether the page offers Resubscribe, and whether a press of it
-  // is honoured. Null when there is no such row, which offers nothing.
+  // What the address was just before its latest opt-out -- by the link or by
+  // Gmail's one-click alike -- from the row audit every writer produces
+  // (email_status_before_opt_out, 0084). It used to read only this
+  // function's own `communication.unsubscribed` row, which one live opt-out
+  // does not have. Read only for an address that IS unsubscribed: it decides
+  // whether the page offers Resubscribe, and whether a press of it is
+  // honoured. Null when unknown, which offers nothing and is never guessed.
   const statusBeforeOptOut = async (): Promise<string | null> => {
     if (!row || row.status !== 'unsubscribed') return null;
-    const { data, error } = await db.from('audit_logs')
-      .select('changes')
-      .eq('action', 'communication.unsubscribed')
-      .eq('entity_id', row.id)
-      .order('occurred_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const { data, error } = await db.rpc('email_status_before_opt_out', {
+      p_member_email_id: row.id,
+    });
     if (error) {
       console.error('unsubscribe: could not read the opt-out history', error.message);
       return null;
     }
-    const first = Array.isArray(data?.changes) ? data.changes[0] : null;
-    return first && typeof first.old === 'string' ? first.old : null;
+    return typeof data === 'string' ? data : null;
   };
 
   if (resubscribe) {
@@ -209,14 +216,28 @@ Deno.serve(async (req) => {
   // not write a second audit row saying something changed when nothing did.
   // The button is offered only where pressing it would be honoured.
   if (row.status === 'unsubscribed') return confirmed(mayOfferResubscribe(await statusBeforeOptOut()));
+  // A spam report already stops every send, and is not overwritten.
+  if (row.status === 'complained') return confirmed(false);
 
-  const { error: updErr } = await db.from('member_emails')
+  // Guarded on the status just read, so a complaint that lands in between is
+  // never overwritten either.
+  const { data: written, error: updErr } = await db.from('member_emails')
     .update({ status: 'unsubscribed' })
     .eq('id', row.id)
-    .is('deleted_at', null);
+    .in('status', ['unknown', 'valid', 'bounced'])
+    .is('deleted_at', null)
+    .select('id');
   if (updErr) {
     console.error('unsubscribe: could not save the opt-out', updErr.message);
     return neutral();
+  }
+  if (!written || written.length === 0) {
+    // Something else wrote in between (a second click, a complaint). The
+    // promise holds only if nothing can be sent there now.
+    const { data: now } = await db.from('member_emails').select('status')
+      .eq('id', row.id).is('deleted_at', null).maybeSingle();
+    return !now || ['unsubscribed', 'complained', 'bounced'].includes(now.status)
+      ? confirmed(false) : neutral();
   }
 
   // actor_kind 'anon', through audit_log_anon (0065). Not audit_log(): on the

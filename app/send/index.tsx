@@ -8,7 +8,9 @@ import { Icon } from '../../src/components/Icon';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../../src/theme/tokens';
 import { primaryEmail, initials, AVATAR_TINTS } from '../../src/data/mock';
-import { recipientSplit } from '../../src/data/followup';
+import { recipientSplit, emailExclusionReason } from '../../src/data/followup';
+import { useStaffResubscribe } from '../../src/components/useStaffResubscribe';
+import { RESUBSCRIBE_COPY, resubscribableAddresses } from '../../src/data/staffResubscribe';
 import { narrowBySearch, searchTerm } from '../../src/data/memberSearch';
 import { enrolledIn } from '../../src/data/course';
 import { mergeSent, sentThisSession, recordSent, defaultSelection, sentLabel } from '../../src/data/sent';
@@ -111,6 +113,9 @@ function SendDraftBody() {
   const [confirming, setConfirming] = useState(false);
   const [sending, setSending] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  // An excluded member who unsubscribed can be turned back on from here when
+  // the member has asked -- the one shared flow, which refreshes this draft.
+  const resubscribe = useStaffResubscribe();
   /* ONE KEY FOR THIS DRAFT, and every attempt from it carries the same one
      (T-017). `email_batches.client_batch_id` is unique, so the second attempt
      is refused by the database rather than turned into a second set of emails
@@ -372,6 +377,43 @@ function SendDraftBody() {
     ? (triggerCourse.offerings[0]?.weekdays.length || triggerCourse.frequency || null)
     : null;
 
+  // The excluded members, each with the actual reason and -- for an
+  // unsubscribed address -- the shared Resubscribe action. Drawn under the
+  // list, and under the empty state when nobody on the draft can be emailed
+  // (a one-member Reach out to a member who unsubscribed is exactly that).
+  const excludedRows = (list: typeof excluded) => (
+    <View style={{ gap: SPACE.sm, marginTop: SPACE.sm }}>
+      {list.map(m => (
+        <View key={m.id} style={{
+          flexDirection: 'row', alignItems: 'center', gap: SPACE.md, padding: SPACE.md,
+          borderRadius: RADIUS.md, backgroundColor: theme.surface2,
+          borderWidth: 1, borderColor: theme.line,
+        }}>
+          <Icon name="mail_off" size={17} color={ink('absent')} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: theme.fgStrong }}>{m.name}</Text>
+            {/* The member's actual reason -- an unsubscribed address
+                is not "no email address", and only it has an action. */}
+            <Text style={{ fontSize: 11.5, color: theme.muted }}>
+              {`${emailExclusionReason(m)} — counted in every figure`}
+            </Text>
+          </View>
+          {resubscribe.offers(m.emails) ? (
+            <Pressable testID={`send-resubscribe-${m.id}`}
+              onPress={() => resubscribe.open(m.name, m.emails)}
+              accessibilityRole="button"
+              accessibilityLabel={`${RESUBSCRIBE_COPY.action} ${m.name}: unsubscribed ${resubscribableAddresses(m.emails).map(e => e.address).join(', ')}`}
+              style={{ minHeight: TAP_MIN, justifyContent: 'center', paddingHorizontal: SPACE.sm }}>
+              <Text style={{ fontSize: 12.5, fontWeight: '800', color: theme.accentInk }}>
+                {RESUBSCRIBE_COPY.action}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ))}
+    </View>
+  );
+
   const nothingToSend = recipients.length === 0;
   const firstNames = recipients.filter(m => isPicked(m.id)).map(m => m.name.split(' ')[0]);
   /* WHO, short enough to read at a glance: a send to fifteen people does not
@@ -430,6 +472,7 @@ function SendDraftBody() {
       /* The confirmation renders OUTSIDE the card: it is a decision about
          this dialog, not a section of the draft that scrolls with it. */
       overlays={(
+        <>
         <ConfirmDialog
           open={confirming}
           onClose={() => setConfirming(false)}
@@ -447,6 +490,8 @@ function SendDraftBody() {
           confirmLabel="Send"
           detail={preview ? <MessagePreview preview={preview} testID="send-preview" /> : null}
           onConfirm={() => { void send(); }} />
+        {resubscribe.dialog}
+        </>
       )}
     >
       {/* FIRST, and on BOTH branches. The empty draft is the case the panel
@@ -462,14 +507,16 @@ function SendDraftBody() {
         <EmptyState
           title={excluded.length ? 'Nobody here can be emailed' : 'Nobody needs following up'}
           body={excluded.length
-            ? `${excluded.length} ${excluded.length === 1 ? 'member is' : 'members are'} over the threshold and ${excluded.length === 1 ? 'has' : 'have'} no email address. Add an address on the member and they will be included next time.`
+            ? `${excluded.length} ${excluded.length === 1 ? 'member is' : 'members are'} over the threshold and cannot be emailed. The reason is beside each name below.`
             /* One member's draft says so about HER. "No member of this
                academy is over the threshold" is a claim about everybody, and
                it is not the one this dialog was opened to answer. */
             : onlyMember
               ? `${onlyMember.name} is not over the follow-up threshold for ${week.label}. Nothing to send.`
               : `No member of ${course?.name ?? 'this academy'} is over the follow-up threshold for ${week.label}. Nothing to send.`} />
-      ) : (
+      ) : null}
+      {nothingToSend && excluded.length ? excludedRows(excluded) : null}
+      {nothingToSend ? null : (
         <>
           {/* THE SEARCH, and the two controls it scopes, sit directly above
               the list they are about and directly under the trigger panel
@@ -643,23 +690,7 @@ function SendDraftBody() {
                   ? `Excluded · ${shownExcluded.length} of ${excluded.length} matching · counted, not dropped`
                   : `Excluded · ${excluded.length} · counted, not dropped`}
               </Label>
-              <View style={{ gap: SPACE.sm, marginTop: SPACE.sm }}>
-                {shownExcluded.map(m => (
-                  <View key={m.id} style={{
-                    flexDirection: 'row', alignItems: 'center', gap: SPACE.md, padding: SPACE.md,
-                    borderRadius: RADIUS.md, backgroundColor: theme.surface2,
-                    borderWidth: 1, borderColor: theme.line,
-                  }}>
-                    <Icon name="mail_off" size={17} color={ink('absent')} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 13, fontWeight: '700', color: theme.fgStrong }}>{m.name}</Text>
-                      <Text style={{ fontSize: 11.5, color: theme.muted }}>
-                        No email address — she stays counted in every figure
-                      </Text>
-                    </View>
-                  </View>
-                ))}
-              </View>
+              {excludedRows(shownExcluded)}
             </>
           ) : null}
 
