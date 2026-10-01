@@ -122,7 +122,7 @@ select t.rejects($$
   set local request.jwt.claim.sub = 'abab0000-0000-0000-0000-000000000002';
   select public.staff_resubscribe_member_email(
     (select id from public.member_emails where email = 'optout@example.com'), 'carrier pigeon', null);
-$$, 'a source outside the list is refused', 'say how the member asked');
+$$, 'a source outside the list is refused', 'choose how the member asked');
 
 select t.rejects($$
   set local role authenticated;
@@ -203,14 +203,14 @@ select t.rejects($$
   set local request.jwt.claim.sub = 'abab0000-0000-0000-0000-000000000002';
   select public.staff_resubscribe_member_email(
     (select id from public.member_emails where email = 'spam@example.com'), 'phone', null);
-$$, 'a spam-reported address is refused', 'reported a message as spam');
+$$, 'a spam-reported address is refused', 'was marked as spam, so');
 
 select t.rejects($$
   set local role authenticated;
   set local request.jwt.claim.sub = 'abab0000-0000-0000-0000-000000000002';
   select public.staff_resubscribe_member_email(
     (select id from public.member_emails where email = 'spamthenout@example.com'), 'phone', null);
-$$, 'an opt-out on top of a spam report is refused too', 'before unsubscribing');
+$$, 'an opt-out on top of a spam report is refused too', 'was marked as spam, so');
 
 select t.eq((select string_agg(status, ',' order by email) from public.member_emails
               where email in ('bounce@example.com', 'spam@example.com', 'spamthenout@example.com')),
@@ -287,3 +287,207 @@ select t.eq((select e.status from public.member_emails e join public.members m o
 -- A plain new address is untouched by the trigger.
 select t.eq((select status from public.member_emails where email = 'optout@example.com'),
   'unsubscribed', 'the untouched opt-out is still an opt-out');
+
+-- =====================================================================
+-- Appended after review (code-reviewer, permission-reviewer, 01-Oct-2026).
+-- =====================================================================
+
+-- ------------------------------------------ the RPC's own path, the carried row
+select t.eq((select public.email_status_before_opt_out(id) from public.member_emails
+              where lower(email::text) = 'reentry@example.com' and deleted_at is null),
+  'unknown', 'a carried row with no history of its own reads the same member''s earlier opt-out');
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'abab0000-0000-0000-0000-000000000002';
+  select t.eq(public.staff_resubscribe_member_email(
+    (select id from public.member_emails where lower(email::text) = 'reentry@example.com' and deleted_at is null),
+    'phone', null), 'resubscribed', 'and staff can turn a carried opt-out back on when the member asks');
+commit;
+
+-- ---------------------------------------------- refusals the review asked for
+
+begin;
+  set local role service_role;
+  update public.app_subscription set expires_at = current_date + 365, status = 'suspended' where id = 1;
+  select t.rejects($$
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'abab0000-0000-0000-0000-000000000002';
+    select public.staff_resubscribe_member_email(
+      (select id from public.member_emails where email = 'optout@example.com'), 'phone', null)$$,
+    'a suspended subscription refuses it', 'subscription is not writable');
+rollback;
+
+begin;
+  set local role service_role;
+  update public.member_emails set deleted_at = now() where email = 'optout@example.com';
+  select t.rejects($$
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'abab0000-0000-0000-0000-000000000002';
+    select public.staff_resubscribe_member_email(
+      (select id from public.member_emails where email = 'optout@example.com'), 'phone', null)$$,
+    'a removed address is refused', 'not on the member''s record');
+rollback;
+
+-- An opt-out on top of a BOUNCE: the member's button refuses it, so staff do too.
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'abab0000-0000-0000-0000-000000000001';
+  select public.create_member('Bounce Then Out', (select o.id from public.course_offerings o join public.courses c on c.id = o.course_id
+      where c.name = 'Recovery Flow'),
+    current_date - 30, array[]::text[], array['bouncethenout@example.com']::text[], null);
+commit;
+begin;
+  set local role service_role;
+  update public.member_emails set status = 'bounced'      where email = 'bouncethenout@example.com';
+  update public.member_emails set status = 'unsubscribed' where email = 'bouncethenout@example.com';
+commit;
+select t.rejects($$
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'abab0000-0000-0000-0000-000000000002';
+  select public.staff_resubscribe_member_email(
+    (select id from public.member_emails where email = 'bouncethenout@example.com'), 'phone', null);
+$$, 'an opt-out made on top of a bounce is refused', 'bounced before the member unsubscribed');
+
+-- ------------------------------- a spam report on ANOTHER member's copy (H3b)
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'abab0000-0000-0000-0000-000000000001';
+  select public.create_member('Sibling One', (select o.id from public.course_offerings o join public.courses c on c.id = o.course_id
+      where c.name = 'Recovery Flow'),
+    current_date - 30, array[]::text[], array['sibling@example.com']::text[], null);
+  select public.create_member('Sibling Two', (select o.id from public.course_offerings o join public.courses c on c.id = o.course_id
+      where c.name = 'Recovery Two'),
+    current_date - 30, array[]::text[], array['sibling@example.com']::text[], null);
+commit;
+begin;
+  set local role service_role;
+  update public.member_emails e set status = 'unsubscribed'
+    from public.members m where m.id = e.member_id and m.full_name = 'Sibling One';
+  update public.member_emails e set status = 'complained'
+    from public.members m where m.id = e.member_id and m.full_name = 'Sibling Two';
+commit;
+select t.eq((select public.email_status_before_opt_out(e.id) from public.member_emails e
+              join public.members m on m.id = e.member_id where m.full_name = 'Sibling One'),
+  'complained', 'a spam report on the other course''s copy is the answer for this copy too');
+select t.rejects($$
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'abab0000-0000-0000-0000-000000000002';
+  select public.staff_resubscribe_member_email(
+    (select e.id from public.member_emails e join public.members m on m.id = e.member_id
+      where m.full_name = 'Sibling One'), 'phone', null);
+$$, 'staff cannot lift it by turning the opted-out copy back on', 'was marked as spam');
+
+-- ------------------- an opt-out that hid a spam report, removed and re-added (M3)
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'abab0000-0000-0000-0000-000000000002';
+  select public.update_member(m.id, m.full_name, (select o.id from public.course_offerings o join public.courses c on c.id = o.course_id
+      where c.name = 'Recovery Flow'), array[]::text[], array[]::text[], null)
+    from public.members m where m.full_name = 'Spam Then Opt Out';
+commit;
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'abab0000-0000-0000-0000-000000000002';
+  select public.update_member(m.id, m.full_name, (select o.id from public.course_offerings o join public.courses c on c.id = o.course_id
+      where c.name = 'Recovery Flow'), array[]::text[],
+           array['spamthenout@example.com']::text[], null)
+    from public.members m where m.full_name = 'Spam Then Opt Out';
+commit;
+select t.eq((select status from public.member_emails
+              where email = 'spamthenout@example.com' and deleted_at is null),
+  'complained', 're-entered, it arrives as the spam report it was hiding');
+
+-- ------------------- the latest word is the member's own, not the last save (M4a)
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'abab0000-0000-0000-0000-000000000001';
+  select public.create_member('Order A', (select o.id from public.course_offerings o join public.courses c on c.id = o.course_id
+      where c.name = 'Recovery Flow'),
+    current_date - 30, array[]::text[], array['order@example.com']::text[], null);
+  select public.create_member('Order B', (select o.id from public.course_offerings o join public.courses c on c.id = o.course_id
+      where c.name = 'Recovery Two'),
+    current_date - 30, array[]::text[], array['order@example.com']::text[], null);
+commit;
+begin;
+  set local role service_role;
+  update public.member_emails e set status = 'unsubscribed'
+    from public.members m where m.id = e.member_id and m.full_name = 'Order A';
+commit;
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'abab0000-0000-0000-0000-000000000002';
+  select public.update_member(m.id, m.full_name, (select o.id from public.course_offerings o join public.courses c on c.id = o.course_id
+      where c.name = 'Recovery Flow'), array[]::text[], array[]::text[], null)
+    from public.members m where m.full_name = 'Order A';
+commit;
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'abab0000-0000-0000-0000-000000000002';
+  -- an unrelated save of the other course's member bumps its row's updated_at
+  select public.update_member(m.id, m.full_name, (select o.id from public.course_offerings o join public.courses c on c.id = o.course_id
+      where c.name = 'Recovery Two'), array['Order Bee']::text[],
+           array['order@example.com']::text[], null)
+    from public.members m where m.full_name = 'Order B';
+commit;
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'abab0000-0000-0000-0000-000000000002';
+  select public.update_member(m.id, m.full_name, (select o.id from public.course_offerings o join public.courses c on c.id = o.course_id
+      where c.name = 'Recovery Flow'), array[]::text[],
+           array['order@example.com']::text[], null)
+    from public.members m where m.full_name = 'Order A';
+commit;
+select t.eq((select e.status from public.member_emails e join public.members m on m.id = e.member_id
+              where m.full_name = 'Order A' and e.deleted_at is null),
+  'unsubscribed', 'a save of another member in between does not make the re-entered copy sendable');
+select t.eq((select e.status from public.member_emails e join public.members m on m.id = e.member_id
+              where m.full_name = 'Order B' and e.deleted_at is null),
+  'unknown', 'and the other course''s copy stays subscribed -- an opt-out is per course (0071)');
+
+-- --------------------------------- per course: a new member elsewhere is not carried
+begin;
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'abab0000-0000-0000-0000-000000000001';
+  select public.create_member('Optout Elsewhere', (select o.id from public.course_offerings o join public.courses c on c.id = o.course_id
+      where c.name = 'Recovery Two'),
+    current_date - 1, array[]::text[], array['optout@example.com']::text[], null);
+commit;
+select t.eq((select e.status from public.member_emails e join public.members m on m.id = e.member_id
+              where m.full_name = 'Optout Elsewhere' and e.deleted_at is null),
+  'unknown', 'an opt-out from one course is not carried to a member of another course (0071)');
+
+-- ------------------------------------------ no way round it through PostgREST
+select t.rejects($$
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'abab0000-0000-0000-0000-000000000002';
+  update public.member_emails set status = 'unknown' where email = 'optout@example.com';
+$$, 'a signed-in user cannot PATCH an opt-out away', 'changed only through the member form');
+select t.rejects($$
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'abab0000-0000-0000-0000-000000000002';
+  update public.member_emails set status = 'unknown' where email = 'spam@example.com';
+$$, 'nor a spam report', 'changed only through the member form');
+select t.rejects($$
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'abab0000-0000-0000-0000-000000000002';
+  update public.member_emails set email = 'optout@example.com'
+   where email = 'other@example.com';
+$$, 'nor rename a sendable row onto an opted-out address', 'changed only through the member form');
+select t.rejects($$
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'abab0000-0000-0000-0000-000000000002';
+  update public.member_emails set deleted_at = null
+   where lower(email::text) = 'reentry@example.com' and deleted_at is not null;
+$$, 'nor bring a removed row back', 'changed only through the member form');
+select t.eq((select e.status from public.member_emails e join public.members m on m.id = e.member_id
+              where m.full_name = 'Opted Out Member' and e.deleted_at is null),
+  'unsubscribed', 'and the opt-out is untouched');
+
+-- ------------------------------------------------------ audit rows are not forged
+select t.rejects($$
+  set local role authenticated;
+  set local request.jwt.claim.sub = 'abab0000-0000-0000-0000-000000000002';
+  select public.audit_log('member_email.update', 'member_email',
+    (select id::text from public.member_emails where email = 'spamthenout@example.com' and deleted_at is null),
+    '[{"field":"status","old":"unknown","new":"unsubscribed"}]'::jsonb);
+$$, 'a signed-in user cannot write an audit row that would forge an opt-out''s history', 'permission denied');

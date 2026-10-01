@@ -46,7 +46,12 @@ Run **Track B** ([workflows/enhance.md](../workflows/enhance.md)) with this requ
   - Toast: "Follow-ups are on again for <address>"
   - Audit title: "Follow-ups turned back on at the member’s request"
   - 0084's refusal sentences
-- PERMISSIONS: yes. Any active app user (staff or super admin), the same gate as 0078 and the `member_emails` policies; `anon` has no execute. `email_status_before_opt_out` is service role only.
+- PERMISSIONS: yes.
+  - Turn Follow-ups Back On: any active app user (staff or super admin), the same gate as 0078 and the `member_emails` policies. `anon` has no execute. Not configurable per role (staff parity, 0050).
+  - `email_status_before_opt_out`: service role only.
+  - Tightened after review (permission-reviewer H1/M2):
+    - a direct signed-in write to `member_emails` may no longer change status, text, owner or creation time, or un-delete a row (INVOKER guard trigger; the table grant 09_grants pins is kept, and no policy changes);
+    - `audit_log()` is no longer executable by `authenticated`. Nothing in the app calls it; Edge Functions use the service role.
 - USAGE: 25 live unsubscribed addresses on production at 01-Oct-2026.
 - RUN MODE: auto
 - SCALE: scoped
@@ -55,3 +60,24 @@ Run **Track B** ([workflows/enhance.md](../workflows/enhance.md)) with this requ
 - Gmail draws its Unsubscribe from our headers. When it acts with one-click, it POSTs `List-Unsubscribe=One-Click` to the HTTPS URL. That is a server-to-server request: no cookie, no session, no redirect followed. `unsubscribe` answers 200 with an empty body and writes the same opt-out as the link.
 - Gmail uses one-click only when the DKIM signature covers `List-Unsubscribe` and `List-Unsubscribe-Post`. That is decided by SES's signing, and it is only provable from a delivered message's "Show original" (`DKIM-Signature: … h=…`). If they are not covered, Gmail may open the URL instead, which is a GET and the same opt-out. With the mailto removed, there is no route that loses it.
 - Gmail's own UI state (the banner, hiding the button, any sender-level filter the member makes) is Gmail's. No database change here can reverse it. Resubscribing restores OUR subscription state, so the next follow-up is sent. Whether Gmail files it in the inbox is Gmail's decision and the member's.
+
+## REVIEW ROUND (01-Oct-2026)
+- **code-reviewer: REQUEST CHANGES.**
+  - H1 the carry rule used the address's latest-updated row on any member. It is now same-member by `created_at`, with complaints by address.
+  - H2 a hard-deleted member leaves nothing to carry. Recorded as a gap; deleting a member is not editing an address.
+  - H3 the staff path could lift a complaint (carried, or on a sibling copy) or a bounce. Fixed by one shared rule, `email_status_before_opt_out`.
+  - M1 the cross-member carry contradicted 0071. The opt-out is now per member; the complaint stays by address.
+  - M2 direct PATCH. Guard trigger added.
+  - M3 deploy order. 0084 goes first, as recorded in ENVIRONMENTS.
+  - Low: stale comments fixed; Cancel accessible name fixed; note length wording fixed.
+- **permission-reviewer: REQUEST CHANGES.**
+  - H1 direct PATCH. Guard trigger.
+  - M2 forged audit rows. `audit_log` revoked from `authenticated`.
+  - M3 null history on the staff path, and M4 the ordering issues. Both covered by the shared rule and spec 61's appended cases.
+  - L6 the note: control characters stripped. It is not redacted; staff are told it is recorded.
+- **copy-gate-reviewer: BLOCKED** (no shell for the diff), with REQUEST CHANGES on the strings.
+  - Lexicon rows added.
+  - Refusals reworded with a next step.
+  - The subscription refusal translated in the repository.
+  - Note length wording and the dialog body clarified.
+  - Confirm button is now "Turn follow-ups back on".

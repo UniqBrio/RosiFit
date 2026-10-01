@@ -8,11 +8,17 @@ follow-ups back on" (0084 `staff_resubscribe_member_email`, audited `communicati
 with member, address, old/new, actor, time, source, note); re-entering an opted-out or spam-reported
 address arrives suppressed (0084 BEFORE INSERT trigger).
 
-FAIL-FIRST: supabase/tests/61_email_resubscribe_recovery.sql - "function public.email_status_before_opt_out(uuid) does not exist" with 0084 removed; 29 of 29 green with it.
+FAIL-FIRST: supabase/tests/61_email_resubscribe_recovery.sql - "function public.email_status_before_opt_out(uuid) does not exist" with 0084 removed; 29 of 29 green with the first 0084.
 FAIL-FIRST: src/data/unsubscribeHandler.test.ts - 7 of 15 red against HEAD's unsubscribe/index.ts, including "spam-reported: the opt-out is confirmed and the complaint is NOT overwritten" (status went 'complained' -> 'unsubscribed'); 6 of the 7 also because HEAD read the prior status from `audit_logs` with .order(), which the fake does not model. 15 of 15 green against the changed index.ts.
 FAIL-FIRST: src/data/unsubscribeToken.test.ts - the two appended cases, 2 of 13 red with the mailto restored in listUnsubscribeHeaders ("no mailto: a mail client can only reach the endpoint that writes the opt-out"); 13 of 13 green.
 NOT OBSERVED FAILING: src/data/staffResubscribe.test.ts - covers a new module and a new RPC wrapper; no prior behaviour to fail against. 4 of 4 green.
 NOT OBSERVED FAILING: src/data/sendSuppression.test.ts - covers suppressionReason, extracted from send-followups' inline ternary with the same three reasons; 3 of 3 green.
+
+REVIEW ROUND (code-reviewer, permission-reviewer, copy-gate-reviewer; all REQUEST CHANGES): carry
+rule now per member by created_at, complaints by address; one shared prior-status rule for the member
+button and staff; an INVOKER guard refuses direct status/email/owner/undelete writes by a signed-in user;
+`audit_log` revoked from `authenticated`; refusal wording and lexicon fixed.
+FAIL-FIRST: supabase/tests/61_email_resubscribe_recovery.sql (appended cases) - against the first 0084 (cb192ba): 15 red, e.g. "a save of another member in between does not make the re-entered copy sendable  got unknown want unsubscribed", "a signed-in user cannot PATCH an opt-out away -- statement was ACCEPTED", "a spam report on the other course's copy is the answer for this copy too  got unknown want complained"; 46 of 46 green with the revised 0084.
 
 GATES: `npm run check` ALL 7 PASS (test:unit 2025 / 0). `deno check` on unsubscribe, send-followups and
 the shared token module clean; `deno test` 25 / 0. `npm run test:db`: every file green except 39, 52

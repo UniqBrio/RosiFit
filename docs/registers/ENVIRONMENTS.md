@@ -321,6 +321,16 @@ gap admitted.
   The confirmation page offers the button only then, posts only to this
   project's function, and clears the pair from the address bar. The one-click
   POST (no `a`) can never resubscribe.
+  **Both ways in, one state (01-Oct-2026, RC-123, 0084):** `send-followups`
+  sends `List-Unsubscribe: <https URL>` only (the mailto went to a mailbox
+  nothing reads) with `List-Unsubscribe-Post: List-Unsubscribe=One-Click`.
+  Gmail's one-click POST and the body link make the same write and audit
+  action (`via` differs). The opt-out never overwrites `complained`. The
+  Resubscribe rule asks `email_status_before_opt_out` (service role only).
+  Staff "Turn follow-ups back on" is `staff_resubscribe_member_email`.
+  **Apply 0084 before deploying this version of `unsubscribe`**: without
+  the RPC every prior-status read fails closed, so no member is offered the
+  button.
   **No stored copy of the link (0083):** because the link can now undo an
   opt-out, `send-followups` no longer records `unsubscribe_url` in
   `email_messages.variables`, `ses-feedback` strips it from the SES payload it

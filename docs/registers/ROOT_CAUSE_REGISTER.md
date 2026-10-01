@@ -59,6 +59,80 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-123 — Gmail's Unsubscribe could be lost, and an opt-out had no way back and several ways round          Tracker: T-143 · Sources: academy request 01-Oct-2026, code-reviewer + permission-reviewer
+**Date:** 01-Oct-2026  ·  **Severity:** S2  ·  **Modules:** `send-followups`, `unsubscribe`, `member_emails`, member Edit form
+
+**Symptom** — "our RosiFit emails have TWO unsubscribe mechanisms … make the complete
+unsubscribe/resubscribe lifecycle work correctly for BOTH". Production at 01-Oct-2026 held 34 opt-outs,
+every one `via: link`, none `via: one_click`, and no POST in the edge logs. A member who opted out
+through Gmail, or who had deleted the old emails, had no way back, and staff had none either.
+
+**Root cause** — four separate defects.
+
+1. **The mailto was lost mail.** `List-Unsubscribe` led with `<mailto:unsubscribe@getfit.rosifit.com>`,
+   a mailbox nothing processes. Any mail client that chose the mailto over the HTTPS URL sent the
+   opt-out nowhere.
+2. **There was no staff route back.** 0078 refuses opt-outs by design, and nothing replaced it for
+   "the member asked us".
+3. **Re-adding an address bypassed the opt-out.** Every inserting writer stores a re-added address as
+   `unknown`. And `authenticated` could PATCH `member_emails.status` directly, so every refusal held
+   at the RPC layer only.
+4. **The opt-out rule's inputs were weak.** The Resubscribe rule read only
+   `communication.unsubscribed` rows, which one live opt-out lacks. Any signed-in user could write
+   audit rows through `audit_log()`. And the opt-out overwrote a spam report.
+
+**Fix** —
+- `listUnsubscribeHeaders` sends the HTTPS link only.
+- `unsubscribe` changes:
+  - never overwrites `complained`;
+  - guards its write on the status it read;
+  - asks 0084's `email_status_before_opt_out`, which is the one rule the member button and the staff
+    action share. A spam report anywhere on the address wins; then this row's opt-out from the row
+    audit; then the same member's earlier row.
+- 0084 adds:
+  - `staff_resubscribe_member_email`, with the source required and the act audited as
+    `communication.staff_resubscribe`;
+  - a BEFORE INSERT carry: a complaint carries by address, an opt-out within the same member
+    (ordered by `created_at`, per course per 0071);
+  - an INVOKER guard against direct status/email/owner/undelete writes;
+  - a revoke of `audit_log()` from `authenticated`.
+
+**Files** —
+- `supabase/migrations/0084_email_resubscribe_recovery.sql`
+- `supabase/functions/unsubscribe/index.ts`
+- `supabase/functions/_shared/unsubscribe-token.ts`
+- `supabase/functions/send-followups/{index,send-loop}.ts`
+- `src/data/{repository,staffResubscribe,auditPlain}.ts`
+- `src/components/StaffResubscribeDialog.tsx`
+- `app/member/edit.tsx`
+- specs `supabase/tests/61_*`, `src/data/{unsubscribeHandler,staffResubscribe,sendSuppression}.test.ts`, appended `unsubscribeToken.test.ts`
+
+**How to verify** — run these:
+- `bash db/harness/test.sh`: `61` 46/46.
+- `npx tsx --test src/data/unsubscribeHandler.test.ts`: 15/15. It drives the deployed `index.ts`
+  with Gmail's exact RFC 8058 POST and the body link.
+- `npx tsx --test src/data/unsubscribeToken.test.ts`: there must be no `mailto:` in either header.
+- Live: a delivered follow-up's "Show original" carries `List-Unsubscribe: <https://…/unsubscribe?e=…&t=…>`,
+  and `DKIM-Signature: … h=` lists `List-Unsubscribe` and `List-Unsubscribe-Post`.
+
+**Recurrence risk** — two places this class can recur:
+- Any RPC-layer rule on a table whose grant lets `authenticated` write it directly. Swept on
+  `member_emails` only; other tables carry the same `INSERT,UPDATE` grant (09_grants), and the
+  question is unasked there.
+- `delete_member` hard-deletes the address rows, so a deleted and re-added member carries nothing
+  (recorded as a gap, not fixed).
+
+**Prevention** — rungs:
+- `supabase/tests/61_email_resubscribe_recovery.sql`
+- `src/data/unsubscribeHandler.test.ts`
+- `src/data/unsubscribeToken.test.ts`
+
+**Process check** — Yes, partly. The first build of 0084 shipped a "latest row wins" carry and an
+unguarded table, and both were found by the review stage (code-reviewer H1–H3, permission-reviewer
+H1/M2–M4). That stage did its job before anything reached production. No framework change.
+
+---
+
 ## RC-122 — the unsubscribe confirmation arrived as its own HTML source          Tracker: T-142 · Sources: academy report 30-Sep-2026 (screenshot), Supabase Edge Function limits
 **Date:** 30-Sep-2026  ·  **Severity:** S2  ·  **Modules:** `unsubscribe` Edge Function, `public/`
 

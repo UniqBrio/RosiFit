@@ -62,7 +62,7 @@ export function StaffResubscribeDialog({
 
           <ScrollView style={{ marginTop: SPACE.md }} contentContainerStyle={{ paddingBottom: 2 }}>
             <Text style={{ fontSize: 13, color: theme.muted, lineHeight: 20 }}>
-              {`The member unsubscribed ${address}. Do this only because the member asked to get attendance follow-ups again. It is recorded with your name and how the member asked.`}
+              {`The member unsubscribed ${address} from follow-ups. Do this only because the member asked to get attendance follow-ups again. It is recorded with your name and how the member asked.`}
             </Text>
 
             <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase',
@@ -109,7 +109,7 @@ export function StaffResubscribeDialog({
 
           <View style={{ flexDirection: 'row', gap: 10, marginTop: SPACE.xl }}>
             <Pressable testID="resubscribe-cancel" onPress={onClose} disabled={saving}
-              accessibilityRole="button" accessibilityLabel="Keep follow-ups off"
+              accessibilityRole="button" accessibilityLabel="Cancel, keep follow-ups off"
               style={({ pressed }) => ({
                 flex: 1, minHeight: TAP_MIN + 6, borderRadius: RADIUS.md,
                 alignItems: 'center', justifyContent: 'center',
@@ -131,7 +131,7 @@ export function StaffResubscribeDialog({
                 opacity: (saving || !!problem) ? 0.5 : pressed ? 0.85 : 1,
               })}>
               <Text numberOfLines={1} style={{ fontSize: 13.5, fontWeight: '800', color: theme.onAccent }}>
-                {saving ? 'Saving…' : 'Turn back on'}
+                {saving ? 'Saving…' : 'Turn follow-ups back on'}
               </Text>
             </Pressable>
           </View>

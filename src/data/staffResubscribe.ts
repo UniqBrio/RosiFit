@@ -41,6 +41,6 @@ export const offersStaffResubscribe = (e: { status?: EmailStatus; id?: string })
 export function resubscribeChoiceProblem(source: ResubscribeSource | null, note: string): string | null {
   if (!source) return 'Choose how the member asked.';
   if (source === 'other' && !note.trim()) return 'Add a note saying how the member asked.';
-  if (note.trim().length > RESUBSCRIBE_NOTE_MAX) return `Keep the note under ${RESUBSCRIBE_NOTE_MAX} characters.`;
+  if (note.trim().length > RESUBSCRIBE_NOTE_MAX) return `Keep the note to ${RESUBSCRIBE_NOTE_MAX} characters or fewer.`;
   return null;
 }

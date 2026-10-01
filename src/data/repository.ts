@@ -3519,6 +3519,11 @@ export async function staffResubscribeEmail(
   });
   if (error) {
     console.error('staffResubscribeEmail:', error.message);
+    // 0084's subscription refusal is 0078's wording, which reads as the
+    // MEMBER's email subscription inside this dialog. Said plainly instead.
+    if (/not writable|only a signed-in/i.test(error.message)) {
+      throw new Error('Follow-ups can only be turned back on by an active account, and only while the academy’s subscription is active. Nothing has been saved.');
+    }
     throw new Error(memberWriteError(error));
   }
   membersChanged();

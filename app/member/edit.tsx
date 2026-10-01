@@ -1081,18 +1081,18 @@ export default function MemberEdit() {
              (requests/2026-09-22-saved-email-not-reflecting.md).
 
              Three consequences here: the row says which state it is in, it
-             cannot be made primary while nothing can be sent to it, and a
-             BOUNCE carries a way back. An opt-out carries none -- the member
-             said something deliberate, and 0078 refuses it in the database too,
-             so this is a form deciding what to OFFER rather than the thing
-             that enforces it. */
+             cannot be made primary while nothing can be sent to it, and an
+             OPT-OUT carries one way back -- "Turn follow-ups back on", for
+             when the member asks the academy (0084, which enforces it; this
+             form only decides what to OFFER). */
           const suppressed = !emailUsable(e);
           /* A bounce is the mail system's verdict on the ADDRESS; an opt-out or
              a complaint is the member's own decision. The row says which,
              because the answer differs: a dead address is replaced with a
              working one, and a member who said stop is not written to at all.
-             Neither is reinstated -- no screen in this app un-suppresses an
-             address (requests/2026-09-23-bounced-address-asks-for-a-different-one.md). */
+             A bounce or a spam report is never lifted here
+             (requests/2026-09-23-bounced-address-asks-for-a-different-one.md);
+             only an opt-out is, on the member's word. */
           const dead = isDeliveryFailure(e.status);
           return (
           <View key={e.address} style={{

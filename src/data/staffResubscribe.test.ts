@@ -25,7 +25,7 @@ test('the source is required, and "Other" needs a note', () => {
   assert.equal(resubscribeChoiceProblem('other', '   '), 'Add a note saying how the member asked.');
   assert.equal(resubscribeChoiceProblem('other', 'At the front desk'), null);
   assert.equal(resubscribeChoiceProblem('whatsapp', ''), null, 'the note is optional otherwise');
-  assert.match(resubscribeChoiceProblem('phone', 'x'.repeat(501)) ?? '', /under 500/);
+  assert.match(resubscribeChoiceProblem('phone', 'x'.repeat(501)) ?? '', /500 characters or fewer/);
 });
 
 test('the five sources are exactly the ones 0084 accepts, and in plain words', () => {
