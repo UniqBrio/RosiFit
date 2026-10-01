@@ -3485,6 +3485,34 @@ export async function reinstateMemberEmail(memberEmailId: string): Promise<void>
   membersChanged();
 }
 
+/** One live address a member unsubscribed, for a screen whose rows carry no
+ *  address of their own. */
+export type UnsubscribedAddress = { memberId: string; id: string; address: string; status: EmailStatus };
+
+/**
+ * THE ADDRESSES STAFF MAY TURN BACK ON, and nothing else -- for Attendance,
+ * whose rows carry no email (requests/2026-10-01-staff-resubscribe-everywhere.md).
+ * A narrow read of the live unsubscribed rows (27 on production, 01-Oct-2026)
+ * rather than the whole member list, whose seven paged reads the register
+ * never needed. `status` is carried, not assumed, so the screen still asks
+ * the shared rule (`resubscribableAddresses`) rather than trusting the filter.
+ */
+export async function fetchUnsubscribedAddresses(): Promise<UnsubscribedAddress[]> {
+  if (!isConfigured) {
+    return MEMBERS.flatMap(m => m.emails
+      .filter(e => e.status === 'unsubscribed' && e.id)
+      .map(e => ({ memberId: m.id, id: e.id as string, address: e.address, status: e.status as EmailStatus })));
+  }
+  const rows = await paged('unsubscribed addresses', () => supabase.from('member_emails')
+    .select('id, member_id, email, status').eq('status', 'unsubscribed').is('deleted_at', null), 'id');
+  return rows.map(r => ({
+    memberId: r.member_id as string,
+    id: r.id as string,
+    address: r.email as string,
+    status: (r.status ?? 'unknown') as EmailStatus,
+  }));
+}
+
 /**
  * TURN FOLLOW-UPS BACK ON for one opted-out address, because the member asked
  * the academy (0084, requests/2026-10-01-resubscribe-recovery-and-gmail-one-click.md).

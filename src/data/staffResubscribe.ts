@@ -44,3 +44,38 @@ export function resubscribeChoiceProblem(source: ResubscribeSource | null, note:
   if (note.trim().length > RESUBSCRIBE_NOTE_MAX) return `Keep the note to ${RESUBSCRIBE_NOTE_MAX} characters or fewer.`;
   return null;
 }
+
+/**
+ * Every address on a member the staff action may be offered for, in record
+ * order. The Reach Out pop-up, the send draft and the Attendance list all
+ * ask this one question, so a screen can never offer the action for an
+ * address another screen would not (requests/2026-10-01-staff-resubscribe-everywhere.md).
+ */
+export function resubscribableAddresses<E extends { status?: EmailStatus; id?: string }>(emails: readonly E[]): E[] {
+  return emails.filter(offersStaffResubscribe);
+}
+
+/** The words every staff entry point uses, in one place. */
+export const RESUBSCRIBE_COPY = {
+  /** the compact action on Reach Out and Attendance */
+  action: 'Resubscribe',
+  /** the confirmation's question */
+  title: 'Turn follow-ups back on for this email?',
+  success: 'Follow-ups turned back on for this email.',
+  already: 'Follow-ups were already on for this email.',
+} as const;
+
+/** What the staff member is told after a confirmed press. */
+export const resubscribeOutcomeMessage = (result: 'resubscribed' | 'already'): string =>
+  result === 'already' ? RESUBSCRIBE_COPY.already : RESUBSCRIBE_COPY.success;
+
+/**
+ * Why the dialog's confirm is held: an address must be chosen when there is
+ * more than one on offer, then the source rule above. Null when it can go.
+ */
+export function resubscribeConfirmProblem(
+  choiceIds: readonly string[], pickedId: string | null, source: ResubscribeSource | null, note: string,
+): string | null {
+  if (!pickedId || !choiceIds.includes(pickedId)) return 'Choose which address to turn back on.';
+  return resubscribeChoiceProblem(source, note);
+}

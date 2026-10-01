@@ -10,12 +10,15 @@ import { PeriodPanel, periodFieldValue } from '../../src/components/PeriodFilter
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useAutoFocus } from '../../src/components/openingFocus';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface, type StatusKey } from '../../src/theme/tokens';
-import { useAttendance, useFilterOptions } from '../../src/data/hooks';
+import { useAttendance, useFilterOptions, useUnsubscribedAddresses } from '../../src/data/hooks';
+import { useStaffResubscribe } from '../../src/components/useStaffResubscribe';
+import { RESUBSCRIBE_COPY, resubscribableAddresses } from '../../src/data/staffResubscribe';
 import { FreshnessLine } from '../../src/components/FreshnessLine';
 import { resolvePeriod, type PeriodChoice } from '../../src/data/period';
 import { formatDate, formatTime } from '../../src/components/DateTimePicker';
 import { useAcademy, ALL_BRANCHES } from '../../src/state/academy';
 import type { AttendanceRow, AttendanceStatus } from '../../src/data/mock';
+import type { UnsubscribedAddress } from '../../src/data/repository';
 
 /**
  * The attendance register — every fact the uploads produced, filterable.
@@ -79,6 +82,21 @@ export default function Attendance() {
   const [choice, setChoice] = useState<PeriodChoice>({ key: 'This week' });
   const [course, setCourse] = useState('All courses');
   const [status, setStatus] = useState(ALL_STATUSES);
+  // Staff "Resubscribe" beside a member who unsubscribed -- the one shared
+  // flow (src/components/useStaffResubscribe.tsx). The rows carry no email,
+  // so a narrow read of the unsubscribed addresses (which refreshes after the
+  // change) supplies them -- not the whole member list.
+  const unsubscribed = useUnsubscribedAddresses(forced);
+  const unsubscribedByMember = useMemo(() => {
+    const byMember = new Map<string, { id: string; address: string; status: UnsubscribedAddress['status'] }[]>();
+    for (const e of unsubscribed.data ?? []) {
+      const list = byMember.get(e.memberId) ?? [];
+      list.push({ id: e.id, address: e.address, status: e.status });
+      byMember.set(e.memberId, list);
+    }
+    return byMember;
+  }, [unsubscribed.data]);
+  const resubscribe = useStaffResubscribe();
   const [query, setQuery] = useState('');
   // Only one dropdown is out at a time: two overlapping panels have no
   // honest z-order. The half-picked custom range lives inside PeriodPanel,
@@ -329,17 +347,24 @@ export default function Attendance() {
                   const tone = TONE[r.status];
                   const c = ink(tone);
                   const box = statusSurface(c);
+                  // Only a member who unsubscribed gets the action; every
+                  // other row stays exactly as it was.
+                  const emails = unsubscribedByMember.get(r.member_id) ?? [];
+                  const offered = resubscribableAddresses(emails);
+                  const offeredText = offered.map(e => e.address).join(', ');
                   return (
-                    <View key={r.id}
+                    <View key={r.id} style={{
+                      flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
+                      padding: SPACE.md, borderRadius: RADIUS.md,
+                      backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
+                    }}>
+                    <View
                       accessible
                       accessibilityLabel={
                         `${r.member}. ${STATUS[tone].word}. ${r.course}, ${r.branch}. `
-                        + (r.minutes === null ? 'No time in call' : `${r.minutes} minutes in call`)}
-                      style={{
-                        flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
-                        padding: SPACE.md, borderRadius: RADIUS.md,
-                        backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
-                      }}>
+                        + (r.minutes === null ? 'No time in call' : `${r.minutes} minutes in call`)
+                        + (offered.length ? `. Unsubscribed: ${offeredText}` : '')}
+                      style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: SPACE.md }}>
                       <View style={{
                         width: 38, height: 38, borderRadius: 12,
                         alignItems: 'center', justifyContent: 'center',
@@ -355,6 +380,14 @@ export default function Attendance() {
                         <Text numberOfLines={1} style={{ fontSize: 11.5, color: theme.muted, marginTop: 2 }}>
                           {`${r.course} · ${r.branch}`}
                         </Text>
+                        {offered.length ? (
+                          /* WHICH address, so a member with several is never
+                             ambiguous -- and the word, not only the button. */
+                          <Text numberOfLines={1} testID={`attendance-unsubscribed-${r.id}`}
+                            style={{ fontSize: 11.5, color: theme.muted, marginTop: 2 }}>
+                            {`Unsubscribed: ${offeredText}`}
+                          </Text>
+                        ) : null}
                       </View>
 
                       <View style={{ alignItems: 'flex-end' }}>
@@ -368,6 +401,21 @@ export default function Attendance() {
                         </Text>
                       </View>
                     </View>
+                    {(() => {
+                      if (offered.length === 0) return null;
+                      return (
+                        <Pressable testID={`attendance-resubscribe-${r.id}`}
+                          onPress={() => resubscribe.open(r.member, emails)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`${RESUBSCRIBE_COPY.action} ${r.member}: unsubscribed ${offeredText}`}
+                          style={{ minHeight: TAP_MIN, justifyContent: 'center', paddingHorizontal: SPACE.sm }}>
+                          <Text style={{ fontSize: 12.5, fontWeight: '800', color: theme.accentInk }}>
+                            {RESUBSCRIBE_COPY.action}
+                          </Text>
+                        </Pressable>
+                      );
+                    })()}
+                    </View>
                   );
                 })}
               </View>
@@ -376,6 +424,7 @@ export default function Attendance() {
         </View>
       )}
 
+      {resubscribe.dialog}
     </Screen>
   );
 }

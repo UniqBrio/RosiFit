@@ -1,3 +1,45 @@
+## STAFF RESUBSCRIBE ON REACH OUT AND ATTENDANCE, ONE SHARED FLOW — 01-Oct-2026
+
+`requests/2026-10-01-staff-resubscribe-everywhere.md` (CHANGE, scoped). Reach Out (member pop-up
+and send draft) and Attendance offer "Resubscribe" only for an `unsubscribed` saved address; it
+opens the existing confirmation (now titled "Turn follow-ups back on for this email?", naming the
+member and the address, with a chooser when there are several). One hook, `useStaffResubscribe`,
+owns the dialog, the call and the toast for both screens; Edit keeps its own button and passes its
+one address to the same dialog. Every path calls `staffResubscribeEmail` → RPC
+`staff_resubscribe_member_email` (0084). No migration; 0084 not re-applied.
+
+FAIL-FIRST: src/data/staffResubscribeEntryPoints.test.ts - against ed4e1d1, 4 of 6 red, e.g. "app/member/[id].tsx must use the shared hook"; 6 of 6 green.
+FAIL-FIRST: src/data/staffResubscribe.test.ts (4 appended cases) - 4 of 8 red against ed4e1d1, "(0 , import_staffResubscribe2.resubscribableAddresses) is not a function"; 8 of 8 green.
+
+Browser check (Chromium, offline fixture export, temporary fixture with one member holding two
+unsubscribed addresses and one bounced; fixture reverted, `git diff src/data/mock.ts` empty):
+33/33 PASS, light and dark — action shown only for the unsubscribed member on the pop-up, send draft
+and Attendance; never for bounced; opening changes nothing; Confirm disabled until a source (and an
+address, with two); Other needs a note; success toast; the action disappears after confirm.
+NOT RUN against production from this sandbox (no route to supabase.co or vercel.app).
+
+REVIEW ROUND (code-reviewer and copy-gate-reviewer, REQUEST CHANGES): Attendance read the whole
+member list (seven paged reads) to find addresses -- it now reads only the live unsubscribed rows
+(`fetchUnsubscribedAddresses`, refreshed on a member change); the "Choose which address" reason
+lived only in the confirm button's label -- now shown under the addresses; the pop-up names an
+unsubscribed address the panel does not; screen-reader labels on Attendance and the send draft name
+the address; lexicon rows reconciled; two comments that said an opt-out cannot be undone corrected.
+FAIL-FIRST: src/data/staffResubscribeEntryPoints.test.ts (2 appended cases) - against the pre-review shape, 2 of 8 red: "The input did not match the regular expression /useUnsubscribedAddresses\(forced\)/" and "... /source && !chosen && problem \?[\s\S]{0,300}testID=\"resubscribe-address-problem\"/"; 8 of 8 green.
+Browser re-check after the fixes, same fixture method: 44/44 PASS, light and dark (adds: the address
+reason on screen once a source is picked, Cancel writes nothing, the pop-up names the remaining
+unsubscribed address after the primary is turned back on).
+
+Production, read-only (01-Oct-2026): ledger has 0084 (20261001100132) as the latest; unsubscribe v8
+(verify_jwt false) and send-followups v23 (verify_jwt true) ACTIVE; guard and carry triggers present;
+`audit_log` not executable by authenticated or anon; `staff_resubscribe_member_email` SECURITY
+DEFINER, authenticated yes, anon no. A DO block run as a signed-in staff user, ended by RAISE so
+nothing committed: direct status PATCH refused (42501), `audit_log` call refused (42501), staff RPC on
+a bounced row refused ("this address bounced; ..."), Other with no note refused. No live complained
+row exists to probe; spec 61 covers it.
+
+GATES: `npm run check` ALL 7 PASS (test:unit 2038 tests: 2037 pass, 0 fail, 1 skipped);
+contrast 2852/2852; icons 75/75. Spec 61 46/46 (no DB change this round).
+
 ## 0084: CREATE OR REPLACE TRIGGER INSTEAD OF DROP + CREATE — 01-Oct-2026
 
 Owner-approved (Option 1). The Supabase MCP connector holds any statement containing DROP for a

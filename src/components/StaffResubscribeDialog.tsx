@@ -6,8 +6,12 @@ import { blurOpener } from './openingFocus';
 import { Field } from './Field';
 import { Icon } from './Icon';
 import {
-  RESUBSCRIBE_SOURCES, resubscribeChoiceProblem, type ResubscribeSource,
+  RESUBSCRIBE_COPY, RESUBSCRIBE_SOURCES, resubscribeConfirmProblem, type ResubscribeSource,
 } from '../data/staffResubscribe';
+
+/** One address the dialog may turn back on: the row id the RPC acts on, and
+ *  the text the staff member reads. */
+export type ResubscribeChoice = { id: string; address: string };
 
 /**
  * TURN FOLLOW-UPS BACK ON — the explicit confirmation, with how the member
@@ -17,25 +21,36 @@ import {
  * footer -- because it is the same kind of question: a decision with a control
  * in the middle of it. The source is chosen every time and never remembered:
  * a pre-selected answer is how a source nobody heard gets recorded.
+ *
+ * Used by every staff entry point -- Edit, the Reach Out pop-up and send
+ * draft, Attendance -- so all of them ask the same question the same way
+ * (requests/2026-10-01-staff-resubscribe-everywhere.md). A member with more
+ * than one unsubscribed address chooses which one here; with one, it is
+ * named and nothing needs choosing.
  */
 export function StaffResubscribeDialog({
-  open, onClose, address, saving, refusal, onConfirm,
+  open, onClose, memberName, choices, saving, refusal, onConfirm,
 }: {
   open: boolean;
   onClose: () => void;
-  address: string;
+  /** whose address it is, named in the question */
+  memberName?: string;
+  /** the unsubscribed addresses on offer -- at least one */
+  choices: ResubscribeChoice[];
   saving: boolean;
   /** the database's refusal, in its own words, shown inside the dialog */
   refusal: string | null;
-  onConfirm: (source: ResubscribeSource, note: string) => void;
+  onConfirm: (memberEmailId: string, source: ResubscribeSource, note: string) => void;
 }) {
   const { theme } = useTheme();
   const [source, setSource] = useState<ResubscribeSource | null>(null);
   const [note, setNote] = useState('');
+  const [picked, setPicked] = useState<string | null>(null);
+  const only = choices.length === 1 ? choices[0].id : null;
 
   useEffect(() => {
-    if (open) { setSource(null); setNote(''); }
-  }, [open]);
+    if (open) { setSource(null); setNote(''); setPicked(only); }
+  }, [open, only]);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -44,7 +59,8 @@ export function StaffResubscribeDialog({
 
   if (!open) return null;
 
-  const problem = resubscribeChoiceProblem(source, note);
+  const chosen = choices.find(c => c.id === picked) ?? null;
+  const problem = resubscribeConfirmProblem(choices.map(c => c.id), picked, source, note);
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
@@ -57,12 +73,53 @@ export function StaffResubscribeDialog({
           backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
         }}>
           <Text style={{ fontSize: 20, fontWeight: '800', color: theme.fgStrong, lineHeight: 26 }}>
-            Turn follow-ups back on?
+            {RESUBSCRIBE_COPY.title}
           </Text>
 
           <ScrollView style={{ marginTop: SPACE.md }} contentContainerStyle={{ paddingBottom: 2 }}>
-            <Text style={{ fontSize: 13, color: theme.muted, lineHeight: 20 }}>
-              {`The member unsubscribed ${address} from follow-ups. Do this only because the member asked to get attendance follow-ups again. It is recorded with your name and how the member asked.`}
+            {memberName ? (
+              <Text testID="resubscribe-member" style={{ fontSize: 14, fontWeight: '700', color: theme.fgStrong }}>
+                {memberName}
+              </Text>
+            ) : null}
+            {choices.length === 1 ? (
+              <Text testID="resubscribe-address" style={{ fontSize: 13.5, color: theme.fgStrong, marginTop: 2 }}>
+                {choices[0].address}
+              </Text>
+            ) : (
+              <View accessibilityRole="radiogroup" style={{ gap: SPACE.sm, marginTop: SPACE.sm }}>
+                {choices.map(c => {
+                  const on = picked === c.id;
+                  return (
+                    <Pressable key={c.id} testID={`resubscribe-address-${c.address}`}
+                      onPress={() => setPicked(c.id)} disabled={saving}
+                      accessibilityRole="radio" accessibilityState={{ selected: on }}
+                      accessibilityLabel={c.address}
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
+                        minHeight: TAP_MIN, paddingHorizontal: SPACE.md, borderRadius: RADIUS.md,
+                        borderWidth: 1, borderColor: on ? theme.accent : theme.line,
+                      }}>
+                      <Icon name={on ? 'radio_button_checked' : 'radio_button_unchecked'}
+                        size={19} color={on ? theme.accentInk : theme.dim} />
+                      <Text style={{ fontSize: 13.5, fontWeight: on ? '700' : '500', color: theme.fgStrong }}>
+                        {c.address}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+                {source && !chosen && problem ? (
+                  /* Said on screen, not only in the confirm button's label:
+                     a greyed-out button with no reason is a dead end. */
+                  <Text testID="resubscribe-address-problem" accessibilityLiveRegion="polite"
+                    style={{ fontSize: 12.5, color: theme.danger, lineHeight: 18 }}>
+                    {problem}
+                  </Text>
+                ) : null}
+              </View>
+            )}
+            <Text style={{ fontSize: 13, color: theme.muted, lineHeight: 20, marginTop: SPACE.sm }}>
+              {`The member unsubscribed ${chosen ? chosen.address : 'this address'} from follow-ups. Do this only because the member asked to get attendance follow-ups again. It is recorded with your name and how the member asked.`}
             </Text>
 
             <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase',
@@ -96,7 +153,7 @@ export function StaffResubscribeDialog({
               <Field label="Note" value={note} onChange={setNote} multiline
                 required={source === 'other'}
                 placeholder={source === 'other' ? 'How the member asked' : 'Optional'}
-                error={source && problem ? problem : undefined} />
+                error={source && chosen && problem ? problem : undefined} />
             </View>
 
             {refusal ? (
@@ -119,11 +176,11 @@ export function StaffResubscribeDialog({
               <Text style={{ fontSize: 14, fontWeight: '700', color: theme.fgStrong }}>Cancel</Text>
             </Pressable>
             <Pressable testID="resubscribe-confirm"
-              onPress={() => { if (!problem && !saving && source) onConfirm(source, note); }}
+              onPress={() => { if (!problem && !saving && source && chosen) onConfirm(chosen.id, source, note); }}
               disabled={saving || !!problem}
               accessibilityRole="button"
               accessibilityState={{ disabled: saving || !!problem }}
-              accessibilityLabel={problem ?? `Turn follow-ups back on for ${address}`}
+              accessibilityLabel={problem ?? `Turn follow-ups back on for ${chosen?.address ?? 'this address'}`}
               style={({ pressed }) => ({
                 flex: 1.3, minHeight: TAP_MIN + 6, borderRadius: RADIUS.md,
                 alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8,

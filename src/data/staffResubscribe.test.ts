@@ -44,3 +44,48 @@ test('the Edit form saves it through its own call, never through the form\'s Sav
   const repo = fs.readFileSync(path.join(process.cwd(), 'src/data/repository.ts'), 'utf8');
   assert.match(repo, /rpc\('staff_resubscribe_member_email'/);
 });
+
+// ---------------------------------------------------------------------------
+// Appended 01-Oct-2026: the action on Reach Out and Attendance
+// (requests/2026-10-01-staff-resubscribe-everywhere.md).
+import {
+  resubscribableAddresses, RESUBSCRIBE_COPY, resubscribeOutcomeMessage, resubscribeConfirmProblem,
+} from './staffResubscribe';
+
+test('only unsubscribed, saved addresses are offered -- never subscribed, bounced or spam-reported', () => {
+  const emails = [
+    { address: 'on@x.com', status: 'unknown' as const, id: 'a' },
+    { address: 'valid@x.com', status: 'valid' as const, id: 'b' },
+    { address: 'bounce@x.com', status: 'bounced' as const, id: 'c' },
+    { address: 'spam@x.com', status: 'complained' as const, id: 'd' },
+    { address: 'out@x.com', status: 'unsubscribed' as const, id: 'e' },
+    { address: 'unsaved@x.com', status: 'unsubscribed' as const },
+  ];
+  assert.deepEqual(resubscribableAddresses(emails).map(e => e.address), ['out@x.com']);
+  assert.deepEqual(resubscribableAddresses([]), []);
+});
+
+test('a member with two unsubscribed addresses is offered both, in record order', () => {
+  const emails = [
+    { address: 'first@x.com', status: 'unsubscribed' as const, id: '1' },
+    { address: 'ok@x.com', status: 'unknown' as const, id: '2' },
+    { address: 'second@x.com', status: 'unsubscribed' as const, id: '3' },
+  ];
+  assert.deepEqual(resubscribableAddresses(emails).map(e => e.id), ['1', '3']);
+});
+
+test('confirmation needs the address chosen when there are several, then a source; Other needs a note', () => {
+  assert.equal(resubscribeConfirmProblem(['1', '3'], null, 'phone', ''), 'Choose which address to turn back on.');
+  assert.equal(resubscribeConfirmProblem(['1', '3'], 'zzz', 'phone', ''), 'Choose which address to turn back on.');
+  assert.equal(resubscribeConfirmProblem(['1', '3'], '3', null, ''), 'Choose how the member asked.');
+  assert.equal(resubscribeConfirmProblem(['1'], '1', 'other', ' '), 'Add a note saying how the member asked.');
+  assert.equal(resubscribeConfirmProblem(['1'], '1', 'other', 'At the desk'), null);
+  assert.equal(resubscribeConfirmProblem(['1'], '1', 'whatsapp', ''), null, 'the note is optional otherwise');
+});
+
+test('the words: the question, the success, and an idempotent second attempt', () => {
+  assert.equal(RESUBSCRIBE_COPY.action, 'Resubscribe');
+  assert.equal(RESUBSCRIBE_COPY.title, 'Turn follow-ups back on for this email?');
+  assert.equal(resubscribeOutcomeMessage('resubscribed'), 'Follow-ups turned back on for this email.');
+  assert.equal(resubscribeOutcomeMessage('already'), 'Follow-ups were already on for this email.');
+});

@@ -19,7 +19,7 @@ import { useCourses, useMembers } from '../../src/data/hooks';
 import {
   createMember, updateMember, setMemberStatus, setMemberActiveFrom, staffResubscribeEmail,
 } from '../../src/data/repository';
-import { offersStaffResubscribe, type ResubscribeSource } from '../../src/data/staffResubscribe';
+import { offersStaffResubscribe, resubscribeOutcomeMessage, type ResubscribeSource } from '../../src/data/staffResubscribe';
 import { StaffResubscribeDialog } from '../../src/components/StaffResubscribeDialog';
 import {
   emailUsable, emailStateWord, isDeliveryFailure, suppressedOnRecord, normalizeEmail,
@@ -720,10 +720,10 @@ export default function MemberEdit() {
     setResubscribeSaving(true);
     setResubscribeRefusal(null);
     try {
-      await staffResubscribeEmail(resubscribing.id, source, note);
+      const result = await staffResubscribeEmail(resubscribing.id, source, note);
       const id = resubscribing.id;
       setEmails(p => p.map(x => (x.id === id ? { ...x, status: 'unknown' } : x)));
-      flash(`Follow-ups are on again for ${resubscribing.address}`);
+      flash(resubscribeOutcomeMessage(result));
       setResubscribing(null);
     } catch (err) {
       setResubscribeRefusal(err instanceof Error ? err.message : String(err));
@@ -775,10 +775,11 @@ export default function MemberEdit() {
           ? `${course} does not run at any branch yet. Add an offering for it and the member can join there.`
           : 'Choose the course first — the branches are the ones that course runs at.'}
         onSelect={l => { setBranch(l); setPicker(null); }} />
-      <StaffResubscribeDialog open={!!resubscribing} address={resubscribing?.address ?? ''}
+      <StaffResubscribeDialog open={!!resubscribing} memberName={name.trim() || undefined}
+        choices={resubscribing ? [{ id: resubscribing.id, address: resubscribing.address }] : []}
         saving={resubscribeSaving} refusal={resubscribeRefusal}
         onClose={() => { if (!resubscribeSaving) setResubscribing(null); }}
-        onConfirm={(source, note) => void turnFollowUpsBackOn(source, note)} />
+        onConfirm={(_id, source, note) => void turnFollowUpsBackOn(source, note)} />
       </>}
     >
       {pending ? (
