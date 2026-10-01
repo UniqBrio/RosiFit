@@ -8,7 +8,7 @@ import { Icon } from '../../src/components/Icon';
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface } from '../../src/theme/tokens';
 import { primaryEmail, initials, AVATAR_TINTS } from '../../src/data/mock';
-import { recipientSplit, emailExclusionReason } from '../../src/data/followup';
+import { recipientSplit, emailExclusionReason, exclusionSummary } from '../../src/data/followup';
 import { useStaffResubscribe } from '../../src/components/useStaffResubscribe';
 import { RESUBSCRIBE_COPY, resubscribableAddresses } from '../../src/data/staffResubscribe';
 import { narrowBySearch, searchTerm } from '../../src/data/memberSearch';
@@ -427,7 +427,8 @@ function SendDraftBody() {
   const caveats = [
     skipped ? `${skipped} flagged not ticked` : '',
     resending ? `${resending} already sent this week` : '',
-    excluded.length ? `${excluded.length} without an address` : '',
+    // Each reason counted as itself: an opt-out is not a missing address.
+    exclusionSummary(excluded),
   ].filter(Boolean).join(' · ');
   /* WHAT GOES OUT, on the step that sends it
      (requests/2026-09-26-preview-before-send.md). The course's resolved

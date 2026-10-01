@@ -12,15 +12,26 @@
 // random -- and an opt-out is the one status the academy is not free to
 // clear, because clearing it would be mailing somebody who asked not to be.
 //
-// TWO METHODS, ONE EFFECT:
-//   GET   a person clicked the link  -> redirected to a confirmation page on
-//         the app's own host (landing.ts says why it is not served from here)
-//   POST  a mail client acted on the List-Unsubscribe-Post header (RFC 8058
-//         one-click: Gmail's own "Unsubscribe" beside the sender) -> 200 and
-//         an empty body, which is all it reads. No cookie, session,
-//         Authorization header or redirect is needed or given.
-// Both make the SAME write to the same row with the same audit action: one
-// subscription state, two ways in.
+// A GET NEVER WRITES (requests/2026-10-01-unsubscribe-get-confirms.md).
+// Link scanners -- mail security gateways, the mailbox provider's own
+// safe-browsing fetch -- open every link in a message before the member
+// does. Production has seen them hit these links. So a GET that opted the
+// address out was an opt-out the member never made. Now:
+//   GET   the link was opened -> redirected to a page on the app's own host
+//         (landing.ts says why it is not served from here) that ASKS. Nothing
+//         is written and nothing is audited. An address that is already off
+//         goes straight to the confirmation, as before.
+//   POST  `a=unsubscribe`: the member pressed Unsubscribe on that page ->
+//         written, audited `via: link`, redirected to the confirmation.
+//   POST  with no `a`: a mail client acted on the List-Unsubscribe-Post header
+//         (RFC 8058 one-click: Gmail's own "Unsubscribe" beside the sender) ->
+//         written at once, audited `via: one_click`, 200 and an empty body,
+//         which is all it reads. No cookie, session, Authorization header or
+//         redirect is needed or given. RFC 8058 exists so that this POST, and
+//         not a GET, is the unattended opt-out.
+// Both writes are the SAME write to the same row with the same audit action:
+// one subscription state, two ways in. Old links keep working: the same
+// `?e=&t=` now opens the question instead of answering it.
 //
 // THE OPT-OUT NEVER WEAKENS A SUPPRESSION. 'unknown', 'valid' and 'bounced'
 // become 'unsubscribed' (the member's word outranks a bounce, and the bounce
@@ -84,6 +95,10 @@ Deno.serve(async (req) => {
   const token = url.searchParams.get('t') ?? '';
   // The page's button, not a mail client: see the header.
   const resubscribe = method === 'POST' && url.searchParams.get('a') === 'resubscribe';
+  // The question page's own button: an explicit press, never a fetch.
+  const pressedUnsubscribe = method === 'POST' && url.searchParams.get('a') === 'unsubscribe';
+  // RFC 8058: the only POST that carries no `a`. Answered in status codes.
+  const oneClick = method === 'POST' && !url.searchParams.has('a');
 
   const db = adminClient();
 
@@ -100,7 +115,7 @@ Deno.serve(async (req) => {
   // The words are kept here, beside the decision, for the plain-text answer;
   // the app's pages carry the same sentences (public/unsubscribed.html,
   // public/unsubscribe-failed.html).
-  const neutral = () => method === 'POST' && !resubscribe
+  const neutral = () => oneClick
     ? new Response(null, { status: 200 })
     : landing('failed', APP_ORIGIN, {
       heading: 'This link did not work',
@@ -111,13 +126,21 @@ Deno.serve(async (req) => {
 
   // `offerUndo` only where there is an address to put back: a correctly signed
   // link whose row has gone is confirmed, but has nothing to resubscribe.
-  const confirmed = (offerUndo: boolean) => method === 'POST'
+  const confirmed = (offerUndo: boolean) => oneClick
     ? new Response(null, { status: 200 })
     : landing('unsubscribed', APP_ORIGIN, {
       heading: 'You are unsubscribed',
       body: 'We will not send any more attendance follow-ups to this address.',
       academy,
     }, offerUndo ? { e: memberEmailId, t: token, fn: FUNCTION_URL } : undefined);
+
+  // The question, for a GET of a link whose address is still on. Carries the
+  // same signed pair the link did, so the page's button can post it back.
+  const ask = () => landing('confirm', APP_ORIGIN, {
+    heading: 'Unsubscribe from attendance follow-ups?',
+    body: 'Press Unsubscribe to stop attendance follow-ups to this address.',
+    academy,
+  }, { e: memberEmailId, t: token, fn: FUNCTION_URL });
 
   const resubscribed = () => landing('resubscribed', APP_ORIGIN, {
     heading: 'You are subscribed again',
@@ -133,6 +156,8 @@ Deno.serve(async (req) => {
     return neutral();
   }
   if (!await unsubscribeTokenValid(memberEmailId, token, UNSUBSCRIBE_SECRET)) return neutral();
+  // A POST with an `a` that is neither button is nobody's request.
+  if (method === 'POST' && !oneClick && !resubscribe && !pressedUnsubscribe) return neutral();
 
   const { data: row, error: readErr } = await db.from('member_emails')
     .select('id, member_id, status')
@@ -219,6 +244,10 @@ Deno.serve(async (req) => {
   // A spam report already stops every send, and is not overwritten.
   if (row.status === 'complained') return confirmed(false);
 
+  // A GET only asks. Whoever opened the link -- the member, or a scanner
+  // before the member -- gets the question; the answer is a POST.
+  if (method === 'GET') return ask();
+
   // Guarded on the status just read, so a complaint that lands in between is
   // never overwritten either.
   const { data: written, error: updErr } = await db.from('member_emails')
@@ -249,7 +278,7 @@ Deno.serve(async (req) => {
     p_entity_type: 'member_email',
     p_entity_id: row.id,
     p_changes: [{ field: 'status', old: row.status, new: 'unsubscribed' }],
-    p_metadata: { member_id: row.member_id, via: method === 'POST' ? 'one_click' : 'link' },
+    p_metadata: { member_id: row.member_id, via: oneClick ? 'one_click' : 'link' },
   });
   // The opt-out has already been saved. Losing its log entry is worth
   // knowing about and is not worth telling the member the click failed --

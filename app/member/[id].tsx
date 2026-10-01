@@ -31,7 +31,7 @@ import { emailStateWord, isDeliveryFailure } from '../../src/data/emailStatus';
 import { streakReading } from '../../src/data/streak';
 import { formatDate } from '../../src/data/memberDate';
 import {
-  flagged, isReachable, recipientSplit, emailExclusionReason, suppressedAddress,
+  flagged, isReachable, recipientSplit, emailExclusionReason, suppressedAddress, exclusionSummary,
 } from '../../src/data/followup';
 import { currentWeek, iso } from '../../src/data/period';
 import { mergeSent, sentThisSession, sentOn, recordSent } from '../../src/data/sent';
@@ -405,6 +405,7 @@ export default function MemberDetail() {
              screen is still the old rule's answer and must not be sendable. */
           recipients={promptRecipients}
           excludedNames={split.excluded.map(x => x.name)}
+          excludedSummary={exclusionSummary(split.excluded)}
           listPending={rules.state === 'loading'}
           periodLabel={week.label}
           sending={sending}

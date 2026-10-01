@@ -49,6 +49,23 @@ export function matchesMemberQuery(m: SearchableMember, query: string): boolean 
     || m.emails.some(e => e.address.toLowerCase().includes(q));
 }
 
+/**
+ * AN ATTENDANCE ROW BY ANY NAME IT IS KNOWN BY (the academy, 01-Oct-2026:
+ * "enable search by display name as well"). The register is uploaded from
+ * Google Meet, so the name a member joined the call under -- a display name
+ * -- is often the one somebody is looking for. Name, display names, email,
+ * and the member code the box used to promise. Same rule as above: a
+ * case-folded substring, nothing fuzzy.
+ */
+export function matchesAttendanceQuery(
+  r: { member: string; code?: string; aliases?: string[]; emails?: string[] }, query: string,
+): boolean {
+  const q = searchTerm(query);
+  if (!q) return true;
+  return [r.member, r.code ?? '', ...(r.aliases ?? []), ...(r.emails ?? [])]
+    .some(v => v.toLowerCase().includes(q));
+}
+
 /** The members a query leaves, in the order they were given. An empty query
  *  returns the SAME array, not a copy: no query is not a filter. */
 export function narrowBySearch<T extends SearchableMember>(members: T[], query: string): T[] {

@@ -14,6 +14,7 @@ import { useAttendance, useFilterOptions, useUnsubscribedAddresses } from '../..
 import { useStaffResubscribe } from '../../src/components/useStaffResubscribe';
 import { RESUBSCRIBE_COPY, resubscribableAddresses } from '../../src/data/staffResubscribe';
 import { FreshnessLine } from '../../src/components/FreshnessLine';
+import { matchesAttendanceQuery } from '../../src/data/memberSearch';
 import { resolvePeriod, type PeriodChoice } from '../../src/data/period';
 import { formatDate, formatTime } from '../../src/components/DateTimePicker';
 import { useAcademy, ALL_BRANCHES } from '../../src/state/academy';
@@ -125,7 +126,7 @@ export default function Attendance() {
     (branch === ALL_BRANCHES || r.branch === branch)
     && (course === allCourses || r.course === course)
     && (wantedStatus === null || r.status === wantedStatus)
-    && (!q || r.member.toLowerCase().includes(q))
+    && matchesAttendanceQuery(r, q)
   ), [all, branch, course, allCourses, wantedStatus, q]);
 
   // Counts, straight off the filtered rows. Present + extra is what turned
@@ -228,8 +229,8 @@ export default function Attendance() {
         paddingHorizontal: 13,
       }}>
         <Icon name="search" size={19} color={theme.muted} />
-        <TextInput ref={search} value={query} onChangeText={setQuery} placeholder="Search a member or code"
-          placeholderTextColor={theme.muted} accessibilityLabel="Search attendance by member or code"
+        <TextInput ref={search} value={query} onChangeText={setQuery} placeholder="Search by name, display name or email"
+          placeholderTextColor={theme.muted} accessibilityLabel="Search attendance by name, display name or email"
           onFocus={() => setSearching(true)} onBlur={() => setSearching(false)}
           selectionColor={theme.accent}
           style={{ flex: 1, color: theme.fgStrong, fontSize: 13.5, fontWeight: '600',

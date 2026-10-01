@@ -26,17 +26,20 @@
  *  by the APP_ORIGIN secret on any other deployment. */
 export const DEFAULT_APP_ORIGIN = 'https://rosi-fit.vercel.app';
 
-export type Outcome = 'unsubscribed' | 'failed' | 'resubscribed';
+export type Outcome = 'unsubscribed' | 'failed' | 'resubscribed' | 'confirm';
 
 /** The static pages, one per outcome, at their clean URLs (vercel.json). */
 export const LANDING_PATH: Record<Outcome, string> = {
   unsubscribed: '/unsubscribed',
   failed: '/unsubscribe-failed',
   resubscribed: '/resubscribed',
+  // The question a GET now gets: "Unsubscribe from attendance follow-ups?"
+  confirm: '/unsubscribe',
 };
 
 /**
- * What the confirmation page needs to offer "Resubscribe": the same signed
+ * What a page needs to offer a button that acts -- "Resubscribe" on the
+ * confirmation, "Unsubscribe" on the question: the same signed
  * pair the email's link carried, and where to post it back to. Nothing here
  * is new to the person holding it -- `e` and `t` are the link they clicked --
  * and the page accepts `fn` only in the shape of this function's own address.
