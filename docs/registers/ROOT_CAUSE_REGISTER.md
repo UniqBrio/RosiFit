@@ -93,6 +93,12 @@ body), not source.
 **Dressed as the app 30-Sep-2026** at the owner's request ("it should be professional with rosifit logo"):
 logo on the app's header gradient, the app's tokens in both themes, wording unchanged
 (`requests/2026-09-30-unsubscribe-page-branded.md`).
+**Resubscribe live 01-Oct-2026** (owner's go-ahead, in this order): `send-followups` v22 (records no
+`unsubscribe_url`), `ses-feedback` v6 (strips the link from SES payloads, `verify_jwt` false), migration
+0083 applied (read back: 0 of 815 stored messages and 0 of 26 SES events still hold a link; 24 events
+marked "[unsubscribe link removed]"; ledger row present), then `unsubscribe` v7 (`verify_jwt` false)
+with the Resubscribe path. 23 of the 24 addresses unsubscribed at deploy time have an opt-out audit
+row with a usable prior status, so they are offered the button; the 24th has none and is not.
 
 **Recurrence risk** — any Edge Function that answers a browser GET with HTML. Swept with
 `grep -rln "text/html" supabase/functions`: `unsubscribe` was the only one.
