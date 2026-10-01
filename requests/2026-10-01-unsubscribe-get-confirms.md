@@ -20,3 +20,12 @@
   behaviour and fail. Test files are append-only; they are untouched until the owner decides.
 - DEPLOY ORDER when approved: Vercel (the new page) first, then `unsubscribe` v9.
 - RUN MODE: auto · SCALE: scoped
+
+## DECISION (owner, 01-Oct-2026, later the same day)
+- "Proceed with Option 1. I explicitly approve a narrow exception to the CLAUDE.md append-only test
+  rule for this deliberate security behaviour reversal." The owner dictated the exemption text now
+  in CLAUDE.md (owner-approved behaviour reversal) and directed that only the two conflicting specs
+  change, only in their first action, with every downstream assertion kept.
+- Affected specs: `src/data/unsubscribeHandler.test.ts` "TEST 1 body link: unsubscribe -> old link
+  offers Resubscribe -> Resubscribe -> subscribed" and "bounced: an opt-out is recorded over it, no
+  Resubscribe is offered, and the button is refused". The OPEN item above is closed by this.

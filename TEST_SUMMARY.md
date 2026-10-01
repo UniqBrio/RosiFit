@@ -1,3 +1,35 @@
+## OWNER-APPROVED BEHAVIOUR REVERSAL: TWO UNSUBSCRIBE SPECS RE-POINTED — 01-Oct-2026
+
+APPROVAL: the owner, 01-Oct-2026 ("Proceed with Option 1. I explicitly approve a narrow exception
+to the CLAUDE.md append-only test rule for this deliberate security behaviour reversal"), with the
+exemption text the owner dictated, now in CLAUDE.md beside the copy-lock exemption.
+REASON: prevent email/link scanners from unsubscribing a member through a GET of the body link
+(`requests/2026-10-01-unsubscribe-get-confirms.md`). A GET now only asks; the page's Unsubscribe
+press, or Gmail's RFC 8058 POST, is the opt-out.
+AFFECTED EXISTING SPECS (src/data/unsubscribeHandler.test.ts), and nothing else:
+- "TEST 1 body link: unsubscribe -> old link offers Resubscribe -> Resubscribe -> subscribed"
+- "bounced: an opt-out is recorded over it, no Resubscribe is offered, and the button is refused"
+WHAT CHANGED: in each, ONE line -- the first action, `handle(new Request(await link(A)))` -- became
+the new flow: open the link (asserted to land on /unsubscribe and NOT to change the status; TEST 1
+also asserts no audit row), then press Unsubscribe (`POST ... &a=unsubscribe`). EVERY downstream
+assertion is preserved unchanged: the 303, the /unsubscribed target, the carried pair, the status,
+the audit action and `via: link`, the old-link re-click, Resubscribe, and the bounced refusals. No
+assertion removed, no `.skip`, no matcher loosened. The 13 link-scanner specs from 3ca5ddf are kept.
+RESULT: unsubscribeHandler.test.ts 28 of 28 green (was 26 of 28). `npm run check` ALL 7 PASS
+(test:unit 2060 tests: 2059 pass, 0 fail, 1 skipped). `deno check` unsubscribe, send-followups,
+ses-feedback clean; `deno test` 26 / 0.
+DB: `npm run test:db` 1202 PASS; failures only in 39, 52, 53 (pre-existing, identical on main's CI;
+no DB change this round). Spec 61 46/46.
+BROWSER (offline fixture export, Chromium, light and dark): 85/85 PASS -- Reach Out / Attendance /
+Edit Member offer the action only for unsubscribed (never subscribed, bounced or spam-reported);
+two-address choice, Other needs a note, success refreshes and the action goes; Attendance search;
+the question page shows its button only for this project's function, posts e, t, a=unsubscribe,
+clears the pair from the address bar, sends nothing on load, and renders in both colour schemes.
+SECURITY REVIEW (code-reviewer): no GET/HEAD/OPTIONS path writes or audits; no forged or missing
+token writes; requirements (1)-(7) PASS. LOW notes kept: the page's `fn` check names this project's
+ref (as /unsubscribed already does); one-click is recognised by the absence of `a`, token still
+required; a scanner that renders the page AND presses buttons is the accepted residual.
+
 ## ATTENDANCE SEARCH FINDS DISPLAY NAMES AND EMAIL — 01-Oct-2026
 
 `requests/2026-10-01-attendance-search-display-name.md` (micro). NOT DEPLOYED.

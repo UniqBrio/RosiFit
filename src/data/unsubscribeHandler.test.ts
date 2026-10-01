@@ -135,7 +135,13 @@ const row = (id: string, status = 'unknown'): Row => ({ id, member_id: `m-${id.s
 test('TEST 1 body link: unsubscribe -> old link offers Resubscribe -> Resubscribe -> subscribed', async () => {
   const { handle, byId, anon } = await setup([row(A)]);
 
-  const res = await handle(new Request(await link(A)));
+  // Owner-approved behaviour reversal (01-Oct-2026, TEST_SUMMARY): opening the
+  // link only asks; the page's Unsubscribe press is the opt-out.
+  const opened = await handle(new Request(await link(A)));
+  assert.equal(new URL(opened.headers.get('Location')!).pathname, '/unsubscribe', 'opening the link only asks');
+  assert.equal(byId.get(A)!.status, 'unknown', 'opening the link does not unsubscribe');
+  assert.equal(anon.length, 0, 'and audits nothing');
+  const res = await handle(new Request(await link(A, '&a=unsubscribe'), { method: 'POST' }));
   assert.equal(res.status, 303);
   const to = new URL(res.headers.get('Location')!);
   assert.equal(to.origin + to.pathname, `${ORIGIN}/unsubscribed`);
@@ -227,7 +233,12 @@ for (const [name, makeUrl] of [
 // ====================================================== suppression is kept
 test('bounced: an opt-out is recorded over it, no Resubscribe is offered, and the button is refused', async () => {
   const { handle, byId } = await setup([row(A, 'bounced')]);
-  const page = await handle(new Request(await link(A)));
+  // Owner-approved behaviour reversal (01-Oct-2026, TEST_SUMMARY): opening the
+  // link only asks; the page's Unsubscribe press is the opt-out.
+  const opened = await handle(new Request(await link(A)));
+  assert.equal(new URL(opened.headers.get('Location')!).pathname, '/unsubscribe', 'opening the link only asks');
+  assert.equal(byId.get(A)!.status, 'bounced', 'opening the link does not unsubscribe');
+  const page = await handle(new Request(await link(A, '&a=unsubscribe'), { method: 'POST' }));
   const to = new URL(page.headers.get('Location')!);
   assert.equal(to.pathname, '/unsubscribed');
   assert.equal(to.searchParams.get('e'), null, 'no button for an address that bounced before');
