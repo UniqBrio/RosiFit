@@ -1,3 +1,16 @@
+## 0084: CREATE OR REPLACE TRIGGER INSTEAD OF DROP + CREATE — 01-Oct-2026
+
+Owner-approved (Option 1). The Supabase MCP connector holds any statement containing DROP for a
+confirmation it cannot get here, so 0084 never reached production (pg_stat_statements: the DROP
+probes recorded 0 times, the plain DDL probes recorded). The two `drop trigger if exists` +
+`create trigger` pairs are now `create or replace trigger` (Postgres 14+; production 17.6, harness 16).
+No other line changed; 0084 had been applied nowhere.
+
+NOT OBSERVED FAILING: no spec added or changed - syntax-only change, re-proven by the existing specs.
+Spec 61 46/46; 0084 applied twice in a row leaves exactly one of each trigger.
+`npm run test:db` 1202 PASS, failures only in 39, 52, 53 (pre-existing, unchanged).
+`npm run check` ALL 7 PASS; `deno check` clean; `deno test` 25 / 0.
+
 ## UNSUBSCRIBE / RESUBSCRIBE FOR BOTH THE BODY LINK AND GMAIL'S UNSUBSCRIBE — 01-Oct-2026
 
 `requests/2026-10-01-resubscribe-recovery-and-gmail-one-click.md` (CHANGE, scoped, correction round 1

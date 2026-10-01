@@ -175,8 +175,7 @@ end $$;
 
 revoke all on function public.member_emails_carry_suppression() from public, anon, authenticated;
 
-drop trigger if exists member_emails_carry_suppression on public.member_emails;
-create trigger member_emails_carry_suppression
+create or replace trigger member_emails_carry_suppression
   before insert on public.member_emails
   for each row execute function public.member_emails_carry_suppression();
 
@@ -201,8 +200,7 @@ end $$;
 
 revoke all on function public.member_emails_guard_direct_write() from public, anon, authenticated;
 
-drop trigger if exists member_emails_guard_direct_write on public.member_emails;
-create trigger member_emails_guard_direct_write
+create or replace trigger member_emails_guard_direct_write
   before update on public.member_emails
   for each row execute function public.member_emails_guard_direct_write();
 
