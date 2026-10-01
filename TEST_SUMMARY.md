@@ -1,3 +1,10 @@
+## ATTENDANCE SEARCH FINDS DISPLAY NAMES AND EMAIL — 01-Oct-2026
+
+`requests/2026-10-01-attendance-search-display-name.md` (micro). NOT DEPLOYED.
+FAIL-FIRST: src/data/attendanceSearch.test.ts - against 3ca5ddf, "The input did not match the regular expression /matchesAttendanceQuery\(r, q\)/"; 3 of 3 green.
+Browser check (offline fixture export): 8/8 PASS, light and dark -- the placeholder, display name "Shazia F" finds only Shazia Begum, an email finds only Divya Ramesh, the code still finds the member.
+GATES: `npm run check` 6 of 7 PASS; test:unit 2060 tests, 2057 pass, 2 fail, 1 skipped -- the two failures are the owner-decision-pending specs recorded in the entry below, nothing else.
+
 ## THE UNSUBSCRIBE LINK ASKS; SEND CONFIRMATIONS COUNT EACH REASON — 01-Oct-2026 (WORK IN PROGRESS)
 
 `requests/2026-10-01-unsubscribe-get-confirms.md`. NOT DEPLOYED. NOT REVIEWED YET.

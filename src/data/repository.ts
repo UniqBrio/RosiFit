@@ -2544,16 +2544,36 @@ export async function fetchAttendance(period: Period): Promise<AttendanceRow[]> 
   // side, and a member who vanished that way would read as a blank name.
   const memberIds = [...new Set(records.map(r => r.member_id as string))];
   const offeringIds = [...new Set(weekSessions.map(s => s.offering_id as string))];
-  const [membersRes, offeringsRes] = await Promise.all([
+  const [membersRes, offeringsRes, aliasesRes, emailsRes] = await Promise.all([
     // The id list is every member who attended anything this week, so it is
     // member-scale and paged for the same reason the records above are — and
     // chunked for the reason the roster's own name read is: a member-scale id
     // list is too long to SEND in one request, whatever the reply would hold
     // (RC-045). A period is larger than a day, so this one is further over.
     paged('the names on this week', inChunks(memberIds, ids =>
-      supabase.from('members').select('id, full_name').in('id', ids)), 'id'),
+      supabase.from('members').select('id, full_name, member_code').in('id', ids)), 'id'),
     supabase.from('course_offerings').select('id, course_id, branch_id').in('id', offeringIds),
+    // What the search box also finds a row by: the Google Meet display names
+    // and the live addresses of the SAME members, paged and chunked alike.
+    paged('the display names on this week', inChunks(memberIds, ids =>
+      supabase.from('member_aliases').select('id, member_id, alias_display')
+        .eq('alias_type', 'name').in('member_id', ids)), 'id'),
+    paged('the addresses on this week', inChunks(memberIds, ids =>
+      supabase.from('member_emails').select('id, member_id, email')
+        .in('member_id', ids).is('deleted_at', null)), 'id'),
   ]);
+  const aliasesBy = new Map<string, string[]>();
+  for (const a of aliasesRes) {
+    const list = aliasesBy.get(a.member_id as string) ?? [];
+    list.push(a.alias_display as string);
+    aliasesBy.set(a.member_id as string, list);
+  }
+  const emailsBy = new Map<string, string[]>();
+  for (const e of emailsRes) {
+    const list = emailsBy.get(e.member_id as string) ?? [];
+    list.push(e.email as string);
+    emailsBy.set(e.member_id as string, list);
+  }
   const courseIds = [...new Set((offeringsRes.data ?? []).map(o => o.course_id as string))];
   const branchIds = [...new Set((offeringsRes.data ?? []).map(o => o.branch_id as string))];
   const [coursesRes, branchesRes] = await Promise.all([
@@ -2579,6 +2599,9 @@ export async function fetchAttendance(period: Period): Promise<AttendanceRow[]> 
       // '—' rather than '' so a row RLS hid the member of still reads as a
       // row, instead of an unexplained blank
       member: (member?.full_name as string) ?? '—',
+      code: (member?.member_code as string | null) ?? undefined,
+      aliases: aliasesBy.get(r.member_id as string) ?? [],
+      emails: emailsBy.get(r.member_id as string) ?? [],
       course: offering ? (courseName.get(offering.course_id as string) ?? '—') : '—',
       course_id: (offering?.course_id as string | undefined) ?? null,
       branch: offering ? (branchName.get(offering.branch_id as string) ?? '—') : '—',
