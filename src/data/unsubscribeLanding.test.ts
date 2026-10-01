@@ -128,3 +128,38 @@ test('only a POST that asks for it can resubscribe -- a mail client\'s one-click
   assert.match(src, /\.eq\('status', 'unsubscribed'\)/, 'the write must only ever move an unsubscribed row');
   assert.match(src, /p_action: 'communication\.resubscribed'/, 'the member\'s undo is audited like the opt-out');
 });
+
+// Appended 01-Oct-2026: the link ASKS (requests/2026-10-01-unsubscribe-get-confirms.md).
+test('the question page exists, branded, both themes, and says what the function would have said', () => {
+  const src = read('supabase/functions/unsubscribe/index.ts');
+  assert.match(src, /heading: 'Unsubscribe from attendance follow-ups\?'/);
+  assert.match(src, /body: 'Press Unsubscribe to stop attendance follow-ups to this address\.'/);
+  assert.match(read('supabase/functions/unsubscribe/landing.ts'), /confirm: '\/unsubscribe'/);
+  const html = read('public/unsubscribe.html');
+  assert.match(html, /<h1>Unsubscribe from attendance follow-ups\?<\/h1>/);
+  assert.match(html, /<p>Press Unsubscribe to stop attendance follow-ups to this address\.<\/p>/);
+  assert.match(html, /<img src="\/rosifit-logo\.png"/);
+  assert.match(html, /prefers-color-scheme: dark/);
+  assert.match(html, /textContent/);
+  assert.doesNotMatch(html, /innerHTML/);
+  assert.match(html, /<meta name="referrer" content="no-referrer">/);
+});
+
+test('the question page posts Unsubscribe only to this project\'s function, and only as a press', () => {
+  const html = read('public/unsubscribe.html');
+  assert.match(html, /<form class="undo" id="act" method="post" hidden>/, 'a form POST, hidden until the pair is checked');
+  assert.match(html, /<button type="submit">Unsubscribe<\/button>/);
+  assert.ok(html.includes('/^https:\\/\\/lhpzhkzbnquwjljmbylo\\.supabase\\.co\\/functions\\/v1\\/unsubscribe$/.test(fn)'));
+  assert.match(html, /&a=unsubscribe/);
+  assert.match(html, /history\.replaceState/);
+  assert.doesNotMatch(html, /\.submit\(\)|requestSubmit|fetch\(/, 'the page never presses its own button');
+});
+
+test('a GET only asks: the write and its audit are reached by a POST alone', () => {
+  const src = read('supabase/functions/unsubscribe/index.ts');
+  const ask = src.indexOf("if (method === 'GET') return ask();");
+  const write = src.indexOf(".update({ status: 'unsubscribed' })");
+  assert.ok(ask > 0 && write > ask, 'the GET returns before the opt-out write');
+  assert.match(src, /const oneClick = method === 'POST' && !url\.searchParams\.has\('a'\);/);
+  assert.match(src, /via: oneClick \? 'one_click' : 'link'/);
+});

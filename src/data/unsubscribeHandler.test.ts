@@ -271,3 +271,135 @@ test('methods other than GET and POST are refused', async () => {
   const { handle } = await setup([row(A)]);
   assert.equal((await handle(new Request(await link(A), { method: 'PUT' }))).status, 405);
 });
+
+// ========================================================================
+// Appended 01-Oct-2026: A GET NEVER WRITES
+// (requests/2026-10-01-unsubscribe-get-confirms.md). Link scanners open every
+// link in a message; the link now ASKS, and only a press -- or Gmail's RFC
+// 8058 POST -- opts the address out.
+
+/** What the question page's button sends: a browser form POST. */
+const pressUnsubscribe = async (id: string) =>
+  new Request(await link(id, '&a=unsubscribe'), {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: '',
+  });
+
+/** A link scanner: a plain GET, as many times as it likes. */
+const SCANNER_UA = { 'User-Agent': 'Mozilla/5.0 (compatible; SafeLinksScanner/1.0)' };
+
+for (const status of ['unknown', 'valid', 'bounced']) {
+  test(`GET without a press does not unsubscribe (${status}): it asks, writes nothing, audits nothing`, async () => {
+    const { handle, byId, anon, rowAudit } = await setup([row(A, status)]);
+    for (let i = 0; i < 3; i++) {
+      const res = await handle(new Request(await link(A), { headers: SCANNER_UA }));
+      assert.equal(res.status, 303);
+      const to = new URL(res.headers.get('Location')!);
+      assert.equal(to.origin + to.pathname, `${ORIGIN}/unsubscribe`, 'the question, not the confirmation');
+      assert.equal(to.searchParams.get('e'), A, 'the page carries the pair its button posts back');
+      assert.equal(to.searchParams.get('t'), await signUnsubscribeId(A, SECRET));
+      assert.equal(to.searchParams.get('fn'), FN);
+    }
+    assert.equal(byId.get(A)!.status, status, 'a scanner fetch changes nothing');
+    assert.equal(anon.length, 0, 'and leaves no unsubscribe audit row');
+    assert.equal(rowAudit.length, 0);
+  });
+}
+
+test('the explicit press unsubscribes: written, audited via link, lands on the confirmation with Resubscribe', async () => {
+  const { handle, byId, anon } = await setup([row(A)]);
+  const res = await handle(await pressUnsubscribe(A));
+  assert.equal(res.status, 303);
+  const to = new URL(res.headers.get('Location')!);
+  assert.equal(to.origin + to.pathname, `${ORIGIN}/unsubscribed`);
+  assert.equal(to.searchParams.get('e'), A, 'the confirmation offers the undo');
+  assert.equal(byId.get(A)!.status, 'unsubscribed');
+  assert.deepEqual(anon.map(a => [a.action, a.metadata.via]), [['communication.unsubscribed', 'link']]);
+  assert.deepEqual(anon[0].changes, [{ field: 'status', old: 'unknown', new: 'unsubscribed' }]);
+});
+
+test('RFC 8058 one-click POST still unsubscribes at once: 200, empty, via one_click -- no page, no press', async () => {
+  const { handle, byId, anon } = await setup([row(A)]);
+  const res = await handle(gmailOneClick(await link(A)));
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('Location'), null);
+  assert.equal(await res.text(), '');
+  assert.equal(byId.get(A)!.status, 'unsubscribed');
+  assert.deepEqual(anon.map(a => [a.action, a.metadata.via]), [['communication.unsubscribed', 'one_click']]);
+});
+
+for (const [name, makeUrl] of [
+  ['invalid token', () => `${FN}?e=${A}&t=not-a-token&a=unsubscribe`],
+  ['wrong member (B\'s token on A\'s id)', async () => `${FN}?e=${A}&t=${await signUnsubscribeId(B, SECRET)}&a=unsubscribe`],
+  ['no token', () => `${FN}?e=${A}&a=unsubscribe`],
+] as const) {
+  test(`${name}: the press is refused on the failure page and nothing is written`, async () => {
+    const { handle, byId, anon } = await setup([row(A), row(B)]);
+    const res = await handle(new Request(await makeUrl(), { method: 'POST' }));
+    assert.equal(new URL(res.headers.get('Location')!).pathname, '/unsubscribe-failed');
+    const get = await handle(new Request((await makeUrl()).replace('&a=unsubscribe', '')));
+    assert.equal(new URL(get.headers.get('Location')!).pathname, '/unsubscribe-failed',
+      'a bad link never reaches the question page either');
+    assert.equal(byId.get(A)!.status, 'unknown');
+    assert.equal(byId.get(B)!.status, 'unknown');
+    assert.equal(anon.length, 0);
+  });
+}
+
+test('a repeated press is idempotent: one write, one audit row, the same confirmation', async () => {
+  const { handle, byId, anon } = await setup([row(A)]);
+  await handle(await pressUnsubscribe(A));
+  const again = await handle(await pressUnsubscribe(A));
+  assert.equal(new URL(again.headers.get('Location')!).pathname, '/unsubscribed');
+  await handle(gmailOneClick(await link(A)));
+  assert.equal(byId.get(A)!.status, 'unsubscribed');
+  assert.equal(anon.length, 1, 'no second audit row for a change that did not happen');
+  // Opening the old link now goes straight to the confirmation, Resubscribe offered.
+  const page = await handle(new Request(await link(A)));
+  const to = new URL(page.headers.get('Location')!);
+  assert.equal(to.pathname, '/unsubscribed');
+  assert.equal(to.searchParams.get('e'), A);
+});
+
+test('Resubscribe still works after the pressed unsubscribe', async () => {
+  const { handle, byId, anon } = await setup([row(A)]);
+  await handle(await pressUnsubscribe(A));
+  const back = await handle(new Request(await link(A, '&a=resubscribe'), { method: 'POST' }));
+  assert.equal(new URL(back.headers.get('Location')!).pathname, '/resubscribed');
+  assert.equal(byId.get(A)!.status, 'unknown');
+  assert.deepEqual(anon.map(a => a.action), ['communication.unsubscribed', 'communication.resubscribed']);
+  // And a scanner re-fetching the link afterwards changes nothing again.
+  await handle(new Request(await link(A), { headers: SCANNER_UA }));
+  assert.equal(byId.get(A)!.status, 'unknown');
+  assert.equal(anon.length, 2);
+});
+
+test('bounced: GET asks; the press records the opt-out but offers no Resubscribe, and the button is refused', async () => {
+  const { handle, byId } = await setup([row(A, 'bounced')]);
+  await handle(new Request(await link(A)));
+  assert.equal(byId.get(A)!.status, 'bounced', 'opening the link changes nothing');
+  const res = await handle(await pressUnsubscribe(A));
+  const to = new URL(res.headers.get('Location')!);
+  assert.equal(to.pathname, '/unsubscribed');
+  assert.equal(to.searchParams.get('e'), null, 'no undo for an address that bounced before');
+  assert.equal(byId.get(A)!.status, 'unsubscribed');
+  const back = await handle(new Request(await link(A, '&a=resubscribe'), { method: 'POST' }));
+  assert.equal(new URL(back.headers.get('Location')!).pathname, '/unsubscribe-failed');
+  assert.equal(byId.get(A)!.status, 'unsubscribed', 'the bounce is not washed back to sendable');
+});
+
+test('spam-reported: GET confirms without asking, the press does not overwrite, nothing is audited', async () => {
+  const { handle, byId, anon } = await setup([row(A, 'complained')]);
+  const page = await handle(new Request(await link(A)));
+  assert.equal(new URL(page.headers.get('Location')!).pathname, '/unsubscribed');
+  await handle(await pressUnsubscribe(A));
+  assert.equal(byId.get(A)!.status, 'complained');
+  assert.equal(anon.length, 0);
+});
+
+test('a POST whose `a` is neither button is refused and writes nothing', async () => {
+  const { handle, byId, anon } = await setup([row(A)]);
+  const res = await handle(new Request(await link(A, '&a=whatever'), { method: 'POST', body: 'List-Unsubscribe=One-Click' }));
+  assert.equal(new URL(res.headers.get('Location')!).pathname, '/unsubscribe-failed');
+  assert.equal(byId.get(A)!.status, 'unknown');
+  assert.equal(anon.length, 0);
+});

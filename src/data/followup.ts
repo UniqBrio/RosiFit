@@ -288,3 +288,41 @@ export function flagged(
 ): Member[] {
   return members.filter(m => isEligible(m, rulesByCourseName[m.course] ?? globalRule, onIso));
 }
+
+/**
+ * WHY A MEMBER IS LEFT OUT OF A SEND, as one of five kinds, so a COUNT can say
+ * it too (requests/2026-10-01-unsubscribe-get-confirms.md, owner step 6). The
+ * send confirmations said "N without an address" for every excluded member, an
+ * unsubscribed one included -- the same wrong claim `emailExclusionReason`
+ * already stopped making beside each name. Same order as that sentence: an
+ * opt-out first, then a spam report, then a bounce.
+ */
+export type ExclusionKind = 'unsubscribed' | 'complained' | 'bounced' | 'no_email' | 'other';
+
+export function exclusionKind(m: Member): ExclusionKind {
+  if (m.emails.length === 0) return 'no_email';
+  const worst = suppressedAddress(m)?.status;
+  return worst === 'unsubscribed' || worst === 'complained' || worst === 'bounced' ? worst : 'other';
+}
+
+const EXCLUSION_ORDER: ExclusionKind[] = ['unsubscribed', 'complained', 'bounced', 'no_email', 'other'];
+const EXCLUSION_WORDS: Record<ExclusionKind, string> = {
+  unsubscribed: 'unsubscribed',
+  complained: 'marked as spam',
+  bounced: 'bounced',
+  no_email: 'with no email address',
+  other: 'with no usable email',
+};
+
+/**
+ * The excluded members as a count per reason: "2 unsubscribed", or with more
+ * than one reason "3 left out: 2 unsubscribed, 1 with no email address".
+ * Empty when nobody is excluded.
+ */
+export function exclusionSummary(excluded: readonly Member[]): string {
+  if (excluded.length === 0) return '';
+  const counts = new Map<ExclusionKind, number>();
+  for (const m of excluded) counts.set(exclusionKind(m), (counts.get(exclusionKind(m)) ?? 0) + 1);
+  const parts = EXCLUSION_ORDER.filter(k => counts.has(k)).map(k => `${counts.get(k)} ${EXCLUSION_WORDS[k]}`);
+  return parts.length === 1 ? parts[0] : `${excluded.length} left out: ${parts.join(', ')}`;
+}

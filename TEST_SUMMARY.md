@@ -1,3 +1,14 @@
+## THE UNSUBSCRIBE LINK ASKS; SEND CONFIRMATIONS COUNT EACH REASON — 01-Oct-2026 (WORK IN PROGRESS)
+
+`requests/2026-10-01-unsubscribe-get-confirms.md`. NOT DEPLOYED. NOT REVIEWED YET.
+
+FAIL-FIRST: src/data/unsubscribeHandler.test.ts (13 appended cases) - against HEAD's unsubscribe/index.ts, 11 of 28 red, e.g. "the question, not the confirmation  + 'https://rosi-fit.vercel.app/unsubscribed' - 'https://rosi-fit.vercel.app/unsubscribe'"; all 13 green with the change.
+FAIL-FIRST: src/data/exclusionSummary.test.ts - against HEAD's send/index.tsx, "The input was expected to not match the regular expression /without an address/"; 3 of 3 green.
+NOT OBSERVED FAILING: src/data/unsubscribeLanding.test.ts (3 appended cases) and supabase/functions/unsubscribe/landing.test.ts (1 appended case) - pin a new page and a new landing outcome; green.
+
+KNOWN RED, OWNER DECISION PENDING: src/data/unsubscribeHandler.test.ts "TEST 1 body link: unsubscribe -> old link offers Resubscribe -> Resubscribe -> subscribed" and "bounced: an opt-out is recorded over it, no Resubscribe is offered, and the button is refused" assert that a GET writes the opt-out -- the behaviour the owner asked to remove. Untouched (append-only); 26 of 28 green in that file.
+`deno check` unsubscribe + send-followups clean; `deno test` 26 / 0. Full `npm run check`, spec 61 and browser checks NOT yet re-run for this round.
+
 ## STAFF RESUBSCRIBE ON REACH OUT AND ATTENDANCE, ONE SHARED FLOW — 01-Oct-2026
 
 `requests/2026-10-01-staff-resubscribe-everywhere.md` (CHANGE, scoped). Reach Out (member pop-up

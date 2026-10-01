@@ -99,3 +99,17 @@ Deno.test('the page offers the button only where the press would be honoured', (
   assertEquals(mayOfferResubscribe('complained'), false);
   assertEquals(mayOfferResubscribe(null), false);
 });
+
+// Appended 01-Oct-2026: a GET of the link lands on the question, carrying the
+// pair its Unsubscribe button posts back (requests/2026-10-01-unsubscribe-get-confirms.md).
+Deno.test('the question is its own page, and carries the signed pair for its button', () => {
+  assertEquals(LANDING_PATH.confirm, '/unsubscribe');
+  const res = landing('confirm', 'https://app.example.com', { heading: 'h', body: 'b', academy: 'A' },
+    { e: 'id-1', t: 'a+b/c', fn: 'https://ref.supabase.co/functions/v1/unsubscribe' });
+  assertEquals(res.status, 303);
+  const loc = new URL(res.headers.get('Location')!);
+  assertEquals(loc.pathname, '/unsubscribe');
+  assertEquals(loc.searchParams.get('e'), 'id-1');
+  assertEquals(loc.searchParams.get('t'), 'a+b/c');
+  assertEquals(res.headers.get('Cache-Control'), 'no-store');
+});
