@@ -12,10 +12,39 @@
 // random -- and an opt-out is the one status the academy is not free to
 // clear, because clearing it would be mailing somebody who asked not to be.
 //
-// TWO METHODS, ONE EFFECT:
-//   GET   a person clicked the link  -> a small confirmation page
-//   POST  a mail client acted on the List-Unsubscribe-Post header (RFC 8058
-//         one-click) -> 200 and an empty body, which is all it reads
+// A GET NEVER WRITES (requests/2026-10-01-unsubscribe-get-confirms.md).
+// Link scanners -- mail security gateways, the mailbox provider's own
+// safe-browsing fetch -- open every link in a message before the member
+// does. Production has seen them hit these links. So a GET that opted the
+// address out was an opt-out the member never made. Now:
+//   GET   the link was opened -> redirected to a page on the app's own host
+//         (landing.ts says why it is not served from here) that ASKS. Nothing
+//         is written and nothing is audited. An address that is already off
+//         goes straight to the confirmation, as before.
+//   POST  `a=unsubscribe`: the member pressed Unsubscribe on that page ->
+//         written, audited `via: link`, redirected to the confirmation.
+//   POST  with no `a`: a mail client acted on the List-Unsubscribe-Post header
+//         (RFC 8058 one-click: Gmail's own "Unsubscribe" beside the sender) ->
+//         written at once, audited `via: one_click`, 200 and an empty body,
+//         which is all it reads. No cookie, session, Authorization header or
+//         redirect is needed or given. RFC 8058 exists so that this POST, and
+//         not a GET, is the unattended opt-out.
+// Both writes are the SAME write to the same row with the same audit action:
+// one subscription state, two ways in. Old links keep working: the same
+// `?e=&t=` now opens the question instead of answering it.
+//
+// THE OPT-OUT NEVER WEAKENS A SUPPRESSION. 'unknown', 'valid' and 'bounced'
+// become 'unsubscribed' (the member's word outranks a bounce, and the bounce
+// stays readable as the opt-out's "before"). 'complained' is left as it is: a
+// spam report already stops every send and is the stronger record.
+//
+// AND ONE WAY BACK: POST with `a=resubscribe` is the "Resubscribe" button on
+// the confirmation page, carrying the same signed link. It reverses an
+// unsubscribe and nothing else -- a bounce or a spam report is not the
+// member's click to undo here -- and answers with a redirect to /resubscribed.
+// An opt-out stays the member's alone to undo: the signed link is the proof
+// that this is the member, exactly as it is for the opt-out itself. A mail
+// client's one-click POST never carries `a`, so it can only ever unsubscribe.
 //
 // WHAT AN INVALID LINK IS TOLD: that the link did not work, and nothing else.
 // Never whether the id existed. "No such member" and "wrong signature" have
@@ -24,6 +53,7 @@
 import { adminClient } from '../_shared/db.ts';
 import { unquoteSecret } from '../_shared/from-address.ts';
 import { unsubscribeTokenValid } from '../_shared/unsubscribe-token.ts';
+import { appOrigin, landing, mayOfferResubscribe, resubscribeStep } from './landing.ts';
 
 const UNSUBSCRIBE_SECRET = (() => {
   // unquoteSecret for the reason SETUP.md records: a secret set through a
@@ -34,46 +64,20 @@ const UNSUBSCRIBE_SECRET = (() => {
   return raw ? unquoteSecret(raw) : '';
 })();
 
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+/**
+ * Where GET sends the person afterwards. Read once, like the secret above:
+ * APP_ORIGIN when this deployment sets one, the recorded production host when
+ * it does not, and null -- plain text, no redirect -- when it is set to
+ * something that is not an https origin.
+ */
+const APP_ORIGIN = appOrigin(Deno.env.get('APP_ORIGIN'));
+if (!APP_ORIGIN) {
+  console.error('unsubscribe: APP_ORIGIN is not an https origin -- answering in plain text instead of redirecting.');
 }
 
-/**
- * The page, both outcomes.
- *
- * Inline styles and no assets on purpose: this is opened from a mail client's
- * browser, often on a phone, often on a bad connection, and a stylesheet that
- * has not arrived would leave the member staring at unstyled text wondering
- * whether it worked. 16px minimum, one column, generous line height.
- *
- * Colours are literal here and only here. src/theme/tokens.ts is a React
- * Native module an Edge Function cannot import, and this page renders in a
- * browser that never loads the app -- so the token gate does not reach it.
- * They are plain near-black on white, which needs no measurement to clear
- * 4.5:1 (#1a1a1a on #ffffff is 16.1:1).
- */
-function page(heading: string, body: string, academy: string): Response {
-  const html = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(heading)}</title>
-</head>
-<body style="margin:0;padding:32px 20px;background:#ffffff;color:#1a1a1a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:16px;line-height:1.6;">
-<div style="max-width:34em;margin:0 auto;">
-<h1 style="margin:0 0 16px;font-size:22px;line-height:1.3;font-weight:600;">${escapeHtml(heading)}</h1>
-<p style="margin:0 0 16px;">${escapeHtml(body)}</p>
-<p style="margin:24px 0 0;font-size:14px;color:#4a4a4a;">${escapeHtml(academy)}</p>
-</div>
-</body>
-</html>`;
-  return new Response(html, {
-    status: 200,
-    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
-  });
-}
+/** This function's own public address, which the confirmation page posts the
+ *  Resubscribe button back to. SUPABASE_URL is injected by the runtime. */
+const FUNCTION_URL = `${(Deno.env.get('SUPABASE_URL') ?? '').replace(/\/+$/, '')}/functions/v1/unsubscribe`;
 
 Deno.serve(async (req) => {
   const method = req.method;
@@ -84,6 +88,17 @@ Deno.serve(async (req) => {
   // the status code. The body is drained and discarded rather than parsed:
   // there is nothing in it this endpoint needs, and the id is in the URL.
   if (method === 'POST') await req.text().catch(() => '');
+
+  const url = new URL(req.url);
+  // Read before any closure below captures them.
+  const memberEmailId = url.searchParams.get('e') ?? '';
+  const token = url.searchParams.get('t') ?? '';
+  // The page's button, not a mail client: see the header.
+  const resubscribe = method === 'POST' && url.searchParams.get('a') === 'resubscribe';
+  // The question page's own button: an explicit press, never a fetch.
+  const pressedUnsubscribe = method === 'POST' && url.searchParams.get('a') === 'unsubscribe';
+  // RFC 8058: the only POST that carries no `a`. Answered in status codes.
+  const oneClick = method === 'POST' && !url.searchParams.has('a');
 
   const db = adminClient();
 
@@ -97,25 +112,41 @@ Deno.serve(async (req) => {
 
   // ONE answer for every way this can fail. Built once so no branch can drift
   // into saying something more specific than another.
-  const neutral = () => method === 'POST'
+  // The words are kept here, beside the decision, for the plain-text answer;
+  // the app's pages carry the same sentences (public/unsubscribed.html,
+  // public/unsubscribe-failed.html).
+  const neutral = () => oneClick
     ? new Response(null, { status: 200 })
-    : page(
-      'This link did not work',
-      'The link may be incomplete or out of date. Try copying the whole address '
-      + 'from the email, or reply to it and we will sort it out.',
-      academy);
+    : landing('failed', APP_ORIGIN, {
+      heading: 'This link did not work',
+      body: 'The link may be incomplete or out of date. Try copying the whole address '
+        + 'from the email, or reply to it and we will sort it out.',
+      academy,
+    });
 
-  const confirmed = () => method === 'POST'
+  // `offerUndo` only where there is an address to put back: a correctly signed
+  // link whose row has gone is confirmed, but has nothing to resubscribe.
+  const confirmed = (offerUndo: boolean) => oneClick
     ? new Response(null, { status: 200 })
-    : page(
-      'You are unsubscribed',
-      'We will not send any more attendance follow-ups to this address. '
-      + 'If this was a mistake, reply to any earlier email and we will turn them back on.',
-      academy);
+    : landing('unsubscribed', APP_ORIGIN, {
+      heading: 'You are unsubscribed',
+      body: 'We will not send any more attendance follow-ups to this address.',
+      academy,
+    }, offerUndo ? { e: memberEmailId, t: token, fn: FUNCTION_URL } : undefined);
 
-  const url = new URL(req.url);
-  const memberEmailId = url.searchParams.get('e') ?? '';
-  const token = url.searchParams.get('t') ?? '';
+  // The question, for a GET of a link whose address is still on. Carries the
+  // same signed pair the link did, so the page's button can post it back.
+  const ask = () => landing('confirm', APP_ORIGIN, {
+    heading: 'Unsubscribe from attendance follow-ups?',
+    body: 'Press Unsubscribe to stop attendance follow-ups to this address.',
+    academy,
+  }, { e: memberEmailId, t: token, fn: FUNCTION_URL });
+
+  const resubscribed = () => landing('resubscribed', APP_ORIGIN, {
+    heading: 'You are subscribed again',
+    body: 'We will send attendance follow-ups to this address again.',
+    academy,
+  });
 
   if (!UNSUBSCRIBE_SECRET) {
     // Refuse rather than pretend. Without the key no signature can be
@@ -125,6 +156,8 @@ Deno.serve(async (req) => {
     return neutral();
   }
   if (!await unsubscribeTokenValid(memberEmailId, token, UNSUBSCRIBE_SECRET)) return neutral();
+  // A POST with an `a` that is neither button is nobody's request.
+  if (method === 'POST' && !oneClick && !resubscribe && !pressedUnsubscribe) return neutral();
 
   const { data: row, error: readErr } = await db.from('member_emails')
     .select('id, member_id, status')
@@ -141,19 +174,99 @@ Deno.serve(async (req) => {
   // there is nothing to hide from its holder, and the promise it makes is
   // already true -- a deleted address cannot be mailed. Telling that person
   // "this link did not work" would invite them to try again.
-  if (!row) return confirmed();
+  // What the address was just before its latest opt-out -- by the link or by
+  // Gmail's one-click alike -- from the row audit every writer produces
+  // (email_status_before_opt_out, 0084). It used to read only this
+  // function's own `communication.unsubscribed` row, which one live opt-out
+  // does not have. Read only for an address that IS unsubscribed: it decides
+  // whether the page offers Resubscribe, and whether a press of it is
+  // honoured. Null when unknown, which offers nothing and is never guessed.
+  const statusBeforeOptOut = async (): Promise<string | null> => {
+    if (!row || row.status !== 'unsubscribed') return null;
+    const { data, error } = await db.rpc('email_status_before_opt_out', {
+      p_member_email_id: row.id,
+    });
+    if (error) {
+      console.error('unsubscribe: could not read the opt-out history', error.message);
+      return null;
+    }
+    return typeof data === 'string' ? data : null;
+  };
+
+  if (resubscribe) {
+    // The rule is resubscribeStep's (landing.ts, with its spec). No address
+    // left, a bounce or spam report -- now or just before the opt-out -- gets
+    // the link-did-not-work page rather than a claim of a subscription that
+    // is not there; already on is the same answer as done, with no write and
+    // no second audit row.
+    const step = resubscribeStep(row?.status, await statusBeforeOptOut());
+    if (step === 'already') return resubscribed();
+    if (step !== 'write' || !row) return neutral();
+
+    // 'unknown', as reinstate_member_email (0078) and every new address use:
+    // the next send finds out afresh whether the address takes mail.
+    const { data: moved, error: backErr } = await db.from('member_emails')
+      .update({ status: 'unknown' })
+      .eq('id', row.id)
+      .eq('status', 'unsubscribed')
+      .is('deleted_at', null)
+      .select('id');
+    if (backErr) {
+      console.error('unsubscribe: could not save the resubscribe', backErr.message);
+      return neutral();
+    }
+    // Nothing moved: a second press raced this one, or the status changed in
+    // between. No audit row for a change that did not happen; the page then
+    // says whatever the address now is.
+    if (!moved || moved.length === 0) {
+      const { data: now } = await db.from('member_emails').select('status')
+        .eq('id', row.id).is('deleted_at', null).maybeSingle();
+      return now && (now.status === 'unknown' || now.status === 'valid') ? resubscribed() : neutral();
+    }
+    // The member's own act, filed the way the opt-out is (audit_log_anon, 0065).
+    const { error: backAuditErr } = await db.rpc('audit_log_anon', {
+      p_action: 'communication.resubscribed',
+      p_entity_type: 'member_email',
+      p_entity_id: row.id,
+      p_changes: [{ field: 'status', old: row.status, new: 'unknown' }],
+      p_metadata: { member_id: row.member_id, via: 'resubscribe_button' },
+    });
+    if (backAuditErr) console.error('unsubscribe: could not audit the resubscribe', backAuditErr.message);
+    return resubscribed();
+  }
+
+  if (!row) return confirmed(false);
 
   // Idempotent, and quiet about it. Clicking twice must not error, and must
   // not write a second audit row saying something changed when nothing did.
-  if (row.status === 'unsubscribed') return confirmed();
+  // The button is offered only where pressing it would be honoured.
+  if (row.status === 'unsubscribed') return confirmed(mayOfferResubscribe(await statusBeforeOptOut()));
+  // A spam report already stops every send, and is not overwritten.
+  if (row.status === 'complained') return confirmed(false);
 
-  const { error: updErr } = await db.from('member_emails')
+  // A GET only asks. Whoever opened the link -- the member, or a scanner
+  // before the member -- gets the question; the answer is a POST.
+  if (method === 'GET') return ask();
+
+  // Guarded on the status just read, so a complaint that lands in between is
+  // never overwritten either.
+  const { data: written, error: updErr } = await db.from('member_emails')
     .update({ status: 'unsubscribed' })
     .eq('id', row.id)
-    .is('deleted_at', null);
+    .in('status', ['unknown', 'valid', 'bounced'])
+    .is('deleted_at', null)
+    .select('id');
   if (updErr) {
     console.error('unsubscribe: could not save the opt-out', updErr.message);
     return neutral();
+  }
+  if (!written || written.length === 0) {
+    // Something else wrote in between (a second click, a complaint). The
+    // promise holds only if nothing can be sent there now.
+    const { data: now } = await db.from('member_emails').select('status')
+      .eq('id', row.id).is('deleted_at', null).maybeSingle();
+    return !now || ['unsubscribed', 'complained', 'bounced'].includes(now.status)
+      ? confirmed(false) : neutral();
   }
 
   // actor_kind 'anon', through audit_log_anon (0065). Not audit_log(): on the
@@ -165,12 +278,14 @@ Deno.serve(async (req) => {
     p_entity_type: 'member_email',
     p_entity_id: row.id,
     p_changes: [{ field: 'status', old: row.status, new: 'unsubscribed' }],
-    p_metadata: { member_id: row.member_id, via: method === 'POST' ? 'one_click' : 'link' },
+    p_metadata: { member_id: row.member_id, via: oneClick ? 'one_click' : 'link' },
   });
   // The opt-out has already been saved. Losing its log entry is worth
   // knowing about and is not worth telling the member the click failed --
   // that invites a second click, which is a no-op anyway.
   if (auditErr) console.error('unsubscribe: could not audit the opt-out', auditErr.message);
 
-  return confirmed();
+  // Offered only when the address could be written to before this opt-out: a
+  // bounced or spam-reported address unsubscribed now is not one to put back.
+  return confirmed(mayOfferResubscribe(row.status));
 });

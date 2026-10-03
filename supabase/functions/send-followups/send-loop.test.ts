@@ -168,3 +168,35 @@ Deno.test('with no refusals nothing changes: all sent, batch completed', async (
   assertEquals(outcome.finalStatus, 'completed');
   assertEquals(sentTo, ['m1@example.test', 'm2@example.test']);
 });
+
+// ------------------------------------------- the opt-out link is not stored
+// "Close it first" (owner, 30-Sep-2026, requests/2026-09-30-resubscribe-button.md).
+// `email_messages` is readable by every signed-in account (0009 messages_read),
+// and `variables` used to hold each member's signed unsubscribe link. Since
+// the Resubscribe button, that link can UNDO an opt-out, so a stored copy
+// would let staff do what only the member may. The email carries the link;
+// the record of the email must not.
+
+Deno.test('no stored message row carries the unsubscribe link, sent or excluded', async () => {
+  const { admin, inserts } = fakeAdmin();
+  const { provider } = fakeProvider();
+  const link = 'https://ref.supabase.co/functions/v1/unsubscribe?e=id&t=secret';
+  const sending: PreparedRecipient = {
+    ...recipient('m-1', 'Asha'),
+    vars: { first_name: 'Asha', unsubscribe_url: link },
+  };
+  const excluded: PreparedRecipient = {
+    kind: 'excluded', memberId: 'm-2', name: 'Bina', toEmail: null, subject: 'Subject',
+    vars: { first_name: 'Bina', unsubscribe_url: link }, reason: 'No email on file',
+  };
+  await runSendLoop(admin, provider, 'batch-1', [sending, excluded]);
+  const rows = inserts.filter(i => i.table === 'email_messages').map(i => i.row);
+  assertEquals(rows.length, 2);
+  for (const row of rows) {
+    const vars = row.variables as Record<string, string>;
+    assertEquals('unsubscribe_url' in vars, false);
+    assertEquals(JSON.stringify(row).includes('secret'), false);
+  }
+  // Everything else is still recorded, so the message stays explainable.
+  assertEquals((rows[0].variables as Record<string, string>).first_name, 'Asha');
+});

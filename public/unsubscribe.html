@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#33073A">
+<title>Unsubscribe from attendance follow-ups?</title>
+<link rel="icon" href="/icon-192.png">
+<!--
+  Where the unsubscribe link lands now (requests/2026-10-01-unsubscribe-get-confirms.md;
+  supabase/functions/unsubscribe/landing.ts says why this page is served by
+  the app and not by the function). NOTHING HAS BEEN WRITTEN when this page
+  shows: opening a link is what a link scanner does too, so the link only
+  asks. The Unsubscribe button posts the signed pair (`e`, `t`) back to the
+  function's own address (`fn`) with `a=unsubscribe`, and that press is the
+  opt-out; the function then lands on /unsubscribed, which offers the undo.
+  `fn` is accepted only as THIS project's unsubscribe function, so a crafted
+  link cannot point the button at anybody else's. The pair is cleared from
+  the address bar and history once read. Every value from the
+  URL is set as text or as a URL attribute, never as markup, and no-referrer
+  keeps the pair out of any request this page makes.
+  Opened from a mail client, often on a phone, by a member who has no account:
+  no scripts beyond the few lines below, no app bundle, no web fonts -- one
+  logo from this same host, and the words do not wait for it. 16px minimum,
+  one column.
+
+  DRESSED AS THE APP (requests/2026-09-30-unsubscribe-page-branded.md): the
+  RosiFit logo on the app's own header gradient, and the app's tokens copied
+  from src/theme/tokens.ts -- this page loads no app code, so they are literal
+  here. Every text pair is measured, both themes:
+    light  #1C0A17 on #FFFFFF 19.0:1 · #2E1727 on #FFFFFF 16.6:1 ·
+           #C81477 on #FFFFFF 5.5:1 (and 4.5:1 on its own tinted circle)
+    dark   #FFFFFF on #170A14 19.3:1 · #EDE3EA on #170A14 15.4:1 ·
+           #F5A8CE on #170A14 10.4:1 (and 8.1:1 on its own tinted circle)
+    band   #FFFFFF on #5C0F63 12.3:1, on #210528 18.8:1
+    button #FFFFFF on #D6157F 4.9:1 (the app's own accent-button pair)
+  The state is said in the heading's words; the icon repeats it and is not
+  the only signal (guardrail 3).
+-->
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #F4EEF2; --surface: #FFFFFF; --line: rgba(28,10,23,0.14);
+    --strong: #1C0A17; --fg: #2E1727;
+    --ink: #C81477; --ink-soft: rgba(214,21,127,0.12);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #08040A; --surface: #170A14; --line: rgba(255,255,255,0.12);
+      --strong: #FFFFFF; --fg: #EDE3EA;
+      --ink: #F5A8CE; --ink-soft: rgba(245,168,206,0.14);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    font-size: 16px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+  .band { background: linear-gradient(135deg, #5C0F63 0%, #33073A 55%, #210528 100%);
+    padding: 36px 20px 88px; text-align: center; color: #FFFFFF; }
+  .band img { display: block; width: 96px; height: auto; margin: 0 auto; }
+  .academy { margin: 12px 0 0; font-size: 15px; font-weight: 700; letter-spacing: 0.2px; }
+  .academy:empty { display: none; }
+  main { max-width: 30em; margin: -60px auto 40px; padding: 0 16px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
+    padding: 32px 28px 28px; text-align: center;
+    box-shadow: 0 12px 32px rgba(28,10,23,0.12); }
+  .mark { width: 56px; height: 56px; margin: 0 auto 18px; border-radius: 50%;
+    background: var(--ink-soft); color: var(--ink);
+    display: flex; align-items: center; justify-content: center; }
+  .mark svg { width: 28px; height: 28px; }
+  h1 { margin: 0 0 12px; font-size: 22px; line-height: 1.3; font-weight: 700; color: var(--strong); }
+  p { margin: 0; }
+  .undo { margin: 22px 0 0; }
+  .undo p { color: var(--fg); font-size: 15px; }
+  .undo button { margin-top: 12px; min-height: 48px; padding: 0 28px; border: 0; border-radius: 999px;
+    background: #D6157F; color: #FFFFFF; font: inherit; font-weight: 700; cursor: pointer; }
+  .undo button:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+  .undo button:disabled { opacity: 0.7; cursor: default; }
+  .note { margin-top: 18px; font-size: 15px; }
+  .rule { width: 40px; height: 3px; border-radius: 2px; background: var(--ink); margin: 24px auto 0; border: 0; }
+</style>
+</head>
+<body>
+<header class="band">
+  <img src="/rosifit-logo.png" alt="" width="96" height="107">
+  <p class="academy" id="academy"></p>
+</header>
+<main>
+<div class="card">
+<div class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5h16v11H4z"/><path d="M4 7l8 6 8-6"/></svg></div>
+<h1>Unsubscribe from attendance follow-ups?</h1>
+<p>Press Unsubscribe to stop attendance follow-ups to this address.</p>
+<form class="undo" id="act" method="post" hidden>
+  <button type="submit">Unsubscribe</button>
+</form>
+<p class="note" id="broken" hidden>This link did not work. Try copying the whole address from the email.</p>
+<hr class="rule">
+</div>
+</main>
+<script>
+  /* Inside a function on purpose: a top-level `var name` IS window.name, which
+     turns a missing parameter into the word "null" on the page. */
+  (function () {
+    try {
+      var academy = new URLSearchParams(location.search).get('academy');
+      if (academy) document.getElementById('academy').textContent = academy.slice(0, 120);
+      var q = new URLSearchParams(location.search);
+      var e = q.get('e'), t = q.get('t'), fn = q.get('fn');
+      if (e && t && fn && /^https:\/\/lhpzhkzbnquwjljmbylo\.supabase\.co\/functions\/v1\/unsubscribe$/.test(fn)) {
+        var form = document.getElementById('act');
+        form.action = fn + '?e=' + encodeURIComponent(e) + '&t=' + encodeURIComponent(t) + '&a=unsubscribe';
+        form.addEventListener('submit', function () { form.querySelector('button').disabled = true; });
+        form.hidden = false;
+      } else {
+        document.getElementById('broken').hidden = false;
+      }
+      // The pair is read; keep it out of the address bar and history.
+      if (e || t || fn) {
+        history.replaceState(null, '', location.pathname + (academy ? '?academy=' + encodeURIComponent(academy) : ''));
+      }
+    } catch (e) { /* the sentences above stand on their own */ }
+  })();
+</script>
+</body>
+</html>
