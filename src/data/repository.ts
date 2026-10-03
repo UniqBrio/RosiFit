@@ -17,13 +17,14 @@ import { phoneDigits } from './signin';
 import { cleanAlias, aliasProblem, aliasSaveError, MERGE_FAILED } from './alias';
 import { sentenceOpening } from './refusalCase';
 import { personReadable } from './engineWording';
-import { iso, joinedLabel, type Period } from './period';
+import { currentWeek, iso, joinedLabel, type Period } from './period';
 import { SUBJECT_MIN, SUBJECT_MAX, BODY_MIN, COURSE_NAME_MIN, COURSE_NAME_MAX } from './message';
 import { bucketFixture, type BucketMetrics } from './buckets';
 import type { SentMap } from './sent';
 import type { BatchSummary } from './sendBatch';
 import { metricsPage } from './periodMetrics';
 import { duringWrite } from './inFlight';
+import { sharedMemberRead, invalidateMemberReads } from './memberStore';
 import { currentSchedules, today } from './schedule';
 import { inactiveFromProblem, activeAgainFromProblem } from './inactiveFrom';
 import { activeFromProblem } from './joined';
@@ -185,7 +186,47 @@ export async function isRegisteredNumber(digits: string): Promise<boolean> {
 // ------------------------------------------------------------------ members
 type MetricRow = { member_id: string; expected: number; attended: number; missed: number };
 
-export async function fetchMembers(period: Period): Promise<Member[]> {
+/**
+ * Attendance figures for one period -- ONE read per period however many
+ * callers ask at once (src/data/memberStore.ts). The member list, the
+ * Overview's bars and the week table all ask for the current week; whichever
+ * asks first reads it and the others share that answer. Each caller still
+ * spells out its own paged read (the T-016/T-042 specs pin every call site);
+ * only one of them runs per period.
+ */
+function sharedPeriodMetrics<T>(period: { from: string; to: string }, read: () => Promise<T[]>): Promise<T[]> {
+  return sharedMemberRead(`metrics:${period.from}/${period.to}`, read);
+}
+
+/**
+ * Is the member just added in the member list the screens are showing?
+ *
+ * Asked once, after `createMember` has returned. It reads through the SAME
+ * shared read the screens use, so it adds no request when they are already
+ * reading, and the read it joins began after the create committed (the change
+ * bus moved the shared read on), so a member missing from it really is
+ * missing. A read that FAILS rejects -- "the list could not be read" and "the
+ * member is not in it" are different answers and the caller says which.
+ */
+export async function confirmMemberListed(memberId: string, period: Period = currentWeek()): Promise<boolean> {
+  const list = await fetchMembers(period);
+  return list.some(m => m.id === memberId);
+}
+
+/**
+ * The member list for a period -- ONE read however many screens ask at once
+ * (src/data/memberStore.ts). Every screen that shows members calls this, so a
+ * member change makes one read that all of them share, not one per screen.
+ */
+export function fetchMembers(period: Period): Promise<Member[]> {
+  return sharedMemberRead(`members:${period.from}/${period.to}`, () => readMembers(period));
+}
+
+/**
+ * The read itself. Only `fetchMembers` calls it: anything that went round the
+ * shared read would bring back the per-screen duplicate reloads.
+ */
+async function readMembers(period: Period): Promise<Member[]> {
   // A COPY, not the fixture array itself.
   //
   // Offline this used to hand back `MEMBERS` by reference, and every write
@@ -245,10 +286,10 @@ export async function fetchMembers(period: Period): Promise<Member[]> {
     /* PAGED like the six above it (T-042). It was the one read in this block
        that was not, and at 1,087 members it was the one that decided whether
        anybody past row 1,000 had figures at all. */
-    paged('the attendance figures for this period', () => metricsPage(
+    sharedPeriodMetrics(period, () => paged('the attendance figures for this period', () => metricsPage(
       (after, limit) => supabase.rpc('member_period_metrics_page', {
         p_from: period.from, p_to: period.to, p_after_member_id: after, p_limit: limit,
-      })), 'member_id'),
+      })), 'member_id')),
   ]);
   /*
    * NO `if (res.error)` LINE SURVIVES HERE, and that is the point of the
@@ -2074,10 +2115,10 @@ export async function fetchBucketMetrics(buckets: Period[]): Promise<BucketMetri
     // query that did not answer. A bucket TRUNCATED at 1,000 members was a
     // third fact again, and it drew as a shorter bar (T-016); paging removes
     // it rather than refusing it (T-042).
-    const rows = await paged<MetricRow>('the attendance figures for this period', () => metricsPage(
+    const rows = await sharedPeriodMetrics<MetricRow>(b, () => paged<MetricRow>('the attendance figures for this period', () => metricsPage(
       (after, limit) => supabase.rpc('member_period_metrics_page', {
         p_from: b.from, p_to: b.to, p_after_member_id: after, p_limit: limit,
-      })), 'member_id');
+      })), 'member_id'));
     return {
       label: b.label, from: b.from, to: b.to,
       metrics: rows.map(m => ({
@@ -2101,10 +2142,10 @@ export async function fetchWeekRows(weeks: Period[]): Promise<WeekRow[]> {
        summed to zero and drew as a week the academy attended nothing. Paging
        throws on a page error, so neither a failure nor a short list can be
        summed any more (T-016, T-042). */
-    const list = await paged<MetricRow>('the attendance figures for this period', () => metricsPage(
+    const list = await sharedPeriodMetrics<MetricRow>(w, () => paged<MetricRow>('the attendance figures for this period', () => metricsPage(
       (after, limit) => supabase.rpc('member_period_metrics_page', {
         p_from: w.from, p_to: w.to, p_after_member_id: after, p_limit: limit,
-      })), 'member_id');
+      })), 'member_id'));
     return {
       label: w.label,
       expected: list.reduce((n, m) => n + (m.expected ?? 0), 0),
@@ -3034,6 +3075,9 @@ export function onMembersChanged(listener: () => void): () => void {
 }
 
 function membersChanged(): void {
+  // First, so every screen the listeners wake reads AFTER the change -- one
+  // shared read, not a join on one that began before it.
+  invalidateMemberReads();
   for (const listener of memberListeners) listener();
 }
 
@@ -4218,6 +4262,9 @@ export function onAttendanceChanged(listener: () => void): () => void {
 }
 
 function attendanceChanged(): void {
+  // The figures every member read carries move with the register, so a read
+  // begun before this change must not be joined after it.
+  invalidateMemberReads();
   for (const listener of attendanceListeners) listener();
 }
 

@@ -41,6 +41,9 @@
  *     hand one account's answer to another.
  *   - Untouched: other /auth/v1/ traffic (sign-in, token refresh) always goes
  *     out and is not treated as a write.
+ *   - `onWrite`, when given, is told at the same two moments (and on sign-out),
+ *     so a read shared ABOVE the network -- the member reads in
+ *     src/data/memberStore.ts -- obeys the same "never across a write" rule.
  */
 export const READ_RPCS: ReadonlySet<string> = new Set([
   'member_period_metrics_page',
@@ -76,11 +79,11 @@ export type SharedFetch = typeof fetch & { entryCount: () => number };
 
 export function createSharedFetch(
   base: typeof fetch,
-  config: { freshMs: number; now?: () => number },
+  config: { freshMs: number; now?: () => number; onWrite?: () => void },
 ): SharedFetch {
   const now = config.now ?? (() => Date.now());
   const entries = new Map<string, Entry>();
-  const clearAll = () => entries.clear();
+  const clearAll = () => { entries.clear(); config.onWrite?.(); };
 
   /* An entry is usable while it is young: in flight since no longer than
      freshMs (so a retry after the hook's own deadline sends a NEW request

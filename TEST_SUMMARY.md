@@ -1,3 +1,37 @@
+## ONE MEMBER CHANGE, ONE SHARED MEMBER REFRESH — 03-Oct-2026
+
+`requests/2026-10-03-one-shared-member-refresh.md` (CHANGE, scoped). NOT DEPLOYED.
+
+FAIL-FIRST: src/data/memberRefresh.test.ts - against main (bb371e9) 10 of 11 red, e.g. "repo.confirmMemberListed is not a function" and Test 1's member-read count 0 where 1 is required; 11 of 11 green. The one green on main ("an unrelated write during a refresh does not split the screens") is T-406's network sharing, stated as such.
+NOT OBSERVED FAILING: src/data/memberStore.test.ts - covers a new module (no prior behaviour); 8 of 8 green.
+Existing specs kept green WITHOUT editing them: periodMetrics.test.ts and periodMetricsPage.test.ts pin three call sites of the paged figures RPC, so each of the three keeps its own paged read and is wrapped by the shared per-period read (first draft merged them into one and turned both red).
+
+MEASURED (real repository + supabase-js + T-406 shared fetch, fake network, 1,640 members, 60 ms
+latency, pool 10; readers mounted: Home list + 7 day buckets, Courses, Members, the Add form):
+- one add, pre-T-406 code: 109 reads, 66 duplicates (production logged ~110 for one add on 01-Oct)
+- one add, current main: 43 reads, 0 duplicates; 4 member-list executions in JavaScript
+- one add, this change: 43 reads, 0 duplicates; 1 member-list execution; new member confirmed listed
+- one add, this change with T-406 switched off: 43 reads (the shared read alone)
+- unrelated write during the refresh: main 44 / this change 44, 0 duplicates either way
+- two adds back to back: main 83 / this change 83 (two reloads, both needed after the second write)
+- create 61-62 ms, create to list visible 394-440 ms in the simulation (relative only)
+GATES: `npm run check` ALL 7 PASS (test:unit 2125 tests: 2124 pass, 0 fail, 1 skipped).
+
+CI FIX (PR 63): CI runs Node 20; supabase-js's realtime client refuses to construct there without a
+WebSocket constructor (Node 22+ and browsers have one), so the 8 runtime specs in memberRefresh.test.ts
+failed in CI while passing locally on Node 22.
+FAIL-FIRST: src/data/memberRefresh.test.ts - under Node 20 (v20.20.2) at 36cae9d, 8 of 11 red, "Node.js detected but native WebSocket not found."; 11 of 11 green after the test kit supplies a never-called WebSocket constructor when the runtime has none. App code unchanged.
+GATES: Node 20 full unit suite 2125 tests: 2124 pass, 0 fail, 1 skipped; `npm run check` (Node 22) ALL 7 PASS.
+
+## UNSUBSCRIBE v9 DEPLOYED — 03-Oct-2026
+
+Owner-approved. Order kept: the `/unsubscribe` page went live first (Vercel production `f0ea2a5`,
+1-Oct 20:11, success), then `unsubscribe` v9 (verify_jwt=false) from `main` `ef74760`. Target verified
+first: project lhpzhkzbnquwjljmbylo, latest migration 0084, unsubscribe at v8. The deployed source was
+read back and is identical to main. No migration; send-followups unchanged (v23).
+NOT YET RUN on production: the live smoke (open a real link -> question page, nothing written;
+press Unsubscribe -> unsubscribed + audit via link). Gmail one-click: NOT VERIFIED.
+
 ## COURSE ROSTER SEARCH FINDS DISPLAY NAMES TOO — 03-Oct-2026
 
 `requests/2026-10-01-attendance-search-display-name.md`, correction round 1. NOT DEPLOYED.

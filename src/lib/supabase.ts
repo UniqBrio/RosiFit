@@ -2,6 +2,7 @@ import 'react-native-url-polyfill/auto';
 import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createSharedFetch } from './sharedFetch';
+import { invalidateMemberReads } from '../data/memberStore';
 
 /**
  * The ONLY Supabase client in the app.
@@ -61,7 +62,10 @@ export const supabase = createClient(url ?? 'http://localhost:54321', anonKey ??
       },
   // One request per identical read inside SHARED_READ_MS, cleared by any write
   // (T-406). See sharedFetch.ts for the rules and the cost of the window.
-  global: { fetch: createSharedFetch((...args) => fetch(...args), { freshMs: SHARED_READ_MS }) },
+  // `onWrite` moves the shared member reads on at the same moments, so a read
+  // begun before a write is never joined after it (src/data/memberStore.ts).
+  global: { fetch: createSharedFetch((...args) => fetch(...args), {
+    freshMs: SHARED_READ_MS, onWrite: invalidateMemberReads }) },
 });
 
 /** Calls an Edge Function, forwarding the caller's session automatically. */

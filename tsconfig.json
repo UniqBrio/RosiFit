@@ -9,7 +9,8 @@
     "node_modules",
     "scripts",
     "supabase",
-    "**/*.test.ts"
+    "**/*.test.ts",
+    "**/*.testkit.ts"
   ],
   "include": [
     "**/*.ts",

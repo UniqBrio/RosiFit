@@ -29,3 +29,9 @@
 - Affected specs: `src/data/unsubscribeHandler.test.ts` "TEST 1 body link: unsubscribe -> old link
   offers Resubscribe -> Resubscribe -> subscribed" and "bounced: an opt-out is recorded over it, no
   Resubscribe is offered, and the button is refused". The OPEN item above is closed by this.
+
+## DEPLOYED (03-Oct-2026)
+- Vercel: `/unsubscribe` page live with `f0ea2a5` (production deployment 6794138951, success, 1-Oct 20:11).
+- Supabase `unsubscribe` **v9**, from `main` (`ef74760`), verify_jwt=false, owner-approved. Deployed
+  after confirming the connector points at project lhpzhkzbnquwjljmbylo ("Rosifit"; latest migration
+  0084; unsubscribe was v8). Source read back from the platform: identical to main.
