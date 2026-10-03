@@ -82,3 +82,56 @@ test('the link carries both the id and its token, and one trailing slash cannot 
   assert.equal(parsed.searchParams.get('e'), ID);
   assert.equal(await unsubscribeTokenValid(ID, parsed.searchParams.get('t') ?? '', SECRET), true);
 });
+
+// ------------------------------------------ nothing stored keeps the link
+// requests/2026-09-30-resubscribe-button.md: since the Resubscribe button the
+// signed link can undo an opt-out, so no stored copy may keep it.
+import { withoutUnsubscribeLinks, UNSUBSCRIBE_LINK_REMOVED } from '../../supabase/functions/_shared/unsubscribe-token.ts';
+
+test('an SES notification keeps everything but the unsubscribe link', async () => {
+  const link = await buildUnsubscribeUrl('7d1c1c2e-0000-4000-8000-000000000001', 'k', 'https://ref.supabase.co/functions/v1');
+  const ses = {
+    notificationType: 'Bounce',
+    bounce: { bounceType: 'Permanent', bouncedRecipients: [{ emailAddress: 'a@example.com' }] },
+    mail: {
+      messageId: 'm-1',
+      headers: [
+        { name: 'Subject', value: 'We missed you' },
+        { name: 'List-Unsubscribe', value: `<mailto:unsubscribe@getfit.rosifit.com>, <${link}>` },
+      ],
+    },
+  };
+  const kept = withoutUnsubscribeLinks(ses);
+  const text = JSON.stringify(kept);
+  assert.ok(!text.includes('/functions/v1/unsubscribe?'), 'the signed link must not survive');
+  assert.ok(text.includes(UNSUBSCRIBE_LINK_REMOVED), 'and it says what was taken out');
+  assert.equal(kept.mail.headers[1].value,
+    `<mailto:unsubscribe@getfit.rosifit.com>, <${UNSUBSCRIBE_LINK_REMOVED}>`);
+  assert.deepEqual(kept.bounce, ses.bounce, 'the bounce itself is untouched');
+  assert.equal(kept.mail.headers[0].value, 'We missed you');
+});
+
+test('a payload with no link comes back as it was', () => {
+  const plain = { notificationType: 'Complaint', mail: { messageId: 'm-2' } };
+  assert.equal(withoutUnsubscribeLinks(plain), plain);
+  assert.equal(withoutUnsubscribeLinks(null), null);
+});
+
+// ------------------------------------------- the headers Gmail reads (RFC 8058)
+// Appended 01-Oct-2026 (requests/2026-10-01-resubscribe-recovery-and-gmail-one-click.md).
+import { listUnsubscribeHeaders } from '../../supabase/functions/_shared/unsubscribe-token.ts';
+
+test('List-Unsubscribe carries the signed HTTPS link ONLY, with the one-click flag beside it', async () => {
+  const url = await buildUnsubscribeUrl(ID, SECRET, 'https://x.supabase.co/functions/v1');
+  assert.deepEqual(listUnsubscribeHeaders(url), [
+    { name: 'List-Unsubscribe', value: `<${url}>` },
+    { name: 'List-Unsubscribe-Post', value: 'List-Unsubscribe=One-Click' },
+  ]);
+});
+
+test('no mailto: a mail client can only reach the endpoint that writes the opt-out', async () => {
+  // The mailto used to lead the header and pointed at a mailbox nothing
+  // reads -- an opt-out sent there was lost.
+  const url = await buildUnsubscribeUrl(ID, SECRET, 'https://x.supabase.co/functions/v1');
+  for (const h of listUnsubscribeHeaders(url)) assert.doesNotMatch(h.value, /mailto:/i);
+});

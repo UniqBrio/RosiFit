@@ -38,6 +38,24 @@ what the user reads is a product decision, and they are allowed to differ.
 | The same state, as the **word on a member card** | `Member unsubscribed` | Opted out, Unsubscribed member, Unsubscribed | PROVISIONAL | 1 (`src/data/emailStatus.ts` `emailStateWord`) | 2026-09-24 |
 | An address whose owner reported email as spam — **group heading** | `Spam Reported` | Complained, Marked spam, Junk | PROVISIONAL | 1 (`src/data/emailIssues.ts` heading) | 2026-09-24 |
 | The same state, as the **word on a member card** | `Marked as spam` | Complained, Spam complaint, Spam Reported | PROVISIONAL | 1 (`src/data/emailStatus.ts` `emailStateWord`) | 2026-09-24 |
+| The member's own undo of an opt-out, on the unsubscribe confirmation page — **button** | `Resubscribe` | Opt back in, Turn back on, Undo, Re-enable | PROVISIONAL | 1 (`public/unsubscribed.html`) | 2026-09-30 |
+| The state after that undo — **page heading** | `You are subscribed again` | Opted in, Re-enabled, Turned back on | PROVISIONAL | 2 (`public/resubscribed.html`, `supabase/functions/unsubscribe/index.ts`) | 2026-09-30 |
+| Staff putting an opted-out address back on follow-ups because the member asked — **Edit-form row button and the dialog's confirm** | `Turn follow-ups back on` | Reinstate, Re-enable, Opt back in | PROVISIONAL — named by the owner 01-Oct-2026 ("Turn Follow-ups Back On"), rendered in sentence case like every row action. The dialog TITLE moved to the row below the next; on Reach Out and Attendance the action is `Resubscribe` (next row) | 2 (`app/member/edit.tsx`, `src/components/StaffResubscribeDialog.tsx`) | 2026-10-01 |
+| ~~The state that leaves — **toast**~~ | ~~`Follow-ups are on again for <address>`~~ | Resubscribed, Reinstated, Subscribed | SUPERSEDED 01-Oct-2026 by `Follow-ups turned back on for this email.` (below) — 0 uses | 0 | 2026-10-01 |
+| Staff turning follow-ups back on from Reach Out (pop-up and send draft) and Attendance — **row action** | `Resubscribe` | Turn back on, Reinstate, Opt back in | PROVISIONAL — named by the owner 01-Oct-2026 for these screens; the Edit form keeps `Turn follow-ups back on`. Same word as the member's own button on purpose: it is the same act, and only ever offered for an unsubscribed address | 3 (`src/data/staffResubscribe.ts` `RESUBSCRIBE_COPY`, used by `app/member/[id].tsx`, `app/send/index.tsx`, `app/(tabs)/attendance.tsx`) | 2026-10-01 |
+| The staff confirmation — **dialog title**, every entry point | `Turn follow-ups back on for this email?` | Resubscribe?, Turn follow-ups back on? | PROVISIONAL — owner's words 01-Oct-2026; supersedes `Turn follow-ups back on?` as the title (the confirm button keeps `Turn follow-ups back on`) | 1 (`RESUBSCRIBE_COPY.title`) | 2026-10-01 |
+| The state that leaves — **toast**, every entry point | `Follow-ups turned back on for this email.` / already on: `Follow-ups were already on for this email.` | Resubscribed, Reinstated | PROVISIONAL — owner's words 01-Oct-2026; supersedes `Follow-ups are on again for <address>` | 1 (`resubscribeOutcomeMessage`) | 2026-10-01 |
+| The same act in the audit log — **title** | `Follow-ups turned back on at the member’s request` | Member resubscribed (that is the member's own act), Email reinstated | PROVISIONAL | 1 (`src/data/auditPlain.ts`) | 2026-10-01 |
+| Enrolled on a course but not on today's register — inactive today, or not joined yet (course card) | `N not on today’s register` | Inactive, not active, off the register, not active today | PROVISIONAL — the course screen names the two groups separately ("joined later", Inactive); the card needs one word for both, and "inactive" is wrong for a member who joins later, whose pill reads Active | 1 (`src/data/course.ts` `courseSummary`) | 2026-09-30 |
+
+_**`Resubscribe` and `subscribed again` differ on purpose**, the short/long pairing the rows below
+record for the suppression states: the button is the ACTION (one word, beside a question that names
+it — "Did you unsubscribe by mistake?"), the heading is the STATE it leaves the member in. A later
+staff-side way to do the same thing should reuse `Resubscribe`, not coin a third word (30-Sep-2026).
+Superseded 01-Oct-2026: the owner named the staff action `Turn follow-ups back on`; `Resubscribe` stays
+the member's own button, and `Turn back on` in its "Not this" column applies to the member page only.
+Superseded again later on 01-Oct-2026: the owner named the staff action on Reach Out and Attendance
+`Resubscribe`, so the 30-Sep reuse stands there; the Edit form keeps `Turn follow-ups back on`._
 
 _The stale wording was `Updated at <time> · could not refresh` when these rows were first
 written; it is `Last updated <time> · Couldn’t refresh` as shipped, set by the requester when the
