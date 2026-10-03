@@ -342,6 +342,17 @@ export default function Courses() {
                           color: summary.noMail ? dangerInk : theme.muted,
                         }}>{summary.noMail}</Text>
                       </View>
+                      {/* The course screen's third section, counted the same
+                          way. Drawn only when there is one, as the screen's
+                          own split line does; the note below says it in words. */}
+                      {summary.emailIssues ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Icon name="error" size={13} color={dangerInk} />
+                          <Text style={{
+                            fontSize: 11, fontWeight: '700', fontVariant: ['tabular-nums'], color: dangerInk,
+                          }}>{summary.emailIssues}</Text>
+                        </View>
+                      ) : null}
                     </View>
                   ) : null}
                 </Pressable>

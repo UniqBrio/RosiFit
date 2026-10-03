@@ -29,7 +29,7 @@ import {
   fetchNotifications, type Notification,
   fetchSentForPeriod,
   type Branch, type BranchUsage, type OfferingDetail,
-  fetchAttendance, onCoursesChanged, onMembersChanged, onAttendanceChanged, onRulesChanged,
+  fetchAttendance, fetchUnsubscribedAddresses, type UnsubscribedAddress, onCoursesChanged, onMembersChanged, onAttendanceChanged, onRulesChanged,
   fetchCourseWeekDays, fetchCourseDayRows, type CourseDayStatus,
   fetchHolidays, onHolidaysChanged, fetchMemberWeek, onStaffChanged,
   type Rules, type PendingSession, type Holiday,
@@ -276,6 +276,17 @@ export function useMembers(forced?: string, period: Period = currentWeek()): Asy
   const [version, setVersion] = useState(0);
   useEffect(() => onMembersChanged(() => setVersion(v => v + 1)), []);
   return useAsync(() => fetchMembers(period), [period.from, period.to], forced, undefined, version);
+}
+
+/**
+ * The live unsubscribed addresses, for a screen that offers staff Resubscribe
+ * on rows that carry no address (Attendance). Refetched on a member change,
+ * which `staffResubscribeEmail` announces, so the action goes once it is done.
+ */
+export function useUnsubscribedAddresses(forced?: string): Async<UnsubscribedAddress[]> {
+  const [version, setVersion] = useState(0);
+  useEffect(() => onMembersChanged(() => setVersion(v => v + 1)), []);
+  return useAsync(() => fetchUnsubscribedAddresses(), [], forced, undefined, version);
 }
 
 /**

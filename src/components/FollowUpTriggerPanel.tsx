@@ -359,7 +359,7 @@ export type TriggerRecipient = {
  */
 export function FollowUpTriggerPrompt({
   open, onClose, onContinue, continueLabel, reading, courseId, daysPerWeek = null,
-  readOnlyNote, recipients, excludedNames = [], listPending = false,
+  readOnlyNote, recipients, excludedNames = [], excludedSummary = '', listPending = false,
   sending = false, failure = null, onSend, periodLabel, previewFor,
 }: {
   open: boolean;
@@ -376,6 +376,8 @@ export function FollowUpTriggerPrompt({
   recipients: TriggerRecipient[];
   /** flagged, no usable address: named while being excluded, never dropped (C-76) */
   excludedNames?: string[];
+  /** why they are left out, counted per reason (`exclusionSummary`) */
+  excludedSummary?: string;
   /** the rule is being re-read after an Apply, so the list is not final yet */
   listPending?: boolean;
   sending?: boolean;
@@ -434,7 +436,8 @@ export function FollowUpTriggerPrompt({
     ? [
         `${periodLabel}.`,
         resending ? `${resending} already had this week’s message.` : '',
-        excludedNames.length ? `${excludedNames.length} flagged without an address are left out.` : '',
+        excludedNames.length
+          ? `Left out, because they cannot be emailed: ${excludedSummary || `${excludedNames.length} flagged`}.` : '',
         'This cannot be recalled.',
       ].filter(Boolean).join(' ')
     : applied
@@ -557,7 +560,7 @@ export function FollowUpTriggerPrompt({
                   <Text testID="trigger-prompt-excluded" style={{
                     fontSize: 11.5, lineHeight: 16, color: theme.muted, marginTop: SPACE.sm,
                   }}>
-                    {`Excluded · ${excludedNames.join(', ')} — flagged, but no email address on file. They stay counted in every figure.`}
+                    {`Excluded · ${excludedNames.join(', ')} — flagged, but cannot be emailed${excludedSummary ? ` (${excludedSummary})` : ''}. They stay counted in every figure.`}
                   </Text>
                 ) : null}
               </View>

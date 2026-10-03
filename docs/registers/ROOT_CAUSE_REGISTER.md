@@ -59,6 +59,212 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-123 — Gmail's Unsubscribe could be lost, and an opt-out had no way back and several ways round          Tracker: T-143 · Sources: academy request 01-Oct-2026, code-reviewer + permission-reviewer
+**Date:** 01-Oct-2026  ·  **Severity:** S2  ·  **Modules:** `send-followups`, `unsubscribe`, `member_emails`, member Edit form
+
+**Symptom** — "our RosiFit emails have TWO unsubscribe mechanisms … make the complete
+unsubscribe/resubscribe lifecycle work correctly for BOTH". Production at 01-Oct-2026 held 34 opt-outs,
+every one `via: link`, none `via: one_click`, and no POST in the edge logs. A member who opted out
+through Gmail, or who had deleted the old emails, had no way back, and staff had none either.
+
+**Root cause** — four separate defects.
+
+1. **The mailto was lost mail.** `List-Unsubscribe` led with `<mailto:unsubscribe@getfit.rosifit.com>`,
+   a mailbox nothing processes. Any mail client that chose the mailto over the HTTPS URL sent the
+   opt-out nowhere.
+2. **There was no staff route back.** 0078 refuses opt-outs by design, and nothing replaced it for
+   "the member asked us".
+3. **Re-adding an address bypassed the opt-out.** Every inserting writer stores a re-added address as
+   `unknown`. And `authenticated` could PATCH `member_emails.status` directly, so every refusal held
+   at the RPC layer only.
+4. **The opt-out rule's inputs were weak.** The Resubscribe rule read only
+   `communication.unsubscribed` rows, which one live opt-out lacks. Any signed-in user could write
+   audit rows through `audit_log()`. And the opt-out overwrote a spam report.
+
+**Fix** —
+- `listUnsubscribeHeaders` sends the HTTPS link only.
+- `unsubscribe` changes:
+  - never overwrites `complained`;
+  - guards its write on the status it read;
+  - asks 0084's `email_status_before_opt_out`, which is the one rule the member button and the staff
+    action share. A spam report anywhere on the address wins; then this row's opt-out from the row
+    audit; then the same member's earlier row.
+- 0084 adds:
+  - `staff_resubscribe_member_email`, with the source required and the act audited as
+    `communication.staff_resubscribe`;
+  - a BEFORE INSERT carry: a complaint carries by address, an opt-out within the same member
+    (ordered by `created_at`, per course per 0071);
+  - an INVOKER guard against direct status/email/owner/undelete writes;
+  - a revoke of `audit_log()` from `authenticated`.
+
+**Files** —
+- `supabase/migrations/0084_email_resubscribe_recovery.sql`
+- `supabase/functions/unsubscribe/index.ts`
+- `supabase/functions/_shared/unsubscribe-token.ts`
+- `supabase/functions/send-followups/{index,send-loop}.ts`
+- `src/data/{repository,staffResubscribe,auditPlain}.ts`
+- `src/components/StaffResubscribeDialog.tsx`
+- `app/member/edit.tsx`
+- specs `supabase/tests/61_*`, `src/data/{unsubscribeHandler,staffResubscribe,sendSuppression}.test.ts`, appended `unsubscribeToken.test.ts`
+
+**How to verify** — run these:
+- `bash db/harness/test.sh`: `61` 46/46.
+- `npx tsx --test src/data/unsubscribeHandler.test.ts`: 15/15. It drives the deployed `index.ts`
+  with Gmail's exact RFC 8058 POST and the body link.
+- `npx tsx --test src/data/unsubscribeToken.test.ts`: there must be no `mailto:` in either header.
+- Live: a delivered follow-up's "Show original" carries `List-Unsubscribe: <https://…/unsubscribe?e=…&t=…>`,
+  and `DKIM-Signature: … h=` lists `List-Unsubscribe` and `List-Unsubscribe-Post`.
+
+**Recurrence risk** — two places this class can recur:
+- Any RPC-layer rule on a table whose grant lets `authenticated` write it directly. Swept on
+  `member_emails` only; other tables carry the same `INSERT,UPDATE` grant (09_grants), and the
+  question is unasked there.
+- `delete_member` hard-deletes the address rows, so a deleted and re-added member carries nothing
+  (recorded as a gap, not fixed).
+
+**Prevention** — rungs:
+- `supabase/tests/61_email_resubscribe_recovery.sql`
+- `src/data/unsubscribeHandler.test.ts`
+- `src/data/unsubscribeToken.test.ts`
+
+**Process check** — Yes, partly. The first build of 0084 shipped a "latest row wins" carry and an
+unguarded table, and both were found by the review stage (code-reviewer H1–H3, permission-reviewer
+H1/M2–M4). That stage did its job before anything reached production. No framework change.
+
+---
+
+## RC-122 — the unsubscribe confirmation arrived as its own HTML source          Tracker: T-142 · Sources: academy report 30-Sep-2026 (screenshot), Supabase Edge Function limits
+**Date:** 30-Sep-2026  ·  **Severity:** S2  ·  **Modules:** `unsubscribe` Edge Function, `public/`
+
+**Symptom** — "On clicking unsubscribe link its leading to html file": the browser showed
+`<!doctype html> … You are unsubscribed …` as text on `lhpzhkzbnquwjljmbylo.supabase.co/functions/v1/unsubscribe`.
+
+**Root cause** — a platform rule, not our markup: "Serving of HTML content is only supported with
+custom domains (Otherwise GET requests that return text/html will be rewritten to text/plain)"
+(supabase.com/docs/guides/functions/limits). The function was written to answer GET with a page and
+is called on the default domain, so every rendered answer was rewritten after it left the function.
+The opt-out itself was saved correctly throughout.
+
+**Fix** — GET now answers 303 to a static page on the app's host (`public/unsubscribed.html`,
+`public/unsubscribe-failed.html`, served at clean URLs by Vercel), carrying only the academy name,
+which the page sets as text. The decision and the write still happen in the function, before the
+redirect. Host: optional secret `APP_ORIGIN`, default `https://rosi-fit.vercel.app`; a malformed value
+answers the same sentences as plain text rather than redirecting somewhere unintended. POST
+(RFC 8058 one-click) unchanged.
+
+**Files** — `supabase/functions/unsubscribe/index.ts`, `supabase/functions/unsubscribe/landing.ts`,
+`public/unsubscribed.html`, `public/unsubscribe-failed.html`, `docs/registers/ENVIRONMENTS.md`.
+
+**How to verify** — `cd supabase/functions && deno test unsubscribe/` (6 pass);
+`npx tsx --test src/data/unsubscribeLanding.test.ts` (3 pass; "answers no GET with HTML" failed on
+the pre-fix function). Live, after deploy: an unsubscribe link from a real email ends on
+`rosi-fit.vercel.app/unsubscribed` showing a readable page.
+**Deployed 30-Sep-2026** — `unsubscribe` v6, `verify_jwt` false, after PR #58's Vercel build; the bundle
+read back from the platform carries `landing.ts` and the redirecting `index.ts`. The live click is the
+academy's: this sandbox cannot reach either host.
+**Seen live 30-Sep-2026** by the owner: `rosi-fit.vercel.app/unsubscribed` renders the page (heading and
+body), not source.
+**Dressed as the app 30-Sep-2026** at the owner's request ("it should be professional with rosifit logo"):
+logo on the app's header gradient, the app's tokens in both themes, wording unchanged
+(`requests/2026-09-30-unsubscribe-page-branded.md`).
+**Resubscribe live 01-Oct-2026** (owner's go-ahead, in this order): `send-followups` v22 (records no
+`unsubscribe_url`), `ses-feedback` v6 (strips the link from SES payloads, `verify_jwt` false), migration
+0083 applied (read back: 0 of 815 stored messages and 0 of 26 SES events still hold a link; 24 events
+marked "[unsubscribe link removed]"; ledger row present), then `unsubscribe` v7 (`verify_jwt` false)
+with the Resubscribe path. 23 of the 24 addresses unsubscribed at deploy time have an opt-out audit
+row with a usable prior status, so they are offered the button; the 24th has none and is not.
+
+**Recurrence risk** — any Edge Function that answers a browser GET with HTML. Swept with
+`grep -rln "text/html" supabase/functions`: `unsubscribe` was the only one.
+
+**Prevention** — `rung: src/data/unsubscribeLanding.test.ts` ("answers no GET with HTML").
+
+**Known exceptions (code review)** — the two pages carry literal colours outside
+`src/theme/tokens.ts`, as the function's page did: they load no app code. Their four pairs are measured
+in the page header (17.4, 8.9, 16.7, 8.9 :1) but no build step re-measures them. Unset `APP_ORIGIN`
+redirects to RosiFit's production host, so any other deployment must set it (ENVIRONMENTS.md). The
+pages print `?academy=` as text (no markup, 120 characters), so a crafted link can show other words
+under the heading; nothing is written by opening the page.
+
+**Process check** — Yes: the page was verified by reading source, never by opening a live link;
+the platform limit is documented. Recorded here; no framework change proposed in this run.
+
+## RC-121 — the course card counted a different population, and a different "without email", from the course screen          Tracker: T-141 · Sources: academy report 30-Sep-2026 (screenshots)
+**Date:** 30-Sep-2026  ·  **Severity:** S3  ·  **Modules:** `src/data/course.ts`, `app/(tabs)/courses.tsx`
+
+**Symptom** — Postnatal: the course card said 79 without email ("247 members need follow-up · 79
+without email"); the course screen's No email filter said 59 ("426 with email · 59 without · 19 with
+an email issue").
+
+**Root cause** — two definitions of one figure. `courseSummary` counted every ENROLLED member
+(596, of whom 90 were inactive and 2 had not joined), while the course screen's roster is the
+members on the register that day (504); and it counted `!isReachable`, which folds bounced and
+unsubscribed addresses into "without email", while the screen lists those as "with an email issue".
+
+**Fix** — the card counts the members on TODAY's register (`membersOnDay` + `membersActiveOn`, the
+screen's own predicates) and splits them with the screen's own derivation: no address on file,
+`emailIssueGroups` for an unusable one. A third figure (error glyph + number, and words in the note)
+shows email issues; the member line names enrolled members off the register ("· 92 not on today’s
+register") so the figures add up. Follow-up count unchanged.
+
+**Files** — `src/data/course.ts`, `app/(tabs)/courses.tsx`.
+
+**How to verify** — `npx tsx --test src/data/courseCardEmailSplit.test.ts` (4 pass; 3 failed on the
+pre-fix `courseSummary`); `src/data/course.test.ts` unchanged and green.
+
+**Recurrence risk** — any count stated in two places from two predicates. The Reports sheet's
+"Members without email" column (`src/data/reportSheets.ts`) is a period report and is left as is.
+
+**Prevention** — `rung: src/data/courseCardEmailSplit.test.ts`.
+
+**Process check** — No: the card predates the email-issue section (RC-107/0078 era) and nothing
+tied the two definitions together.
+
+## RC-120 — after a merge the member still read Absent: the figures were never rebuilt and the screen never re-read          Tracker: T-140 · Sources: academy report 30-Sep-2026, RC-118
+**Date:** 30-Sep-2026  ·  **Severity:** S2  ·  **Modules:** `merge_member_into` (0082), `src/data/repository.ts`
+
+**Symptom** — "if we add them under existing member who were under no email with status as present
+it still shows absent and again we cannot upload same meeting file as it will say already
+imported"; and "adding no email member [to] existing member … is not reflecting".
+
+**Root cause** — CORRECTION ROUND 2 of RC-118. 0080 made the attendance ROW right, and nothing
+else followed it: (1) `merge_member_into` is the one attendance writer that never called
+`recompute_member_stats`, so `member_stats` — the streak line, attended count and follow-up rule —
+kept the import's absent; (2) `mergeMemberInto` announced only `membersChanged()`, and the course
+screen's day register (`useCourseDay`) and the member's week re-read on `attendanceChanged()` only, so
+the card kept its Absent chip until the screen was reopened. RC-118's spec asserted the row and
+nothing downstream of it, which is what it missed.
+
+**Fix** — 0082 (in place, anchor-checked, idempotent, 0080's idiom): the merge recomputes the
+target's figures, and the counts of every session it moved or dropped a record in
+(`refresh_session_counts` — the session calendar reads those; found by code review), before auditing. The client now fires `attendanceChanged()` after a merge, live and
+fixture. Members merged before 0082 keep stale figures until their next import or correction; a
+one-off `select public.recompute_member_stats();` repairs them, only with the owner's go-ahead.
+
+**Files** — `supabase/migrations/0082_merge_recomputes_member_figures.sql`,
+`supabase/tests/59_merge_recomputes_member_figures.sql`, `src/data/repository.ts`,
+`src/data/mergeRefreshesAttendance.test.ts`.
+
+**How to verify** — harness: `59` 12 PASS (without 0082: attended 0, streak 1, last present NULL —
+3 FAIL; without the session refresh: absent_count 1, expected_count 2 — 2 FAIL); `npx tsx --test src/data/mergeRefreshesAttendance.test.ts` (2 pass; both failed pre-fix).
+Production, after apply: `select position('-- 0082:' in pg_get_functiondef('public.merge_member_into(uuid, uuid)'::regprocedure)) > 0`.
+**Verified in production 30-Sep-2026** — 0082 applied with the owner's go-ahead: marker once, anchor once,
+0080's rule and 0073's alias upsert still in the live body, EXECUTE for `authenticated` and not `anon`,
+ledger row present. Owner-approved repair, scoped to the 2 live members merges had landed on and their
+4 sessions (not the academy-wide `recompute_member_stats()`). The 3 merges from before 0080 had dropped
+the stray's present; each of those days was later reset, so no wrong absent remains to correct.
+
+**Recurrence risk** — swept both halves. Server: every `public` function that writes
+`attendance_records` (`prosrc ~* '(update|insert into|delete from)\s+public\.attendance_records'`):
+six, and with 0082 all six call both `recompute_member_stats` and `refresh_session_counts`. Client: every repository writer calling an
+RPC — `mergeMemberInto` was the only one moving attendance rows without `attendanceChanged()`.
+
+**Prevention** — `supabase/tests/59_merge_recomputes_member_figures.sql`,
+`rung: src/data/mergeRefreshesAttendance.test.ts`.
+
+**Process check** — Yes: RC-118's spec proved the row and not what the screen reads. A merge spec
+now asserts the figures.
+
 ## RC-119 — pin_reset_requests enabled row-level security but never forced it          Tracker: T-138 · Sources: harness run 26-Sep-2026, 0015, 0034
 **Date:** 26-Sep-2026  ·  **Severity:** S3  ·  **Modules:** `pin_reset_requests` (0034, 0081)
 

@@ -47,6 +47,7 @@ import {
   type AttendanceRow, type AttendanceStatus, type Holiday, type MemberSession,
 } from './mock';
 import { type EmailStatus, emailUsable } from './emailStatus';
+import type { ResubscribeSource } from './staffResubscribe';
 import { memberWeek, NO_SESSIONS_ROW, type MemberWeekSession } from './memberWeek';
 // Every read below that is unbounded BY CONSTRUCTION -- a whole table, or an
 // id list of member scale -- goes through this. PostgREST stops at 1000 rows
@@ -2543,16 +2544,36 @@ export async function fetchAttendance(period: Period): Promise<AttendanceRow[]> 
   // side, and a member who vanished that way would read as a blank name.
   const memberIds = [...new Set(records.map(r => r.member_id as string))];
   const offeringIds = [...new Set(weekSessions.map(s => s.offering_id as string))];
-  const [membersRes, offeringsRes] = await Promise.all([
+  const [membersRes, offeringsRes, aliasesRes, emailsRes] = await Promise.all([
     // The id list is every member who attended anything this week, so it is
     // member-scale and paged for the same reason the records above are — and
     // chunked for the reason the roster's own name read is: a member-scale id
     // list is too long to SEND in one request, whatever the reply would hold
     // (RC-045). A period is larger than a day, so this one is further over.
     paged('the names on this week', inChunks(memberIds, ids =>
-      supabase.from('members').select('id, full_name').in('id', ids)), 'id'),
+      supabase.from('members').select('id, full_name, member_code').in('id', ids)), 'id'),
     supabase.from('course_offerings').select('id, course_id, branch_id').in('id', offeringIds),
+    // What the search box also finds a row by: the Google Meet display names
+    // and the live addresses of the SAME members, paged and chunked alike.
+    paged('the display names on this week', inChunks(memberIds, ids =>
+      supabase.from('member_aliases').select('id, member_id, alias_display')
+        .eq('alias_type', 'name').in('member_id', ids)), 'id'),
+    paged('the addresses on this week', inChunks(memberIds, ids =>
+      supabase.from('member_emails').select('id, member_id, email')
+        .in('member_id', ids).is('deleted_at', null)), 'id'),
   ]);
+  const aliasesBy = new Map<string, string[]>();
+  for (const a of aliasesRes) {
+    const list = aliasesBy.get(a.member_id as string) ?? [];
+    list.push(a.alias_display as string);
+    aliasesBy.set(a.member_id as string, list);
+  }
+  const emailsBy = new Map<string, string[]>();
+  for (const e of emailsRes) {
+    const list = emailsBy.get(e.member_id as string) ?? [];
+    list.push(e.email as string);
+    emailsBy.set(e.member_id as string, list);
+  }
   const courseIds = [...new Set((offeringsRes.data ?? []).map(o => o.course_id as string))];
   const branchIds = [...new Set((offeringsRes.data ?? []).map(o => o.branch_id as string))];
   const [coursesRes, branchesRes] = await Promise.all([
@@ -2578,6 +2599,9 @@ export async function fetchAttendance(period: Period): Promise<AttendanceRow[]> 
       // '—' rather than '' so a row RLS hid the member of still reads as a
       // row, instead of an unexplained blank
       member: (member?.full_name as string) ?? '—',
+      code: (member?.member_code as string | null) ?? undefined,
+      aliases: aliasesBy.get(r.member_id as string) ?? [],
+      emails: emailsBy.get(r.member_id as string) ?? [],
       course: offering ? (courseName.get(offering.course_id as string) ?? '—') : '—',
       course_id: (offering?.course_id as string | undefined) ?? null,
       branch: offering ? (branchName.get(offering.branch_id as string) ?? '—') : '—',
@@ -3484,6 +3508,79 @@ export async function reinstateMemberEmail(memberEmailId: string): Promise<void>
   membersChanged();
 }
 
+/** One live address a member unsubscribed, for a screen whose rows carry no
+ *  address of their own. */
+export type UnsubscribedAddress = { memberId: string; id: string; address: string; status: EmailStatus };
+
+/**
+ * THE ADDRESSES STAFF MAY TURN BACK ON, and nothing else -- for Attendance,
+ * whose rows carry no email (requests/2026-10-01-staff-resubscribe-everywhere.md).
+ * A narrow read of the live unsubscribed rows (27 on production, 01-Oct-2026)
+ * rather than the whole member list, whose seven paged reads the register
+ * never needed. `status` is carried, not assumed, so the screen still asks
+ * the shared rule (`resubscribableAddresses`) rather than trusting the filter.
+ */
+export async function fetchUnsubscribedAddresses(): Promise<UnsubscribedAddress[]> {
+  if (!isConfigured) {
+    return MEMBERS.flatMap(m => m.emails
+      .filter(e => e.status === 'unsubscribed' && e.id)
+      .map(e => ({ memberId: m.id, id: e.id as string, address: e.address, status: e.status as EmailStatus })));
+  }
+  const rows = await paged('unsubscribed addresses', () => supabase.from('member_emails')
+    .select('id, member_id, email, status').eq('status', 'unsubscribed').is('deleted_at', null), 'id');
+  return rows.map(r => ({
+    memberId: r.member_id as string,
+    id: r.id as string,
+    address: r.email as string,
+    status: (r.status ?? 'unknown') as EmailStatus,
+  }));
+}
+
+/**
+ * TURN FOLLOW-UPS BACK ON for one opted-out address, because the member asked
+ * the academy (0084, requests/2026-10-01-resubscribe-recovery-and-gmail-one-click.md).
+ * By row id, as reinstateMemberEmail is. The refusals -- bounce, spam report,
+ * no source, a user who may not -- are the database's, in its own words.
+ *
+ * Resolves 'already' when somebody got there first: the address is on and
+ * nothing was written, which the form reports as done.
+ */
+export async function staffResubscribeEmail(
+  memberEmailId: string, source: ResubscribeSource, note: string,
+): Promise<'resubscribed' | 'already'> {
+  if (!isConfigured) {
+    for (const m of MEMBERS) {
+      const hit = m.emails.find(e => e.id === memberEmailId);
+      if (!hit) continue;
+      if (hit.status === 'unknown' || hit.status === 'valid' || hit.status === undefined) return 'already';
+      if (hit.status !== 'unsubscribed') {
+        throw new Error('Follow-ups can be turned back on only for an address the member unsubscribed. Nothing has been saved.');
+      }
+      hit.status = 'unknown';
+      membersChanged();
+      return 'resubscribed';
+    }
+    throw new Error('That address is not on the member\'s record. Nothing has been saved.');
+  }
+
+  const { data, error } = await supabase.rpc('staff_resubscribe_member_email', {
+    p_member_email_id: memberEmailId,
+    p_source: source,
+    p_note: note.trim() || null,
+  });
+  if (error) {
+    console.error('staffResubscribeEmail:', error.message);
+    // 0084's subscription refusal is 0078's wording, which reads as the
+    // MEMBER's email subscription inside this dialog. Said plainly instead.
+    if (/not writable|only a signed-in/i.test(error.message)) {
+      throw new Error('Follow-ups can only be turned back on by an active account, and only while the academy’s subscription is active. Nothing has been saved.');
+    }
+    throw new Error(memberWriteError(error));
+  }
+  membersChanged();
+  return data === 'already' ? 'already' : 'resubscribed';
+}
+
 export async function addMemberAlias(memberId: string, alias: string): Promise<void> {
   const display = cleanAlias(alias);
 
@@ -3565,6 +3662,7 @@ export async function mergeMemberInto(strayId: string, targetId: string):
     };
     MEMBERS.splice(si, 1);
     membersChanged();
+    attendanceChanged();
     return { display_name: stray.name, attendance_moved: moved };
   }
 
@@ -3579,6 +3677,11 @@ export async function mergeMemberInto(strayId: string, targetId: string):
     throw new Error(personReadable(error.message ?? '', MERGE_FAILED));
   }
   membersChanged();
+  // AND the attendance, because that is the half of the merge somebody is
+  // looking at: the course screen's day chips and the member's week are read
+  // by hooks that listen for attendance, not members, so the member the
+  // present moved to went on reading Absent until the screen was reopened.
+  attendanceChanged();
   const result = (data ?? {}) as { display_name?: string; attendance_moved?: number };
   return {
     display_name: result.display_name ?? '',

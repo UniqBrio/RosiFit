@@ -302,10 +302,39 @@ gap admitted.
   departure from the supplied reference, which skipped the ARN check when the
   variable was unset.
 - **`unsubscribe`** — opt-out from a signed link, no login. `?e=<member_email_id>`
-  `&t=<HMAC-SHA256 under UNSUBSCRIBE_SECRET>`, constant-time. GET returns a
-  confirmation page; POST with any body is RFC 8058 one-click and returns 200
-  empty. Idempotent, and an invalid token gets the same page as an id that
-  does not exist.
+  `&t=<HMAC-SHA256 under UNSUBSCRIBE_SECRET>`, constant-time. GET answers
+  with a 303 to a static page on the APP's host (`/unsubscribed` or
+  `/unsubscribe-failed`, from `public/`) -- since 30-Sep-2026 (RC-122): the
+  platform rewrites `text/html` to `text/plain` on the default `supabase.co`
+  domain, so the page it used to serve arrived as source code. POST with any
+  body is RFC 8058 one-click and returns 200 empty. Idempotent, and an
+  invalid token gets the same answer as an id that does not exist.
+  **Optional secret `APP_ORIGIN`** (`https://host`, no path) names the app
+  host to redirect to; unset means `https://rosi-fit.vercel.app`. Set to
+  anything that is not an https origin, the function answers in plain text
+  instead and logs why.
+  **Resubscribe (30-Sep-2026, `requests/2026-09-30-resubscribe-button.md`):**
+  a POST carrying `a=resubscribe` and the same signed pair puts an
+  UNSUBSCRIBED address back to `unknown`, audited `communication.resubscribed`
+  (anon). Only when the address was usable before that opt-out, read from the
+  opt-out's own audit row -- a bounce or spam report is never undone this way.
+  The confirmation page offers the button only then, posts only to this
+  project's function, and clears the pair from the address bar. The one-click
+  POST (no `a`) can never resubscribe.
+  **Both ways in, one state (01-Oct-2026, RC-123, 0084):** `send-followups`
+  sends `List-Unsubscribe: <https URL>` only (the mailto went to a mailbox
+  nothing reads) with `List-Unsubscribe-Post: List-Unsubscribe=One-Click`.
+  Gmail's one-click POST and the body link make the same write and audit
+  action (`via` differs). The opt-out never overwrites `complained`. The
+  Resubscribe rule asks `email_status_before_opt_out` (service role only).
+  Staff "Turn follow-ups back on" is `staff_resubscribe_member_email`.
+  **Apply 0084 before deploying this version of `unsubscribe`**: without
+  the RPC every prior-status read fails closed, so no member is offered the
+  button.
+  **No stored copy of the link (0083):** because the link can now undo an
+  opt-out, `send-followups` no longer records `unsubscribe_url` in
+  `email_messages.variables`, `ses-feedback` strips it from the SES payload it
+  records, and 0083 removes the copies already stored.
 
 ### Secrets this adds
 `SES_SNS_TOPIC_ARN`, `SES_FEEDBACK_SECRET`, `UNSUBSCRIBE_SECRET`. All three are
