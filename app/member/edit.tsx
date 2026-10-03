@@ -504,6 +504,12 @@ export default function MemberEdit() {
    */
   const clearRefusal = () => setRefusal(r => (r && namesADisplayName(r) ? null : r));
 
+  /* A refusal is said as a toast, where the operator is looking, not in a
+     banner at the foot of a long form that has to be scrolled to. Each save
+     clears the refusal before it starts, so a second refusal with the same
+     words is still a change here and is said again. */
+  useEffect(() => { if (refusal) flash(refusal, 'warn'); }, [refusal, flash]);
+
   /**
    * Picking a status, and the one thing the pick has to decide for itself:
    * WHEN.
@@ -726,6 +732,7 @@ export default function MemberEdit() {
       // which field is holding it -- a dead button with "Prenatal Flow ·
       // Coimbatore" under it explains nothing.
       : inactiveFromError ? inactiveFromError
+      : activeFromError ? activeFromError
       : `${course} · ${branch}`;
 
   // Saved at once, by row id, and reflected in the list without waiting for
@@ -756,9 +763,12 @@ export default function MemberEdit() {
       /* No footer while her record is not in hand: a Save under a skeleton
          offers to write a form nobody has seen yet, and a Save under "she is
          not on the register" offers to create her again. */
-      onConfirm={unresolved ? undefined : () => void save()}
-      confirmDisabled={!valid || saving}
-      hint={unresolved ? undefined : hint}
+      /* What is missing is said as a toast when Save is pressed, not as a
+         line under a dead button: the press is where the operator is
+         looking. The footer keeps only what a valid save will write. */
+      onConfirm={unresolved ? undefined : () => (valid ? void save() : flash(hint, 'warn'))}
+      confirmDisabled={saving}
+      hint={unresolved || !valid ? undefined : hint}
       overlays={<>
         {/* Each list opens UNDER its field, as wide as the field, with the
             rest of the form still in view -- the way Joined on already
@@ -1273,21 +1283,6 @@ export default function MemberEdit() {
           );
         })}
       </View>
-
-      {/* The refusal is SHOWN. The database's own words -- the display name
-          that belongs to someone else, the expired subscription -- are what
-          the operator can act on; swallowing them is what made this form
-          report a save it never made. */}
-      {refusal ? (
-        <View style={{
-          flexDirection: 'row', gap: SPACE.md, marginTop: SPACE.xl, padding: SPACE.lg,
-          borderRadius: RADIUS.md, backgroundColor: statusSurface(ink('absent')).bg,
-          borderWidth: 1, borderColor: statusSurface(ink('absent')).border,
-        }}>
-          <Icon name="error" size={19} color={ink('absent')} />
-          <Muted accessibilityLiveRegion="polite" style={{ flex: 1, color: theme.fg }}>{refusal}</Muted>
-        </View>
-      ) : null}
 
       {/* Moving her course is the one change on this form with a consequence
           outside it, so it is said BEFORE the tap rather than reported after.

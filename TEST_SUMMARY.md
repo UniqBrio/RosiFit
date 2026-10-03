@@ -1,3 +1,12 @@
+## MEMBER FORM: VALIDATION SAID AS A TOAST — 03-Oct-2026
+
+`requests/2026-10-03-member-form-validation-toast.md` (CHANGE, scoped).
+
+FAIL-FIRST: src/components/memberValidationToast.test.ts - against main (00bb6d8) 3 of 3 red, e.g. "an invalid press must flash the reason, not do nothing"; 3 of 3 green.
+Existing specs kept green WITHOUT editing them: memberRefusalClears.test.ts (refusal state and clearing rules unchanged), memberInactiveFromField.test.ts (hint still names the refused date), addMemberEmail.test.ts.
+Browser check (offline fixture export, /member/edit, 400x880): Add Member pressed on an empty form -> warn toast "Member name and an email address are required"; with a name only -> "Choose the course to join"; no footer line while invalid; 0 JS errors. Light-scheme emulation rendered the app's dark theme, so only the dark look was seen; the toast is the existing component.
+GATES: `npm run check` ALL 7 PASS.
+
 ## ONE MEMBER CHANGE, ONE SHARED MEMBER REFRESH — 03-Oct-2026
 
 `requests/2026-10-03-one-shared-member-refresh.md` (CHANGE, scoped). NOT DEPLOYED.
