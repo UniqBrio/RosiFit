@@ -606,6 +606,32 @@ The wiring in `index.ts` has no rung: the file calls `Deno.serve` at module scop
 `FEATURE_TRUTH.md` claimed the per-member draft used the wording resolved from the member's own course;
 neither was checked against the function that sends. Filed as a candidate for `/promote`, not run
 in this change: a stored setting's claim should be proven at the step that consumes it.
+## RC-077 — every hook read on its own, so one screen visit re-read what the last one had just read          Tracker: T-406 · Sources: RUN_app-feels-slow.md (T-406 section), requests/2026-09-24-app-feels-slow-measure-first.md
+**Date:** 25-Sep-2026 · **Severity:** S2 · **Modules:** `src/lib/sharedFetch.ts`, `src/lib/supabase.ts`
+
+**Symptom** — Production `edge_logs`, 25-Sep-2026: one session made 300 requests for 49 distinct URLs in a minute, reading the five-table member list 6 times in ~30 s; another made 398 for 44.
+
+**Root cause** — `useAsync` (`src/data/hooks.ts`) fetches on mount and keeps nothing between hooks. Every screen, tab and dialog that needs the member list, the courses or the rules asks the server again, even seconds after another reader got the same answer. Identical concurrent GETs are also queued by the browser's HTTP cache (the RC-076 mechanism), so each repeat costs a round trip.
+
+**Fix** — `createSharedFetch` is installed as the Supabase client's `global.fetch`:
+- identical reads (GET/HEAD under `/rest/v1/`, and 4 read-only RPCs per body, keyed by the token and the answer-changing headers) are shared for `SHARED_READ_MS = 5_000`;
+- any other `/rest/v1/` or `/functions/v1/` request clears everything at start and settle;
+- in-flight joins are bounded by age;
+- non-2xx answers, body failures and callers with an abort signal are never kept;
+- expired entries are swept, and `/auth/v1/logout` clears everything.
+
+**Deliberately not changed:** `pageAll`'s stop-on-empty-page rule (the `db-max-rows` truncation hazard it guards against is documented in its header).
+
+**Files** — `src/lib/sharedFetch.ts`, `src/lib/sharedFetch.test.ts`, `src/lib/supabase.ts`, `scripts/perf/`.
+
+**Proof** — Cold start + 3 tab switches against the stand-in: 54 → 31 requests, all remaining distinct. Cold start first request → last response 1,828–1,835 → 692–713 ms. The 5 s window was chosen from a 2 / 5 / 12 s measurement. `sharedFetch.test.ts` 17/17; each fix (settle-time clear, in-flight age bound, body-failure drop, sweep, sign-out clear) was mutation-checked: removing it fails exactly its test.
+
+**Class** — Any read path outside this client (raw `fetch`, a second Supabase client) would not share; `src/` has none today. Setting `db.timeout` in `createClient` would add an abort signal to every request and silently turn sharing off; noted here so the next change to createClient sees it.
+
+**How to verify** — In production `edge_logs`, count requests per identical URL per session-minute. Before: up to 6× for the member list. After: about 1× unless a write happened in between.
+
+---
+
 ## RC-076 — nine components asked for the same identity, and the browser made them queue          Tracker: T-405 · Sources: RUN_app-feels-slow.md #3, requests/2026-09-24-app-feels-slow-measure-first.md
 **Date:** 25-Sep-2026 · **Severity:** S2 · **Modules:** `src/data/session.ts`, `src/data/sharedRead.ts`
 

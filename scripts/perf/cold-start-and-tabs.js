@@ -7,19 +7,24 @@
 //      (EXPIRED=1: start from an expired token; cold-start-nocache.js with NOCACHE=1 disables the browser
 //       cache; cold-start-and-tabs.js taps Courses -> Reports -> Home, GAP=ms between taps)
 //   h2.log: start ms, end ms, HTTP version, method, URL [+ first 80 chars of the body] -- one line per request.
-// Load a route with a stored session, wait for the network to settle, then stop.
+// Cold start on Home, then Courses -> Reports -> Home by tapping the tab bar (client-side, no reload).
 const { chromium } = require('playwright-core');
 (async () => {
-  const route = process.argv[2] || '/';
   const b64 = o => Buffer.from(JSON.stringify(o)).toString('base64url');
-  const exp = Math.floor(Date.now() / 1000) + (process.env.EXPIRED ? -600 : 3600);
-  const jwt = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ sub: 'auth-1', role: 'authenticated', exp, session_id: 's-1' })}.sig`;
+  const exp = Math.floor(Date.now() / 1000) + 3600;
+  const jwt = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ sub: 'auth-1', role: 'authenticated', exp })}.sig`;
   const session = { access_token: jwt, refresh_token: 'r', token_type: 'bearer', expires_in: 3600, expires_at: exp,
     user: { id: 'auth-1', aud: 'authenticated', role: 'authenticated' } };
-  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--no-sandbox','--ignore-certificate-errors'] });
-  const page = await browser.newPage(); if (process.env.NOCACHE) { const c = await page.context().newCDPSession(page); await c.send('Network.enable'); await c.send('Network.setCacheDisabled', { cacheDisabled: true }); }
+  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--no-sandbox', '--ignore-certificate-errors'] });
+  const page = await browser.newPage({ viewport: { width: 412, height: 915 } });
   await page.addInitScript(s => localStorage.setItem('sb-localhost-auth-token', s), JSON.stringify(session));
-  await page.goto('http://localhost:4173' + route, { waitUntil: 'networkidle', timeout: 60000 });
-  await page.waitForTimeout(3000);
+  await page.goto('http://localhost:4173/', { waitUntil: 'networkidle', timeout: 60000 });
+  const tapped = [];
+  for (const label of ['Courses', 'Reports', 'Home']) {
+    const el = page.getByRole('tab', { name: label }).or(page.getByText(label, { exact: true })).first();
+    try { await el.click({ timeout: 5000 }); tapped.push(label); } catch { tapped.push(label + '(missing)'); }
+    await page.waitForTimeout(+(process.env.GAP || 2000));
+  }
+  console.log('tapped: ' + tapped.join(', ') + ' url=' + page.url());
   await browser.close();
 })().catch(e => { console.error(e); process.exit(1); });
