@@ -1,3 +1,12 @@
+## UNSUBSCRIBE v9 DEPLOYED — 03-Oct-2026
+
+Owner-approved. Order kept: the `/unsubscribe` page went live first (Vercel production `f0ea2a5`,
+1-Oct 20:11, success), then `unsubscribe` v9 (verify_jwt=false) from `main` `ef74760`. Target verified
+first: project lhpzhkzbnquwjljmbylo, latest migration 0084, unsubscribe at v8. The deployed source was
+read back and is identical to main. No migration; send-followups unchanged (v23).
+NOT YET RUN on production: the live smoke (open a real link -> question page, nothing written;
+press Unsubscribe -> unsubscribed + audit via link). Gmail one-click: NOT VERIFIED.
+
 ## COURSE ROSTER SEARCH FINDS DISPLAY NAMES TOO — 03-Oct-2026
 
 `requests/2026-10-01-attendance-search-display-name.md`, correction round 1. NOT DEPLOYED.
