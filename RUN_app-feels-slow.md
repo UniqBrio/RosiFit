@@ -69,3 +69,25 @@ finding) — it never saw this defect (T-118).
 
 **Burst (cause #2):** per-request time inside a burst fell ~3×, but the burst itself (~40 parallel requests)
 is unchanged. Per the owner, compute size stays as is until the burst is re-measured after fix 3.
+
+## Before / after — Fix 2 (T-405, shared identity read)
+
+**Cause found (RC-076):** nine components each sent the identical `app_users` GET, and Chromium's HTTP cache lets
+only one request per identical URL be in flight, so they queued into a chain. It is not the auth client's lock
+(auth-js 2.112.4 is lockless) and not connection limits (production browsers use HTTP/3 or HTTP/2). Disabling the
+browser cache made the same 10 reads go out in parallel, which confirms the mechanism.
+
+**Method:** the production web bundle, built against a local HTTP/2 stand-in API that replies in 200 ms and logs
+every request (`scripts/perf/stand-in-api.js`), loaded cold in headless Chromium with a stored session
+(`scripts/perf/cold-start.js`). 3 runs per case, unmodified `main` vs this branch.
+
+| Cold start | Before | After |
+|---|---|---|
+| Identity (`app_users`) reads | 10 (fresh) / 11 (expired token), one after another | **2, in parallel** (the shared read + `restoreSession`) |
+| Requests per cold start | 34 / 36 | **26 / 27** |
+| First request → last response, fresh token | 1,828–1,836 ms | **706–723 ms** |
+| First request → last response, expired token | 2,241–2,245 ms | **916–947 ms** |
+
+At production's ~150–180 ms per identity read, the 2.4 s chain in the 24 Sep trace should shrink to one round
+trip. **Production not yet measured**: this is client code and ships when the PR merges; the next production cold
+start in `edge_logs` should show at most two `app_users` requests.
