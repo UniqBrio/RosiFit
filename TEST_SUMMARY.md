@@ -1,3 +1,10 @@
+## COURSE ROSTER SEARCH FINDS DISPLAY NAMES TOO — 03-Oct-2026
+
+`requests/2026-10-01-attendance-search-display-name.md`, correction round 1. NOT DEPLOYED.
+FAIL-FIRST: src/data/attendanceSearch.test.ts (appended case) - against f0ea2a5, "The input did not match the regular expression /return members\.filter\(m => matchesAttendanceQuery\(\{\s*member: m\.name, code: m\.code, aliases: m\.aliases,/"; 4 of 4 green.
+Browser check (offline fixture export, /course/c2, light and dark): 10/10 PASS -- the placeholder, display name "Shazia F" finds only Shazia Begum, the code finds only Fathima Rizwan, email still works. Attendance tab search re-checked: PASS.
+GATES: `npm run check` ALL 7 PASS (test:unit 2061 tests: 2060 pass, 0 fail, 1 skipped).
+
 ## OWNER-APPROVED BEHAVIOUR REVERSAL: TWO UNSUBSCRIBE SPECS RE-POINTED — 01-Oct-2026
 
 APPROVAL: the owner, 01-Oct-2026 ("Proceed with Option 1. I explicitly approve a narrow exception
