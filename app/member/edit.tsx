@@ -18,6 +18,7 @@ import { memberWeekdays, openingDays } from '../../src/data/memberDays';
 import { useCourses, useMembers } from '../../src/data/hooks';
 import {
   createMember, updateMember, setMemberStatus, setMemberActiveFrom, staffResubscribeEmail,
+  confirmMemberListed,
 } from '../../src/data/repository';
 import { offersStaffResubscribe, resubscribeOutcomeMessage, type ResubscribeSource } from '../../src/data/staffResubscribe';
 import { StaffResubscribeDialog } from '../../src/components/StaffResubscribeDialog';
@@ -673,13 +674,27 @@ export default function MemberEdit() {
               : 'now inactive'}`
           : said);
       } else {
-        await createMember({
+        const { id } = await createMember({
           full_name: name.trim(),
           offering_id: offering.id,
           joined_on: joined || null,
           aliases, emails: addresses, weekdays,
         });
-        flash(`${name.trim().split(' ')[0]} added · ${course} · ${branch}`);
+        const first = name.trim().split(' ')[0];
+        flash(`${first} added · ${course} · ${branch}`);
+        /* THE SAVE IS DONE; THE LIST IS CHECKED, NOT ASSUMED
+           (requests/2026-10-03-one-shared-member-refresh.md). The screens
+           behind this one refresh from ONE shared read that began after the
+           create committed; this asks that same read whether the new member
+           is in it -- no extra request, no wait, no retry. Only a problem is
+           said: a list that could not refresh is not the same as a member
+           missing from it, and neither is reported as "added" alone. */
+        void confirmMemberListed(id).then(
+          listed => {
+            if (!listed) flash(`${first} was saved, but is not in the member list yet. Refresh the list to check.`, 'warn');
+          },
+          () => flash(`${first} was saved, but the member list could not refresh. It still shows the older list.`, 'warn'),
+        );
       }
       router.back();
     } catch (e) {

@@ -1,3 +1,22 @@
+## ONE MEMBER CHANGE, ONE SHARED MEMBER REFRESH — 03-Oct-2026
+
+`requests/2026-10-03-one-shared-member-refresh.md` (CHANGE, scoped). NOT DEPLOYED.
+
+FAIL-FIRST: src/data/memberRefresh.test.ts - against main (bb371e9) 10 of 11 red, e.g. "repo.confirmMemberListed is not a function" and Test 1's member-read count 0 where 1 is required; 11 of 11 green. The one green on main ("an unrelated write during a refresh does not split the screens") is T-406's network sharing, stated as such.
+NOT OBSERVED FAILING: src/data/memberStore.test.ts - covers a new module (no prior behaviour); 8 of 8 green.
+Existing specs kept green WITHOUT editing them: periodMetrics.test.ts and periodMetricsPage.test.ts pin three call sites of the paged figures RPC, so each of the three keeps its own paged read and is wrapped by the shared per-period read (first draft merged them into one and turned both red).
+
+MEASURED (real repository + supabase-js + T-406 shared fetch, fake network, 1,640 members, 60 ms
+latency, pool 10; readers mounted: Home list + 7 day buckets, Courses, Members, the Add form):
+- one add, pre-T-406 code: 109 reads, 66 duplicates (production logged ~110 for one add on 01-Oct)
+- one add, current main: 43 reads, 0 duplicates; 4 member-list executions in JavaScript
+- one add, this change: 43 reads, 0 duplicates; 1 member-list execution; new member confirmed listed
+- one add, this change with T-406 switched off: 43 reads (the shared read alone)
+- unrelated write during the refresh: main 44 / this change 44, 0 duplicates either way
+- two adds back to back: main 83 / this change 83 (two reloads, both needed after the second write)
+- create 61-62 ms, create to list visible 394-440 ms in the simulation (relative only)
+GATES: `npm run check` ALL 7 PASS (test:unit 2125 tests: 2124 pass, 0 fail, 1 skipped).
+
 ## UNSUBSCRIBE v9 DEPLOYED — 03-Oct-2026
 
 Owner-approved. Order kept: the `/unsubscribe` page went live first (Vercel production `f0ea2a5`,
