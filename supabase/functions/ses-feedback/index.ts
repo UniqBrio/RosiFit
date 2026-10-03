@@ -32,6 +32,7 @@
 // answering.
 import { adminClient } from '../_shared/db.ts';
 import { unquoteSecret } from '../_shared/from-address.ts';
+import { withoutUnsubscribeLinks } from '../_shared/unsubscribe-token.ts';
 
 const EXPECTED_TOPIC_ARN = secret('SES_SNS_TOPIC_ARN');
 const FEEDBACK_SECRET = secret('SES_FEEDBACK_SECRET');
@@ -96,7 +97,9 @@ async function recordEvent(
     provider: 'ses',
     provider_message_id: messageId ?? '',
     event_type: eventType,
-    payload,
+    // SES echoes the message's headers, List-Unsubscribe among them: the
+    // member's signed link, which can now undo an opt-out. Not kept.
+    payload: withoutUnsubscribeLinks(payload),
   }, { onConflict: 'provider,provider_message_id,event_type', ignoreDuplicates: true });
   // Logged, never thrown. Losing the audit row must not cost us the
   // suppression that follows it -- and must not make us answer non-2xx, which

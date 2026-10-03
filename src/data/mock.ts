@@ -999,6 +999,14 @@ export type AttendanceRow = {
   expected: boolean;
   /** Time in Call, the third and last column the Meet export carries */
   minutes: number | null;
+  /**
+   * What the Attendance search box matches besides the name: the member's
+   * code, Google Meet display names and live addresses. Optional -- only the
+   * Attendance read carries them; a row built without them is found by name.
+   */
+  code?: string;
+  aliases?: string[];
+  emails?: string[];
 };
 
 /**
@@ -1098,6 +1106,7 @@ export function attendanceFixture(from: string, to: string): AttendanceRow[] {
       const status: AttendanceStatus = seed === 0 ? 'absent' : seed === 4 && i === 2 ? 'extra' : 'present';
       rows.push({
         id: `${date}-${m.id}`, member_id: m.id, member: m.name,
+        code: m.code, aliases: m.aliases, emails: m.emails.map(e => e.address),
         course: m.course, course_id: m.course_id, branch: m.branch, date,
         time: m.course === 'Postnatal Core' ? '08:00' : '18:00',
         status,
@@ -1124,6 +1133,7 @@ export function attendanceFixture(from: string, to: string): AttendanceRow[] {
     }
     rows.push({
       id: `${date}-${memberId}`, member_id: memberId, member: member.name,
+      code: member.code, aliases: member.aliases, emails: member.emails.map(e => e.address),
       course: member.course, course_id: member.course_id, branch: member.branch, date,
       time: member.course === 'Postnatal Core' ? '08:00' : '18:00',
       status, expected: status !== 'extra',

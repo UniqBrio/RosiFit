@@ -137,6 +137,8 @@ const ACTION_TITLE: Record<string, string> = {
   // against it, and the wording has to carry what the actor column cannot:
   // that the member did this, not the academy.
   'communication.unsubscribed': 'Member unsubscribed from follow-ups',
+  'communication.resubscribed': 'Member resubscribed to follow-ups',
+  'communication.staff_resubscribe': 'Follow-ups turned back on at the member’s request',
   'csv_import.completed': 'Attendance file uploaded',
   'csv_import.member_created': 'Member added from the upload',
   'csv_import.matched_existing': 'Upload row matched to a member',

@@ -54,6 +54,7 @@ import {
 import type { AttendanceRow } from '../../src/data/mock';
 import type { ScreenState } from '../../src/data/useScreenState';
 import { MERGE_FAILED } from '../../src/data/alias';
+import { matchesAttendanceQuery } from '../../src/data/memberSearch';
 import { ALL_BRANCHES } from '../../src/state/academy';
 import { backFrom } from '../../src/data/nav';
 import { ShellScreen } from '../../src/components/AppShell';
@@ -144,16 +145,19 @@ const FILTER_EMPTY: Record<string, string> = {
 /**
  * What the search box narrows, wherever on this screen it narrows something.
  *
- * Name or address, because those are the two things written on a card. It is
- * a function rather than two inline filters because the roster and the
- * inactive section below it are both searched: a second copy of the rule is
- * how one list starts matching an address the other does not.
+ * Name, Google Meet display name, address or code -- the same rule as the
+ * Attendance tab (`matchesAttendanceQuery`), because the register is uploaded
+ * from Meet and a display name is often what somebody is looking for (the
+ * academy, 03-Oct-2026). It is a function rather than two inline filters
+ * because the roster and the inactive section below it are both searched: a
+ * second copy of the rule is how one list starts matching what the other does
+ * not.
  */
 function narrowToSearch(members: Member[], query: string): Member[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return members;
-  return members.filter(m => m.name.toLowerCase().includes(q)
-    || m.emails.some(e => e.address.toLowerCase().includes(q)));
+  if (!query.trim()) return members;
+  return members.filter(m => matchesAttendanceQuery({
+    member: m.name, code: m.code, aliases: m.aliases, emails: m.emails.map(e => e.address),
+  }, query));
 }
 
 /**
@@ -1326,7 +1330,7 @@ function CourseDetailBody() {
                 <Icon name="search" size={18} color={theme.muted} />
                 <TextInput ref={search} testID="course-member-search"
                   value={query} onChangeText={setQuery}
-                  placeholder="Search by name or email"
+                  placeholder="Search by name, display name or email"
                   placeholderTextColor={theme.muted}
                   accessibilityLabel="Search the members of this course"
                   onFocus={() => setSearching(true)} onBlur={() => setSearching(false)}
