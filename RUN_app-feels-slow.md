@@ -185,3 +185,68 @@ paid once per read, not once per repeat.
 
 **Production not yet measured:** client code, ships on merge. Expected in `edge_logs`: requests per URL per
 session-minute close to 1.
+
+## Before / after — Fix 4 (T-407, JavaScript per screen)
+
+**What the 2.65 MB bundle was** (the export's source map, bytes attributed per package):
+- ~400 KB of icon-set glyph tables. `@expo/vector-icons` was imported through its barrel, which ships every set.
+  The app uses two sets, and only ONE glyph (WhatsApp) from MaterialCommunityIcons, whose table alone is 186 KB.
+- The framework: `expo-router` 429 KB (101 KB of it React Navigation core), `react-native-web` 275 KB,
+  `react-dom` 175 KB.
+- Supabase: `auth-js` 120 KB, plus realtime/phoenix/storage 87 KB that the app never uses.
+- App code, `src/` + `app/`: ~700 KB.
+
+**Changes:**
+1. Icon sets are imported one at a time, and WhatsApp is a one-glyph set over the same font.
+2. `asyncRoutes: { web: "production" }`: each screen's code is its own chunk.
+3. Deployment detection compares only the bundles every page loads. The probe page `/` names Home's route
+   chunk, so without this every session that started on another screen would have reloaded once for nothing.
+   Checked empirically: a change to one screen alone still renames `entry` and `__common`, so real deployments
+   are still seen.
+4. A screen whose chunk cannot load no longer blanks the app. It was reproduced with the Members chunk deleted:
+   before, a blank page and no reload; after, one reload, then "This screen could not be loaded. Check the
+   connection and try again." in both themes. The root boundary:
+   - never reloads while a send or import is in flight (T-021);
+   - reloads at most once a minute;
+   - never reloads if it cannot record that it did.
+   A missing `/_expo/` file is now a real 404, not the not-found page, and the service worker neither caches an
+   HTML answer as a script nor keeps what v1 cached (cache v2).
+
+**Compressed JS a screen downloads** (`scripts/perf/js-budget.js`, cold, signed in, fresh browser):
+
+| Build | Home | Attendance | Members |
+|---|---|---|---|
+| `main` | 702 KB | 702 KB | 702 KB |
+| + icons | 579 KB | — | — |
+| + per-route chunks | **467 KB** | **468 KB** | **468 KB** |
+
+**Brotli** (what Vercel serves) for the shared start-up JS: 544 KB → **370 KB (−32%)**.
+
+**Lighthouse, mobile (simulated slow 4G, 4× CPU), median of 3, no session, same method as the first report:**
+
+| Screen | Score | LCP | Total blocking time | Time to interactive | Bytes |
+|---|---|---|---|---|---|
+| Home | 70 → **80** | 5.07 → **3.95 s** | 476 → **343 ms** | 5.2 → **4.1 s** | 714 → **496 KB** |
+| Attendance | 84 → **87** | 0.66 → 0.91 s* | 620 → **494 ms** | 6.8 → **5.7 s** | 901 → **668 KB** |
+| Members | 60 → **65** | 7.30 → **5.80 s** | 627 → **499 ms** | 7.4 → **6.4 s** | 901 → **668 KB** |
+
+\*Attendance's LCP is its first paint; without data there is no larger element.
+
+**The owner's targets are NOT met.** 250 KB per screen and LCP < 2.5 s on this profile are not reachable by
+splitting alone:
+- The entry chunk that every screen needs (`react-dom` + `react-native-web` + `expo-router`) is ~281 KB gzip
+  before any app code. That is this stack's floor.
+- Members' LCP element is text rendered after the JS runs. Its measured render delay is 368 ms; the rest is the
+  simulated 1.6 Mbps download plus 4× CPU.
+
+What else would move it, with costs:
+- (a) Drop supabase-js for `auth-js` + `postgrest-js` + `functions-js` directly: ~20–25 KB gzip; touches the
+  client construction.
+- (b) Load `react-native-url-polyfill` on native only: ~6 KB.
+- (c) Server-render or pre-render the first screen's data.
+- (d) A lighter web stack.
+
+(c) and (d) are architecture decisions, not fixes.
+
+**Trade-off recorded:** a screen never visited before now fetches its chunk on first open. Offline, that open
+fails where it used to render an empty shell, but its data needs the network anyway.

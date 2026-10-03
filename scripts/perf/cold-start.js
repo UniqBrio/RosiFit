@@ -3,7 +3,7 @@
 //   2. node scripts/perf/stand-in-api.js            (HTTP/2 + TLS on :54322, logs to h2.log; DELAY=ms)
 //   3. EXPO_PUBLIC_SUPABASE_URL=https://localhost:54322 EXPO_PUBLIC_SUPABASE_ANON_KEY=x \
 //        npx expo export --platform web --clear      (--clear matters: T-114, a stale Metro cache kept the old URL)
-//   4. serve dist/ on :4173, then: npm i --no-save playwright-core && node scripts/perf/cold-start.js /
+//   4. serve dist/ on :4173, then: npm i --no-save playwright-core@1.63.0 && node scripts/perf/cold-start.js /
 //      (EXPIRED=1: start from an expired token; cold-start-nocache.js with NOCACHE=1 disables the browser
 //       cache; cold-start-and-tabs.js taps Courses -> Reports -> Home, GAP=ms between taps)
 //   h2.log: start ms, end ms, HTTP version, method, URL [+ first 80 chars of the body] -- one line per request.

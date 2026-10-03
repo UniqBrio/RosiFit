@@ -9,14 +9,20 @@
  * running that a newer one exists. A week of deployments could go by under
  * somebody who never closed the app.
  *
- * WHAT IDENTIFIES A BUILD. Nothing new. `expo export` writes one
- * content-hashed entry bundle and every exported page references it:
+ * WHAT IDENTIFIES A BUILD. Nothing new. `expo export` writes content-hashed
+ * bundles and every exported page references the SHARED ones -- the entry,
+ * and since per-route chunks (T-407) `__common` and the Metro runtime:
  *
  *   /_expo/static/js/web/entry-21187df9dabc508c580abb58fb5bf5ad.js
  *
- * That hash IS the build id — it changes when, and only when, the code
- * changes. So the check is: fetch the start URL, read the bundle names out of
- * it, and see whether it names one this document has not got. No build stamp to
+ * Those hashes ARE the build id. The entry's hash also folds in the hash of
+ * every async chunk reachable from it (@expo/metro-config
+ * serializer/computeChunkFilenames.js), so a change confined to one screen
+ * still renames the entry -- checked by building one, RUN_app-feels-slow.md.
+ * AN EXPO UPGRADE MUST RE-CHECK THAT: if the entry stopped folding in its
+ * chunks, a screen-only deployment would go unseen. So the check is: fetch the
+ * start URL, read the SHARED bundle names out of it (sharedBundles), and see
+ * whether it names one this document has not got. No build stamp to
  * generate, no version file to keep in step with the bundle it claims to
  * describe, and nothing that can drift from the thing it is versioning.
  *
@@ -95,8 +101,9 @@ export function stamp(bundles: readonly string[] | null): string | null {
 /**
  * Is the server serving something this document did not load?
  *
- * NOT "are the two lists different" — CONTAINMENT, deliberately, and this is
- * the subtle one. A running document GAINS bundles: `memberXlsx` pulls in
+ * NOT "are the two lists different" — CONTAINMENT of the SHARED bundles
+ * (sharedBundles, T-407), deliberately, and this is the subtle one. A
+ * running document GAINS bundles: `memberXlsx` pulls in
  * ExcelJS by dynamic import the first time a report is downloaded, and that
  * appends a script tag the served HTML has never named. Compared as sets,
  * every session that had exported a spreadsheet would reload itself, and then
@@ -111,7 +118,25 @@ export function isNewDeployment(
   served: readonly string[] | null,
 ): boolean {
   if (running === null || served === null) return false;
-  return served.some((bundle) => !running.includes(bundle));
+  /* PER-ROUTE BUNDLES (T-407). With asyncRoutes the probe page names its own
+     route chunk and layouts beside the shared bundles, and a session that
+     started on another screen never loaded them. Only the bundles EVERY page
+     loads decide: a new build always renames the entry (it carries the
+     route-to-chunk map), and a change confined to shared code renames
+     __common. An answer naming no shared bundle falls back to all of them. */
+  return sharedBundles(served).some((bundle) => !running.includes(bundle));
+}
+
+/**
+ * The bundles that identify a BUILD: the ones every page loads, not one
+ * route's chunk or a lazy import (T-407). Falls back to the whole list when
+ * none match, so an export that names bundles differently is still compared.
+ * Detection and the reload loop-guard stamp both go through this, so the note
+ * written before a reload matches the page that comes back on ANY screen.
+ */
+export function sharedBundles(bundles: readonly string[]): string[] {
+  const shared = bundles.filter((b) => /\/(entry|__common|__expo-metro-runtime)-[A-Za-z0-9]+\.js$/.test(b));
+  return shared.length ? shared : [...bundles];
 }
 
 /**
@@ -127,7 +152,7 @@ export function shouldReload(
   served: readonly string[] | null,
   attempted: string | null,
 ): boolean {
-  return isNewDeployment(running, served) && stamp(served) !== attempted;
+  return isNewDeployment(running, served) && stamp(served && sharedBundles(served)) !== attempted;
 }
 
 /**
