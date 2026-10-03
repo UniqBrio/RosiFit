@@ -139,6 +139,14 @@ export function installNodeStubs(): (f: typeof fetch) => void {
   for (const [name, exports] of Object.entries(stubs)) {
     M._cache[`\0stub:${name}`] = { id: name, filename: name, loaded: true, exports };
   }
+  // supabase-js builds its realtime client at createClient() and refuses to
+  // without a WebSocket constructor. Browsers and Node 22+ have one; CI runs
+  // Node 20, which does not. Nothing here opens a channel, so a constructor
+  // that is never called is enough.
+  const g = globalThis as { WebSocket?: unknown };
+  if (typeof g.WebSocket === 'undefined') {
+    g.WebSocket = class { constructor() { throw new Error('realtime is not part of the fake network'); } };
+  }
   process.env.EXPO_PUBLIC_SUPABASE_URL = 'https://fake.supabase.test';
   process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY = 'anon-key-for-the-fake';
   let current: typeof fetch = async () => json([]);

@@ -17,6 +17,12 @@ latency, pool 10; readers mounted: Home list + 7 day buckets, Courses, Members, 
 - create 61-62 ms, create to list visible 394-440 ms in the simulation (relative only)
 GATES: `npm run check` ALL 7 PASS (test:unit 2125 tests: 2124 pass, 0 fail, 1 skipped).
 
+CI FIX (PR 63): CI runs Node 20; supabase-js's realtime client refuses to construct there without a
+WebSocket constructor (Node 22+ and browsers have one), so the 8 runtime specs in memberRefresh.test.ts
+failed in CI while passing locally on Node 22.
+FAIL-FIRST: src/data/memberRefresh.test.ts - under Node 20 (v20.20.2) at 36cae9d, 8 of 11 red, "Node.js detected but native WebSocket not found."; 11 of 11 green after the test kit supplies a never-called WebSocket constructor when the runtime has none. App code unchanged.
+GATES: Node 20 full unit suite 2125 tests: 2124 pass, 0 fail, 1 skipped; `npm run check` (Node 22) ALL 7 PASS.
+
 ## UNSUBSCRIBE v9 DEPLOYED — 03-Oct-2026
 
 Owner-approved. Order kept: the `/unsubscribe` page went live first (Vercel production `f0ea2a5`,
