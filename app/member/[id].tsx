@@ -3,7 +3,9 @@ import { View, Text } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
   useMembers, useRules, useSentForPeriod, useCourses, useCourseMessage, useMemberWeek,
+  useAcademyDetails,
 } from '../../src/data/hooks';
+import { sendPreview } from '../../src/data/sendPreview';
 import {
   FollowUpTriggerPanel, FollowUpTriggerPrompt, type TriggerRecipient,
 } from '../../src/components/FollowUpTriggerPanel';
@@ -29,11 +31,13 @@ import { emailStateWord, isDeliveryFailure } from '../../src/data/emailStatus';
 import { streakReading } from '../../src/data/streak';
 import { formatDate } from '../../src/data/memberDate';
 import {
-  flagged, isReachable, recipientSplit, emailExclusionReason, suppressedAddress,
+  flagged, isReachable, recipientSplit, emailExclusionReason, suppressedAddress, exclusionSummary,
 } from '../../src/data/followup';
 import { currentWeek, iso } from '../../src/data/period';
 import { mergeSent, sentThisSession, sentOn, recordSent } from '../../src/data/sent';
 import { reachOutState, REACH_OUT, warnsBeforeReachOut } from '../../src/data/reachOut';
+import { useStaffResubscribe } from '../../src/components/useStaffResubscribe';
+import { RESUBSCRIBE_COPY, resubscribableAddresses } from '../../src/data/staffResubscribe';
 
 /**
  * ONE MEMBER, AS A POP-UP OVER THE LIST SHE WAS TAPPED ON
@@ -128,6 +132,7 @@ export default function MemberDetail() {
      a member reads (guardrail 5). */
   const memberCourse = (courses.data ?? []).find(c => c.name === m?.course) ?? null;
   const message = useCourseMessage(memberCourse?.id ?? null, forced);
+  const academy = useAcademyDetails(forced);
   const [warning, setWarning] = useState(false);
   /* The send made from the prompt, once a trigger has been applied. Its own
      state and not the draft's: this dialog now owns a send, and it reports its
@@ -135,6 +140,9 @@ export default function MemberDetail() {
      out. */
   const [sending, setSending] = useState(false);
   const [sendFailure, setSendFailure] = useState<string | null>(null);
+  // Staff "Resubscribe" for an address the member unsubscribed -- the one
+  // shared flow (src/components/useStaffResubscribe.tsx).
+  const resubscribe = useStaffResubscribe();
   /* ONE KEY FOR THIS RECORD'S SEND, carried by every attempt from it (T-017).
      Held in `sessionStorage` under this member and this period, so a refresh
      or the PWA's auto-reload mid-send finds it again instead of minting a
@@ -195,8 +203,8 @@ export default function MemberDetail() {
      The record carries `status` now, so the panel can say WHICH it is -- and
      which it is decides what the reader does next. No address is something the
      academy fixes by asking the member. A bounce is something it fixes on the
-     Edit form, where Reinstate now lives. An opt-out is not something it may
-     fix at all.
+     Edit form, where Reinstate now lives. An opt-out is undone only when the
+     member asks -- staff Resubscribe, which records how.
 
      Every state carries its own word AND its own icon; the tone comes from the
      measured token pair for the theme that is on, never a literal (CP-008,
@@ -299,6 +307,19 @@ export default function MemberDetail() {
   const promptRecipients: TriggerRecipient[] = split.recipients.map(r => ({
     id: r.id, name: r.name, email: primaryEmail(r), sentAt: sentAll[r.id],
   }));
+  /* The confirm step's preview (requests/2026-09-26-preview-before-send.md):
+     the course's stored wording -- the same `message` the send below passes
+     the template of, and what send-followups renders since RC-109 -- filled
+     for one of the members the prompt lists. */
+  const previewFor = (memberId: string) => {
+    const who = split.recipients.find(r => r.id === memberId);
+    return who && message.data && academy.data && trigger
+      ? sendPreview(message.data, who, {
+          periodFrom: week.from, periodTo: week.to,
+          academyName: academy.data.name, followUpTrigger: trigger.enabled ? trigger.threshold : null,
+        })
+      : null;
+  };
 
   /* THE SEND ITSELF, from this dialog rather than from the prompt: the prompt
      renders a decision, and the one API call that puts email in front of a
@@ -384,6 +405,7 @@ export default function MemberDetail() {
              screen is still the old rule's answer and must not be sendable. */
           recipients={promptRecipients}
           excludedNames={split.excluded.map(x => x.name)}
+          excludedSummary={exclusionSummary(split.excluded)}
           listPending={rules.state === 'loading'}
           periodLabel={week.label}
           sending={sending}
@@ -391,7 +413,8 @@ export default function MemberDetail() {
             ?? (message.state === 'error'
               ? 'This course’s wording could not be read, so nothing can be sent from here.'
               : null)}
-          onSend={ids => { void send(ids); }} />
+          onSend={ids => { void send(ids); }}
+          previewFor={previewFor} />
         <ConfirmDialog
           open={warning}
           onClose={() => setWarning(false)}
@@ -401,6 +424,7 @@ export default function MemberDetail() {
           cancelLabel="Not yet"
           confirmLabel="Reach out anyway"
           onConfirm={() => { setWarning(false); reachOut(); }} />
+        {resubscribe.dialog}
       </>)}>
 
       {tab === 'week' ? (<>
@@ -564,9 +588,9 @@ export default function MemberDetail() {
             <Muted style={{ fontSize: 12, lineHeight: 17, marginTop: 2 }}>
               {/* WHAT TO DO, and it differs by state. A bounce is frequently a
                   typo the academy can correct; an opt-out is the member's own
-                  decision and the app offers no way to undo it. Saying so here
-                  is what stops the reader going to Edit and retyping an address
-                  that is already on the record. */}
+                  decision, undone only when the member asks (Resubscribe,
+                  below). Saying so here is what stops the reader going to Edit
+                  and retyping an address that is already on the record. */}
               {isDeliveryFailure(suppressedAddress(m)?.status)
                 /* A bounce is the mail system's verdict on the ADDRESS, so the
                    answer is a different address -- not a button that un-marks
@@ -574,11 +598,36 @@ export default function MemberDetail() {
                    rejected sends the next follow-up into the same hole
                    (requests/2026-09-23-bounced-address-asks-for-a-different-one.md). */
                 ? 'Follow-ups are not reaching the member. Open Edit and add a different address.'
-                /* An opt-out or a spam report is the member's own decision, and
-                   there is nothing for the academy to do about it here. */
-                : 'The academy may not write to the member at this address.'}
+                /* A spam report is not the academy's to lift (0078). An
+                   opt-out is lifted only when the member asks -- the action
+                   below, which records how. */
+                : suppressedAddress(m)?.status === 'unsubscribed'
+                  ? 'The member unsubscribed. If the member asks for follow-ups again, use Resubscribe.'
+                  : 'The academy may not write to the member at this address.'}
             </Muted>
           ) : null}
+          {resubscribe.offers(m.emails) ? (() => {
+            const offered = resubscribableAddresses(m.emails);
+            // Named unless the panel above already names it: a member whose
+            // primary is fine can still have an unsubscribed second address.
+            const named = mailState === 'suppressed' && offered.length === 1
+              && suppressedAddress(m)?.address === offered[0].address;
+            const addresses = offered.map(e => e.address).join(', ');
+            return (
+              <>
+                {named ? null : (
+                  <View testID="member-unsubscribed">
+                    <Muted style={{ fontSize: 12, lineHeight: 17, marginTop: 2 }}>
+                      {`Unsubscribed: ${addresses}`}
+                    </Muted>
+                  </View>
+                )}
+                <Button testID="member-resubscribe" label={RESUBSCRIBE_COPY.action} variant="secondary"
+                  style={{ alignSelf: 'flex-start', marginTop: SPACE.sm }}
+                  onPress={() => resubscribe.open(m.name, m.emails)} />
+              </>
+            );
+          })() : null}
           <Muted style={{ fontSize: 12, lineHeight: 17, marginTop: 2 }}>
             {`Last contacted ${m.last === '—' ? 'never' : m.last}`}
           </Muted>

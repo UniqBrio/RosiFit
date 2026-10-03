@@ -114,6 +114,12 @@ There is no free-form send path anywhere.
   that copy is the intent of the work. Re-pinning is the spec doing its job. The
   diff must show only the expected string literal changing: no assertion
   removed, no `.skip`, no matcher loosened. Anything else is overwriting a spec.
+  **One further exemption (owner-approved 01-Oct-2026):** An owner-approved
+  behaviour reversal may modify an existing spec when the old assertion directly
+  conflicts with a newly approved security/functional requirement. The change
+  must preserve all downstream assertions where possible, change only the
+  action/expectation necessary for the approved reversal, and record the
+  approval/reason in TEST_SUMMARY.
 - **Verify every dependency before installing** — it exists, it is the
   intended name, it is pinned.
 - **`supabase/functions/` needs Deno 2.9.7 installed locally** — the same version

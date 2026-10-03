@@ -243,15 +243,40 @@ commit;
 
 select t.eq(pg_temp.mark('Bhavani Again', '2026-08-31'), 'absent',
   'the mark she made by hand survives a file that names her');
-select t.eq((select (r->'changes'->>'updated')::int from t_hand), 0,
+-- THE ONE ROW THIS IMPORT DOES MOVE IS ESHWARI'S (re-pointed 26-Sep-2026, T-137).
+-- The third import wrote her 'extra' on 31-Aug, and 0046 moved her enrolment
+-- start back to that day, so she IS expected on it now. Owner decision: a
+-- back-dated member is expected on the next re-import -- so this file promotes
+-- her to present, and that is the single update. Bhavani's hand mark is not it.
+select t.eq((select (r->'changes'->>'updated')::int from t_hand), 1,
+  'the only row this import updates is the back-dated member, now expected -- never the hand-marked one');
+select t.eq(pg_temp.mark('Eshwari Again', '2026-08-31'), 'present',
+  'the back-dated member is present on the day that moved her start');
+select t.eq((select (r->'changes'->>'unchanged')::int from t_hand), 3,
+  'the hand-marked row, which the file could not move, is counted as unchanged with the other two');
+
+-- The SAME file once more: now nothing is left to move, and a re-upload over a
+-- hand-corrected register says so.
+begin;
+set local role service_role;
+create temporary table t_hand2 as
+select public.commit_csv_import(
+  pg_temp.stage('sha-r4b', 'zzz-zzzz-zzz', '2026-08-31T06:30:00Z', '2026-08-31',
+                array['Asha Again','Bhavani Again','Chitra Again','Eshwari Again']),
+  'ffffffff-1111-0000-0000-000000000045', '[]'::jsonb) as r;
+commit;
+
+select t.eq((select (r->'changes'->>'updated')::int from t_hand2), 0,
   'and the import does not claim to have updated the row it deliberately left alone');
-select t.eq((select (r->'changes'->>'unchanged')::int from t_hand), 4,
+select t.eq((select (r->'changes'->>'unchanged')::int from t_hand2), 4,
   'a row the file could not move is counted as unchanged, which is what happened to it');
 select t.ok((select (r->'changes'->>'added')::int + (r->'changes'->>'updated')::int
                   + (r->'changes'->>'absent_added')::int
                   + (r->'overridden'->>'reverted')::int + (r->'overridden'->>'removed')::int
-               from t_hand) = 0,
+               from t_hand2) = 0,
   'so a re-upload over a hand-corrected register still says there is nothing to update');
+select t.eq(pg_temp.mark('Bhavani Again', '2026-08-31'), 'absent',
+  'and the hand mark still stands');
 
 -- ============================================ the counts reach the audit trail
 select t.eq(

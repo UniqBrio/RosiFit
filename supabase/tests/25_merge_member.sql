@@ -212,7 +212,7 @@ begin;
       (select id from public.members where full_name = 'Kavya Balaji'),
       (select id from public.members where full_name = 'Rani')),
     'a stray carrying her own address is refused rather than merged on a guess',
-    'email address of her own');
+    'has an email address on file');  -- copy-lock re-pinned to 0061's wording (T-139)
 commit;
 
 -- ========================================================= who may call it
@@ -224,6 +224,8 @@ begin;
     format('select public.merge_member_into(%L, %L)',
       '00000000-0000-0000-0000-000000000001',
       '00000000-0000-0000-0000-000000000002'),
+    -- Refused before the body runs: EXECUTE is no longer granted to anon at
+    -- all, which is stronger than the in-body check this first pinned (T-139).
     'anonymous cannot merge anybody',
-    'signed-in');
+    'permission denied');
 commit;

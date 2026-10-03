@@ -19,13 +19,23 @@
  */
 import { type Member, type FollowUpRule } from './mock';
 import { isEligible, isReachable } from './followup';
+import { emailIssueGroups, emailIssueIds } from './emailIssues';
+import { membersOnDay } from './joined';
+import { membersActiveOn } from './inactiveFrom';
+import { iso } from './period';
 
 export type CourseSummary = {
   /** "3 days/week · 3 members", or "No days set · 1 member" */
   freqLine: string;
-  /** members with a usable address, and without */
+  /**
+   * The course screen's own three-way split, over the members on TODAY's
+   * register: an address that works, no address on file, and an address that
+   * cannot be used (bounced, unsubscribed). The three add up to the members
+   * on today's register; `freqLine` names any enrolled member who is not.
+   */
   withMail: number;
   noMail: number;
+  emailIssues: number;
   /** how many are over this course's threshold */
   flagged: number;
   /** 'error' | 'favorite' | 'check_circle' -- a word always accompanies it */
@@ -98,28 +108,52 @@ export function endEnrolment<T extends { course: string; course_id: string | nul
 
 export function courseSummary(
   members: Member[], weekdayCount: number, rule: FollowUpRule,
+  todayIso: string = iso(new Date()),
 ): CourseSummary {
   const noDays = weekdayCount === 0;
-  const noMail = members.filter(m => !isReachable(m)).length;
+
+  /* THE SAME POPULATION AND THE SAME SPLIT THE COURSE SCREEN DRAWS.
+     The card said "79 without email" over Postnatal while the course screen
+     said "59 without" (30-Sep-2026), and both were right about different
+     things. The card counted every ENROLLED member -- 90 of them inactive and
+     2 not yet joined, whom the screen's roster leaves out -- and it counted
+     `!isReachable`, which folds a bounced or unsubscribed address in with no
+     address at all, where the screen lists those under "with an email issue".
+     So the card now counts who is on the register today (`membersOnDay` and
+     `membersActiveOn`, the very predicates the course screen narrows by) and
+     splits them with the screen's own derivation: no address on file, and
+     `emailIssueGroups` for an address that cannot be used. */
+  const onRegister = membersActiveOn(membersOnDay(members, todayIso), todayIso);
+  const issueIds = emailIssueIds(emailIssueGroups(onRegister));
+  const noMail = onRegister.filter(m => m.emails.length === 0).length;
+  const emailIssues = onRegister.filter(m => m.emails.length > 0 && issueIds.has(m.id)).length;
+  const offRegister = members.length - onRegister.length;
 
   // A member the academy cannot write to is not followed up even when over
-  // the threshold, so they are counted in `noMail` and not in `flagged` -- the
-  // card would otherwise promise a send that has nowhere to go (C-76).
+  // the threshold, so they are not counted in `flagged` -- the card would
+  // otherwise promise a send that has nowhere to go (C-76).
   //
   // `isReachable`, not "has an address": an address that bounced or was opted
   // out of is on the record and cannot be sent to, and this count exists to
   // say what the send will actually do.
-  const flagged = members.filter(m => isReachable(m) && isEligible(m, rule)).length;
+  const flagged = members.filter(m => isReachable(m) && isEligible(m, rule, todayIso)).length;
 
   const freq = noDays
     ? 'No days set'
     : `${weekdayCount} ${weekdayCount === 1 ? 'day' : 'days'}/week`;
-  const memberLine = `${members.length} ${members.length === 1 ? 'member' : 'members'}`;
+  const memberLine = `${members.length} ${members.length === 1 ? 'member' : 'members'}`
+    // Said, not left to be noticed: the email figures below are about the
+    // register today, so an enrolled member who is off it is named here or
+    // the figures would not add up to the count beside them. "Not on today's
+    // register", not "inactive": it also covers a member who joins later, and
+    // that member's own pill reads Active.
+    + (offRegister > 0 ? ` · ${offRegister} not on today’s register` : '');
 
   return {
     freqLine: `${freq} · ${memberLine}`,
-    withMail: members.length - noMail,
+    withMail: onRegister.length - noMail - emailIssues,
     noMail,
+    emailIssues,
     flagged,
     // No weekdays is not "nobody needs follow-up" -- it is the more serious
     // fact that NOTHING IS EXPECTED of anyone, so no absence can be counted
@@ -130,7 +164,8 @@ export function courseSummary(
       : (flagged
           ? `${flagged} ${flagged === 1 ? 'member needs' : 'members need'} follow-up`
           : 'Nobody needs follow-up')
-        + (noMail ? ` · ${noMail} without email` : ''),
+        + (noMail ? ` · ${noMail} without email` : '')
+        + (emailIssues ? ` · ${emailIssues} with an email issue` : ''),
     noDays,
   };
 }
