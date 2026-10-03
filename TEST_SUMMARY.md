@@ -1,3 +1,231 @@
+## COURSE ROSTER SEARCH FINDS DISPLAY NAMES TOO — 03-Oct-2026
+
+`requests/2026-10-01-attendance-search-display-name.md`, correction round 1. NOT DEPLOYED.
+FAIL-FIRST: src/data/attendanceSearch.test.ts (appended case) - against f0ea2a5, "The input did not match the regular expression /return members\.filter\(m => matchesAttendanceQuery\(\{\s*member: m\.name, code: m\.code, aliases: m\.aliases,/"; 4 of 4 green.
+Browser check (offline fixture export, /course/c2, light and dark): 10/10 PASS -- the placeholder, display name "Shazia F" finds only Shazia Begum, the code finds only Fathima Rizwan, email still works. Attendance tab search re-checked: PASS.
+GATES: `npm run check` ALL 7 PASS (test:unit 2061 tests: 2060 pass, 0 fail, 1 skipped).
+
+## OWNER-APPROVED BEHAVIOUR REVERSAL: TWO UNSUBSCRIBE SPECS RE-POINTED — 01-Oct-2026
+
+APPROVAL: the owner, 01-Oct-2026 ("Proceed with Option 1. I explicitly approve a narrow exception
+to the CLAUDE.md append-only test rule for this deliberate security behaviour reversal"), with the
+exemption text the owner dictated, now in CLAUDE.md beside the copy-lock exemption.
+REASON: prevent email/link scanners from unsubscribing a member through a GET of the body link
+(`requests/2026-10-01-unsubscribe-get-confirms.md`). A GET now only asks; the page's Unsubscribe
+press, or Gmail's RFC 8058 POST, is the opt-out.
+AFFECTED EXISTING SPECS (src/data/unsubscribeHandler.test.ts), and nothing else:
+- "TEST 1 body link: unsubscribe -> old link offers Resubscribe -> Resubscribe -> subscribed"
+- "bounced: an opt-out is recorded over it, no Resubscribe is offered, and the button is refused"
+WHAT CHANGED: in each, ONE line -- the first action, `handle(new Request(await link(A)))` -- became
+the new flow: open the link (asserted to land on /unsubscribe and NOT to change the status; TEST 1
+also asserts no audit row), then press Unsubscribe (`POST ... &a=unsubscribe`). EVERY downstream
+assertion is preserved unchanged: the 303, the /unsubscribed target, the carried pair, the status,
+the audit action and `via: link`, the old-link re-click, Resubscribe, and the bounced refusals. No
+assertion removed, no `.skip`, no matcher loosened. The 13 link-scanner specs from 3ca5ddf are kept.
+RESULT: unsubscribeHandler.test.ts 28 of 28 green (was 26 of 28). `npm run check` ALL 7 PASS
+(test:unit 2060 tests: 2059 pass, 0 fail, 1 skipped). `deno check` unsubscribe, send-followups,
+ses-feedback clean; `deno test` 26 / 0.
+DB: `npm run test:db` 1202 PASS; failures only in 39, 52, 53 (pre-existing, identical on main's CI;
+no DB change this round). Spec 61 46/46.
+BROWSER (offline fixture export, Chromium, light and dark): 85/85 PASS -- Reach Out / Attendance /
+Edit Member offer the action only for unsubscribed (never subscribed, bounced or spam-reported);
+two-address choice, Other needs a note, success refreshes and the action goes; Attendance search;
+the question page shows its button only for this project's function, posts e, t, a=unsubscribe,
+clears the pair from the address bar, sends nothing on load, and renders in both colour schemes.
+SECURITY REVIEW (code-reviewer): no GET/HEAD/OPTIONS path writes or audits; no forged or missing
+token writes; requirements (1)-(7) PASS. LOW notes kept: the page's `fn` check names this project's
+ref (as /unsubscribed already does); one-click is recognised by the absence of `a`, token still
+required; a scanner that renders the page AND presses buttons is the accepted residual.
+
+## ATTENDANCE SEARCH FINDS DISPLAY NAMES AND EMAIL — 01-Oct-2026
+
+`requests/2026-10-01-attendance-search-display-name.md` (micro). NOT DEPLOYED.
+FAIL-FIRST: src/data/attendanceSearch.test.ts - against 3ca5ddf, "The input did not match the regular expression /matchesAttendanceQuery\(r, q\)/"; 3 of 3 green.
+Browser check (offline fixture export): 8/8 PASS, light and dark -- the placeholder, display name "Shazia F" finds only Shazia Begum, an email finds only Divya Ramesh, the code still finds the member.
+GATES: `npm run check` 6 of 7 PASS; test:unit 2060 tests, 2057 pass, 2 fail, 1 skipped -- the two failures are the owner-decision-pending specs recorded in the entry below, nothing else.
+
+## THE UNSUBSCRIBE LINK ASKS; SEND CONFIRMATIONS COUNT EACH REASON — 01-Oct-2026 (WORK IN PROGRESS)
+
+`requests/2026-10-01-unsubscribe-get-confirms.md`. NOT DEPLOYED. NOT REVIEWED YET.
+
+FAIL-FIRST: src/data/unsubscribeHandler.test.ts (13 appended cases) - against HEAD's unsubscribe/index.ts, 11 of 28 red, e.g. "the question, not the confirmation  + 'https://rosi-fit.vercel.app/unsubscribed' - 'https://rosi-fit.vercel.app/unsubscribe'"; all 13 green with the change.
+FAIL-FIRST: src/data/exclusionSummary.test.ts - against HEAD's send/index.tsx, "The input was expected to not match the regular expression /without an address/"; 3 of 3 green.
+NOT OBSERVED FAILING: src/data/unsubscribeLanding.test.ts (3 appended cases) and supabase/functions/unsubscribe/landing.test.ts (1 appended case) - pin a new page and a new landing outcome; green.
+
+KNOWN RED, OWNER DECISION PENDING: src/data/unsubscribeHandler.test.ts "TEST 1 body link: unsubscribe -> old link offers Resubscribe -> Resubscribe -> subscribed" and "bounced: an opt-out is recorded over it, no Resubscribe is offered, and the button is refused" assert that a GET writes the opt-out -- the behaviour the owner asked to remove. Untouched (append-only); 26 of 28 green in that file.
+`deno check` unsubscribe + send-followups clean; `deno test` 26 / 0. Full `npm run check`, spec 61 and browser checks NOT yet re-run for this round.
+
+## STAFF RESUBSCRIBE ON REACH OUT AND ATTENDANCE, ONE SHARED FLOW — 01-Oct-2026
+
+`requests/2026-10-01-staff-resubscribe-everywhere.md` (CHANGE, scoped). Reach Out (member pop-up
+and send draft) and Attendance offer "Resubscribe" only for an `unsubscribed` saved address; it
+opens the existing confirmation (now titled "Turn follow-ups back on for this email?", naming the
+member and the address, with a chooser when there are several). One hook, `useStaffResubscribe`,
+owns the dialog, the call and the toast for both screens; Edit keeps its own button and passes its
+one address to the same dialog. Every path calls `staffResubscribeEmail` → RPC
+`staff_resubscribe_member_email` (0084). No migration; 0084 not re-applied.
+
+FAIL-FIRST: src/data/staffResubscribeEntryPoints.test.ts - against ed4e1d1, 4 of 6 red, e.g. "app/member/[id].tsx must use the shared hook"; 6 of 6 green.
+FAIL-FIRST: src/data/staffResubscribe.test.ts (4 appended cases) - 4 of 8 red against ed4e1d1, "(0 , import_staffResubscribe2.resubscribableAddresses) is not a function"; 8 of 8 green.
+
+Browser check (Chromium, offline fixture export, temporary fixture with one member holding two
+unsubscribed addresses and one bounced; fixture reverted, `git diff src/data/mock.ts` empty):
+33/33 PASS, light and dark — action shown only for the unsubscribed member on the pop-up, send draft
+and Attendance; never for bounced; opening changes nothing; Confirm disabled until a source (and an
+address, with two); Other needs a note; success toast; the action disappears after confirm.
+NOT RUN against production from this sandbox (no route to supabase.co or vercel.app).
+
+REVIEW ROUND (code-reviewer and copy-gate-reviewer, REQUEST CHANGES): Attendance read the whole
+member list (seven paged reads) to find addresses -- it now reads only the live unsubscribed rows
+(`fetchUnsubscribedAddresses`, refreshed on a member change); the "Choose which address" reason
+lived only in the confirm button's label -- now shown under the addresses; the pop-up names an
+unsubscribed address the panel does not; screen-reader labels on Attendance and the send draft name
+the address; lexicon rows reconciled; two comments that said an opt-out cannot be undone corrected.
+FAIL-FIRST: src/data/staffResubscribeEntryPoints.test.ts (2 appended cases) - against the pre-review shape, 2 of 8 red: "The input did not match the regular expression /useUnsubscribedAddresses\(forced\)/" and "... /source && !chosen && problem \?[\s\S]{0,300}testID=\"resubscribe-address-problem\"/"; 8 of 8 green.
+Browser re-check after the fixes, same fixture method: 44/44 PASS, light and dark (adds: the address
+reason on screen once a source is picked, Cancel writes nothing, the pop-up names the remaining
+unsubscribed address after the primary is turned back on).
+
+Production, read-only (01-Oct-2026): ledger has 0084 (20261001100132) as the latest; unsubscribe v8
+(verify_jwt false) and send-followups v23 (verify_jwt true) ACTIVE; guard and carry triggers present;
+`audit_log` not executable by authenticated or anon; `staff_resubscribe_member_email` SECURITY
+DEFINER, authenticated yes, anon no. A DO block run as a signed-in staff user, ended by RAISE so
+nothing committed: direct status PATCH refused (42501), `audit_log` call refused (42501), staff RPC on
+a bounced row refused ("this address bounced; ..."), Other with no note refused. No live complained
+row exists to probe; spec 61 covers it.
+
+GATES: `npm run check` ALL 7 PASS (test:unit 2038 tests: 2037 pass, 0 fail, 1 skipped);
+contrast 2852/2852; icons 75/75. Spec 61 46/46 (no DB change this round).
+
+## 0084: CREATE OR REPLACE TRIGGER INSTEAD OF DROP + CREATE — 01-Oct-2026
+
+Owner-approved (Option 1). The Supabase MCP connector holds any statement containing DROP for a
+confirmation it cannot get here, so 0084 never reached production (pg_stat_statements: the DROP
+probes recorded 0 times, the plain DDL probes recorded). The two `drop trigger if exists` +
+`create trigger` pairs are now `create or replace trigger` (Postgres 14+; production 17.6, harness 16).
+No other line changed; 0084 had been applied nowhere.
+
+NOT OBSERVED FAILING: no spec added or changed - syntax-only change, re-proven by the existing specs.
+Spec 61 46/46; 0084 applied twice in a row leaves exactly one of each trigger.
+`npm run test:db` 1202 PASS, failures only in 39, 52, 53 (pre-existing, unchanged).
+`npm run check` ALL 7 PASS; `deno check` clean; `deno test` 25 / 0.
+
+## UNSUBSCRIBE / RESUBSCRIBE FOR BOTH THE BODY LINK AND GMAIL'S UNSUBSCRIBE — 01-Oct-2026
+
+`requests/2026-10-01-resubscribe-recovery-and-gmail-one-click.md` (CHANGE, scoped, correction round 1
+of the resubscribe button). List-Unsubscribe now carries the signed HTTPS link only (the mailto went
+to a mailbox nothing reads); the opt-out no longer overwrites a spam report; the prior status comes
+from the row audit every writer produces (0084 `email_status_before_opt_out`); staff can "Turn
+follow-ups back on" (0084 `staff_resubscribe_member_email`, audited `communication.staff_resubscribe`
+with member, address, old/new, actor, time, source, note); re-entering an opted-out or spam-reported
+address arrives suppressed (0084 BEFORE INSERT trigger).
+
+FAIL-FIRST: supabase/tests/61_email_resubscribe_recovery.sql - "function public.email_status_before_opt_out(uuid) does not exist" with 0084 removed; 29 of 29 green with the first 0084.
+FAIL-FIRST: src/data/unsubscribeHandler.test.ts - 7 of 15 red against HEAD's unsubscribe/index.ts, including "spam-reported: the opt-out is confirmed and the complaint is NOT overwritten" (status went 'complained' -> 'unsubscribed'); 6 of the 7 also because HEAD read the prior status from `audit_logs` with .order(), which the fake does not model. 15 of 15 green against the changed index.ts.
+FAIL-FIRST: src/data/unsubscribeToken.test.ts - the two appended cases, 2 of 13 red with the mailto restored in listUnsubscribeHeaders ("no mailto: a mail client can only reach the endpoint that writes the opt-out"); 13 of 13 green.
+NOT OBSERVED FAILING: src/data/staffResubscribe.test.ts - covers a new module and a new RPC wrapper; no prior behaviour to fail against. 4 of 4 green.
+NOT OBSERVED FAILING: src/data/sendSuppression.test.ts - covers suppressionReason, extracted from send-followups' inline ternary with the same three reasons; 3 of 3 green.
+
+REVIEW ROUND (code-reviewer, permission-reviewer, copy-gate-reviewer; all REQUEST CHANGES): carry
+rule now per member by created_at, complaints by address; one shared prior-status rule for the member
+button and staff; an INVOKER guard refuses direct status/email/owner/undelete writes by a signed-in user;
+`audit_log` revoked from `authenticated`; refusal wording and lexicon fixed.
+FAIL-FIRST: supabase/tests/61_email_resubscribe_recovery.sql (appended cases) - against the first 0084 (cb192ba): 15 red, e.g. "a save of another member in between does not make the re-entered copy sendable  got unknown want unsubscribed", "a signed-in user cannot PATCH an opt-out away -- statement was ACCEPTED", "a spam report on the other course's copy is the answer for this copy too  got unknown want complained"; 46 of 46 green with the revised 0084.
+
+GATES: `npm run check` ALL 7 PASS (test:unit 2025 / 0). `deno check` on unsubscribe, send-followups and
+the shared token module clean; `deno test` 25 / 0. `npm run test:db`: every file green except 39, 52
+and 53, which fail identically with 0084 removed (pre-existing, as on 30-Sep). `npm run gate` FAIL only
+on the five steps red since 24-Sep (G1/G2/G3/G6/G8).
+
+## RESUBSCRIBE: NO STORED COPY OF THE UNSUBSCRIBE LINK — 30-Sep-2026
+
+code-reviewer H1 on `requests/2026-09-30-resubscribe-button.md`; owner: "Close it first". The signed
+link can undo an opt-out now, and copies sat where staff can read them: production had it in 821 of
+822 `email_messages.variables` (readable by every signed-in account) and 24 of 26 `email_events`
+payloads (SES echoes List-Unsubscribe; super admin only). Fixed at both writers and in the data:
+`send-loop.ts` records `storableVars(vars)` (everything but `unsubscribe_url`); `ses-feedback`
+records `withoutUnsubscribeLinks(payload)`; migration **0083** removes the copies already written.
+
+FAIL-FIRST: supabase/functions/send-followups/send-loop.test.ts - "no stored message row carries the unsubscribe link, sent or excluded" (red before storableVars); 4 of 4 green.
+FAIL-FIRST: supabase/tests/60_stored_messages_keep_no_unsubscribe_link.sql - "no stored message keeps the unsubscribe link  got 1 want 0" (3 of 7 red with 0083 emptied); 7 of 7 green, idempotent.
+NOT OBSERVED FAILING: src/data/unsubscribeToken.test.ts - the two appended cases cover a new export (`withoutUnsubscribeLinks`); 11 of 11 green.
+
+GATES: `npm run check` ALL 7 PASS (test:unit 2001 / 0); `deno test` 25 / 0. `npm run gate` FAIL only
+on the five steps red since 24-Sep; G7 PASS.
+
+## RESUBSCRIBE: CODE-REVIEW FIXES — 30-Sep-2026
+
+code-reviewer on `requests/2026-09-30-resubscribe-button.md` (REQUEST CHANGES), fixed in 8114703:
+M3 a bounced or spam-reported address could come back through unsubscribe-then-Resubscribe —
+`resubscribeStep` now also needs the status BEFORE the opt-out (from that opt-out's
+`communication.unsubscribed` audit row) to have been usable, and the page offers the button only then
+(`mayOfferResubscribe`); L5 `fn` pinned to this project's function; L6 success read from the rows the
+guarded update moved; L7 `e`/`t` read before the closures that capture them; M4 the page clears the
+signed pair from the address bar and history. (This entry was written with 8114703 but lost to a
+blocked commit command; recorded now.)
+
+FAIL-FIRST: supabase/functions/unsubscribe/landing.test.ts - "an address that was bounced or spam-reported before the opt-out stays off" (resubscribeStep('unsubscribed','complained') returned 'write' on the first version); 11 of 11 green.
+
+## A MEMBER WHO UNSUBSCRIBED BY MISTAKE CAN RESUBSCRIBE — 30-Sep-2026
+
+`requests/2026-09-30-resubscribe-button.md` (CHANGE, scoped). `/unsubscribed` shows "Did you
+unsubscribe by mistake?" and a Resubscribe button when the link carried the signed pair; the button
+POSTs back to `unsubscribe` with `a=resubscribe`, which puts an UNSUBSCRIBED address back to
+'unknown' (only that status), audits `communication.resubscribed` as the member's own act, and
+lands on the new `/resubscribed`. The confirmation no longer promises "reply ... and we will turn
+them back on", which 0078 forbids anyone to do.
+
+FAIL-FIRST: src/data/unsubscribeLanding.test.ts - "the confirmation no longer promises a reply can undo it" (4 of 9 red on the previous pages and function); 9 of 9 green.
+FAIL-FIRST: src/data/auditActionCoverage.test.ts - "communication.resubscribed ... -> guessed as \"Member email address — communication resubscribed\"" (red until auditPlain.ts named it); green.
+NOT OBSERVED FAILING: supabase/functions/unsubscribe/landing.test.ts - the three appended cases cover new code (`resubscribeStep`, the `undo` parameter, `/resubscribed`); 9 of 9 green under `deno test`.
+Page behaviour in Chromium (--dump-dom): with the signed pair and a Supabase `fn` the form action is `.../functions/v1/unsubscribe?e=a%26b&t=x%2By&a=resubscribe`; with a foreign `fn`, or no parameters, the form stays hidden. Rendered light and dark.
+NOT RUN end to end against a live function: this sandbox cannot reach supabase.co, and a real signed link needs the production secret.
+
+GATES: `npm run check` — lint, typecheck, check:edge, contrast, icons, functions PASS; test:unit PASS
+after the audit wording was added. `npm run gate` FAIL only on the five steps red since 24-Sep.
+
+## THE UNSUBSCRIBE PAGES CARRY THE ROSIFIT BRAND — 30-Sep-2026
+
+`requests/2026-09-30-unsubscribe-page-branded.md` (CHANGE, micro). Both pages now show the RosiFit
+logo (`public/rosifit-logo.png`, a copy of `assets/rosifit-logo.png`) on the app's plum header
+gradient, with the words in a card and the app's tokens for both themes. Wording unchanged.
+
+FAIL-FIRST: src/data/unsubscribeLanding.test.ts - "public/rosifit-logo.png must ship" (1 of 5 red on the previous pages); 5 of 5 green.
+Rendered in Chromium at 800 and 500 wide, light and dark. Text pairs measured and written in each
+page's header (lowest 4.5:1, the pink check on its tinted circle).
+
+GATES: `npm run check` 7/7 PASS. `npm run gate` FAIL on the same five steps as every run since
+24-Sep (G1/G2/G3 no `design/tokens.json`, G6 `scripts/conformance.mjs`, G8 no `test:functional`);
+none in a file this change touches.
+
+## THREE REPORTED DEFECTS: MERGE FIGURES, COURSE-CARD EMAIL SPLIT, UNSUBSCRIBE PAGE — 30-Sep-2026
+
+`requests/2026-09-30-merge-leaves-member-absent.md` (T-140, RC-120, round 2 of RC-118),
+`requests/2026-09-30-course-card-no-email-count.md` (T-141, RC-121),
+`requests/2026-09-30-unsubscribe-link-shows-html.md` (T-142, RC-122). Track C, auto mode.
+
+FAIL-FIRST: supabase/tests/59_merge_recomputes_member_figures.sql - "attended 1, not 0 got 0 want 1" (3 of 12 red replayed without 0082; with 0082 minus its session refresh: "and no absent left over from the import's default mark got 1 want 0", 2 red); 12 of 12 green.
+FAIL-FIRST: src/data/mergeRefreshesAttendance.test.ts - "the day register must be told too, or the merged-into member keeps reading Absent" (2 of 2 red pre-fix); 2 of 2 green.
+FAIL-FIRST: src/data/courseCardEmailSplit.test.ts - "the inactive member and the one not yet joined are not on the course screen, and a bounce is not \"no address\"" (3 of 4 red on the pre-fix courseSummary); 4 of 4 green. `src/data/course.test.ts` unchanged, green.
+FAIL-FIRST: src/data/unsubscribeLanding.test.ts - "a text/html answer is rewritten to text/plain by the platform and shows as source" (red on the pre-fix index.ts); 4 of 4 green.
+NOT OBSERVED FAILING: supabase/functions/unsubscribe/landing.test.ts - new module, no prior behaviour; 6 of 6 green under `deno test`.
+Pages rendered in Chromium, light and dark; a markup-bearing academy name printed as text. Rendering
+found one defect in the new page itself (a top-level `var name` is `window.name`, which printed
+"null" with no academy) — fixed and pinned.
+
+GATES: `npm run check` — all 7 PASS (lint, typecheck, check:edge, test:unit **1993 pass / 0 fail**,
+contrast, icons, check:functions). `npm run gate` — FAIL on G1/G2/G3 (`design/tokens.json` absent),
+G6 (an unused eslint-disable in `scripts/conformance.mjs`) and G8 (no `test:functional` script):
+the same five as the 24-Sep runs, none in a file this change touches; G7 now PASS.
+`npm run test:db` — every file green except **39_staff_are_not_restricted, 52_import_recomputes_only_its_own,
+53_harness_body_matches_production**, which fail identically with 0082 removed (pre-existing on
+`main`; 53 is T-132's). `59` 12/12, `25` 16/16, `58` 5/5.
+Review: copy-gate-reviewer — "not active today" renamed "not on today’s register" (it also covered
+a member who joins later), lexicon row added, failure page comment corrected, a spec now pins each
+page's body to the function's words; wording confirmed unchanged from `HEAD`. code-reviewer — M1: the merge also left the SESSION counts
+stale (`refresh_session_counts`, which every other attendance writer calls); 0082 now refreshes each
+session it touched, and `59` asserts the counts. Low findings recorded in RC-122.
+
 ## EVERY COURSE WORDING SAYS HOW TO STOP — 26-Sep-2026
 
 `requests/2026-09-26-every-course-wording-says-how-to-stop.md` (CHANGE, scoped). `send-followups`
@@ -341,6 +569,306 @@ exit 1
 - **G11 Wide tables are configurable** - PASS (53ms)
 - **G12 Installable as an application** - PASS (70ms)
 - **G13 Approved design still being built** - PASS (50ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-10-01 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 38.4s total - slowest G7 Unit + pure specs (23.8s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (90ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (84ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (74ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (91ms)
+- **G5 Types** - PASS (8.4s)
+- **G6 Lint** - FAIL (5.1s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (23.8s)
+- **G8 Functional / integration** - FAIL (250ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (79ms)
+- **G10 Backward compatibility (fixtures)** - PASS (176ms)
+- **G11 Wide tables are configurable** - PASS (85ms)
+- **G12 Installable as an application** - PASS (123ms)
+- **G13 Approved design still being built** - PASS (87ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-30 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 45.0s total - slowest G7 Unit + pure specs (26.9s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (69ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (74ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (68ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (115ms)
+- **G5 Types** - PASS (10.9s)
+- **G6 Lint** - FAIL (6.1s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (26.9s)
+- **G8 Functional / integration** - FAIL (204ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (86ms)
+- **G10 Backward compatibility (fixtures)** - PASS (204ms)
+- **G11 Wide tables are configurable** - PASS (88ms)
+- **G12 Installable as an application** - PASS (117ms)
+- **G13 Approved design still being built** - PASS (68ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-30 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 39.2s total - slowest G7 Unit + pure specs (23.2s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (77ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (81ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (85ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (126ms)
+- **G5 Types** - PASS (9.8s)
+- **G6 Lint** - FAIL (5.1s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (23.2s)
+- **G8 Functional / integration** - FAIL (210ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (85ms)
+- **G10 Backward compatibility (fixtures)** - PASS (169ms)
+- **G11 Wide tables are configurable** - PASS (77ms)
+- **G12 Installable as an application** - PASS (98ms)
+- **G13 Approved design still being built** - PASS (76ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-30 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 40.6s total - slowest G7 Unit + pure specs (24.0s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (85ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (77ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (74ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (136ms)
+- **G5 Types** - PASS (9.9s)
+- **G6 Lint** - FAIL (5.6s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (24.0s)
+- **G8 Functional / integration** - FAIL (224ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (88ms)
+- **G10 Backward compatibility (fixtures)** - PASS (160ms)
+- **G11 Wide tables are configurable** - PASS (77ms)
+- **G12 Installable as an application** - PASS (105ms)
+- **G13 Approved design still being built** - PASS (91ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-30 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 29.3s total - slowest G7 Unit + pure specs (18.7s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (69ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (55ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (54ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (78ms)
+- **G5 Types** - PASS (6.4s)
+- **G6 Lint** - FAIL (3.4s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (18.7s)
+- **G8 Functional / integration** - FAIL (134ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (56ms)
+- **G10 Backward compatibility (fixtures)** - PASS (118ms)
+- **G11 Wide tables are configurable** - PASS (58ms)
+- **G12 Installable as an application** - PASS (81ms)
+- **G13 Approved design still being built** - PASS (56ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-09-30 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 30.8s total - slowest G7 Unit + pure specs (19.7s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (65ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (46ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (69ms)
+- **G5 Types** - PASS (7.0s)
+- **G6 Lint** - FAIL (3.2s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (19.7s)
+- **G8 Functional / integration** - FAIL (127ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (56ms)
+- **G10 Backward compatibility (fixtures)** - PASS (122ms)
+- **G11 Wide tables are configurable** - PASS (53ms)
+- **G12 Installable as an application** - PASS (87ms)
+- **G13 Approved design still being built** - PASS (52ms)
 
 _Merge blocked. Every FAIL above must resolve. No partial merges._
 
