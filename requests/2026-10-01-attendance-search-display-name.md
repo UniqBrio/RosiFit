@@ -15,3 +15,11 @@
   the page (paged and chunked, like its name read); `matchesAttendanceQuery` in memberSearch.ts.
 - MUST NOT CHANGE: the filters, counts and rows; the course day roster read.
 - RUN MODE: auto · SCALE: micro
+
+## CORRECTION ROUND 1 (the academy, 03-Oct-2026)
+- "the correction of search by display name and updating the search bar placeholder is still not
+  reflecting in app". The Attendance tab change WAS live (Vercel production deployment of f0ea2a5,
+  1-Oct 20:11, success). The course screen's attendance roster has its own search box, which still
+  matched name and email only under "Search by name or email".
+- Now: the course roster search uses the same `matchesAttendanceQuery` (name, display names, email,
+  code), placeholder "Search by name, display name or email".

@@ -39,3 +39,12 @@ test('the Attendance screen uses it, says so, and the read carries the fields', 
   assert.match(repo, /aliases: aliasesBy\.get\(r\.member_id as string\) \?\? \[\]/);
   assert.match(repo, /emails: emailsBy\.get\(r\.member_id as string\) \?\? \[\]/);
 });
+
+// Appended 03-Oct-2026: the course screen's attendance roster searches the same
+// way ("the correction ... is still not reflecting in app" -- the academy). The
+// roster box matched name and email only, under "Search by name or email".
+test('the course roster search uses the same rule and says so', () => {
+  const screen = read('app/course/[id].tsx');
+  assert.match(screen, /return members\.filter\(m => matchesAttendanceQuery\(\{\s*member: m\.name, code: m\.code, aliases: m\.aliases,/);
+  assert.match(screen, /testID="course-member-search"[\s\S]{0,120}placeholder="Search by name, display name or email"/);
+});
