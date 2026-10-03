@@ -69,3 +69,184 @@ finding) — it never saw this defect (T-118).
 
 **Burst (cause #2):** per-request time inside a burst fell ~3×, but the burst itself (~40 parallel requests)
 is unchanged. Per the owner, compute size stays as is until the burst is re-measured after fix 3.
+
+## Experiment — csv-import runs beside the database (T-408)
+
+**Finding (24-Sep-2026).** Vercel runs no server code for RosiFit (static Expo export; no `api/`, route
+handlers, middleware or `regions`), so a Vercel region has no effect. The server code is Supabase Edge
+Functions, and `function_edge_logs.x_sb_edge_region` shows every call executing in **ap-south-1 (Mumbai)**,
+next to the user, while the database is in **ap-southeast-1 (Singapore)**.
+
+**Why csv-import.** The preview path makes **~26 database round trips in sequence**: `auth.getUser`,
+`app_users`, offering, same-file check, same-session check, staff names, five keyset-paged full reads of
+3 pages each (aliases, members, primary emails, stats, enrollments), offerings/courses/branches, the
+`csv_imports` insert and the audit RPC. There are no per-row query loops; matching is in memory. Commit is
+3 trips, with the work inside `commit_csv_import`. Each trip crosses Mumbai → Singapore.
+
+**Mechanism.** `?forceFunctionRegion=ap-southeast-1` on the csv-import URL only (`src/data/functionRegion.ts`).
+The SDK's `region:` option was NOT used: it also sends an `x-region` header, which
+`supabase/functions/_shared/cors.ts` does not allow, so every browser preflight would fail. Supabase's
+regional-invocation guide names the query parameter for CORS requests. There is no function redeploy, no CORS
+change, and no other function moves.
+
+### Baseline — every csv-import in the logs (all ap-south-1)
+
+| Import (UTC) | Rows | Preview `execution_time_ms` | Commit `execution_time_ms` | Preflights | First preflight → commit logged |
+|---|---|---|---|---|---|
+| 23 Sep 11:38 | 15 | 5,709 | 1,677 | 200 / 140 | ~7.8 s |
+| 23 Sep 14:06 | 15 | 5,886 | 1,409 | 244 / 141 | ~7.8 s |
+| 24 Sep 01:11 | 22 | 3,597 | 1,112 | 216 / — | ~4.9 s |
+| 24 Sep 03:06 | 14 | 5,503 | 793 | 219 / 138 | ~6.5 s |
+| 24 Sep 10:45 | 98 | 5,150 | 2,043 | 244 / 157 | ~7.6 s |
+| **Median** | — | **5,503** | **1,409** | — | **~7.6 s** |
+
+Errors: 0 of 19 calls (all HTTP 200). Preview time barely moves with file size (14 → 98 rows), so it is the
+sequential round trips, not the rows. The last column is server-side (edge-log timestamps), not a browser
+measurement.
+
+### After — to be filled from real imports once deployed
+Same queries: `function_edge_logs` for `/functions/v1/csv-import`, grouped by `x_sb_edge_region`, with
+`execution_time_ms` for preview and commit, joined to `csv_imports.row_count` by time. Compare files of
+14–98 rows. **Not measured yet**: no import has run with this change, and this session cannot run one.
+## Before / after — Fix 2 (T-405, shared identity read)
+
+**Cause found (RC-076):** nine components each sent the identical `app_users` GET, and Chromium's HTTP cache lets
+only one request per identical URL be in flight, so they queued into a chain. It is not the auth client's lock
+(auth-js 2.112.4 is lockless) and not connection limits (production browsers use HTTP/3 or HTTP/2). Disabling the
+browser cache made the same 10 reads go out in parallel, which confirms the mechanism.
+
+**Method:** the production web bundle, built against a local HTTP/2 stand-in API that replies in 200 ms and logs
+every request (`scripts/perf/stand-in-api.js`), loaded cold in headless Chromium with a stored session
+(`scripts/perf/cold-start.js`). 3 runs per case, unmodified `main` vs this branch.
+
+| Cold start | Before | After |
+|---|---|---|
+| Identity (`app_users`) reads | 10 (fresh) / 11 (expired token), one after another | **2, in parallel** (the shared read + `restoreSession`) |
+| Requests per cold start | 34 / 36 | **26 / 27** |
+| First request → last response, fresh token | 1,828–1,836 ms | **706–723 ms** |
+| First request → last response, expired token | 2,241–2,245 ms | **916–947 ms** |
+
+At production's ~150–180 ms per identity read, the 2.4 s chain in the 24 Sep trace should shrink to one round
+trip. **Production not yet measured**: this is client code and ships when the PR merges; the next production cold
+start in `edge_logs` should show at most two `app_users` requests.
+
+## Before / after — Fix 3 (T-406, shared reads)
+
+**Measured in production (edge_logs, 25-Sep-2026):**
+- One session, 03:53 UTC, one minute: **300 requests for 49 distinct URLs**. The five-table member list was read
+  **6 times in ~30 s**, `member_period_metrics_page` 48 times, and `branches`, `courses` and `course_offerings`
+  by id 6–16 times each.
+- Another session, 03:32 UTC: **398 requests for 44 distinct URLs** in one minute.
+
+Each hook fetched on mount with nothing shared, and the repeats were spread over seconds as screens and dialogs
+mounted.
+
+**Why a repeat costs a round trip, not just bandwidth.** Identical concurrent GETs are queued by the browser's
+HTTP cache. Against a local HTTP/2 stand-in (production browsers use HTTP/3 or HTTP/2), 10 identical identity
+reads that the app issued as two parallel batches (at +0 and +280 ms) arrived one after another. With the browser
+cache disabled (`scripts/perf/cold-start-nocache.js`) the same 10 went out in those two batches. This is the
+T-405 mechanism; its root-cause entry is RC-076 on that PR.
+
+**Fix.** `src/lib/sharedFetch.ts`, installed as the Supabase client's fetch:
+- identical reads are shared for `SHARED_READ_MS`;
+- any write clears everything, at the start and at the settle;
+- in-flight joins are bounded by age;
+- failures are never kept;
+- sign-out clears everything.
+
+**Choosing the window, measured.** Cold start plus Courses → Reports → Home via the tab bar, same 31 distinct
+requests every time:
+
+| Build | Tabs 2 s apart | Tabs 4 s apart |
+|---|---|---|
+| `main` | 54 requests | 54 |
+| 2 s window | 45 | 45 |
+| **5 s window (shipped)** | **31** | **32** |
+| 12 s window | 31 | 31 |
+
+5 s gets nearly all of 12 s's saving. Its cost: a reused answer is stamped as received when reused, so it can be
+up to 5 s older than it claims. The 12 s window would have allowed 12 s.
+
+**Before / after (5 s build vs `main`, 3 runs each, stand-in replying in 200 ms):**
+
+| | Before | After |
+|---|---|---|
+| Cold start: requests | 34 | **26** |
+| Cold start: first request → last response | 1,828–1,835 ms | **692–713 ms** |
+| Cold start + 3 tab switches: requests | 54 | **31** (every remaining request distinct) |
+
+The 9 `member_period_metrics_page` calls left after the change are 9 **different** periods (7 days, the week, the
+month), not repeats. Collapsing them is server-side work, already filed as T-301.
+
+**Not changed — the trailing empty page.** I had proposed stopping paged reads on a short page. `pageAll.ts`
+records why it stops only on an EMPTY page: `db-max-rows` is a project setting, and review found that a
+short-page stop silently truncates every read if it is lowered. That stays. With shared reads the extra page is
+paid once per read, not once per repeat.
+
+**Production not yet measured:** client code, ships on merge. Expected in `edge_logs`: requests per URL per
+session-minute close to 1.
+
+## Before / after — Fix 4 (T-407, JavaScript per screen)
+
+**What the 2.65 MB bundle was** (the export's source map, bytes attributed per package):
+- ~400 KB of icon-set glyph tables. `@expo/vector-icons` was imported through its barrel, which ships every set.
+  The app uses two sets, and only ONE glyph (WhatsApp) from MaterialCommunityIcons, whose table alone is 186 KB.
+- The framework: `expo-router` 429 KB (101 KB of it React Navigation core), `react-native-web` 275 KB,
+  `react-dom` 175 KB.
+- Supabase: `auth-js` 120 KB, plus realtime/phoenix/storage 87 KB that the app never uses.
+- App code, `src/` + `app/`: ~700 KB.
+
+**Changes:**
+1. Icon sets are imported one at a time, and WhatsApp is a one-glyph set over the same font.
+2. `asyncRoutes: { web: "production" }`: each screen's code is its own chunk.
+3. Deployment detection compares only the bundles every page loads. The probe page `/` names Home's route
+   chunk, so without this every session that started on another screen would have reloaded once for nothing.
+   Checked empirically: a change to one screen alone still renames `entry` and `__common`, so real deployments
+   are still seen.
+4. A screen whose chunk cannot load no longer blanks the app. It was reproduced with the Members chunk deleted:
+   before, a blank page and no reload; after, one reload, then "This screen could not be loaded. Check the
+   connection and try again." in both themes. The root boundary:
+   - never reloads while a send or import is in flight (T-021);
+   - reloads at most once a minute;
+   - never reloads if it cannot record that it did.
+   A missing `/_expo/` file is now a real 404, not the not-found page, and the service worker neither caches an
+   HTML answer as a script nor keeps what v1 cached (cache v2).
+
+**Compressed JS a screen downloads** (`scripts/perf/js-budget.js`, cold, signed in, fresh browser):
+
+| Build | Home | Attendance | Members |
+|---|---|---|---|
+| `main` | 702 KB | 702 KB | 702 KB |
+| + icons | 579 KB | — | — |
+| + per-route chunks | **467 KB** | **468 KB** | **468 KB** |
+
+**Brotli** (what Vercel serves) for the shared start-up JS: 544 KB → **370 KB (−32%)**.
+
+**Lighthouse, mobile (simulated slow 4G, 4× CPU), median of 3, no session, same method as the first report:**
+
+| Screen | Score | LCP | Total blocking time | Time to interactive | Bytes |
+|---|---|---|---|---|---|
+| Home | 70 → **80** | 5.07 → **3.95 s** | 476 → **343 ms** | 5.2 → **4.1 s** | 714 → **496 KB** |
+| Attendance | 84 → **87** | 0.66 → 0.91 s* | 620 → **494 ms** | 6.8 → **5.7 s** | 901 → **668 KB** |
+| Members | 60 → **65** | 7.30 → **5.80 s** | 627 → **499 ms** | 7.4 → **6.4 s** | 901 → **668 KB** |
+
+\*Attendance's LCP is its first paint; without data there is no larger element.
+
+**The owner's targets are NOT met.** 250 KB per screen and LCP < 2.5 s on this profile are not reachable by
+splitting alone:
+- The entry chunk that every screen needs (`react-dom` + `react-native-web` + `expo-router`) is ~281 KB gzip
+  before any app code. That is this stack's floor.
+- Members' LCP element is text rendered after the JS runs. Its measured render delay is 368 ms; the rest is the
+  simulated 1.6 Mbps download plus 4× CPU.
+
+What else would move it, with costs:
+- (a) Drop supabase-js for `auth-js` + `postgrest-js` + `functions-js` directly: ~20–25 KB gzip; touches the
+  client construction.
+- (b) Load `react-native-url-polyfill` on native only: ~6 KB.
+- (c) Server-render or pre-render the first screen's data.
+- (d) A lighter web stack.
+
+(c) and (d) are architecture decisions, not fixes.
+
+**Trade-off recorded:** a screen never visited before now fetches its chunk on first open. Offline, that open
+fails where it used to render an empty shell, but its data needs the network anyway.

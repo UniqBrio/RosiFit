@@ -22,7 +22,7 @@
       "startUrl": "/",
       "description": "Attendance and follow-up for RosiFit Academy"
     },
-    "plugins": ["expo-router"],
+    "plugins": [["expo-router", { "asyncRoutes": { "web": "production" } }]],
     "experiments": { "typedRoutes": true }
   }
 }

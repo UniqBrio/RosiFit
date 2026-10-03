@@ -8,6 +8,11 @@ import { AcademyProvider } from '../src/state/academy';
 import { AdminRouteGuard } from '../src/components/AdminOnly';
 import { DeploymentRefresh } from '../src/pwa/DeploymentRefresh';
 import { DataRefresh } from '../src/pwa/DataRefresh';
+import { useEffect, useRef, useState } from 'react';
+import type { ErrorBoundaryProps } from 'expo-router';
+import { ErrorState } from '../src/components/ui';
+import { chunkRecoveryStep, isChunkLoadError } from '../src/pwa/chunkRecovery';
+import { isWriteInFlight } from '../src/data/inFlight';
 
 /**
  * EVERY FORM IS A DIALOG -- and it takes THREE things, not the two this file
@@ -181,5 +186,89 @@ export default function RootLayout() {
         </AcademyProvider>
       </ThemeProvider>
     </SafeAreaProvider>
+  );
+}
+
+/**
+ * THE APP'S LAST LINE OF DEFENCE (T-407). With per-route bundles a screen's
+ * code arrives when the screen is opened, and that fetch can fail: a tab still
+ * on the previous deployment asks for a chunk the new one no longer serves, or
+ * the connection drops. Nothing below this caught it, so the whole app went
+ * blank -- and took DeploymentRefresh, the thing that would have fixed it, down
+ * with it. A chunk failure reloads the page ONCE (which fetches the current
+ * build) -- never while a write is in flight (T-021) -- and if it fails again
+ * the screen says so rather than reloading forever (chunkRecoveryStep). Any
+ * other error shows the same calm state with a retry.
+ *
+ * It renders OUTSIDE RootLayout, so it brings its own providers and paints its
+ * own ground (the navigator's is gone with the layout).
+ */
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  return (
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <BoundaryScreen error={error} retry={retry} />
+      </ThemeProvider>
+    </SafeAreaProvider>
+  );
+}
+
+const WRITE_POLL_MS = 1_000;
+
+function noteStore(): Storage | null {
+  try { return typeof sessionStorage === 'undefined' ? null : sessionStorage; } catch { return null; }
+}
+
+/** Reload the page as soon as no write is open. Web only: native has no page to reload. */
+function reloadWhenNoWrite(): () => void {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const attempt = () => {
+    if (typeof window === 'undefined' || !window.location) return;
+    if (isWriteInFlight()) { timer = setTimeout(attempt, WRITE_POLL_MS); return; }
+    window.location.reload();
+  };
+  attempt();
+  return () => clearTimeout(timer);
+}
+
+function BoundaryScreen({ error, retry }: ErrorBoundaryProps) {
+  const { theme } = useTheme();
+  const chunk = isChunkLoadError(error);
+  const web = typeof window !== 'undefined' && !!window.location;
+  const [step, setStep] = useState<'decide' | 'show' | 'wait' | 'reload'>(chunk && web ? 'decide' : 'show');
+
+  useEffect(() => {
+    if (!chunk || !web) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const next = () => {
+      const now = chunkRecoveryStep(error, noteStore(), Date.now(), isWriteInFlight());
+      setStep(now);
+      if (now === 'reload') window.location.reload();
+      else if (now === 'wait') timer = setTimeout(next, WRITE_POLL_MS);
+    };
+    next();
+    return () => clearTimeout(timer);
+  }, [error, chunk, web]);
+
+  const cancelManual = useRef<(() => void) | null>(null);
+  useEffect(() => () => cancelManual.current?.(), []);
+
+  return (
+    <View style={{ flex: 1, justifyContent: 'center', padding: 24, backgroundColor: theme.bg }}>
+      {step === 'decide' || step === 'reload' ? null : (
+        <ErrorState
+          message={chunk
+            ? 'This screen could not be loaded. Check the connection and try again.'
+            : 'This screen could not be shown.'}
+          /* Not "nothing was changed": a root-level failure can land while a
+             send is still running, and that promise could make somebody send
+             twice. */
+          safeToRetry={false}
+          onRetry={chunk
+            ? (web ? () => { cancelManual.current?.(); cancelManual.current = reloadWhenNoWrite(); } : undefined)
+            : () => { void retry(); }}
+        />
+      )}
+    </View>
   );
 }
