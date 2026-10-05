@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, TextInput } from 'react-native';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { View, Text, Pressable, TextInput, FlatList, type ListRenderItem } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Screen, Muted, Label, Skeleton, EmptyState, ErrorState } from '../../src/components/ui';
+import { Screen, Muted, Label, Skeleton, EmptyState, ErrorState, screenBodyPadding } from '../../src/components/ui';
 import { ScreenHeader } from '../../src/components/AppShell';
 import { safeBackTarget } from '../../src/data/nav';
 import { Icon } from '../../src/components/Icon';
@@ -160,6 +160,29 @@ export default function Attendance() {
 
   const ink = (k: StatusKey) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
 
+  /* THE LIST, FLAT: a day heading, then that day's rows, for every day --
+     the same grouping the nested maps drew, as one windowed list. 2,220
+     records in a production week were all in the DOM at once (49,476 nodes
+     locally; docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md, RC-6). */
+  const items = useMemo<ListItem[]>(() => {
+    const out: ListItem[] = [];
+    for (const [date, list] of groups) {
+      out.push({ kind: 'day', key: `day:${date}`, date, count: list.length, first: out.length === 0 });
+      for (const r of list) out.push({ kind: 'row', key: r.id, row: r });
+    }
+    return out;
+  }, [groups]);
+  const openResubscribe = useCallback(
+    (member: string, emails: { id: string; address: string; status: UnsubscribedAddress['status'] }[]) =>
+      resubscribe.open(member, emails),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [resubscribe.open]);
+  const renderItem = useCallback<ListRenderItem<ListItem>>(({ item }) => item.kind === 'day'
+    ? <DayHeading date={item.date} count={item.count} first={item.first} />
+    : <AttendanceCard row={item.row} emails={unsubscribedByMember.get(item.row.member_id) ?? NO_EMAILS}
+        onResubscribe={openResubscribe} />,
+    [unsubscribedByMember, openResubscribe]);
+
 
   const uploadButton = (
     <Pressable testID="attendance-upload" onPress={() => router.push('/upload')}
@@ -268,164 +291,201 @@ export default function Attendance() {
     <Screen header={
       <ScreenHeader title="Attendance"
         subtitle={`${rows.length} record${rows.length === 1 ? '' : 's'} · ${scopeLabel} · ${range.label}`}
-        onBack={() => router.navigate(backTo)} right={uploadButton} />}>
+        onBack={() => router.navigate(backTo)} right={uploadButton} />}
+      scroll={false} pad={false}>
 
-      {controls}
+      <FlatList
+        testID="attendance-list"
+        data={items}
+        keyExtractor={itemKey}
+        renderItem={renderItem}
+        ItemSeparatorComponent={ItemGap}
+        ListHeaderComponent={
+          <View>
+            {controls}
 
-      {/* The freshness line. Never a skeleton and never a spinner over the
-          rows: a revalidation leaves `state` at 'ready' precisely so the
-          register stays readable while it happens (asyncState.ts), and the
-          only thing that changes here is this sentence. `polite` because it
-          is worth hearing and never worth interrupting for. */}
-      {/* How old the register on screen is, and whether the last attempt to
-          bring it up to date got through. One component, one wording, every
-          screen — src/components/FreshnessLine.tsx. */}
-      <FreshnessLine read={attendance} testID="attendance-freshness" />
+            {/* The freshness line. Never a skeleton and never a spinner over the
+                rows: a revalidation leaves `state` at 'ready' precisely so the
+                register stays readable while it happens (asyncState.ts), and the
+                only thing that changes here is this sentence. `polite` because it
+                is worth hearing and never worth interrupting for. */}
+            {/* How old the register on screen is, and whether the last attempt to
+                bring it up to date got through. One component, one wording, every
+                screen — src/components/FreshnessLine.tsx. */}
+            <FreshnessLine read={attendance} testID="attendance-freshness" />
 
-      {/* ------------------------------------------------------- the totals */}
-      <View style={{
-        marginTop: SPACE.lg, padding: SPACE.lg, borderRadius: RADIUS.lg,
-        backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
-      }}>
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: SPACE.sm }}>
-          <Text style={{
-            fontSize: 30, fontWeight: '800', color: theme.accentInk, fontVariant: ['tabular-nums'],
-          }}>{pct === null ? '—' : `${pct}%`}</Text>
-          <Text style={{ flex: 1, fontSize: 12.5, color: theme.muted }}>
-            {pct === null ? 'nothing expected in this range' : 'of expected sessions attended'}
-          </Text>
-        </View>
-        <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.md }}>
-          {([['present', present], ['absent', absent], ['extra', extra]] as const).map(([k, n]) => {
-            const c = ink(k);
-            const box = statusSurface(c);
-            return (
-              <View key={k} accessible accessibilityLabel={`${n} ${STATUS[k].word}`}
-                style={{
-                  flex: 1, alignItems: 'center', gap: 4, paddingVertical: SPACE.md,
-                  borderRadius: RADIUS.md, backgroundColor: box.bg,
-                  borderWidth: 1, borderColor: box.border,
-                }}>
-                <Icon name={STATUS[k].icon} size={17} color={c} />
+            {/* ------------------------------------------------------- the totals */}
+            <View style={{
+              marginTop: SPACE.lg, padding: SPACE.lg, borderRadius: RADIUS.lg,
+              backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: SPACE.sm }}>
                 <Text style={{
-                  fontSize: 18, fontWeight: '800', color: theme.fgStrong, fontVariant: ['tabular-nums'],
-                }}>{n}</Text>
-                <Text style={{ fontSize: 10.5, fontWeight: '700', color: theme.muted }}>{STATUS[k].word}</Text>
+                  fontSize: 30, fontWeight: '800', color: theme.accentInk, fontVariant: ['tabular-nums'],
+                }}>{pct === null ? '—' : `${pct}%`}</Text>
+                <Text style={{ flex: 1, fontSize: 12.5, color: theme.muted }}>
+                  {pct === null ? 'nothing expected in this range' : 'of expected sessions attended'}
+                </Text>
               </View>
-            );
-          })}
-        </View>
-        <Muted style={{ marginTop: SPACE.md, paddingTop: SPACE.md, borderTopWidth: 1, borderTopColor: theme.line }}>
-          These are counts of the rows below, under the filters above — nothing is calculated twice.
-          An extra attended is someone who came when they were not expected, so it is never a miss.
-        </Muted>
-      </View>
-
-      {/* --------------------------------------------------------- the list */}
-      {all.length === 0 ? (
-        <EmptyState
-          title="No attendance in this range"
-          body="Attendance appears here once a Google Meet file has been uploaded for a session in this period. A session awaiting its file counts for nobody until then."
-          action="Upload attendance" onAction={() => router.push('/upload')} />
-      ) : rows.length === 0 ? (
-        <EmptyState
-          title="Nothing matches these filters"
-          body={`There is attendance in ${range.label}, but none of it matches the branch, course, status or search you have set. Widen one of them.`} />
-      ) : (
-        <View style={{ marginTop: SPACE.lg, gap: SPACE.lg }}>
-          {groups.map(([date, list]) => (
-            <View key={date}>
-              <View style={{
-                flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, marginBottom: SPACE.sm,
-              }}>
-                <Icon name="event" size={16} color={theme.accentInk} />
-                <Label style={{ flex: 1 }}>{dayLabel(date)}</Label>
-                <Muted>{`${list.length} record${list.length === 1 ? '' : 's'}`}</Muted>
-              </View>
-
-              <View style={{ gap: SPACE.sm }}>
-                {list.map(r => {
-                  const tone = TONE[r.status];
-                  const c = ink(tone);
+              <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.md }}>
+                {([['present', present], ['absent', absent], ['extra', extra]] as const).map(([k, n]) => {
+                  const c = ink(k);
                   const box = statusSurface(c);
-                  // Only a member who unsubscribed gets the action; every
-                  // other row stays exactly as it was.
-                  const emails = unsubscribedByMember.get(r.member_id) ?? [];
-                  const offered = resubscribableAddresses(emails);
-                  const offeredText = offered.map(e => e.address).join(', ');
                   return (
-                    <View key={r.id} style={{
-                      flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
-                      padding: SPACE.md, borderRadius: RADIUS.md,
-                      backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
-                    }}>
-                    <View
-                      accessible
-                      accessibilityLabel={
-                        `${r.member}. ${STATUS[tone].word}. ${r.course}, ${r.branch}. `
-                        + (r.minutes === null ? 'No time in call' : `${r.minutes} minutes in call`)
-                        + (offered.length ? `. Unsubscribed: ${offeredText}` : '')}
-                      style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: SPACE.md }}>
-                      <View style={{
-                        width: 38, height: 38, borderRadius: 12,
-                        alignItems: 'center', justifyContent: 'center',
-                        backgroundColor: box.bg, borderWidth: 1, borderColor: box.border,
+                    <View key={k} accessible accessibilityLabel={`${n} ${STATUS[k].word}`}
+                      style={{
+                        flex: 1, alignItems: 'center', gap: 4, paddingVertical: SPACE.md,
+                        borderRadius: RADIUS.md, backgroundColor: box.bg,
+                        borderWidth: 1, borderColor: box.border,
                       }}>
-                        <Icon name={STATUS[tone].icon} size={18} color={c} />
-                      </View>
-
-                      <View style={{ flex: 1 }}>
-                        <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '700', color: theme.fgStrong }}>
-                          {r.member}
-                        </Text>
-                        <Text numberOfLines={1} style={{ fontSize: 11.5, color: theme.muted, marginTop: 2 }}>
-                          {`${r.course} · ${r.branch}`}
-                        </Text>
-                        {offered.length ? (
-                          /* WHICH address, so a member with several is never
-                             ambiguous -- and the word, not only the button. */
-                          <Text numberOfLines={1} testID={`attendance-unsubscribed-${r.id}`}
-                            style={{ fontSize: 11.5, color: theme.muted, marginTop: 2 }}>
-                            {`Unsubscribed: ${offeredText}`}
-                          </Text>
-                        ) : null}
-                      </View>
-
-                      <View style={{ alignItems: 'flex-end' }}>
-                        {/* the word, always — the colour is never the only signal */}
-                        <Text style={{ fontSize: 11, fontWeight: '800', color: c }}>{STATUS[tone].word}</Text>
-                        <Text style={{
-                          fontSize: 11, color: theme.muted, marginTop: 2, fontVariant: ['tabular-nums'],
-                        }}>
-                          {r.time ? formatTime(r.time) : '—'}
-                          {r.minutes === null ? '' : ` · ${r.minutes} min`}
-                        </Text>
-                      </View>
-                    </View>
-                    {(() => {
-                      if (offered.length === 0) return null;
-                      return (
-                        <Pressable testID={`attendance-resubscribe-${r.id}`}
-                          onPress={() => resubscribe.open(r.member, emails)}
-                          accessibilityRole="button"
-                          accessibilityLabel={`${RESUBSCRIBE_COPY.action} ${r.member}: unsubscribed ${offeredText}`}
-                          style={{ minHeight: TAP_MIN, justifyContent: 'center', paddingHorizontal: SPACE.sm }}>
-                          <Text style={{ fontSize: 12.5, fontWeight: '800', color: theme.accentInk }}>
-                            {RESUBSCRIBE_COPY.action}
-                          </Text>
-                        </Pressable>
-                      );
-                    })()}
+                      <Icon name={STATUS[k].icon} size={17} color={c} />
+                      <Text style={{
+                        fontSize: 18, fontWeight: '800', color: theme.fgStrong, fontVariant: ['tabular-nums'],
+                      }}>{n}</Text>
+                      <Text style={{ fontSize: 10.5, fontWeight: '700', color: theme.muted }}>{STATUS[k].word}</Text>
                     </View>
                   );
                 })}
               </View>
+              <Muted style={{ marginTop: SPACE.md, paddingTop: SPACE.md, borderTopWidth: 1, borderTopColor: theme.line }}>
+                These are counts of the rows below, under the filters above — nothing is calculated twice.
+                An extra attended is someone who came when they were not expected, so it is never a miss.
+              </Muted>
             </View>
-          ))}
-        </View>
-      )}
+
+
+            {/* ------------------------------------------------------- the list */}
+            {all.length === 0 ? (
+              <EmptyState
+                title="No attendance in this range"
+                body="Attendance appears here once a Google Meet file has been uploaded for a session in this period. A session awaiting its file counts for nobody until then."
+                action="Upload attendance" onAction={() => router.push('/upload')} />
+            ) : rows.length === 0 ? (
+              <EmptyState
+                title="Nothing matches these filters"
+                body={`There is attendance in ${range.label}, but none of it matches the branch, course, status or search you have set. Widen one of them.`} />
+            ) : null}
+          </View>
+        }
+        contentContainerStyle={screenBodyPadding(true)}
+        keyboardShouldPersistTaps="handled"
+        initialNumToRender={14}
+        maxToRenderPerBatch={14}
+        windowSize={7}
+        style={{ flex: 1 }} />
 
       {resubscribe.dialog}
     </Screen>
   );
 }
+
+type ListItem =
+  | { kind: 'day'; key: string; date: string; count: number; first: boolean }
+  | { kind: 'row'; key: string; row: AttendanceRow };
+const itemKey = (i: ListItem) => i.key;
+const NO_EMAILS: { id: string; address: string; status: UnsubscribedAddress['status'] }[] = [];
+
+/** The gaps the nested maps drew: SPACE.sm between a day's rows and under
+ *  its heading (the separator), SPACE.lg above every day (the first day's
+ *  heading carries it whole; a later one carries the remainder over the
+ *  separator before it). */
+const ItemGap = () => <View style={{ height: SPACE.sm }} />;
+
+const DayHeading = memo(function DayHeading({ date, count, first }: { date: string; count: number; first: boolean }) {
+  const { theme } = useTheme();
+  return (
+    <View style={{
+      flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
+      marginTop: first ? SPACE.lg : SPACE.lg - SPACE.sm,
+    }}>
+      <Icon name="event" size={16} color={theme.accentInk} />
+      <Label style={{ flex: 1 }}>{dayLabel(date)}</Label>
+      <Muted>{`${count} record${count === 1 ? '' : 's'}`}</Muted>
+    </View>
+  );
+});
+
+/**
+ * ONE RECORD, memoised: it re-renders when its row or its member's
+ * unsubscribed addresses change, not when the search box does.
+ */
+const AttendanceCard = memo(function AttendanceCard({ row: r, emails, onResubscribe }: {
+  row: AttendanceRow;
+  emails: { id: string; address: string; status: UnsubscribedAddress['status'] }[];
+  onResubscribe: (member: string, emails: { id: string; address: string; status: UnsubscribedAddress['status'] }[]) => void;
+}) {
+  const { theme } = useTheme();
+  const ink = (k: StatusKey) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
+  const tone = TONE[r.status];
+  const c = ink(tone);
+  const box = statusSurface(c);
+  // Only a member who unsubscribed gets the action; every other row stays
+  // exactly as it was.
+  const offered = resubscribableAddresses(emails);
+  const offeredText = offered.map(e => e.address).join(', ');
+  return (
+    <View style={{
+      flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
+      padding: SPACE.md, borderRadius: RADIUS.md,
+      backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
+    }}>
+    <View
+      accessible
+      accessibilityLabel={
+        `${r.member}. ${STATUS[tone].word}. ${r.course}, ${r.branch}. `
+        + (r.minutes === null ? 'No time in call' : `${r.minutes} minutes in call`)
+        + (offered.length ? `. Unsubscribed: ${offeredText}` : '')}
+      style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: SPACE.md }}>
+      <View style={{
+        width: 38, height: 38, borderRadius: 12,
+        alignItems: 'center', justifyContent: 'center',
+        backgroundColor: box.bg, borderWidth: 1, borderColor: box.border,
+      }}>
+        <Icon name={STATUS[tone].icon} size={18} color={c} />
+      </View>
+
+      <View style={{ flex: 1 }}>
+        <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '700', color: theme.fgStrong }}>
+          {r.member}
+        </Text>
+        <Text numberOfLines={1} style={{ fontSize: 11.5, color: theme.muted, marginTop: 2 }}>
+          {`${r.course} · ${r.branch}`}
+        </Text>
+        {offered.length ? (
+          /* WHICH address, so a member with several is never
+             ambiguous -- and the word, not only the button. */
+          <Text numberOfLines={1} testID={`attendance-unsubscribed-${r.id}`}
+            style={{ fontSize: 11.5, color: theme.muted, marginTop: 2 }}>
+            {`Unsubscribed: ${offeredText}`}
+          </Text>
+        ) : null}
+      </View>
+
+      <View style={{ alignItems: 'flex-end' }}>
+        {/* the word, always — the colour is never the only signal */}
+        <Text style={{ fontSize: 11, fontWeight: '800', color: c }}>{STATUS[tone].word}</Text>
+        <Text style={{
+          fontSize: 11, color: theme.muted, marginTop: 2, fontVariant: ['tabular-nums'],
+        }}>
+          {r.time ? formatTime(r.time) : '—'}
+          {r.minutes === null ? '' : ` · ${r.minutes} min`}
+        </Text>
+      </View>
+    </View>
+    {(() => {
+      if (offered.length === 0) return null;
+      return (
+        <Pressable testID={`attendance-resubscribe-${r.id}`}
+          onPress={() => onResubscribe(r.member, emails)}
+          accessibilityRole="button"
+          accessibilityLabel={`${RESUBSCRIBE_COPY.action} ${r.member}: unsubscribed ${offeredText}`}
+          style={{ minHeight: TAP_MIN, justifyContent: 'center', paddingHorizontal: SPACE.sm }}>
+          <Text style={{ fontSize: 12.5, fontWeight: '800', color: theme.accentInk }}>
+            {RESUBSCRIBE_COPY.action}
+          </Text>
+        </Pressable>
+      );
+    })()}
+    </View>
+  );
+});

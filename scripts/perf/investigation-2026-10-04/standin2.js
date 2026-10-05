@@ -5,7 +5,7 @@ const N = +process.env.MEMBERS || 1644, DELAY = +process.env.DELAY || 130, LOG =
 fs.writeFileSync(LOG, ''); const t0 = Date.now();
 const uuid = (p, i) => `${p}0000000-0000-4000-8000-${String(i).padStart(12, '0')}`;
 const iso = d => d.toISOString().slice(0, 10);
-const today = new Date('2026-10-04T00:00:00Z');
+const today = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z');
 const branches = [0, 1].map(i => ({ id: uuid('b', i), name: ['Anna Nagar', 'Velachery'][i], code: 'B' + i, deleted_at: null }));
 const courses = [0, 1, 2, 3].map(i => ({ id: uuid('c', i), name: ['Zumba', 'Yoga', 'Pilates', 'Aerobics'][i], default_start_time: '06:00', default_end_time: '07:00', default_frequency: 3, deleted_at: null }));
 const offerings = courses.map((c, i) => ({ id: uuid('d', i), course_id: c.id, branch_id: branches[i % 2].id, batch_label: null, meet_code: null, deleted_at: null }));

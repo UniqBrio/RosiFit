@@ -1,3 +1,22 @@
+## PERFORMANCE FIX PHASE 3: THE BIG LISTS ARE WINDOWED — 05-Oct-2026
+
+docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md RC-6. NOT DEPLOYED. No DB change.
+
+FAIL-FIRST: src/components/windowedLists.test.ts - against 1a758ca (phase 2) in a temporary worktree, 8 of 8 red ("no FlatList: the rows are all in the DOM", "MemberCard is not memo()", "the day is indexed by member once per load"); 8 of 8 green after.
+Existing specs kept green WITHOUT editing them: screenHeaderPinned (the header prop stays first, `<Screen header={`), freshnessLineWiring, attendanceSearch (`matchesAttendanceQuery(r, q)` literal kept), staffResubscribeEntryPoints, resetRegisterDialog ("the marks it is gated on are the rows the strip itself drew" -- the inactive cards, which read no attendance, still take `rows={marks.data ?? []}`; the three live sections take their member's rows from the same source, indexed), memberCardAttendanceReadOnly, courseRosterRemoveMember, noEmailResolvesInPlace, bulkDeleteNoEmail (24 more).
+
+WHAT CHANGED: Members, Follow-ups (weekly) and Attendance render through a FlatList that owns the scroll (Screen `scroll={false} pad={false}`, content padded by the new `screenBodyPadding` exactly as the ScrollView padded it); everything that scrolled above the rows scrolls as the list's header, the weekly footnote and Reach out button as its footer; rows are `memo()` components with stable handlers (no inline arrow per row). Course roster: MemberCard memoised, the day's rows indexed per member once per load (dayAttendance scanned the whole day per card), the closed picker no longer handed the whole register per card, the selection toggle stable. The roster's own ScrollView is NOT windowed (sectioned screen, left for a later change).
+
+MEASURED (production bundle, headless Chromium on a fast CPU, realistic stand-in, scripts/perf/investigation-2026-10-04/scenarioB.js; the stand-in's clock now follows the real date):
+| screen | DOM nodes before -> after | script ms | long tasks sum/max ms | first keystroke event ms |
+| Members 1,644 | 29,703 -> 594 | 1,655 -> 337 | 2,565/1,435 -> 282/108 | (not captured) -> 16 |
+| Members 5,000 | 90,111 -> 594 | 2,203 -> 373 | 7,073/4,055 -> 312/126 | -> 16-64 |
+| Attendance week | 49,476 -> 543 | 1,197 -> 354 | 2,390/1,182 -> 192/102 | 928 -> 40 |
+| Follow-ups 1,644 / 5,000 | 16,346 / 49,466 -> 615 / 595 | 777 / 1,558 -> 325 / 344 | 1,052 / 2,245 -> 190 / 304 | - |
+| Course roster 411 / 1,250 cards | 11,988 / 36,063 (unchanged) | 1,316 / 2,261 -> 1,016 / 2,306 | 1,388 / 8,850 -> 1,245 / 3,056 | 824 / 7,656 -> 72 / 216 |
+Both themes: /members, /attendance, /weekly rendered dark and light with the stand-in, 0 page or console errors, no horizontal overflow (scratchpad fix/shots.js).
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8), G5 PASS, G7 PASS; `npm run lint` PASS, `npm run typecheck` PASS.
+
 ## PERFORMANCE FIX PHASE 2: ONE CATALOGUE, ONE NAMES READ, FLATTER CHAINS — 05-Oct-2026
 
 docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md RC-4/RC-12. NOT DEPLOYED. No DB change.
@@ -580,6 +599,56 @@ and the count beside it dropped by one" is asserted by reading `app/course/[id].
 three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
 preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
 all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-10-05 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 41.0s total - slowest G7 Unit + pure specs (22.6s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (50ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (51ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (71ms)
+- **G5 Types** - PASS (7.0s)
+- **G6 Lint** - FAIL (10.7s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (22.6s)
+- **G8 Functional / integration** - FAIL (129ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (58ms)
+- **G10 Backward compatibility (fixtures)** - PASS (142ms)
+- **G11 Wide tables are configurable** - PASS (54ms)
+- **G12 Installable as an application** - PASS (73ms)
+- **G13 Approved design still being built** - PASS (48ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

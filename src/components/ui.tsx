@@ -5,26 +5,41 @@ import { useTheme } from '../theme/ThemeProvider';
 import { RADIUS, SPACE, TAP_MIN } from '../theme/tokens';
 import { RequiredMark } from './RequiredMark';
 
-export function Screen({ children, scroll = true, deep = false, header }:
+/**
+ * The padding a screen's scrolling body gives its content. Named so a screen
+ * that scrolls through its OWN list (a windowed FlatList, which must be the
+ * scroll container to window anything) can give its content exactly the
+ * inset the ScrollView below gives -- the same screen, the same edges.
+ */
+export function screenBodyPadding(header: boolean) {
+  // With a pinned header the block's own bottom margin and the hairline
+  // already separate it from the body, so the body opens on the smaller
+  // gap rather than a second full one.
+  return { padding: SPACE.lg, paddingTop: header ? SPACE.md : SPACE.lg, paddingBottom: 96 } as const;
+}
+
+export function Screen({ children, scroll = true, deep = false, header, pad = true }:
   { children: React.ReactNode; scroll?: boolean; deep?: boolean;
     /** The screen's own title block, PINNED above the scroll rather than
      *  scrolled with it -- so mid-scroll the screen still says which screen
      *  it is (requests/2026-09-07-pin-screen-header-on-scroll.md). Same
      *  sibling-above pattern ShellScreen uses for the academy header; never
      *  a child of the ScrollView, never `position: sticky`. */
-    header?: React.ReactNode }) {
+    header?: React.ReactNode;
+    /** `scroll={false}` only: whether the body pads its content. A screen
+     *  whose body IS a windowed list passes false and pads the list's
+     *  content itself with `screenBodyPadding`, so the list scrolls flush
+     *  to the edges exactly as the ScrollView's content does. */
+    pad?: boolean }) {
   const { theme } = useTheme();
   // `deep` puts the screen on the header gradient instead of the app
   // background -- sign-in, help and the PIN screen in the canvas.
   const bg = deep ? 'transparent' : theme.bg;
   const body = scroll
     ? <ScrollView style={{ flex: 1, backgroundColor: bg }}
-        // With a pinned header the block's own bottom margin and the hairline
-        // already separate it from the body, so the body opens on the smaller
-        // gap rather than a second full one.
-        contentContainerStyle={{ padding: SPACE.lg, paddingTop: header ? SPACE.md : SPACE.lg, paddingBottom: 96 }}>
+        contentContainerStyle={screenBodyPadding(!!header)}>
         {children}</ScrollView>
-    : <View style={{ flex: 1, backgroundColor: bg, padding: SPACE.lg }}>{children}</View>;
+    : <View style={{ flex: 1, backgroundColor: bg, ...(pad ? { padding: SPACE.lg } : {}) }}>{children}</View>;
   const framed = header
     ? <View style={{ flex: 1, backgroundColor: bg }}>
         {/* The hairline is the one thing added: content has to visibly pass

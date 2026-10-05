@@ -22,7 +22,7 @@ const routes = (process.env.ROUTES || `/,/members,/attendance,/courses,/reports,
     console.log(`\n## ${route}: networkidle ${tIdle} ms | ${lines.length} requests, ${(bytes / 1024).toFixed(0)} KB JSON | DOM nodes ${dom.nodes} | script ${(m.ScriptDuration * 1000).toFixed(0)} ms, layout ${(m.LayoutDuration * 1000).toFixed(0)} ms, style ${(m.RecalcStyleDuration * 1000).toFixed(0)} ms, task ${(m.TaskDuration * 1000).toFixed(0)} ms | heap ${(m.JSHeapUsedSize / 1048576).toFixed(0)} MB | long tasks ${dom.lt.length} (sum ${dom.ltSum} ms, max ${Math.max(0, ...dom.lt)} ms) | url ${page.url().replace('http://localhost:4173', '')}`);
     if (errors.length) console.log('   errors: ' + [...new Set(errors)].slice(0, 4).join(' | '));
     // search keystrokes where a search box exists
-    const box = page.getByPlaceholder(/search/i).first();
+    const box = page.getByPlaceholder(/search|alias/i).first();
     if (await box.count()) { await box.click(); await page.evaluate(() => { window.__ev = []; window.__lt = []; });
       const keyT = []; for (const ch of 'priya') { const s = Date.now(); await page.keyboard.type(ch); await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))); keyT.push(Date.now() - s); await page.waitForTimeout(150); }
       const ev = await page.evaluate(() => ({ ev: window.__ev.filter(e => /input|key/.test(e.n)), lt: window.__lt }));

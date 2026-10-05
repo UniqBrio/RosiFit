@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, ScrollView, TextInput, useWindowDimensions } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Muted, Label, Skeleton, EmptyState, ErrorState, DeepBackground } from '../../src/components/ui';
@@ -658,11 +658,29 @@ function CourseDetailBody() {
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
-  const toggleSelected = (id: string) => setSelected(prev => {
+  const toggleSelected = useCallback((id: string) => setSelected(prev => {
     const next = new Set(prev);
     if (next.has(id)) next.delete(id); else next.add(id);
     return next;
-  });
+  }), []);
+
+  /* THE DAY'S ROWS, INDEXED BY MEMBER, ONCE PER LOAD. Every card used to be
+     handed the whole day and scan it for its own row (dayAttendance's
+     `rows.filter`), so one render of a 629-member roster was 629 × 629 row
+     comparisons, and every keystroke in the search box was a render
+     (docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md, RC-6). Each card now
+     gets only its member's rows; dayAttendance still filters them by member
+     and date, so its answer is unchanged. */
+  const rowsByMember = useMemo(() => {
+    const index = new Map<string, AttendanceRow[]>();
+    for (const r of marks.data ?? []) {
+      const list = index.get(r.member_id) ?? [];
+      list.push(r);
+      index.set(r.member_id, list);
+    }
+    return index;
+  }, [marks.data]);
+  const rowsFor = (id: string) => rowsByMember.get(id) ?? NO_DAY_ROWS;
 
   // A selection is about the day it was made on. Leaving it standing across a
   // day change would carry ticks onto a roster that never showed them.
@@ -1753,9 +1771,9 @@ function CourseDetailBody() {
                   <MemberCard key={m.id} member={m} tint={AVATAR_TINTS[(i + 3) % AVATAR_TINTS.length]}
                     weekLabel={week.label} noEmail={false} allMembers={members}
                     dayIso={chosen?.iso ?? null} weekdays={scopeWeekdays}
-                    rows={marks.data ?? []} attendanceState={marks.state}
+                    rows={rowsFor(m.id)} attendanceState={marks.state}
                     selectable={selectMode} selected={selected.has(m.id)}
-                    onToggleSelect={() => toggleSelected(m.id)} />
+                    onToggleSelect={toggleSelected} />
                 ))}
               </View>
 
@@ -1868,12 +1886,12 @@ function CourseDetailBody() {
                       <MemberCard key={m.id} member={m} tint={AVATAR_TINTS[i % AVATAR_TINTS.length]}
                         weekLabel={week.label} noEmail allMembers={members}
                         dayIso={chosen?.iso ?? null} weekdays={scopeWeekdays}
-                        rows={marks.data ?? []} attendanceState={marks.state}
+                        rows={rowsFor(m.id)} attendanceState={marks.state}
                         /* Always tickable, toggle or no toggle: the bar above
                            offers a delete over these cards, so the cards have
                            to be selectable from here. */
                         selectable selected={selected.has(m.id)}
-                        onToggleSelect={() => toggleSelected(m.id)} />
+                        onToggleSelect={toggleSelected} />
                     ))}
                   </View>
                 </View>
@@ -1980,9 +1998,9 @@ function CourseDetailBody() {
                                   weekLabel={week.label} noEmail={false} allMembers={members}
                                   emailIssue={{ address: row.address, word: issueBadge(row.kind) }}
                                   dayIso={chosen?.iso ?? null} weekdays={scopeWeekdays}
-                                  rows={marks.data ?? []} attendanceState={marks.state}
+                                  rows={rowsFor(row.member.id)} attendanceState={marks.state}
                                   selectable={selectMode} selected={selected.has(row.member.id)}
-                                  onToggleSelect={() => toggleSelected(row.member.id)} />
+                                  onToggleSelect={toggleSelected} />
                               ))}
                             </View>
                           </View>
@@ -2044,13 +2062,17 @@ function CourseDetailBody() {
                   <MemberCard key={m.id} member={m} tint={AVATAR_TINTS[i % AVATAR_TINTS.length]}
                     weekLabel={week.label} noEmail={m.emails.length === 0} allMembers={members}
                     dayIso={chosen?.iso ?? null} weekdays={scopeWeekdays}
+                    /* The whole day, unread: an inactive card is off the
+                        register (offRegister) and draws no attendance
+                        reading. The live sections take their member's rows
+                        from the same source, indexed (rowsFor). */
                     rows={marks.data ?? []} attendanceState={marks.state}
                     /* The day's register is what the ticks feed, and these
                        members are not on it. A checkbox here would put them in
                        front of a reset and a delete that were never about
                        them. */
                     offRegister selectable={false} selected={false}
-                    onToggleSelect={() => {}} />
+                    onToggleSelect={noToggle} />
                 ))}
               </View>
             </View>
@@ -2205,7 +2227,15 @@ function DayLegend({ failed }: { failed: boolean }) {
  * no-email sections draw the SAME card with a different reason attached, and
  * two copies would be two places for the miss counts to drift.
  */
-function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
+const NO_DAY_ROWS: AttendanceRow[] = [];
+const noToggle = (): void => {};
+
+/**
+ * MEMOISED. The roster re-renders on every keystroke and every tick; with
+ * stable handlers and per-member rows, a card now re-renders only when
+ * something about THAT member changed.
+ */
+const MemberCard = memo(function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
   dayIso, weekdays, rows, attendanceState, offRegister = false,
   emailIssue, selectable, selected, onToggleSelect }:
   { member: Member; tint: string; weekLabel: string; noEmail: boolean;
@@ -2251,7 +2281,7 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
      */
     selectable?: boolean;
     selected?: boolean;
-    onToggleSelect?: () => void;
+    onToggleSelect?: (memberId: string) => void;
     /** the register this member's display name can be linked INTO -- only a
      *  no-email card offers it, but the prop is passed by both call sites so
      *  the two cards stay one component */
@@ -2381,6 +2411,30 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
   // "Add display name to existing member" -- open, and mid-save.
   const [linking, setLinking] = useState(false);
   const [linkingSave, setLinkingSave] = useState(false);
+  /* THE PICKER'S OPTIONS, BUILT ONLY WHILE IT IS OPEN. Every card on the
+     roster built a 1,644-row option array for a picker that was closed, on
+     every render -- a million objects per roster render. Closed, the picker
+     draws nothing and gets nothing to filter. */
+  const pickerOptions = useMemo(() => !linking ? [] : allMembers
+    .filter(m => m.id !== member.id)
+    .map(m => ({
+      label: m.name,
+      /* C-76's own words, the ones this screen already prints two cards
+         up: a member with no address is NAMED, never silently blank. A
+         blank line here reads as "still loading", and two same-named
+         members with no address between them would be two identical
+         rows again -- which is the defect this picker was opened for. */
+      sub: primaryEmail(m) || 'No email on file',
+      /* THE ADDRESS IS ON THE ROW, not only in the query. The register holds
+         two live members called "Kavitha Ramesh"; on a name alone these were
+         two identical rows over an irreversible merge. `search` carries
+         EVERY address she holds, so an old address on a spreadsheet still
+         finds her, while the row prints the primary one -- the same address
+         the roster card and the send list print for her. */
+      search: m.emails.map(e => e.address).join(' '),
+      meta: `${m.course} · ${m.branch}`,
+      value: m.id,
+    })), [linking, allMembers, member.id]);
 
   /** Where the member stands on the selected day -- read here, never written.
    *  Not read at all in the Inactive section: no reading of that day's
@@ -2490,7 +2544,7 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
             follows one screen up. */}
         {selectable ? (
           <Pressable testID={`course-member-select-${member.id}`}
-            onPress={onToggleSelect}
+            onPress={() => onToggleSelect?.(member.id)}
             accessibilityRole="checkbox"
             accessibilityState={{ checked: !!selected }}
             accessibilityLabel={`Select ${member.name}`}
@@ -2836,20 +2890,7 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
            EVERY address she holds, so an old address on a spreadsheet still
            finds her, while the row prints the primary one -- the same address
            the roster card and the send list print for her. */
-        options={allMembers
-          .filter(m => m.id !== member.id)
-          .map(m => ({
-            label: m.name,
-            /* C-76's own words, the ones this screen already prints two cards
-               up: a member with no address is NAMED, never silently blank. A
-               blank line here reads as "still loading", and two same-named
-               members with no address between them would be two identical
-               rows again -- which is the defect this picker was opened for. */
-            sub: primaryEmail(m) || 'No email on file',
-            search: m.emails.map(e => e.address).join(' '),
-            meta: `${m.course} · ${m.branch}`,
-            value: m.id,
-          }))}
+        options={pickerOptions}
         confirmLabel="Add as display name"
         busy={linkingSave}
         /* WHAT IT WILL DO, naming both halves. The attendance move is the
@@ -2956,7 +2997,7 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
         onConfirm={() => { void remove(); }} />
     </View>
   );
-}
+});
 
 /**
  * Under the shell, not instead of it. This screen is pushed on the root

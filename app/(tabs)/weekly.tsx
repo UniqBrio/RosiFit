@@ -1,7 +1,7 @@
-import { useState } from 'react';
-import { View, Text, Pressable, ScrollView } from 'react-native';
+import { memo, useCallback, useState } from 'react';
+import { View, Text, Pressable, ScrollView, FlatList, type ListRenderItem } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Screen, Muted, Label, Button, Skeleton, EmptyState, ErrorState } from '../../src/components/ui';
+import { Screen, Muted, Label, Button, Skeleton, EmptyState, ErrorState, screenBodyPadding } from '../../src/components/ui';
 import { ScreenHeader } from '../../src/components/AppShell';
 import { safeBackTarget } from '../../src/data/nav';
 import { Icon } from '../../src/components/Icon';
@@ -12,6 +12,7 @@ import { ruleSentence } from '../../src/data/mock';
 import { isReachable } from '../../src/data/followup';
 import { useFollowUp } from '../../src/data/hooks';
 import { currentWeek } from '../../src/data/period';
+import type { Member } from '../../src/data/mock';
 
 type Filter = 'follow' | 'all' | 'nomail';
 
@@ -41,6 +42,11 @@ export default function Weekly() {
   const noMail = members.filter(m => !isReachable(m));
   const rows = filter === 'follow' ? flagged : filter === 'nomail' ? noMail : members;
 
+  /* Stable, so a memoised row re-renders only when its member changes. */
+  const open = useCallback((m: Member) => router.push(`/member/${m.id}`), [router]);
+  const renderItem = useCallback<ListRenderItem<Member>>(
+    ({ item, index }) => <WeeklyRow member={item} index={index} onOpen={open} />, [open]);
+
   const chips: { key: Filter; label: string }[] = [
     { key: 'follow', label: `Needs follow-up · ${flagged.length}` },
     { key: 'all',    label: `All ${members.length}` },
@@ -51,91 +57,123 @@ export default function Weekly() {
     <Screen header={
       <ScreenHeader title="Weekly review"
         subtitle={`${week.label} · ${members.length} members`}
-        onBack={() => router.navigate(backTo)} />}>
+        onBack={() => router.navigate(backTo)} />}
+      scroll={false} pad={false}>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ gap: SPACE.sm, paddingVertical: SPACE.md }}>
-        {chips.map(c => {
-          const on = filter === c.key;
-          return (
-            <Pressable key={c.key} onPress={() => setFilter(c.key)}
-              accessibilityRole="radio" accessibilityState={{ selected: on }}
-              style={{
-                minHeight: TAP_MIN, justifyContent: 'center',
-                paddingHorizontal: 13, borderRadius: RADIUS.pill,
-                backgroundColor: on ? theme.accent : theme.surface,
-                borderWidth: 1, borderColor: on ? theme.accent : theme.lineStrong,
-              }}>
-              <Text style={{ fontSize: 12.5, fontWeight: '700', color: on ? theme.onAccent : theme.fg }}>
-                {c.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+      {/* WINDOWED, as the Members tab is: 1,625 MemberRows under "All" went
+          into the DOM at once (16,346 nodes). The list owns the scroll; the
+          chips, the rule line and the column header scroll as its header,
+          the footnote and the Reach out button as its footer -- the same
+          order, the same insets (screenBodyPadding). */}
+      <FlatList
+        testID="weekly-list"
+        data={state === 'ready' ? rows : NO_ROWS}
+        keyExtractor={memberKey}
+        renderItem={renderItem}
+        ItemSeparatorComponent={RowGap}
+        ListHeaderComponent={
+          <View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: SPACE.sm, paddingVertical: SPACE.md }}>
+              {chips.map(c => {
+                const on = filter === c.key;
+                return (
+                  <Pressable key={c.key} onPress={() => setFilter(c.key)}
+                    accessibilityRole="radio" accessibilityState={{ selected: on }}
+                    style={{
+                      minHeight: TAP_MIN, justifyContent: 'center',
+                      paddingHorizontal: 13, borderRadius: RADIUS.pill,
+                      backgroundColor: on ? theme.accent : theme.surface,
+                      borderWidth: 1, borderColor: on ? theme.accent : theme.lineStrong,
+                    }}>
+                    <Text style={{ fontSize: 12.5, fontWeight: '700', color: on ? theme.onAccent : theme.fg }}>
+                      {c.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
 
-      {/* the rule is stated above the list it produced */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: SPACE.md }}>
-        <Icon name="rule" size={15} color={theme.accentInk} />
-        <Muted style={{ flex: 1 }}>
-          {rules ? ruleSentence(rules.global, 'every course') : ''}
-        </Muted>
-      </View>
-
-      {state === 'loading' && <Skeleton lines={4} />}
-
-      {state === 'error' && (
-        <ErrorState onRetry={retry}
-          message="The attendance figures for this week could not be loaded. No email has been prepared and nobody has been contacted." />
-      )}
-
-      {state === 'ready' && (
-        <>
-          <View style={{
-            flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
-            paddingVertical: 9, paddingHorizontal: SPACE.md,
-            backgroundColor: theme.surface2, borderRadius: RADIUS.sm, marginBottom: SPACE.md,
-          }}>
-            <Label style={{ flex: 1 }}>Member</Label>
-            <View style={{ flexDirection: 'row', width: 62, justifyContent: 'space-between' }}>
-              <Label style={{ width: 18, textAlign: 'center' }}>E</Label>
-              <Label style={{ width: 18, textAlign: 'center' }}>A</Label>
-              <Label style={{ width: 18, textAlign: 'center' }}>M</Label>
+            {/* the rule is stated above the list it produced */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: SPACE.md }}>
+              <Icon name="rule" size={15} color={theme.accentInk} />
+              <Muted style={{ flex: 1 }}>
+                {rules ? ruleSentence(rules.global, 'every course') : ''}
+              </Muted>
             </View>
-            <Label style={{ width: 40, textAlign: 'right' }}>Att %</Label>
+
+            {state === 'loading' && <Skeleton lines={4} />}
+
+            {state === 'error' && (
+              <ErrorState onRetry={retry}
+                message="The attendance figures for this week could not be loaded. No email has been prepared and nobody has been contacted." />
+            )}
+
+
+            {state === 'ready' && (
+              <>
+                <View style={{
+                  flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
+                  paddingVertical: 9, paddingHorizontal: SPACE.md,
+                  backgroundColor: theme.surface2, borderRadius: RADIUS.sm, marginBottom: SPACE.md,
+                }}>
+                  <Label style={{ flex: 1 }}>Member</Label>
+                  <View style={{ flexDirection: 'row', width: 62, justifyContent: 'space-between' }}>
+                    <Label style={{ width: 18, textAlign: 'center' }}>E</Label>
+                    <Label style={{ width: 18, textAlign: 'center' }}>A</Label>
+                    <Label style={{ width: 18, textAlign: 'center' }}>M</Label>
+                  </View>
+                  <Label style={{ width: 40, textAlign: 'right' }}>Att %</Label>
+                </View>
+
+
+                {rows.length === 0 ? (
+                  // "nobody qualifies" is GOOD NEWS and must not read like a failure
+                  filter === 'follow' ? (
+                    <EmptyState
+                      title="Nobody needs following up"
+                      body={`Every member met their course's rule for ${week.label}. Nothing to do this week.`} />
+                  ) : (
+                    <EmptyState
+                      title="Nothing matches this filter"
+                      body="Every member has an email address on file." />
+                  )
+                ) : null}
+              </>
+            )}
           </View>
+        }
+        ListFooterComponent={state === 'ready' ? (
+          <View>
+            <Muted style={{ textAlign: 'center', paddingVertical: SPACE.lg }}>
+              “Streak” is the current run of missed sessions. “Miss” is the week’s total.
+              They are different numbers.
+            </Muted>
 
-          {rows.length === 0 ? (
-            // "nobody qualifies" is GOOD NEWS and must not read like a failure
-            filter === 'follow' ? (
-              <EmptyState
-                title="Nobody needs following up"
-                body={`Every member met their course's rule for ${week.label}. Nothing to do this week.`} />
-            ) : (
-              <EmptyState
-                title="Nothing matches this filter"
-                body="Every member has an email address on file." />
-            )
-          ) : (
-            <View style={{ gap: 10 }}>
-              {rows.map((m, i) => (
-                <MemberRow key={m.id} member={m} index={i}
-                  onPress={() => router.push(`/member/${m.id}`)} />
-              ))}
-            </View>
-          )}
-
-          <Muted style={{ textAlign: 'center', paddingVertical: SPACE.lg }}>
-            “Streak” is the current run of missed sessions. “Miss” is the week’s total.
-            They are different numbers.
-          </Muted>
-
-          {flagged.length > 0 && (
-            <Button label={`Reach out to ${flagged.filter(isReachable).length} members`}
-              onPress={() => router.push('/send')} />
-          )}
-        </>
-      )}
+            {flagged.length > 0 && (
+              <Button label={`Reach out to ${flagged.filter(isReachable).length} members`}
+                onPress={() => router.push('/send')} />
+            )}
+          </View>
+        ) : null}
+        contentContainerStyle={screenBodyPadding(true)}
+        keyboardShouldPersistTaps="handled"
+        initialNumToRender={12}
+        maxToRenderPerBatch={12}
+        windowSize={7}
+        style={{ flex: 1 }} />
     </Screen>
   );
 }
+
+const NO_ROWS: Member[] = [];
+const memberKey = (m: Member) => m.id;
+/** The 10pt gap the row column used to draw with `gap: 10`. */
+const RowGap = () => <View style={{ height: 10 }} />;
+
+/** MemberRow with a stable handler, memoised: a row re-renders only when its
+ *  member or its position changes. The inner arrow is created only then. */
+const WeeklyRow = memo(function WeeklyRow({ member, index, onOpen }:
+  { member: Member; index: number; onOpen: (m: Member) => void }) {
+  return <MemberRow member={member} index={index} onPress={() => onOpen(member)} />;
+});
