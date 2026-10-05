@@ -1,3 +1,22 @@
+## PERFORMANCE FIX PHASE 4: SEARCH NARROWS AFTER A SHORT QUIET — 05-Oct-2026
+
+docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md RC-7. NOT DEPLOYED. No DB change. No new library.
+
+FAIL-FIRST: src/data/searchDebounce.test.ts - against e8c7d74 (phase 3) in a temporary worktree, 6 of 6 red ("Members narrows by the applied query, not the keystroke", "Attendance narrows by the applied query, not the keystroke", "the course roster narrows by the applied query but its sentences still quote what was typed", "useDebouncedQuery is exported by the hooks"); 6 of 6 green after.
+FAIL-FIRST: src/data/debounce.test.ts - against e8c7d74 the module under test did not exist ("Cannot find module './debounce'", 0 of 3 ran); 3 of 3 green after.
+Existing specs kept green WITHOUT editing them: memberSearch.test.ts (the matcher is unchanged -- name, code, address, alias), attendanceSearch.test.ts (`matchesAttendanceQuery(r, q)` literal kept), pickerSearch.test.ts, hookInvalidation.test.ts, windowedLists.test.ts (8).
+
+WHAT CHANGED: src/data/debounce.ts -- `applyAfterMs(next)`: 0 for an empty or blank query (clearing the box narrows at once, no wait), else QUIET_MS = 150. src/data/hooks.ts -- `useDebouncedQuery(query)` returns the query the list is narrowed by; the box, its clear button and every sentence that quotes what was typed still read the live `query`. Members: the filter now narrows by the applied query over a per-member lower-cased search text built ONCE per register load (`searchText` Map) instead of lower-casing name, code, address and every alias of every member on every keystroke. Attendance and the course roster narrow by the applied query. Nothing is dropped: the applied query always catches up to the last keystroke after 150 ms of quiet, and a typed query that the user stops on is the query the list shows.
+NOT a delay added for its own sake: the typing-time cost was the filter re-running per keystroke over 5,000 members with a list re-render each time (RC-7); the quiet window coalesces keystrokes into one narrowing and the list stays live.
+
+MEASURED (production bundle, headless Chromium on a fast CPU, realistic stand-in at 5,000 members, scripts/perf/investigation-2026-10-04/scenarioB.js, five keys typed 150 ms apart so every key still narrows once):
+| screen | per-key wall to next frame, phase 3 -> phase 4 (ms) | input event durations after (ms) | long tasks while typing |
+| Members 5,000 | 16-64 event durations -> 31-40 wall / 16-32 events | 16/16/16/16/32/32/24/24 | none |
+| Attendance week | 40 -> 48-52 wall / 16-24 events | 16-24 | none |
+| Course roster 1,250 cards | 72-216 -> 48-443 wall / 16-392 events | 16-392 | 158/362/51 |
+Reading: Members and Attendance are at the 16 ms floor per event with no long task; the course roster is still bounded by its un-windowed ScrollView (36,061 DOM nodes, phase 3 note) -- the debounce cannot hide a 1,250-card re-render, and that remains an open item for the roster (not in scope here: the sectioned screen). No network request is caused by typing on any of the three. Both themes unchanged: the search box, clear button and quoted sentences render from the live query as before.
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3 design/tokens.json absent, G6 the scripts/conformance.mjs warning, G8), G5 PASS, G7 PASS; `npm run lint` PASS, `npm run typecheck` PASS.
+
 ## PERFORMANCE FIX PHASE 3: THE BIG LISTS ARE WINDOWED — 05-Oct-2026
 
 docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md RC-6. NOT DEPLOYED. No DB change.
@@ -599,6 +618,56 @@ and the count beside it dropped by one" is asserted by reading `app/course/[id].
 three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
 preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
 all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-10-05 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 41.1s total - slowest G7 Unit + pure specs (22.1s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (51ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (51ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (98ms)
+- **G5 Types** - PASS (7.2s)
+- **G6 Lint** - FAIL (11.0s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (22.1s)
+- **G8 Functional / integration** - FAIL (135ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (55ms)
+- **G10 Backward compatibility (fixtures)** - PASS (118ms)
+- **G11 Wide tables are configurable** - PASS (55ms)
+- **G12 Installable as an application** - PASS (78ms)
+- **G13 Approved design still being built** - PASS (57ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

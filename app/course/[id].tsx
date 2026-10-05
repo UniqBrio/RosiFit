@@ -12,7 +12,7 @@ import { useAutoFocus } from '../../src/components/openingFocus';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface, type StatusKey } from '../../src/theme/tokens';
 import { DAY_NAMES, ruleSentence, AVATAR_TINTS, initials, primaryEmail, type Member, type MemberStatus } from '../../src/data/mock';
-import { useCourses, useFollowUp, useCourseWeekDays, useCourseDay } from '../../src/data/hooks';
+import { useCourses, useFollowUp, useCourseWeekDays, useCourseDay, useDebouncedQuery } from '../../src/data/hooks';
 import { weekStart, iso, label as periodLabel } from '../../src/data/period';
 import {
   setMemberStatus, mergeMemberInto, deleteMember, memberDeletionPreview, dataSource,
@@ -507,7 +507,11 @@ function CourseDetailBody() {
 
   // The members of that day, less anything the search box hides. Name or
   // address, because those are the two things written on a card.
-  const searched = useMemo(() => narrowToSearch(onDay, query), [onDay, query]);
+  // The query the roster is narrowed by: applied after a short quiet
+  // (src/data/debounce.ts). `query` itself still drives the box and the
+  // sentences that quote it.
+  const appliedQuery = useDebouncedQuery(query);
+  const searched = useMemo(() => narrowToSearch(onDay, appliedQuery), [onDay, appliedQuery]);
   /* The SAME search over the section below, because a member somebody is
      looking for by name is no less findable for having gone inactive -- and a
      search that emptied the roster while leaving the inactive list whole would
@@ -515,7 +519,7 @@ function CourseDetailBody() {
      reach it: Present, Absent and Yet to mark are readings of the day's
      register, and these members are not on it. */
   const inactiveShown = useMemo(
-    () => narrowToSearch(inactiveOnDay, query), [inactiveOnDay, query]);
+    () => narrowToSearch(inactiveOnDay, appliedQuery), [inactiveOnDay, appliedQuery]);
 
   /**
    * ...and then the READING filter, asked for by name: "add filter to choose

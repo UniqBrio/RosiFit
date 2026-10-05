@@ -13,7 +13,7 @@ import {
   isEligible, hasEmailOnFile, primaryEmail, AVATAR_TINTS, initials, type Member,
 } from '../../src/data/mock';
 import { isReachable, emailExclusionReason } from '../../src/data/followup';
-import { useFollowUp, useFilterOptions } from '../../src/data/hooks';
+import { useFollowUp, useFilterOptions, useDebouncedQuery } from '../../src/data/hooks';
 import { rosterScope } from '../../src/data/course';
 import { ConfirmDialog } from '../../src/components/Sheet';
 import { deleteMember, memberDeletionPreview, dataSource } from '../../src/data/repository';
@@ -86,6 +86,20 @@ export default function Members() {
 
   const members = useMemo(() => data?.members ?? [], [data]);
   const rules = data?.rules;
+  /* Applied after a short quiet (src/data/debounce.ts), so six letters typed
+     quickly narrow the list once, not six times. */
+  const applied = useDebouncedQuery(query);
+  /* WHAT EACH MEMBER IS SEARCHED BY, built once per register: the name, the
+     code, the primary address and every Meet alias, lower-cased and joined.
+     The filter below used to build and lower-case that array for every
+     member on every keystroke (RC-6). */
+  const searchText = useMemo(() => new Map(members.map(m => [m.id,
+    // the search covers everything the placeholder promises, including the
+    // Meet aliases -- that is how a name from a CSV gets found at all. The
+    // code stays SEARCHABLE but is no longer advertised: anybody holding one
+    // from an export can still find her, and nobody is promised a field the
+    // app does not show.
+    [m.name, m.code, primaryEmail(m), ...m.aliases].join('\n').toLowerCase()])), [members]);
 
   /**
    * The count behind the question, asked the moment the dialog opens and
@@ -139,16 +153,9 @@ export default function Members() {
     [members, scopedTo, courseId]);
 
   const list = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = applied.trim().toLowerCase();
     return members.filter(m => {
-      // the search covers everything the placeholder promises, including the
-      // Meet aliases -- that is how a name from a CSV gets found at all
-      const matches = !q || [
-        // The code stays SEARCHABLE but is no longer advertised: anybody
-        // holding one from an export can still find her, and nobody is
-        // promised a field the app does not show.
-        m.name, m.code, primaryEmail(m), ...m.aliases,
-      ].some(v => v.toLowerCase().includes(q));
+      const matches = !q || (searchText.get(m.id) ?? '').includes(q);
       // The scope is an AND, applied before the chips: inside one course,
       // "No email" means that course's members with no email, not the
       // academy's. A chip that quietly widened back to everyone would be a
@@ -166,7 +173,7 @@ export default function Members() {
       return inScope && matches && passes;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, filter, members, rules, scopedTo, courseId]);
+  }, [applied, searchText, filter, members, rules, scopedTo, courseId]);
 
   /* ONE handler each, stable across renders, so a card re-renders only when
      ITS member changes (MemberCard is memoised). Inline arrows per row gave

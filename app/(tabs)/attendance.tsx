@@ -10,7 +10,7 @@ import { PeriodPanel, periodFieldValue } from '../../src/components/PeriodFilter
 import { useTheme } from '../../src/theme/ThemeProvider';
 import { useAutoFocus } from '../../src/components/openingFocus';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface, type StatusKey } from '../../src/theme/tokens';
-import { useAttendance, useFilterOptions, useUnsubscribedAddresses } from '../../src/data/hooks';
+import { useAttendance, useFilterOptions, useUnsubscribedAddresses, useDebouncedQuery } from '../../src/data/hooks';
 import { useStaffResubscribe } from '../../src/components/useStaffResubscribe';
 import { RESUBSCRIBE_COPY, resubscribableAddresses } from '../../src/data/staffResubscribe';
 import { FreshnessLine } from '../../src/components/FreshnessLine';
@@ -120,7 +120,9 @@ export default function Attendance() {
 
   const all = attendance.data ?? [];
   const wantedStatus = STATUS_FILTER[status] ?? null;
-  const q = query.trim().toLowerCase();
+  // Applied after a short quiet (src/data/debounce.ts): the box shows every
+  // letter as typed; the register narrows once the word is there.
+  const q = useDebouncedQuery(query).trim().toLowerCase();
 
   const rows = useMemo(() => all.filter(r =>
     (branch === ALL_BRANCHES || r.branch === branch)

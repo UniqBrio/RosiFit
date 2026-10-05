@@ -19,6 +19,7 @@ import {
 } from './asyncState';
 import { registerRevalidator } from './revalidate';
 import { shouldDefer } from './deferral';
+import { applyAfterMs } from './debounce';
 import { currentWeek, periodBuckets, type Period } from './period';
 import {
   fetchMembers, fetchRules, fetchCourses, fetchTemplates, fetchStaff, fetchAudit,
@@ -711,4 +712,20 @@ export function useWeekRows(forced?: string): Async<WeekRow[]> {
      two writes move it, for the same reason. */
   const version = useVersion(onAttendanceChanged, onMembersChanged);
   return useAsync(() => fetchWeekRows(weeks), [key], forced, undefined, version);
+}
+
+/**
+ * THE QUERY AS THE LIST SHOULD SEE IT: the typed value, applied after a short
+ * quiet (src/data/debounce.ts). The box itself keeps rendering `query`
+ * directly, so typing never lags; only the narrowing waits.
+ */
+export function useDebouncedQuery(query: string): string {
+  const [applied, setApplied] = useState(query);
+  useEffect(() => {
+    const wait = applyAfterMs(query);
+    if (wait === 0) { setApplied(query); return; }
+    const timer = setTimeout(() => setApplied(query), wait);
+    return () => clearTimeout(timer);
+  }, [query]);
+  return applied;
 }
