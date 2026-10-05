@@ -258,3 +258,57 @@ test('a busy() that throws is treated as busy, not as a reason to fetch', () => 
   assert.doesNotThrow(() => revalidateStale({ now: 1, writeInFlight: false }));
   assert.equal(asked, 0);
 });
+
+/* ------------------------------------- T8: not on screen, not asked now */
+/*
+ * RC-1 (docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md): the Tabs navigator
+ * keeps every visited tab mounted, so "mounted" was never "on screen", and one
+ * return to the app re-ran every stale reader on every tab -- 28 requests per
+ * return with three tabs visited, reproduced with the production bundle. A
+ * stale reader whose screen is not on screen is now DEFERRED: told to ask when
+ * it is next shown, and not asked now.
+ */
+import { revalidateStaleDetailed } from './revalidate';
+
+test('T8A: a stale reader on a hidden screen is deferred, not asked', () => {
+  let asked = 0, deferred = 0;
+  registerRevalidator({
+    revalidate: () => { asked++; }, fetchedAt: () => 0,
+    active: () => false, defer: () => { deferred++; },
+  });
+  const r = revalidateStaleDetailed({ now: STALE_AFTER_MS + 1, writeInFlight: false });
+  assert.deepEqual([asked, deferred], [0, 1]);
+  assert.deepEqual(r, { asked: 0, deferred: 1 });
+});
+
+test('T8B: the stale reader on the screen in front is asked now, the hidden one deferred -- one burst, one fetch', () => {
+  const log: string[] = [];
+  registerRevalidator({ revalidate: () => log.push('front'), fetchedAt: () => 0, active: () => true, defer: () => log.push('front-deferred') });
+  registerRevalidator({ revalidate: () => log.push('hidden'), fetchedAt: () => 0, active: () => false, defer: () => log.push('hidden-deferred') });
+  registerRevalidator({ revalidate: () => log.push('other-hidden'), fetchedAt: () => 0, active: () => false, defer: () => log.push('other-deferred') });
+  const r = revalidateStaleDetailed({ now: STALE_AFTER_MS + 1, writeInFlight: false });
+  assert.deepEqual(log.sort(), ['front', 'hidden-deferred', 'other-deferred']);
+  assert.deepEqual(r, { asked: 1, deferred: 2 });
+});
+
+test('T8C: a FRESH reader on a hidden screen is left alone -- neither asked nor deferred', () => {
+  let touched = 0;
+  registerRevalidator({ revalidate: () => { touched++; }, fetchedAt: () => 1_000, active: () => false, defer: () => { touched++; } });
+  const r = revalidateStaleDetailed({ now: 1_000 + STALE_AFTER_MS - 1, writeInFlight: false });
+  assert.equal(touched, 0);
+  assert.deepEqual(r, { asked: 0, deferred: 0 });
+});
+
+test('T8D: a reader that names no screen is asked exactly as before', () => {
+  let asked = 0;
+  registerRevalidator({ revalidate: () => { asked++; }, fetchedAt: () => null });
+  assert.equal(revalidateStale({ now: 0, writeInFlight: false }), 1);
+  assert.equal(asked, 1);
+});
+
+test('T8E: a write in flight outranks deferral too -- nothing is asked and nothing is deferred', () => {
+  let touched = 0;
+  registerRevalidator({ revalidate: () => { touched++; }, fetchedAt: () => 0, active: () => false, defer: () => { touched++; } });
+  assert.deepEqual(revalidateStaleDetailed({ now: STALE_AFTER_MS + 1, writeInFlight: true }), { asked: 0, deferred: 0 });
+  assert.equal(touched, 0);
+});

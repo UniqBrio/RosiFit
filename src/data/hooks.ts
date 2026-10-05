@@ -12,11 +12,13 @@
  *      fixtures that is the only way to see the error path at all.
  */
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { useIsFocused } from 'expo-router';
 import type { ScreenState } from './useScreenState';
 import {
   initialAsync, asyncReducer, LOAD_TIMEOUT_MS, type AsyncSnapshot,
 } from './asyncState';
 import { registerRevalidator } from './revalidate';
+import { shouldDefer } from './deferral';
 import { currentWeek, periodBuckets, type Period } from './period';
 import {
   fetchMembers, fetchRules, fetchCourses, fetchTemplates, fetchStaff, fetchAudit,
@@ -185,6 +187,25 @@ export function useAsync<T>(
      cancelling it and starting again (see Revalidator.busy). */
   const busy = useRef(false);
 
+  /* IS THIS READER'S SCREEN THE ONE ON SCREEN? (Revalidator.active)
+     `app/(tabs)/_layout.tsx` keeps every visited tab mounted and a dialog
+     keeps the screen beneath it mounted, so a reader can be live and
+     invisible for hours. A revalidation that arrives then -- a bus bump from
+     a write, or the app coming back to the foreground -- is DEFERRED: the
+     answer on screen stays (nobody is looking at it), and the reader asks
+     exactly once, when its screen is next shown. A change of `deps` is a
+     different question and is never deferred, and a reader that has never
+     loaded is never deferred either -- there is nothing on its screen to
+     keep. `useIsFocused` answers for the nearest screen; outside any
+     screen it answers true, so a reader with no navigation context behaves
+     exactly as before. */
+  const focused = useIsFocused();
+  const focusedRef = useRef(focused);
+  focusedRef.current = focused;
+  const hasDataRef = useRef(false);
+  hasDataRef.current = snapshot.fetchedAt !== null;
+  const deferredRef = useRef(false);
+
   /* A READER HELD BY `?state=` MUST NOT BE REVALIDATED OUT OF IT.
      Both modes, not just 'loading': an error pinned for review still
      registered, so every lifecycle burst called its retry and re-dispatched
@@ -210,7 +231,18 @@ export function useAsync<T>(
     lastKey.current = revalidateKey;
     const fresh = firstRun.current ? true : !(keyMoved || retriedRef.current);
     firstRun.current = false;
+    const retried = retriedRef.current;
     retriedRef.current = false;
+
+    /* A bus bump for a screen nobody is looking at, over data it already
+       holds: remembered, not fetched. The retry that follows on focus runs
+       as a revalidation, so the old answer stays up until the new one lands.
+       A retry is never deferred -- it is either the person pressing Retry
+       on this screen, or the deferral itself being honoured. */
+    if (shouldDefer({ fresh, keyMoved, retried, focused: focusedRef.current, hasData: hasDataRef.current })) {
+      deferredRef.current = true;
+      return;
+    }
 
     const mine = ++seq.current;
     busy.current = true;
@@ -241,6 +273,15 @@ export function useAsync<T>(
     setAttempt(a => a + 1);
   }, []);
 
+  /* The deferral honoured: the screen is shown again, and whatever was
+     remembered as stale while it was hidden is asked for now, once. */
+  useEffect(() => {
+    if (focused && deferredRef.current) {
+      deferredRef.current = false;
+      retry();
+    }
+  }, [focused, retry]);
+
   /* WHAT MAY BE ASKED AGAIN when the app becomes active. A reader pinned by
      `?state=loading` is deliberately held there for review and must not be
      dragged out of it. Registration is torn down on unmount, so a screen
@@ -251,6 +292,8 @@ export function useAsync<T>(
       revalidate: retry,
       fetchedAt: () => fetchedAt.current,
       busy: () => busy.current,
+      active: () => focusedRef.current,
+      defer: () => { deferredRef.current = true; },
     });
   }, [pinned, retry]);
 

@@ -129,6 +129,25 @@ export type Revalidator = {
    * be restarted on every single burst.
    */
   busy?: () => boolean;
+  /**
+   * IS THE SCREEN THIS READER BELONGS TO THE ONE ON SCREEN?
+   *
+   * `app/(tabs)/_layout.tsx` is a `Tabs` navigator: a tab stays mounted once
+   * visited, and a dialog route keeps the screen beneath it mounted too. So
+   * "mounted" was never "on screen", and one return to the app re-ran every
+   * reader on every tab anybody had ever opened -- a 28-request burst per
+   * return with three tabs visited, and 342 requests a minute from one
+   * browser on 1-Oct-2026 (docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md,
+   * RC-1). A reader that is not on screen is not asked now; it is DEFERRED
+   * (below) and asks the moment its screen is shown again, so nothing stale
+   * is ever shown and nothing off screen is ever fetched for nobody.
+   *
+   * Optional, and absent means active: a reader with no navigation context
+   * behaves exactly as before.
+   */
+  active?: () => boolean;
+  /** Remember that this reader is stale, so it fetches when next shown. */
+  defer?: () => void;
 };
 
 /**
@@ -164,12 +183,24 @@ export function resetRevalidators(): void {
 export function revalidateStale(opts: {
   now: number; writeInFlight: boolean; staleAfterMs?: number;
 }): number {
+  return revalidateStaleDetailed(opts).asked;
+}
+
+/**
+ * The same, saying ALSO how many stale readers were deferred because their
+ * screen is not the one on screen. `asked` + `deferred` is every stale reader;
+ * `asked` alone is what went to the network now.
+ */
+export function revalidateStaleDetailed(opts: {
+  now: number; writeInFlight: boolean; staleAfterMs?: number;
+}): { asked: number; deferred: number } {
   // OUTRANKS EVERYTHING, and it is checked before the loop rather than per
   // entry: a write in flight is a fact about the app, not about one reader.
-  if (opts.writeInFlight) return 0;
+  if (opts.writeInFlight) return { asked: 0, deferred: 0 };
 
   const floor = opts.staleAfterMs ?? STALE_AFTER_MS;
   let asked = 0;
+  let deferred = 0;
   for (const r of [...revalidators]) {
     let at: number | null;
     try {
@@ -188,6 +219,18 @@ export function revalidateStale(opts: {
     // Never loaded is always worth asking: there is nothing on screen to keep
     // fresh, and the screen may be showing an error a retry would clear.
     if (at !== null && opts.now - at < floor) continue;
+    // STALE BUT NOT ON SCREEN: remembered, not fetched. Checked AFTER the
+    // floor so a fresh reader on a hidden tab is simply left alone, and a
+    // stale one asks exactly once, when its screen is next shown.
+    try {
+      if (r.active && !r.active()) {
+        r.defer?.();
+        deferred += 1;
+        continue;
+      }
+    } catch {
+      continue;
+    }
     try {
       r.revalidate();
       asked += 1;
@@ -197,5 +240,5 @@ export function revalidateStale(opts: {
          leave the rest of the app stale. */
     }
   }
-  return asked;
+  return { asked, deferred };
 }

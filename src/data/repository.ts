@@ -223,25 +223,33 @@ export function fetchMembers(period: Period): Promise<Member[]> {
 }
 
 /**
- * The read itself. Only `fetchMembers` calls it: anything that went round the
- * shared read would bring back the per-screen duplicate reloads.
+ * THE REGISTER: the six member-scale tables and the offering/course/branch
+ * names they point at -- everything about the members that does NOT depend on
+ * the period being asked about.
+ *
+ * ONE SHARED READ FOR EVERY PERIOD. The Overview asks for its selected range,
+ * Members and the weekly review for the current week, Reports for the month,
+ * and the member store shared a read only with callers asking for the SAME
+ * period -- so three screens mounted at once still read the register three
+ * times after one Save (52 requests in the fake-network baseline, 27 of them
+ * metrics pages; RC-2 in docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md).
+ * Only the attendance figures differ per period, so only they are read per
+ * period (`sharedPeriodMetrics`); this is read once per generation and joined
+ * to whichever figures each caller asked for.
  */
-async function readMembers(period: Period): Promise<Member[]> {
-  // A COPY, not the fixture array itself.
-  //
-  // Offline this used to hand back `MEMBERS` by reference, and every write
-  // below replaces an ELEMENT of it (`MEMBERS[i] = {...}`) while the array
-  // keeps its identity. So a screen that narrows the list in a `useMemo`
-  // keyed on it -- the course roster does, `enrolledIn(members, course)` --
-  // held the member objects from before the edit and went on drawing them:
-  // the toast said saved, her own record showed the change, and the roster
-  // behind it did not. That is RC-008's shape again, and the live path never
-  // had it because every fetch builds a fresh array.
-  //
-  // Shallow is enough and is the point: the elements are replaced whole, so
-  // a new array is a new identity for every memo that depends on one.
-  if (!isConfigured) return [...MEMBERS];
+type Register = {
+  membersRes: Record<string, unknown>[];
+  emailsRes: Record<string, unknown>[];
+  aliasesRes: Record<string, unknown>[];
+  statsRes: Record<string, unknown>[];
+  enrolRes: Record<string, unknown>[];
+  schedRes: Record<string, unknown>[];
+  offerings: { data: Record<string, unknown>[] | null };
+  coursesRes: { data: { id: string; name: string }[] | null };
+  branchesRes: { data: { id: string; name: string }[] | null };
+};
 
+async function readRegister(): Promise<Register> {
   // SIX WHOLE-TABLE READS, every one of them at member scale, so every one of
   // them is paged: at 1000 rows PostgREST stops and reports success, and a
   // member list that quietly loses its tail takes the roster, the counts and
@@ -262,7 +270,7 @@ async function readMembers(period: Period): Promise<Member[]> {
    * the whole list is in hand. Dropping the sort without restoring it would
    * have shuffled every member list in the app into UUID order.
    */
-  const [membersRes, emailsRes, aliasesRes, statsRes, enrolRes, schedRes, metricsRes] = await Promise.all([
+  const [membersRes, emailsRes, aliasesRes, statsRes, enrolRes, schedRes] = await Promise.all([
     paged('the member list', () => supabase.from('members').select('id, member_code, full_name, status, inactive_from, active_again_from, joined_on').is('deleted_at', null), 'id'),
     /* SOFT-DELETED ROWS ARE READ TOO, and `deleted_at` comes with them.
        The filter that used to be here hid the member's SUPPRESSION HISTORY:
@@ -283,13 +291,6 @@ async function readMembers(period: Period): Promise<Member[]> {
     paged('member figures', () => supabase.from('member_stats').select('member_id, current_streak, last_present_date, last_emailed_at'), 'member_id'),
     paged('member enrolments', () => supabase.from('member_enrollments').select('id, member_id, offering_id').eq('status', 'active'), 'id'),
     paged('the days members have of their own', () => supabase.from('member_schedules').select('id, member_id, weekdays, effective_from, effective_to'), 'id'),
-    /* PAGED like the six above it (T-042). It was the one read in this block
-       that was not, and at 1,087 members it was the one that decided whether
-       anybody past row 1,000 had figures at all. */
-    sharedPeriodMetrics(period, () => paged('the attendance figures for this period', () => metricsPage(
-      (after, limit) => supabase.rpc('member_period_metrics_page', {
-        p_from: period.from, p_to: period.to, p_after_member_id: after, p_limit: limit,
-      })), 'member_id')),
   ]);
   /*
    * NO `if (res.error)` LINE SURVIVES HERE, and that is the point of the
@@ -320,6 +321,40 @@ async function readMembers(period: Period): Promise<Member[]> {
     branchIds.length ? supabase.from('branches').select('id, name').in('id', branchIds) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
   ]);
 
+  return { membersRes, emailsRes, aliasesRes, statsRes, enrolRes, schedRes, offerings, coursesRes, branchesRes };
+}
+
+/**
+ * The read itself. Only `fetchMembers` calls it: anything that went round the
+ * shared read would bring back the per-screen duplicate reloads.
+ */
+async function readMembers(period: Period): Promise<Member[]> {
+  // A COPY, not the fixture array itself.
+  //
+  // Offline this used to hand back `MEMBERS` by reference, and every write
+  // below replaces an ELEMENT of it (`MEMBERS[i] = {...}`) while the array
+  // keeps its identity. So a screen that narrows the list in a `useMemo`
+  // keyed on it -- the course roster does, `enrolledIn(members, course)` --
+  // held the member objects from before the edit and went on drawing them:
+  // the toast said saved, her own record showed the change, and the roster
+  // behind it did not. That is RC-008's shape again, and the live path never
+  // had it because every fetch builds a fresh array.
+  //
+  // Shallow is enough and is the point: the elements are replaced whole, so
+  // a new array is a new identity for every memo that depends on one.
+  if (!isConfigured) return [...MEMBERS];
+
+  const [register, metricsRes] = await Promise.all([
+    sharedMemberRead('register', readRegister),
+    /* PAGED like the six register reads (T-042). It was the one read in this block
+       that was not, and at 1,087 members it was the one that decided whether
+       anybody past row 1,000 had figures at all. */
+    sharedPeriodMetrics(period, () => paged('the attendance figures for this period', () => metricsPage(
+      (after, limit) => supabase.rpc('member_period_metrics_page', {
+        p_from: period.from, p_to: period.to, p_after_member_id: after, p_limit: limit,
+      })), 'member_id')),
+  ]);
+  const { membersRes, emailsRes, aliasesRes, statsRes, enrolRes, schedRes, offerings, coursesRes, branchesRes } = register;
   const offeringById = new Map((offerings.data ?? []).map(o => [o.id as string, o]));
   const courseName = new Map((coursesRes.data ?? []).map(c => [c.id, c.name]));
   const branchName = new Map((branchesRes.data ?? []).map(b => [b.id, b.name]));
@@ -3074,9 +3109,38 @@ export function onMembersChanged(listener: () => void): () => void {
   return () => { memberListeners.delete(listener); };
 }
 
+/**
+ * A BULK ACT ANNOUNCES ONCE.
+ *
+ * While `work` runs, every bus rung inside it is HELD -- the shared reads are
+ * still moved on at once (a read begun before any of the writes must not be
+ * joined after them), but the listeners, which are every mounted screen's
+ * refetch, hear each bus once, after the last write. Forty deletions are one
+ * act to a screen reading the register, not forty-one refreshes of it.
+ * Nested holds collapse into the outermost one.
+ */
+let heldAnnouncements: Set<() => void> | null = null;
+
+async function announcingOnce<T>(work: () => Promise<T>): Promise<T> {
+  const outer = heldAnnouncements;
+  const held = outer ?? new Set<() => void>();
+  heldAnnouncements = held;
+  try {
+    return await work();
+  } finally {
+    if (!outer) {
+      heldAnnouncements = null;
+      for (const emit of held) emit();
+    }
+  }
+}
+
+// `invalidateMemberReads()` FIRST, so every screen the listeners wake reads
+// AFTER the change -- one shared read, not a join on one that began before
+// it. Inside a bulk act the announcement is held (announcingOnce) and the
+// listeners hear it once, after the last write; the reads still move on now.
 function membersChanged(): void {
-  // First, so every screen the listeners wake reads AFTER the change -- one
-  // shared read, not a join on one that began before it.
+  if (heldAnnouncements) { invalidateMemberReads(); heldAnnouncements.add(membersChanged); return; }
   invalidateMemberReads();
   for (const listener of memberListeners) listener();
 }
@@ -4230,7 +4294,9 @@ export async function bulkDeleteMembers(
   let deleted = 0;
   // The WHOLE loop, not each member (T-021): a flag released between members
   // leaves a gap after every one of them for the reload to land in.
-  await duringWrite(async () => {
+  // ONE announcement for the whole act: the buses deleteMember rings are held
+  // until the loop ends, then rung once each (announcingOnce, RC-3).
+  await announcingOnce(() => duringWrite(async () => {
     for (const id of ids) {
       try {
         await deleteMember(id);
@@ -4239,11 +4305,7 @@ export async function bulkDeleteMembers(
         failed.push({ id, reason: err instanceof Error ? err.message : 'could not be deleted' });
       }
     }
-  });
-  // Once, after the loop, not once per member: forty writes are one act to
-  // every screen reading the register.
-  membersChanged();
-  attendanceChanged();
+  }));
   return { deleted, failed };
 }
 
@@ -4261,9 +4323,11 @@ export function onAttendanceChanged(listener: () => void): () => void {
   return () => { attendanceListeners.delete(listener); };
 }
 
+// The figures every member read carries move with the register, so a read
+// begun before this change must not be joined after it. Held during a bulk
+// act exactly as membersChanged is.
 function attendanceChanged(): void {
-  // The figures every member read carries move with the register, so a read
-  // begun before this change must not be joined after it.
+  if (heldAnnouncements) { invalidateMemberReads(); heldAnnouncements.add(attendanceChanged); return; }
   invalidateMemberReads();
   for (const listener of attendanceListeners) listener();
 }

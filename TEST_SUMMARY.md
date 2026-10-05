@@ -1,3 +1,26 @@
+## PERFORMANCE FIX PHASE 1: REFETCH ONLY THE SCREEN ON SCREEN — 05-Oct-2026
+
+docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md RC-1/RC-2/RC-3. NOT DEPLOYED.
+
+FAIL-FIRST: src/data/revalidate.test.ts - T8A-T8E appended; against d32e345 T8A/T8B/T8C/T8E red (4 of 5; "a stale reader on a hidden screen is deferred": asked 1 want 0 -- the registry had no notion of a screen); 5 of 5 green.
+FAIL-FIRST: src/data/memberRefresh.test.ts - Tests 6-7 appended; against d32e345 Test 7 red (register read 3 times for three periods, want 1); 13 of 13 green.
+FAIL-FIRST: src/data/bulkDeleteAnnouncesOnce.test.ts - against d32e345 red (member and attendance buses rung 5 and 5 for four deletions, want 1 and 1); green after.
+FAIL-FIRST: src/data/deferral.test.ts - against the hook's previous behaviour (no deferral: shouldDefer modelled as always false) 1 of 6 red ("a bus bump on a hidden screen holding data is deferred"); 6 of 6 green.
+Existing specs kept green WITHOUT editing them: bulkDeleteNoEmail.test.ts ("deletes through the audited
+per-member path" -- the loop still says `await deleteMember(id)`; the buses are held, not bypassed),
+hookInvalidation.test.ts, inFlight.test.ts, memberStore.test.ts.
+
+MEASURED (production bundle, headless Chromium, stand-in API at 130 ms, scripts/perf/investigation-2026-10-04/scenarioA.js):
+- return to the app after 13 s with Home, Courses and Reports visited: 28 requests before -> 23 after,
+  every one of the 23 a Home reader (the Courses and Reports readers defer until shown); 0 within 12 s.
+- cold start on Home 27 -> 26. Fake network, five screens mounted, one Save: 52 HTTP requests before and
+  after (T-406 already collapsed identical URLs) but ONE register read in JavaScript instead of five.
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3 design/tokens.json absent, G6 the
+scripts/conformance.mjs warning, G8), identical to the 25-Sep and 24-Sep runs; G5 types PASS, G7 unit PASS,
+`npm run lint` PASS, `npm run typecheck` PASS. `npm run test:db` baseline before this change:
+1,219 PASS, 4 pre-existing failures (T-014's fail-first spec 52, the 6-Oct joining-date fixture, the
+is_super_admin count, the update_member body hash); no DB change in this phase.
+
 ## MEMBER FORM: VALIDATION SAID AS A TOAST — 03-Oct-2026
 
 `requests/2026-10-03-member-form-validation-toast.md` (CHANGE, scoped).
@@ -545,6 +568,56 @@ and the count beside it dropped by one" is asserted by reading `app/course/[id].
 three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
 preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
 all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-10-05 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 39.7s total - slowest G7 Unit + pure specs (21.8s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (52ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (49ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (50ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (72ms)
+- **G5 Types** - PASS (6.7s)
+- **G6 Lint** - FAIL (10.4s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (21.8s)
+- **G8 Functional / integration** - FAIL (170ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (57ms)
+- **G10 Backward compatibility (fixtures)** - PASS (123ms)
+- **G11 Wide tables are configurable** - PASS (62ms)
+- **G12 Installable as an application** - PASS (100ms)
+- **G13 Approved design still being built** - PASS (56ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

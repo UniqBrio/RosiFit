@@ -222,3 +222,50 @@ test('the add form checks the new member is listed, and says which problem it wa
   assert.match(src, /the member list could not refresh/);
   assert.doesNotMatch(src, /setTimeout|setInterval/, 'no delays, no polling');
 });
+
+/* -------------------------------------------------------------------------
+ * ONE REGISTER READ FOR EVERY PERIOD (RC-2, docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md).
+ *
+ * The Overview, the weekly review and Reports ask for different periods, and
+ * the shared read joined only callers asking for the SAME one -- so three
+ * mounted screens still read the six register tables three times after one
+ * Save. Only the attendance figures depend on the period; the register is
+ * now read once per generation and joined to each caller's own figures.
+ */
+test('Test 6 -- the week and the month readers share ONE register read; only the metrics differ', async () => {
+  const { repo, server, week } = await freshWorld();
+  const { resolvePeriod } = await import(PERIOD) as { resolvePeriod(c: { key: string }): Period };
+  const month = resolvePeriod({ key: 'This month' });
+  server.log.length = 0;
+
+  await Promise.all([repo.fetchMembers(week), repo.fetchMembers(month)]);
+
+  for (const table of ['members', 'member_emails', 'member_aliases', 'member_stats', 'member_enrollments', 'member_schedules']) {
+    assert.equal(firstPages(server.log, table), 1, `${table} read once for two periods`);
+  }
+  const metrics = server.log.filter(r => r.path.endsWith('member_period_metrics_page') && !r.body.includes('"p_after_member_id":"'));
+  assert.equal(metrics.length, 2, 'the attendance figures are read once per period');
+  assert.equal(duplicates(server.log), 0, 'no request went out twice');
+});
+
+test('Test 7 -- after a Save, five mounted screens asking for three periods cost ONE register read', async () => {
+  const { repo, server, week, buckets } = await freshWorld();
+  const { resolvePeriod } = await import(PERIOD) as { resolvePeriod(c: { key: string }): Period };
+  const month = resolvePeriod({ key: 'This month' });
+  await repo.createMember({ full_name: 'Asha', offering_id: OFFERING, joined_on: null, aliases: [], emails: [], weekdays: null });
+  server.log.length = 0;
+  const before = memberReadsStarted('register');
+
+  await Promise.all([
+    repo.fetchMembers(week), repo.fetchBucketMetrics(buckets),   // Overview
+    repo.fetchMembers(week),                                      // Members
+    repo.fetchMembers(week),                                      // weekly review
+    repo.fetchMembers(month),                                     // Reports
+    repo.fetchMembers(week),                                      // course detail
+    repo.confirmMemberListed('x'),
+  ]);
+
+  assert.equal(memberReadsStarted('register') - before, 1, 'the register was read once');
+  assert.equal(firstPages(server.log, 'members'), 1, 'one member-list read on the wire');
+  assert.equal(duplicates(server.log), 0, 'no request went out twice');
+});
