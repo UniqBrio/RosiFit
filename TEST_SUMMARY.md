@@ -1,3 +1,15 @@
+## PERFORMANCE FIX PHASE 2: ONE CATALOGUE, ONE NAMES READ, FLATTER CHAINS — 05-Oct-2026
+
+docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md RC-4/RC-12. NOT DEPLOYED. No DB change.
+
+FAIL-FIRST: src/data/requestBudget.test.ts - against 5757c48 (phase 1) in a temporary worktree, 4 of 5 red: "85 requests, budget 27" (Attendance), "54 requests, budget 50" (Home), "27 requests, budget 25" (Members), and the course day still fetched names by id; 5 of 5 green after.
+Existing specs kept green WITHOUT editing them: requestSize.test.ts ("every member-scale id list is sent in chunks" -- the by-id reads labelled 'the names on this day' / 'the names on this week' stay, chunked, for a roster that fits one chunk of 150; above that the shared whole-table names read is cheaper and is taken instead), memberRefresh.test.ts (13), dataLayerBoundary, pagedReads, periodMetrics, periodMetricsPage.
+
+WHAT CHANGED (src/data/repository.ts only): readCatalogue -- courses, offerings, branches and the timetable in ONE shape, joined while in flight through the member store, consumed by fetchCourses, fetchRules, fetchFilterOptions, fetchOfferings, fetchBranchUsage, the register, fetchPendingSessions, fetchCourseDayRows, fetchMemberWeek and fetchAttendance (each loses its own offerings -> courses/branches chain and reads the catalogue beside its main read). readNames -- members, display names and addresses, whole and paged, shared by the register, Attendance and the course day. fetchNotifications is one shared read for every mounted header.
+
+MEASURED (real data layer, fake network, 1,644 members, scratchpad requestBaseline): Attendance week 85 -> 27 requests; Home 54 -> 50; Members 27 -> 25; Follow-ups 25 -> 25; Reports 29 -> 25; Courses tab 29 -> 25; course day: no id chunks and no offerings chain (sequential depth 5 -> 3). What remains on Home is the 24 metrics pages (phase 6) and one empty terminating page per paged read (phase 10).
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8), G5 PASS, G7 PASS (unit 2,152); `npm run lint` PASS, `npm run typecheck` PASS.
+
 ## PERFORMANCE FIX PHASE 1: REFETCH ONLY THE SCREEN ON SCREEN — 05-Oct-2026
 
 docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md RC-1/RC-2/RC-3. NOT DEPLOYED.
@@ -568,6 +580,56 @@ and the count beside it dropped by one" is asserted by reading `app/course/[id].
 three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
 preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
 all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-10-05 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 37.9s total - slowest G7 Unit + pure specs (20.9s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (49ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (54ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (49ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (78ms)
+- **G5 Types** - PASS (6.5s)
+- **G6 Lint** - FAIL (9.7s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (20.9s)
+- **G8 Functional / integration** - FAIL (121ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (74ms)
+- **G10 Backward compatibility (fixtures)** - PASS (126ms)
+- **G11 Wide tables are configurable** - PASS (52ms)
+- **G12 Installable as an application** - PASS (75ms)
+- **G13 Approved design still being built** - PASS (48ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
