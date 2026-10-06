@@ -1,3 +1,10 @@
+## PERFORMANCE FIX PHASES 12-13: REGRESSION RUN, SCORECARD, AUDIT — 06-Oct-2026
+
+docs/PERFORMANCE_FIX_REPORT_2026-10-06.md is the closing report: files changed, the four unapplied migrations, the before/after scorecard, the test totals, what remains (phase 10 stopped by decision -- the pager's empty-page rule is pinned by three specs as deliberate; the roster not windowed; a whole-offering commit still recomputes the offering; the other current_date readers, T-144), and a staged deployment order with smoke tests. NOTHING DEPLOYED OR APPLIED.
+
+REGRESSION, on the final tree: `npm run test:unit` 2,187 tests green (after the phase 11 correction); `npm run test:db` 1,303 PASS with the 2 pre-existing failures (spec 18 is_super_admin count; spec 53's production copy-lock on update_member, moved on purpose by 0085/0088, re-pinned on apply); `npm run typecheck` PASS; `npm run lint` PASS; `npm run check` contrast/icons/functions PASS; `npx expo export --platform web` PASS; Edge Function Deno tests NOT RUN HERE (no Deno; CI runs them) -- UNVERIFIED locally, their claims proven under node by the three edge* node specs. `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8); G5 PASS; G7 PASS.
+CASES-NA: this commit adds the closing report and this entry; no behaviour changes.
+
 ## CORRECTION TO PHASE 11 (06-Oct-2026): THE PHASE 11 ENTRY BELOW OVERSTATED G7
 
 The phase 11 entry says "G7 PASS". The gate it cites (53.1 s) had G7 FAIL on three specs, which the full `npm run test:unit` run afterwards (2,187 tests, 2,184 pass) named: src/components/dayStripUploadButton.test.ts ("the screen reads the clock once" -- pinned `const todayIso = iso(new Date());`), src/components/memberInactiveFromField.test.ts ("picking Inactive fills today in" -- pinned `setInactiveFrom(iso(new Date()))`), and src/data/migrationGrants.test.ts ("EVERY function granted to authenticated is also revoked from anon DIRECTLY" -- 0087 and 0088 revoked with `revoke all ... from public, anon`, and the guard looks for `revoke execute ... from ... anon`, 0012's wording). A fourth, found by the next gate: phase 7's own src/data/edgeFuzzyMatcher.test.ts had an ABSOLUTE budget (1,000 x 5,000 under 4,000 ms) that crossed under the gate's parallel load.
@@ -748,6 +755,56 @@ and the count beside it dropped by one" is asserted by reading `app/course/[id].
 three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
 preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
 all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 57.0s total - slowest G7 Unit + pure specs (37.0s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (74ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (56ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (56ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (75ms)
+- **G5 Types** - PASS (7.7s)
+- **G6 Lint** - FAIL (11.4s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (37.0s)
+- **G8 Functional / integration** - FAIL (141ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (63ms)
+- **G10 Backward compatibility (fixtures)** - PASS (135ms)
+- **G11 Wide tables are configurable** - PASS (63ms)
+- **G12 Installable as an application** - PASS (83ms)
+- **G13 Approved design still being built** - PASS (55ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
