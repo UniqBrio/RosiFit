@@ -63,7 +63,7 @@ $$;
 comment on function public.business_today() is
   'Today as a calendar day in the academy''s time zone (Asia/Kolkata), whatever the session''s TimeZone. The one place a timestamp becomes a date for a business rule: joining dates, the day a member goes on or off the register, the day an attendance mark is for. Added by 0088 because current_date is the session''s day (UTC on Supabase) and disagreed with the academy for five and a half hours every evening. src/data/businessDate.ts reads the same day on the client.';
 
-revoke all on function public.business_today() from public, anon;
+revoke execute on function public.business_today() from public, anon;
 grant execute on function public.business_today() to authenticated, service_role;
 
 do $mig$

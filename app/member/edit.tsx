@@ -533,7 +533,7 @@ export default function MemberEdit() {
    */
   const pickStatus = (next: MemberStatus) => {
     setStatus(next);
-    if (next !== 'active' && !inactiveFrom.trim()) setInactiveFrom(today);
+    if (next !== 'active' && !inactiveFrom.trim()) setInactiveFrom(businessTodayIso());
   };
 
   const changeAliasDraft = (v: string) => { clearRefusal(); setAliasDraft(v); };

@@ -120,7 +120,7 @@ begin
   $q$ using p_from, p_to, v_after_member, v_after_bucket, p_limit;
 end $function$;
 
-revoke all on function public.member_period_metrics_buckets(date[], date[], text, int) from public, anon;
+revoke execute on function public.member_period_metrics_buckets(date[], date[], text, int) from public, anon;
 grant execute on function public.member_period_metrics_buckets(date[], date[], text, int)
   to authenticated, service_role;
 

@@ -75,17 +75,25 @@ test('the length band is exact: a member just outside it scores below the thresh
   }
 });
 
-test('1,000 rows against 5,000 members stays inside an Edge Function\'s patience', () => {
-  const members = Array.from({ length: 5000 }, (_, i) => ({ id: `m${i}`, normalized: normalizeName(name(i) + 'x') }));
-  const rows = Array.from({ length: 1000 }, (_, i) => normalizeName(name(i * 3) + 'y'));
+test('the prepared tier is several times cheaper than the loop it replaces, on this box, right now', () => {
+  // Relative, not absolute: an absolute budget flaked under the gate's
+  // parallel load (4,000 ms was crossed while the whole suite ran beside
+  // it). The loop and the prepared tier run back to back on the same
+  // fixture in the same process, so whatever the box is doing, the ratio
+  // stands. Measured alone: 300 x 3,000 is ~1,500 ms for the loop and
+  // ~300 ms prepared (5x); 1,000 x 5,000 was 16,110 ms against 3,305 ms.
+  const members = Array.from({ length: 3000 }, (_, i) => ({ id: `m${i}`, normalized: normalizeName(name(i) + 'x') }));
+  const rows = Array.from({ length: 300 }, (_, i) => normalizeName(name(i * 3) + 'y'));
   const t0 = performance.now();
+  let loopHits = 0;
+  for (const r of rows) loopHits += loop(members, r, 0.8).length;
+  const loopMs = performance.now() - t0;
+  const t1 = performance.now();
   const index = prepareFuzzy(members);
   let hits = 0;
   for (const r of rows) hits += fuzzyCandidates(index, r, 0.8).length;
-  const ms = performance.now() - t0;
-  // The loop took 16,110 ms for this exact fixture on this box (scripts/perf/
-  // investigation-2026-10-04/csvtime.ts, 05-Oct-2026). The budget is loose
-  // enough for a slow CI runner and tight enough that the loop cannot pass it.
-  assert.ok(ms < 4000, `prepared matching took ${ms.toFixed(0)} ms (${hits} candidates)`);
+  const preparedMs = performance.now() - t1;
+  assert.equal(hits, loopHits, 'the same candidates');
   assert.ok(hits > 0);
+  assert.ok(preparedMs * 2.5 < loopMs, `prepared ${preparedMs.toFixed(0)} ms against the loop's ${loopMs.toFixed(0)} ms`);
 });

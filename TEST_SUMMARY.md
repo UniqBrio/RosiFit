@@ -1,3 +1,10 @@
+## CORRECTION TO PHASE 11 (06-Oct-2026): THE PHASE 11 ENTRY BELOW OVERSTATED G7
+
+The phase 11 entry says "G7 PASS". The gate it cites (53.1 s) had G7 FAIL on three specs, which the full `npm run test:unit` run afterwards (2,187 tests, 2,184 pass) named: src/components/dayStripUploadButton.test.ts ("the screen reads the clock once" -- pinned `const todayIso = iso(new Date());`), src/components/memberInactiveFromField.test.ts ("picking Inactive fills today in" -- pinned `setInactiveFrom(iso(new Date()))`), and src/data/migrationGrants.test.ts ("EVERY function granted to authenticated is also revoked from anon DIRECTLY" -- 0087 and 0088 revoked with `revoke all ... from public, anon`, and the guard looks for `revoke execute ... from ... anon`, 0012's wording). A fourth, found by the next gate: phase 7's own src/data/edgeFuzzyMatcher.test.ts had an ABSOLUTE budget (1,000 x 5,000 under 4,000 ms) that crossed under the gate's parallel load.
+
+FIXED in this entry's commit: 0087 and 0088 (unapplied drafts, corrected in place under D-8) now `revoke execute ... from public, anon`; the harness replays both and specs 64 (17/17) and 65 (13/13) stay green; anon still cannot execute either function. The member form's Inactive pick is `setInactiveFrom(businessTodayIso())` again (the form's once-per-render `today` stays for the other five reads). The two remaining literal pins of the device's day are re-pointed exactly as the two in the phase 11 entry were, under the same owner-approved reversal exemption and for the same requirement: dayStripUploadButton.test.ts:176 `iso\(new Date\(\)\)` -> `businessTodayIso\(\)`; memberInactiveFromField.test.ts:109 the same expression inside its regex. Nothing else in either spec changes. The matcher's timing assertion is now RELATIVE -- the loop and the prepared tier back to back on the same fixture in the same process, prepared x 2.5 < loop (measured alone ~5x; the same candidates asserted) -- so whatever the box is doing, the ratio stands.
+GATES, this time read from the step's own line: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8); G5 PASS; G7 PASS. `npm run typecheck` PASS, `npm run lint` PASS.
+
 ## CORRECTNESS FIX PHASE 11: A DATE IS THE ACADEMY'S DAY — 06-Oct-2026
 
 docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md §12 (four members refused on 3 Oct 2026, 00:37-01:02 IST, "a joining date in the future cannot be recorded"); ISSUE_TRACKER T-144. NOT DEPLOYED. ONE MIGRATION, NOT APPLIED: supabase/migrations/0088_a_date_is_the_academys_day.sql -- adds public.business_today() = (now() at time zone 'Asia/Kolkata')::date and edits four functions IN PLACE, one anchor each (create_member's default joining date and its "in the future" check; update_member's v_today; set_member_active_from's check; set_attendance's check), every anchor read in production read-only 06-Oct-2026 and present exactly once in the live body. The database's TimeZone and every timestamptz stay UTC. No table, index, policy or data change. Under D-10 it merges to main only on the day it is applied.
@@ -741,6 +748,125 @@ and the count beside it dropped by one" is asserted by reading `app/course/[id].
 three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
 preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
 all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 56.1s total - slowest G7 Unit + pure specs (37.0s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (66ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (50ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (52ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (74ms)
+- **G5 Types** - PASS (7.7s)
+- **G6 Lint** - FAIL (10.6s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (37.0s)
+- **G8 Functional / integration** - FAIL (132ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (63ms)
+- **G10 Backward compatibility (fixtures)** - PASS (165ms)
+- **G11 Wide tables are configurable** - PASS (57ms)
+- **G12 Installable as an application** - PASS (85ms)
+- **G13 Approved design still being built** - PASS (54ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 58.0s total - slowest G7 Unit + pure specs (38.9s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (58ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (55ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (84ms)
+- **G5 Types** - PASS (7.2s)
+- **G6 Lint** - FAIL (11.0s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (38.9s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+```
+
+- **G8 Functional / integration** - FAIL (141ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (61ms)
+- **G10 Backward compatibility (fixtures)** - PASS (159ms)
+- **G11 Wide tables are configurable** - PASS (70ms)
+- **G12 Installable as an application** - PASS (94ms)
+- **G13 Approved design still being built** - PASS (72ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
