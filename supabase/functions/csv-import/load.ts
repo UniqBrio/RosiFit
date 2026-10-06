@@ -13,10 +13,33 @@
 // lives where a test can reach it.
 import { prepareFuzzy, type FuzzyIndex } from '../_shared/match.ts';
 
-type Row = Record<string, unknown>;
+// The columns each read in index.ts selects, written down once. `deno check`
+// (CI's check:edge) is the only type checker this tree has, and the first run
+// that reached this file (PR #65) found these names used and never declared.
+export type AliasRow = { id: string; member_id: string; alias_display: string; alias_normalized: string };
+export type MemberRow = { id: string; full_name: string; name_normalized: string | null };
+export type EmailRow = { id: string; member_id: string; email: string };
+export type StatsRow = { member_id: string; last_present_date: string | null };
+export type EnrollmentRow = { id: string; member_id: string; offering_id: string };
+export type OfferingRow = { id: string; course_id: string; branch_id: string };
+export type NamedRow = { id: string; name: string };
+
+/** The register as read: the staff names set aside, and every table the matcher consults. */
+export type Register = {
+  staffNames: Set<string>;
+  aliases: AliasRow[];
+  members: MemberRow[];
+  primaryEmails: EmailRow[];
+  stats: StatsRow[];
+  enrollments: EnrollmentRow[];
+  offerings: OfferingRow[];
+  courses: NamedRow[];
+  branches: NamedRow[];
+};
 
 /** The register as the matcher reads it: every lookup a Map, the fuzzy tier prepared once. */
 export type RegisterIndex = {
+  staffNames: Set<string>;
   aliasesByNormalized: Map<string, AliasRow[]>;
   membersByNormalized: Map<string, MemberRow[]>;
   memberById: Map<string, MemberRow>;
@@ -52,6 +75,7 @@ export function indexRegister(r: Register): RegisterIndex {
     aliasNamesByMember.set(a.member_id, list);
   }
   return {
+    staffNames: r.staffNames,
     aliasesByNormalized,
     membersByNormalized,
     memberById: new Map(r.members.map(m => [m.id, m])),
