@@ -6,7 +6,7 @@ import { RequiredMark } from './RequiredMark';
 import { AnchoredPanel, useAnchor } from './AnchoredPanel';
 import { useTheme } from '../theme/ThemeProvider';
 import { RADIUS, SPACE, TAP_MIN } from '../theme/tokens';
-import { iso, parseISO } from '../data/period';
+import { iso, parseISO, businessToday } from '../data/period';
 import { monthCells, isOutside } from './monthGrid';
 
 /**
@@ -159,7 +159,7 @@ export function MonthCalendar({ from, to = '', onPick, min, max, testID }:
      *  it cannot be chosen is visible rather than the day being missing. */
     min?: string; max?: string; testID: string }) {
   const { theme } = useTheme();
-  const today = new Date();
+  const today = businessToday();                    // the academy's day
   const [cursor, setCursor] = useState(() => {
     const start = parseISO(from) ?? today;
     return { year: start.getFullYear(), month: start.getMonth() };
@@ -369,7 +369,7 @@ export function DateField({ label, value, onChange, placeholder = 'Choose a date
   const { theme } = useTheme();
   const [open, setOpen] = useState(false);
   const row = useAnchor();
-  const today = new Date();
+  const today = businessToday();                    // the academy's day
 
   const pick = (chosen: string) => { onChange(chosen); setOpen(false); };
 

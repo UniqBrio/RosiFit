@@ -23,7 +23,7 @@
  * that course will ever send.
  */
 import type { Member } from './mock';
-import { currentWeek } from './period';
+import { currentWeek, businessToday } from './period';
 
 /**
  * The tokens the Edge Function actually builds. Kept in this order because it
@@ -205,7 +205,7 @@ export function previewContext(
      row still loading. Partial<MessageContext> would make each of those an
      error at the call site and push the fallback back out into the form. */
   over: { [K in keyof MessageContext]?: MessageContext[K] | null } = {},
-  today = new Date(),
+  today = businessToday(),
 ): MessageContext {
   const week = currentWeek(today);
   const member = over.member ?? SAMPLE_MEMBER;

@@ -7,6 +7,8 @@
  *
  * Weeks are Monday–Sunday, matching follow_up_config.week_start_day = 1.
  */
+import { businessTodayIso } from './businessDate';
+
 export type Period = { from: string; to: string; label: string };
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -24,6 +26,22 @@ export function parseISO(value: string): Date | null {
   if (!y || !m || !d) return null;
   const date = new Date(y, m - 1, d);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/**
+ * TODAY, AS THE ACADEMY'S DAY, for every period that starts from "now".
+ *
+ * A Date at local midnight of the academy's calendar day
+ * (src/data/businessDate.ts). The week, month and preset arithmetic below is
+ * calendar arithmetic on local Dates -- setDate, getDay -- which is sound on
+ * any device for any calendar day; what must not vary by device is WHICH
+ * day it starts from. `new Date()` started from the device's day, so a
+ * person abroad, or a server-side render in UTC, got last week's register
+ * for five and a half hours every evening. `now` is injectable so a spec
+ * can stand at 00:30 in Chennai.
+ */
+export function businessToday(now: () => Date = () => new Date()): Date {
+  return parseISO(businessTodayIso(now)) ?? new Date();
 }
 
 /**
@@ -80,24 +98,24 @@ export function shortDate(value: string | null): string {
   return d ? `${DAYS_SHORT[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}` : '—';
 }
 
-export function currentWeek(today = new Date()): Period {
+export function currentWeek(today = businessToday()): Period {
   const from = weekStart(today);
   const to = shiftDays(from, 6);
   return { from: iso(from), to: iso(to), label: label(from, to) };
 }
 
-export function lastWeek(today = new Date()): Period {
+export function lastWeek(today = businessToday()): Period {
   return currentWeek(shiftDays(weekStart(today), -7));
 }
 
-export function lastFourWeeks(today = new Date()): Period {
+export function lastFourWeeks(today = businessToday()): Period {
   const to = shiftDays(weekStart(today), 6);
   const from = shiftDays(weekStart(today), -21);
   return { from: iso(from), to: iso(to), label: label(from, to) };
 }
 
 /** The calendar month `today` falls in, first day to last. */
-export function thisMonth(today = new Date()): Period {
+export function thisMonth(today = businessToday()): Period {
   const from = new Date(today.getFullYear(), today.getMonth(), 1);
   const to = new Date(today.getFullYear(), today.getMonth() + 1, 0);
   return { from: iso(from), to: iso(to), label: label(from, to) };
@@ -110,7 +128,7 @@ export function thisMonth(today = new Date()): Period {
  * range cannot end up labelled one span and counted over another (C-84).
  */
 export function customRange(fromValue: string, toValue: string): Period {
-  const a = parseISO(fromValue) ?? new Date();
+  const a = parseISO(fromValue) ?? businessToday();
   const b = parseISO(toValue) ?? a;
   const [from, to] = a <= b ? [a, b] : [b, a];
   return { from: iso(from), to: iso(to), label: label(from, to) };
@@ -131,14 +149,14 @@ export type PeriodChoice =
   | { key: PeriodPreset }
   | { key: typeof CUSTOM_PERIOD; from: string; to: string };
 
-export function presetPeriod(key: PeriodPreset, today = new Date()): Period {
+export function presetPeriod(key: PeriodPreset, today = businessToday()): Period {
   return key === 'Last week' ? lastWeek(today)
     : key === 'Last 4 weeks' ? lastFourWeeks(today)
     : key === 'This month' ? thisMonth(today)
     : currentWeek(today);
 }
 
-export function resolvePeriod(choice: PeriodChoice, today = new Date()): Period {
+export function resolvePeriod(choice: PeriodChoice, today = businessToday()): Period {
   return choice.key === CUSTOM_PERIOD
     ? customRange(choice.from, choice.to)
     : presetPeriod(choice.key, today);

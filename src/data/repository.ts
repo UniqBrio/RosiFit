@@ -18,7 +18,7 @@ import { cleanAlias, aliasProblem, aliasSaveError, MERGE_FAILED } from './alias'
 import { sentenceOpening } from './refusalCase';
 import { personReadable } from './engineWording';
 import { currentWeek, iso, joinedLabel, type Period } from './period';
-import { businessTodayIso } from './businessDate';
+import { businessTodayIso, businessDayBounds } from './businessDate';
 import { SUBJECT_MIN, SUBJECT_MAX, BODY_MIN, COURSE_NAME_MIN, COURSE_NAME_MAX } from './message';
 import { bucketFixture, type BucketMetrics, type MemberMetric } from './buckets';
 import type { SentMap } from './sent';
@@ -1916,10 +1916,9 @@ async function resolveContext(ids: string[]): Promise<AuditContext> {
  * date string with no Z is parsed local) and sent as instants.
  */
 function dayBounds(period: Period): { from: string; to: string } {
-  return {
-    from: new Date(`${period.from}T00:00:00`).toISOString(),
-    to: new Date(`${period.to}T23:59:59.999`).toISOString(),
-  };
+  // The academy's day, by its own offset -- not the device's local midnight
+  // (src/data/businessDate.ts).
+  return businessDayBounds(period.from, period.to);
 }
 
 /**

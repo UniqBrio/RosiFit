@@ -40,3 +40,14 @@ export function businessDateOf(instant: Date): string {
 export function businessTodayIso(now: () => Date = () => new Date()): string {
   return businessDateOf(now());
 }
+
+/** The two instants that bound a calendar day, or a run of days, in the
+ *  academy's zone -- for a query over a timestamptz column. Written with the
+ *  zone's own offset so the device's zone cannot move the boundary. */
+export function businessDayBounds(fromIso: string, toIso: string): { from: string; to: string } {
+  const offset = `${BUSINESS_UTC_OFFSET_MINUTES < 0 ? '-' : '+'}${String(Math.floor(Math.abs(BUSINESS_UTC_OFFSET_MINUTES) / 60)).padStart(2, '0')}:${String(Math.abs(BUSINESS_UTC_OFFSET_MINUTES) % 60).padStart(2, '0')}`;
+  return {
+    from: new Date(`${fromIso}T00:00:00.000${offset}`).toISOString(),
+    to: new Date(`${toIso}T23:59:59.999${offset}`).toISOString(),
+  };
+}

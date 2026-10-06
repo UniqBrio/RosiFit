@@ -1,3 +1,16 @@
+## DEPLOYMENT PREPARATION STEP 5: THE REST OF THE DAYS ARE THE ACADEMY'S — 06-Oct-2026
+
+docs/PERFORMANCE_FIX_REPORT_2026-10-06.md §5.4 and ISSUE_TRACKER T-144 (the current_date readers phase 11 deliberately left, and period.ts's device-day arithmetic). NOT DEPLOYED. ONE MIGRATION, NOT APPLIED: supabase/migrations/0090_the_rest_of_the_days_are_the_academys.sql -- requires 0088's business_today(). Under D-10 it merges to main only on the day it is applied.
+
+THE AUDIT, every date/time read in app/, src/, supabase/functions/ and supabase/migrations/ (the grep list of the brief), classified and tabled in docs/PERFORMANCE_FIX_FINAL_REPORT_2026-10-06.md §5: class A (a real instant: audit and sent timestamps, freshness, relative "x minutes ago" labels, Edge Function timestamps, timestamptz columns) is correct as it is and untouched; class C (local parsing of a YYYY-MM-DD string for a label or a weekday, the calendar grid, the upload file's label, memberDate's Date.UTC probe) is safe because the same string goes in and out and untouched; class B (a business date derived from "now") is the defect class and is FIXED here, in both tiers.
+CLIENT: src/data/period.ts gains businessToday(): the academy's day as a date-only Date, which currentWeek/lastWeek/lastFourWeeks/thisMonth/presetPeriod/resolvePeriod now default to (the week and month turn at 00:00 Chennai, not at the device's midnight); src/data/hooks.ts useWeekRows (the week's rows), src/components/DateTimePicker.tsx (the calendar's "today", twice), src/data/message.ts (the sample message's day) read it; src/data/repository.ts's dayBounds is businessDayBounds(from, to) -- the period's bounds as instants at Chennai's midnight and end (src/data/businessDate.ts, fixed +05:30), instead of `new Date("YYYY-MM-DDT00:00:00")`, which is the DEVICE's midnight and on a device outside India selected a different day's rows.
+SERVER (0090): the five remaining current_date readers edited IN PLACE, one anchor each, every anchor read read-only in production 06-Oct-2026 and present exactly once in the live body (md5s in the migration: subscription_state 78d1e4ab, save_course a4248f1d, merge_member_into 91467511, is_in_course 871e3b16, follow_up_candidates 76d0c98a): subscription_state's active/grace window (2 anchors), save_course's effective schedule window and "saved with the course" effective_from (3), merge_member_into's enrolment-ending least(...) (1), is_in_course's live-enrolment test (1), follow_up_candidates' member_status_on(..., current_date) (1); a final guard refuses the migration if any of the five still reads current_date. delete_course and delete_member in production no longer read current_date (verified read-only) and are not touched. Column defaults in 0002 are not touched (an applied migration; they are overridden by every writing function, which now pass business_today()).
+FAIL-FIRST: src/data/businessPeriod.test.ts - against a48b750 in a temporary worktree 6 of 6 red ("# pass 0 / # fail 6": businessToday is not exported); 6 of 6 green after: at 00:30 on Monday in Chennai (Sunday 18:30 UTC) the week is the new one whatever the device says, one minute earlier it is still Sunday's week, the month turns at midnight in Chennai, the presets and a resolved choice start from the same day, the default is a date-only value, a day's bounds as instants are Chennai's midnight and end under every device zone.
+FAIL-FIRST: supabase/tests/67_the_rest_of_the_days_are_the_academys.sql - against the schema without 0090 (file moved aside, fresh replay) exit 3 at line 18: "FAIL  subscription_state judges active and grace by the academy's day"; with 0090, 11 of 11 green under a session clock pinned to 20:00 UTC (01:30 the next day in Chennai): a subscription expiring on the academy's today is active, yesterday's with grace is in grace, the one whose grace ended is expired; save_course picks the schedule in force on the academy's day; merge_member_into ends the stray's enrolment on the academy's day; is_in_course sees an enrolment effective on the academy's day; follow_up_candidates judges "active" on the academy's day; none of the five reads current_date.
+`npm run test:db` with 0085-0090: 1,332 PASS, failures = spec 18 and spec 53 (both pre-existing) only.
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8); G5 PASS; G7 PASS. `npm run typecheck` PASS, `npm run lint` PASS.
+CASES-NA: the SQL side's test is a harness spec (supabase/tests/67); the client side's is src/data/businessPeriod.test.ts.
+
 ## DEPLOYMENT PREPARATION STEPS 3-4: THE ROSTER IS WINDOWED; THE RECOMPUTE IS ONE PASS — 06-Oct-2026
 
 docs/PERFORMANCE_FIX_REPORT_2026-10-06.md §5.2 (the course roster, deferred) and §5.3 (a whole-offering commit recomputes the offering). NOT DEPLOYED. ONE MIGRATION, NOT APPLIED: supabase/migrations/0089_recompute_member_stats_in_one_pass.sql. Under D-10 it merges to main only on the day it is applied.
@@ -784,6 +797,56 @@ and the count beside it dropped by one" is asserted by reading `app/course/[id].
 three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
 preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
 all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 1m 04s total - slowest G7 Unit + pure specs (40.0s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (69ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (54ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (91ms)
+- **G5 Types** - PASS (8.1s)
+- **G6 Lint** - FAIL (15.1s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (40.0s)
+- **G8 Functional / integration** - FAIL (172ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (64ms)
+- **G10 Backward compatibility (fixtures)** - PASS (133ms)
+- **G11 Wide tables are configurable** - PASS (58ms)
+- **G12 Installable as an application** - PASS (84ms)
+- **G13 Approved design still being built** - PASS (53ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

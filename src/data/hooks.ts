@@ -21,7 +21,7 @@ import { registerRevalidator } from './revalidate';
 import { shouldDefer } from './deferral';
 import { sessionKnown, SIGNED_OUT_MESSAGE } from './sessionGate';
 import { applyAfterMs } from './debounce';
-import { currentWeek, periodBuckets, type Period } from './period';
+import { currentWeek, periodBuckets, businessToday, type Period } from './period';
 import {
   fetchMembers, fetchRules, fetchCourses, fetchTemplates, fetchStaff, fetchAudit,
   fetchRemarks, onRemarksChanged,
@@ -713,7 +713,7 @@ export function useBucketMetrics(period: Period, forced?: string): Async<BucketM
 /** The last four weeks, most recent first. Mon–Sun, per week_start_day. */
 export function useWeekRows(forced?: string): Async<WeekRow[]> {
   const weeks = [0, 1, 2, 3].map(back => {
-    const d = new Date();
+    const d = businessToday();
     d.setDate(d.getDate() - back * 7);
     return currentWeek(d);
   });
