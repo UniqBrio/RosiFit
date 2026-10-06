@@ -1,3 +1,9 @@
+## READ-ONLY PRE-DEPLOYMENT REVIEW — 06-Oct-2026
+
+docs/PRE_DEPLOYMENT_REVIEW_2026-10-06.md answers the owner's three decisions with evidence: 0090 APPROVE (subscription_state is read only through is_subscription_writable -- 28 policies and 16 functions in production -- written by nothing in code, does not read start_date; the only behavioural difference is the write gate closing at the academy's midnight instead of 05:30 IST on the last day of the subscription and of grace; production's row expires 2027-09-01 with 14 days' grace, so nothing observable moves for eleven months); 0089 APPLY SEPARATELY from 0085 (production's recompute_member_stats already carries p_member_ids uuid[] default null -- md5 142f926f, 1,502 bytes; 0089 alone on a 0084 replay applies and spec 66 is 18/18; the proposed order 0086, 0087, 0085, 0088, 0090, 0089 replays with an inventory identical to the filename order; 0090 without 0088 refuses); SEND_CONCURRENCY = 2 (the SES account is OUT of the sandbox by the production ledger -- 31 completed batches, 1,288 sent, 0 failed, largest 291 -- the maximum send rate still unread, T-010; the assumption is written beside the value). Every 0085/0088/0090 anchor and every 0086/0089 md5 re-read in production read-only 06-Oct-2026 09:00 UTC and present exactly once. CI has never run on this branch (ci.yml: push to main/dev and pull_request only; zero workflow runs), so the Edge Functions are NOT READY until the PR's first run is green. NOTHING DEPLOYED, APPLIED OR CHANGED IN PRODUCTION.
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8); G5 PASS; G7 PASS.
+CASES-NA: this commit adds a review document and this entry; no behaviour changes.
+
 ## DEPLOYMENT PREPARATION STEPS 6-12: PIPELINE, MIGRATION ORDER, PLANS, FINAL REPORT — 06-Oct-2026
 
 docs/PERFORMANCE_FIX_FINAL_REPORT_2026-10-06.md is the final report of the brief "Finish Remaining Issues & Prepare Deployment": completed / remaining / tests / performance (every figure labelled Local/harness, CI or Production) / the date audit / the six unapplied migrations and their dependency order / the deployment plan Stages A-G (NOT executed) / the smoke-test checklist / the production verification plan / the risks and the three owner decisions / the status. NOTHING DEPLOYED, NOTHING APPLIED, NO PRODUCTION DATA OR SETTING TOUCHED. ISSUE_TRACKER T-144 updated (the remaining current_date sites closed on this branch by 0090; status still "not applied").
@@ -806,6 +812,56 @@ and the count beside it dropped by one" is asserted by reading `app/course/[id].
 three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
 preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
 all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 1m 08s total - slowest G7 Unit + pure specs (42.2s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (124ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (61ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (114ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (187ms)
+- **G5 Types** - PASS (10.2s)
+- **G6 Lint** - FAIL (14.9s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (42.2s)
+- **G8 Functional / integration** - FAIL (181ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (90ms)
+- **G10 Backward compatibility (fixtures)** - PASS (139ms)
+- **G11 Wide tables are configurable** - PASS (89ms)
+- **G12 Installable as an application** - PASS (111ms)
+- **G13 Approved design still being built** - PASS (77ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
