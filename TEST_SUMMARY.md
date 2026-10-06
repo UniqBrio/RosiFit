@@ -1,3 +1,12 @@
+## DEPLOYMENT PREPARATION STEPS 6-12: PIPELINE, MIGRATION ORDER, PLANS, FINAL REPORT — 06-Oct-2026
+
+docs/PERFORMANCE_FIX_FINAL_REPORT_2026-10-06.md is the final report of the brief "Finish Remaining Issues & Prepare Deployment": completed / remaining / tests / performance (every figure labelled Local/harness, CI or Production) / the date audit / the six unapplied migrations and their dependency order / the deployment plan Stages A-G (NOT executed) / the smoke-test checklist / the production verification plan / the risks and the three owner decisions / the status. NOTHING DEPLOYED, NOTHING APPLIED, NO PRODUCTION DATA OR SETTING TOUCHED. ISSUE_TRACKER T-144 updated (the remaining current_date sites closed on this branch by 0090; status still "not applied").
+
+STEP 6: SEND_CONCURRENCY stays 4 (documented knob 1-16): client_batch_id is unique (0009) so a resend is a 409 and cannot double-send; there are no automatic retries; a suppressed address fails its recipient before any provider call; the SES rate is unread (T-010, AWS console) -- set 1 before deploying if the account is in the sandbox.
+STEP 7, the full pipeline on the committed tree (Local/harness): `npm run test:unit` 2,213 of 2,213 (26 new, all passing); `npm run typecheck` PASS; `npm run lint` PASS; `npm run check` PASS exit 0; `npx expo export --platform web` PASS (6.5 MB); `npm run test:db` 1,332 PASS with exactly the 2 PRE-EXISTING failures (spec 18 is_super_admin count; spec 53 production copy-lock on update_member, moved on purpose by 0085/0088) and NO genuine failure; `npm run check:edge` SKIPPED and the Deno specs NOT RUN HERE (ENVIRONMENT LIMITATION: no Deno 2.9.7 through this box's proxy; CI runs them); `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8), G5 PASS, G7 PASS.
+STEP 8, migration order validated by object inventory diff (tables, columns, indexes, triggers, policies, RLS, functions with body md5, function and table grants) on two fresh replays, through 0084 and through 0090: the diff is exactly 2 new functions (business_today, member_period_metrics_buckets -- both anon=false) and 13 changed bodies; NO table, column, index, trigger, policy, RLS or table-grant change. Order: 0086 -> 0087 (the client needs 0087), then 0085, 0088 -> 0090 (0090 refuses without business_today()), 0089 independent.
+CASES-NA: this commit adds the final report, the tracker update and this entry; no behaviour changes.
+
 ## DEPLOYMENT PREPARATION STEP 5: THE REST OF THE DAYS ARE THE ACADEMY'S — 06-Oct-2026
 
 docs/PERFORMANCE_FIX_REPORT_2026-10-06.md §5.4 and ISSUE_TRACKER T-144 (the current_date readers phase 11 deliberately left, and period.ts's device-day arithmetic). NOT DEPLOYED. ONE MIGRATION, NOT APPLIED: supabase/migrations/0090_the_rest_of_the_days_are_the_academys.sql -- requires 0088's business_today(). Under D-10 it merges to main only on the day it is applied.
@@ -797,6 +806,56 @@ and the count beside it dropped by one" is asserted by reading `app/course/[id].
 three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
 preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
 all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 1m 07s total - slowest G7 Unit + pure specs (41.0s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (143ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (130ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (132ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (166ms)
+- **G5 Types** - PASS (9.7s)
+- **G6 Lint** - FAIL (14.7s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (41.0s)
+- **G8 Functional / integration** - FAIL (140ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (64ms)
+- **G10 Backward compatibility (fixtures)** - PASS (132ms)
+- **G11 Wide tables are configurable** - PASS (64ms)
+- **G12 Installable as an application** - PASS (88ms)
+- **G13 Approved design still being built** - PASS (57ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
