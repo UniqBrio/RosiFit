@@ -16,6 +16,7 @@ import type { Member, FollowUpRule, FollowUpCandidate } from './mock';
 import { emailUsable } from './emailStatus';
 import { isActiveOn } from './inactiveFrom';
 import { iso } from './period';
+import { businessTodayIso } from './businessDate';
 
 /**
  * The follow-up threshold's bounds: 1..7.
@@ -81,10 +82,10 @@ export function ruleHits(m: Member, r: FollowUpRule) {
  * The default is read at CALL time, not at module load -- a list left open
  * across midnight must not go on answering for yesterday.
  */
-export const isFollowable = (m: Member, onIso: string = iso(new Date())): boolean =>
+export const isFollowable = (m: Member, onIso: string = businessTodayIso()): boolean =>
   isActiveOn(m, onIso);
 
-export function isEligible(m: Member, r: FollowUpRule, onIso: string = iso(new Date())): boolean {
+export function isEligible(m: Member, r: FollowUpRule, onIso: string = businessTodayIso()): boolean {
   if (!isFollowable(m, onIso)) return false;
   const h = ruleHits(m, r);
   return r.combination === 'AND' && r.weekly_enabled && r.consecutive_enabled
@@ -284,7 +285,7 @@ export function toCandidate(m: Member, r: FollowUpRule): FollowUpCandidate {
 export function flagged(
   members: Member[], globalRule: FollowUpRule,
   rulesByCourseName: Record<string, FollowUpRule> = {},
-  onIso: string = iso(new Date()),
+  onIso: string = businessTodayIso(),
 ): Member[] {
   return members.filter(m => isEligible(m, rulesByCourseName[m.course] ?? globalRule, onIso));
 }

@@ -34,6 +34,7 @@ import {
   flagged, isReachable, recipientSplit, emailExclusionReason, suppressedAddress, exclusionSummary,
 } from '../../src/data/followup';
 import { currentWeek, iso } from '../../src/data/period';
+import { businessTodayIso } from '../../src/data/businessDate';
 import { mergeSent, sentThisSession, sentOn, recordSent } from '../../src/data/sent';
 import { reachOutState, REACH_OUT, warnsBeforeReachOut } from '../../src/data/reachOut';
 import { useStaffResubscribe } from '../../src/components/useStaffResubscribe';
@@ -704,7 +705,7 @@ function HerDetails({ m }: { m: Member }) {
   // this card starts calling somebody Active while the roster calls them
   // Inactive.
   const status = memberStatusReading(
-    m.status, m.inactiveFrom ?? null, iso(new Date()), m.activeAgainFrom ?? null);
+    m.status, m.inactiveFrom ?? null, businessTodayIso(), m.activeAgainFrom ?? null);
   // INACTIVE IS RED, asked for by name -- "show mark inactive tag in red"
   // (16-Sep-2026). It wore `theme.muted`, which reads as a disabled control
   // rather than as a state somebody chose; the word and the glyph still carry

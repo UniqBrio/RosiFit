@@ -1,3 +1,19 @@
+## CORRECTNESS FIX PHASE 11: A DATE IS THE ACADEMY'S DAY — 06-Oct-2026
+
+docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md §12 (four members refused on 3 Oct 2026, 00:37-01:02 IST, "a joining date in the future cannot be recorded"); ISSUE_TRACKER T-144. NOT DEPLOYED. ONE MIGRATION, NOT APPLIED: supabase/migrations/0088_a_date_is_the_academys_day.sql -- adds public.business_today() = (now() at time zone 'Asia/Kolkata')::date and edits four functions IN PLACE, one anchor each (create_member's default joining date and its "in the future" check; update_member's v_today; set_member_active_from's check; set_attendance's check), every anchor read in production read-only 06-Oct-2026 and present exactly once in the live body. The database's TimeZone and every timestamptz stay UTC. No table, index, policy or data change. Under D-10 it merges to main only on the day it is applied.
+
+FAIL-FIRST: supabase/tests/65_a_date_is_the_academys_day.sql - against the schema without 0088 (file moved aside, fresh replay) red at the first call, exit 3: "function public.business_today() does not exist"; with 0088, 13 of 13 green under UTC, Chennai and Los Angeles sessions, including create_member accepting business_today() as a joining date, refusing business_today() + 1, accepting business_today() - 1, and dating a member added with no date on the academy's today.
+FAIL-FIRST: src/data/businessDate.test.ts - against c5a4b0e (phase 9) in a temporary worktree red ("Cannot find module './businessDate'"); 5 of 5 green after: 00:37 IST on the 3rd is the 3rd (the server said the 2nd), the transition at 18:30 UTC to the minute, UTC midnight is 05:30 the same Chennai day, month/year/leap-day ends, today/yesterday/tomorrow judged from 00:30 IST, and the same answer under four process time zones.
+RE-POINTED, under the owner-approved behaviour-reversal exemption (CLAUDE.md, 01-Oct-2026; the requirement is this brief's phase 11, "default 'today' generation ... use an explicit business timezone"): src/data/memberJoinedOn.test.ts:123 and src/data/importedMemberJoinedOn.test.ts:134 pinned the Add form's and the offline import's "today" as the literal `iso(new Date())` -- the device's day, the very mechanism this phase replaces. Each diff is the expression literal inside one regex changing to `businessTodayIso()`; no assertion removed, nothing skipped, every downstream assertion preserved (105 of 105 across the ten date specs).
+Existing specs kept green WITHOUT editing them: joined.test.ts, memberDate, schedule, followup, course, memberValidationToast, memberInactiveFromField; `npm run typecheck` PASS, `npm run lint` PASS.
+
+WHAT CHANGED (client): src/data/businessDate.ts (new) -- BUSINESS_TIME_ZONE = 'Asia/Kolkata', a fixed +05:30 (no daylight saving since 1945), businessDateOf(instant) and businessTodayIso(); the day is arithmetic on the instant, so a device elsewhere, a locale, or an Intl table without the zone cannot move it. Every "today" that feeds a date-only business value now reads it: the member form (opens on today, the inactive/active-again window, the picker ceilings), the member pop-up, the member import, the attendance upload's future-file refusal, the course screen, Reports, the period filter's calendar ceiling, the follow-up rule's default day, the course roster's default day, the repository's offline joining defaults and fetchPendingSessions' "still to come" cut-off, the offering form's default start, and schedule.ts's today() -- which read the UTC day outright, so between midnight and 05:30 the timetable in force was yesterday's. Date-only values travel as YYYY-MM-DD strings end to end (the form already sent `joined_on` as text; nothing passes through a Date on the way). Edge Functions: no date-only "today" is derived server-side -- the session day and the import day come from the client -- and the server-side rules are 0088's.
+DELIBERATELY NOT CHANGED, listed in T-144 for a row each: the other current_date readers (subscription window, "saved with the course" effective_from, the enrolment-ending least(...) in three delete/merge paths, is_in_course, member_status_on reads) and period.ts's week arithmetic (local Date math; identical to the academy's day on an Indian device, and a wider change than this phase).
+
+MEASURED: the refusal is reproduced by arithmetic in the spec (3 Oct 00:37 IST = 2 Oct 19:07 UTC: the device said the 3rd, current_date said the 2nd); production's four refusals a night cannot be re-measured until 0088 is applied -- UNVERIFIED there.
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8), G5 PASS, G7 PASS.
+CASES-NA: the SQL side's test is a harness spec (supabase/tests/65_*.sql); the client side's is src/data/businessDate.test.ts.
+
 ## CORRECTNESS FIX PHASE 9: NO PROTECTED READ BEFORE THE SESSION IS KNOWN — 06-Oct-2026
 
 docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md §5 (the unauthenticated fan-out: 33 x 401/403 in a day, 30 "permission denied" in one second at 18:53:41 on 3 Oct). NOT DEPLOYED. No DB change.
@@ -725,6 +741,75 @@ and the count beside it dropped by one" is asserted by reading `app/course/[id].
 three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
 preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
 all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 53.1s total - slowest G7 Unit + pure specs (33.5s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (58ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (50ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (74ms)
+- **G5 Types** - PASS (6.6s)
+- **G6 Lint** - FAIL (12.3s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (33.5s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+  error: 'the course screen no longer holds one todayIso for the strip'
+  name: 'AssertionError'
+  expected:
+    import { Muted, Label, Skeleton, EmptyState, ErrorState, DeepBackground } from '../../src/components/ui';
+    import { MERGE_FAILED } from '../../src/data/alias';
+     * A course states a frequency; 0005 says out loud that expected attendance is
+     * expected" rather than inventing a session from `frequency`. That is the
+```
+
+- **G8 Functional / integration** - FAIL (133ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (69ms)
+- **G10 Backward compatibility (fixtures)** - PASS (115ms)
+- **G11 Wide tables are configurable** - PASS (54ms)
+- **G12 Installable as an application** - PASS (74ms)
+- **G13 Approved design still being built** - PASS (48ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

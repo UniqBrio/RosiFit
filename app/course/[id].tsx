@@ -14,6 +14,7 @@ import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface, type StatusKey } from '.
 import { DAY_NAMES, ruleSentence, AVATAR_TINTS, initials, primaryEmail, type Member, type MemberStatus } from '../../src/data/mock';
 import { useCourses, useFollowUp, useCourseWeekDays, useCourseDay, useDebouncedQuery } from '../../src/data/hooks';
 import { weekStart, iso, label as periodLabel } from '../../src/data/period';
+import { businessTodayIso } from '../../src/data/businessDate';
 import {
   setMemberStatus, mergeMemberInto, deleteMember, memberDeletionPreview, dataSource,
   attendanceResetPreview, resetDayAttendance, bulkDeleteMembers,
@@ -276,7 +277,7 @@ function CourseDetailBody() {
   // ONE read of the clock for this screen. The strip asks it twice -- which
   // day is selected by default, and which days may offer an upload -- and two
   // reads is how those two answers end up on different sides of midnight.
-  const todayIso = iso(new Date());
+  const todayIso = businessTodayIso();
 
   const course = (courses.data ?? []).find(c => c.id === id);
   const members = followUp.data?.members ?? [];
@@ -2307,7 +2308,7 @@ const MemberCard = memo(function MemberCard({ member, tint, weekLabel, noEmail, 
   const dangerInk = theme.isDark ? STATUS.absent.fgDark : STATUS.absent.fgLight;
   const okInk = theme.isDark ? STATUS.present.fgDark : STATUS.present.fgLight;
 
-  const todayIso = iso(new Date());
+  const todayIso = businessTodayIso();
 
   /**
    * ON the register, or off it -- `members.status`, not `expected === 0`.

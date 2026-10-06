@@ -5,6 +5,7 @@ import { Muted, Label, Button, Skeleton, ErrorState } from '../../src/components
 import { Field } from '../../src/components/Field';
 import { DateField } from '../../src/components/DateTimePicker';
 import { iso } from '../../src/data/period';
+import { businessTodayIso } from '../../src/data/businessDate';
 import { Icon } from '../../src/components/Icon';
 import { AnchoredPicker } from '../../src/components/Sheet';
 import { useAnchor } from '../../src/components/AnchoredPanel';
@@ -155,7 +156,9 @@ export default function MemberEdit() {
   // that said nothing about when she joined, on the one screen that shows
   // the rest of her record. Today's date is still never defaulted in on an
   // edit; what is shown is what the register holds.
-  const [joined, setJoined] = useState(editing ? '' : iso(new Date()));
+  const [joined, setJoined] = useState(editing ? '' : businessTodayIso());
+  // The academy's day, read once per render (src/data/businessDate.ts).
+  const today = businessTodayIso();
   const [aliases, setAliases] = useState<string[]>(existing?.aliases ?? []);
   const [aliasDraft, setAliasDraft] = useState('');
   const [emails, setEmails] = useState(existing?.emails ?? []);
@@ -371,7 +374,7 @@ export default function MemberEdit() {
    * 0049 carries, and leaving it alone must go on being allowed.
    */
   const activeFromError = existing && wantedActiveFrom
-    ? activeFromProblem(wantedActiveFrom, wantedInactiveFrom || null, iso(new Date()))
+    ? activeFromProblem(wantedActiveFrom, wantedInactiveFrom || null, today)
     : null;
 
   /**
@@ -530,7 +533,7 @@ export default function MemberEdit() {
    */
   const pickStatus = (next: MemberStatus) => {
     setStatus(next);
-    if (next !== 'active' && !inactiveFrom.trim()) setInactiveFrom(iso(new Date()));
+    if (next !== 'active' && !inactiveFrom.trim()) setInactiveFrom(today);
   };
 
   const changeAliasDraft = (v: string) => { clearRefusal(); setAliasDraft(v); };
@@ -673,7 +676,7 @@ export default function MemberEdit() {
         // A date still ahead of her is the one thing the short word would
         // get wrong: "now inactive" over a member who is on the register for
         // another five weeks is the misreading this request exists to stop.
-        const stillToCome = status !== 'active' && wantedInactiveFrom > iso(new Date());
+        const stillToCome = status !== 'active' && wantedInactiveFrom > today;
         flash(statusChanged
           ? `${said} · ${status === 'active' ? 'active again'
               : stillToCome ? `inactive from ${dateInWords(wantedInactiveFrom)}`
@@ -880,8 +883,7 @@ export default function MemberEdit() {
             here. */}
         <DateField label="Active from" value={joined} onChange={setJoined}
           placeholder={editing ? 'Not on record' : 'When they started'}
-          max={wantedInactiveFrom && wantedInactiveFrom < iso(new Date())
-            ? wantedInactiveFrom : iso(new Date())}
+          max={wantedInactiveFrom && wantedInactiveFrom < today ? wantedInactiveFrom : today}
           error={activeFromError ?? undefined}
           hint={activeFromError ? undefined
             : editing
@@ -1327,7 +1329,7 @@ export default function MemberEdit() {
                  softer one: nothing changes for her today, and the tense has
                  to say so or the banner claims a consequence that has not
                  happened yet. */
-              : wantedInactiveFrom > iso(new Date())
+              : wantedInactiveFrom > today
               ? `Saving schedules it: the member stays in the follow-up rule up to `
                 + `${dateInWords(dayBefore(wantedInactiveFrom))} and is left out from `
                 + `${dateInWords(wantedInactiveFrom)} — nobody has to come back on the day. `

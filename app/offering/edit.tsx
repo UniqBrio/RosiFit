@@ -12,6 +12,7 @@ import { SPACE, RADIUS, TAP_MIN, STATUS } from '../../src/theme/tokens';
 import { DAY_NAMES } from '../../src/data/mock';
 import { useOfferingEditor } from '../../src/data/hooks';
 import { createOffering, setOfferingSchedule, dataSource } from '../../src/data/repository';
+import { businessTodayIso } from '../../src/data/businessDate';
 
 /**
  * WHERE a course runs, and on WHICH DAYS.
@@ -62,7 +63,7 @@ export default function OfferingEdit() {
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = businessTodayIso();                 // the academy's day, not UTC's
   const branchValue = branchId ?? existing?.branch_id ?? '';
   const dayValue = days ?? existing?.weekdays ?? [];
   const fromValue = from ?? existing?.effective_from ?? today;

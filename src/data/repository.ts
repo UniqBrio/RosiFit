@@ -18,6 +18,7 @@ import { cleanAlias, aliasProblem, aliasSaveError, MERGE_FAILED } from './alias'
 import { sentenceOpening } from './refusalCase';
 import { personReadable } from './engineWording';
 import { currentWeek, iso, joinedLabel, type Period } from './period';
+import { businessTodayIso } from './businessDate';
 import { SUBJECT_MIN, SUBJECT_MAX, BODY_MIN, COURSE_NAME_MIN, COURSE_NAME_MAX } from './message';
 import { bucketFixture, type BucketMetrics, type MemberMetric } from './buckets';
 import type { SentMap } from './sent';
@@ -2319,7 +2320,9 @@ export async function fetchPendingSessions(): Promise<PendingSession[]> {
     }));
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  // The academy's day, not the UTC one: a session this morning was "still to
+  // come" until 05:30 (src/data/businessDate.ts).
+  const today = businessTodayIso();
   // The catalogue beside the sessions, not after them: this was a four-deep
   // chain (sessions -> offerings -> courses, branches) run by every mounted
   // AcademyHeader; it is one round trip now, and the catalogue is shared.
@@ -2981,10 +2984,10 @@ export async function fetchMemberWeek(memberId: string, period: Period): Promise
     };
   });
 
-  // `iso(new Date())` and NOT schedule.ts's `today()`, which is
+  // `businessTodayIso()` and NOT schedule.ts's `today()`, which is
   // toISOString().slice(0,10) and so reads UTC: before 05:30 IST that names
   // yesterday, and a day still to run would be listed as "Awaiting upload".
-  return memberWeek(rows, iso(new Date()));
+  return memberWeek(rows, businessTodayIso());
 }
 
 // ----------------------------------------------------------------- holidays
@@ -3300,8 +3303,8 @@ export async function createMember(input: MemberInput): Promise<{ id: string }> 
       aliases: input.aliases,
       // create_member (0016) coalesces a null date to current_date; offline
       // says the same, and says it once -- the label is derived from the date.
-      joinedOn: input.joined_on ?? iso(new Date()),
-      joined: joinedLabel(input.joined_on ?? iso(new Date())),
+      joinedOn: input.joined_on ?? businessTodayIso(),
+      joined: joinedLabel(input.joined_on ?? businessTodayIso()),
       // 'unknown' is what create_member (0016) and update_member (0027) write
       // on every address they insert, so the offline store holds what the
       // live one would. Never left absent: absent reads as usable and a
@@ -3393,7 +3396,7 @@ export async function bulkImportMembers(input: {
         // is what she joins on; offline says the same, in the same words the
         // rest of the register uses. It used to say 'today', which is the one
         // label that stops being true tomorrow.
-        joinedOn: iso(new Date()), joined: joinedLabel(iso(new Date())),
+        joinedOn: businessTodayIso(), joined: joinedLabel(businessTodayIso()),
       });
       result.inserted++;
       result.rows.push({ row: r.row, full_name: r.full_name, status: 'inserted', member_id: id });
@@ -4004,7 +4007,7 @@ export async function setMemberActiveFrom(
     const i = MEMBERS.findIndex(m => m.id === id);
     if (i < 0) throw new Error('That member is not on the register. Nothing has been saved.');
     const problem = activeFromProblem(
-      activeFrom, MEMBERS[i].inactiveFrom ?? null, iso(new Date()));
+      activeFrom, MEMBERS[i].inactiveFrom ?? null, businessTodayIso());
     if (problem) throw new Error(`${problem}. Nothing has been saved.`);
     const changed = (MEMBERS[i].joinedOn ?? null) !== activeFrom;
     // `joined` is the SUBTITLE derived from this column (period.joinedLabel).

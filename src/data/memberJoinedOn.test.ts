@@ -120,7 +120,7 @@ test('her joining date is seeded from the stored date, never from today', () => 
   assert.doesNotMatch(block, /setJoined\([^)]*new Date\(\)/,
     "today's date on a member who joined last year reads as a fact it isn't");
   // The Add form is the one that may default to today, and it still does.
-  assert.match(read(FORM), /useState\(editing \? '' : iso\(new Date\(\)\)\)/,
+  assert.match(read(FORM), /useState\(editing \? '' : businessTodayIso\(\)\)/,
     'the Add form still opens on today');
 });
 

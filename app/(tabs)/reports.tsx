@@ -11,6 +11,7 @@ import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS, onStatusFill } from '../../src/theme/tokens';
 import { useFollowUp, useCourses } from '../../src/data/hooks';
 import { resolvePeriod, iso, type PeriodChoice } from '../../src/data/period';
+import { businessTodayIso } from '../../src/data/businessDate';
 import {
   reportRows, reportBars, reportMeta, reportGroups,
   memberDetailLine, courseDetailLine, courseForGroup,
@@ -89,7 +90,7 @@ export default function Reports() {
   const rows = reportRows(members, scope);
   const bars = reportBars(rows);
   const courseList = courses.data ?? [];
-  const today = iso(new Date());
+  const today = businessTodayIso();
 
   /**
    * What each row is ABOUT -- the fields of the form behind its name
