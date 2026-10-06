@@ -106,15 +106,26 @@ commit;
 -- ----------------------------------------------------------- the commit
 -- Inside one transaction, with function calls counted for that transaction.
 set track_functions = 'all';
+-- RE-POINTED 06-Oct-2026 (measurement, not expectation): pg_stat_xact_user_functions
+-- is a per-backend buffer that Postgres 15+ flushes to the collector at most
+-- once a second, so counts from the PREVIOUS transaction leak into the next
+-- one when it starts inside the same second. Once 0089 made the recompute
+-- fast enough for that to happen, this spec read 2 for a single call. Every
+-- count below is therefore a DELTA against a baseline read at the top of its
+-- own transaction. The expectations themselves (one call each) are unchanged.
 begin;
+select coalesce((select f.calls from pg_stat_xact_user_functions f
+                  where f.funcname = 'expected_members_for_session'), 0)::int as expected_base,
+       coalesce((select f.calls from pg_stat_xact_user_functions f
+                  where f.funcname = 'recompute_member_stats'), 0)::int as recompute_base \gset
 select public.commit_csv_import(:'import_id'::uuid,
   '0e5d0000-0000-0000-0000-00000000000a'::uuid,
   jsonb_build_array(jsonb_build_object('row', 13, 'action', 'add_as_new')))
   as result \gset
 select coalesce((select f.calls from pg_stat_xact_user_functions f
-                  where f.funcname = 'expected_members_for_session'), 0)::int as expected_calls,
+                  where f.funcname = 'expected_members_for_session'), 0)::int - :expected_base as expected_calls,
        coalesce((select f.calls from pg_stat_xact_user_functions f
-                  where f.funcname = 'recompute_member_stats'), 0)::int as recompute_calls \gset
+                  where f.funcname = 'recompute_member_stats'), 0)::int - :recompute_base as recompute_calls \gset
 commit;
 
 select t.eq((select status from public.csv_imports where id = :'import_id'::uuid), 'completed',
@@ -191,6 +202,10 @@ select m.id::text as edit_id from public.members m
  where m.id <> '0e5d0000-0000-0000-0000-0000000000aa' order by m.id limit 1 \gset
 
 begin;
+  select coalesce((select f.calls from pg_stat_xact_user_functions f
+                    where f.funcname = 'recompute_member_stats'), 0)::int as edit_recompute_base,
+         coalesce((select f.calls from pg_stat_xact_user_functions f
+                    where f.funcname = 'current_streak_for'), 0)::int as edit_streak_base \gset
   set local role authenticated;
   set local request.jwt.claim.sub = '0e5d0000-0000-0000-0000-000000000001';
   select public.update_member(
@@ -200,13 +215,18 @@ begin;
     '{}'::text[], '{}'::text[], null);
   reset role;
   select coalesce((select f.calls from pg_stat_xact_user_functions f
-                    where f.funcname = 'recompute_member_stats'), 0)::int as edit_recompute_calls,
+                    where f.funcname = 'recompute_member_stats'), 0)::int - :edit_recompute_base as edit_recompute_calls,
          coalesce((select f.calls from pg_stat_xact_user_functions f
-                    where f.funcname = 'current_streak_for'), 0)::int as edit_streak_calls \gset
+                    where f.funcname = 'current_streak_for'), 0)::int - :edit_streak_base as edit_streak_calls \gset
 commit;
 
 select t.eq(:edit_recompute_calls, 1, 'editing one member calls the recompute once');
-select t.eq(:edit_streak_calls, 1, 'and walks ONE member''s history, not the academy''s');
+-- RE-POINTED 06-Oct-2026 with 0089: the one-pass body (supabase/tests/66)
+-- no longer calls current_streak_for at all -- it walks the SCOPED rows in
+-- one window -- so "one call" became "at most one". The claim it carries,
+-- that an edit walks one member's history and not the academy's, is now
+-- made by the row count two lines down and by spec 66's scoped case.
+select t.ok(:edit_streak_calls <= 1, 'and walks at most one member''s history, never the academy''s');
 select t.eq((select count(*)::int from public.member_stats where updated_at > '2001-01-01 00:00:00+00'), 1,
   'editing one member rewrites exactly one stats row');
 select t.ok((select s.updated_at > '2001-01-01 00:00:00+00' from public.member_stats s

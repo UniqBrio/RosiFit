@@ -1,3 +1,18 @@
+## DEPLOYMENT PREPARATION STEPS 3-4: THE ROSTER IS WINDOWED; THE RECOMPUTE IS ONE PASS — 06-Oct-2026
+
+docs/PERFORMANCE_FIX_REPORT_2026-10-06.md §5.2 (the course roster, deferred) and §5.3 (a whole-offering commit recomputes the offering). NOT DEPLOYED. ONE MIGRATION, NOT APPLIED: supabase/migrations/0089_recompute_member_stats_in_one_pass.sql. Under D-10 it merges to main only on the day it is applied.
+
+STEP 3, THE ROSTER (app/course/[id].tsx): the ScrollView is a FlatList whose header is the old content unchanged -- title, course picker, day strip, search, filters, selection bar, empty states -- and whose items are the cards: the live cards, the "No email" head and its cards, the "Email issues" toggle, each issue group's head and its cards, the "Inactive" head and its cards (still off-register, still unselectable), each item wearing the block's side padding and its section's gap. rosterItems() builds the items from the same scoped/joinedByDay/onDay/searched/shown chain as before; the gate that decides whether cards render at all is the same chain the header's empty states read, so "no members on this day", "no match" and the loading/error states draw exactly as they did and the cards branch is null then. Selection, search, filters, the picker, the day strip, navigation, accessibility labels and the responsive layout are untouched: every card is the same MemberCard with the same props. 12 initially, 12 per batch, window 7.
+FAIL-FIRST: src/components/rosterWindowed.test.ts - against a48b750 in a temporary worktree 4 of 4 red ("# pass 0 / # fail 4": "the roster is a FlatList that owns the scroll, with the old content as its header", "the items keep the sections in order: live cards, No email, Email issues, Inactive", "every item wears the sides the block wore, and its section's gap", "the gate matches the header's own empty states, and Inactive is outside it"); 4 of 4 green after.
+MEASURED (scenario B, standin on the exported bundle, Local/harness, NOT production): roster DOM nodes 11,986 (1,644 members) and 36,063 (5,000) -> 699 and 699; long tasks on open, summed, 1,590 ms / 2,899 ms -> 439 / 432 ms; a keystroke in the roster search 24-168 ms of input events -> 16-80 ms; network requests while typing 0 before and after. The DOM is bounded at 5,000 members by the window, not the roster.
+
+STEP 4, THE RECOMPUTE (0089): WHY every member of an offering gets a row on a whole-offering commit -- the absentee sweep inserts an absent row for every expected member of that offering's sessions, so every one of their figures (sessions, absences, streak, last seen) genuinely changes; the per-member scope of 0085 is exact and cannot be narrowed further without maintaining streaks incrementally on every attendance write, which is a schema redesign and is REPORTED, not done (final report §Remaining). What is done instead: the body is ONE PASS. 0008's loop called current_streak_for(member) per member, a correlated walk of that member's rows for each of N members; 0089 computes the streak with one window (sum(present) over (partition by member order by session_date desc, id desc) -- the count of rows before the first non-present row, read as the streak) and the aggregates in one grouped scan over the same rows, scoped by p_member_ids exactly as 0085 scoped it, then the same upsert and the same return. Guarded: the migration refuses unless the live body's md5 is 142f926f13f2c64db8ca6aab9c034ea9 (1502 bytes; identical in production, read read-only 06-Oct-2026, and in the harness).
+FAIL-FIRST: supabase/tests/66_recompute_member_stats_in_one_pass.sql - against the schema without 0089 (file moved aside, fresh replay) exit 3 at line 132: "FAIL  the body no longer calls current_streak_for per member (the prose may name it; the call is gone)"; with 0089, 18 of 18 green: a reference built from 0008's own body (pg_temp.recompute_reference, with current_streak_for) agrees row for row with the one-pass body over the seeded academy and over four hand-made members (a run then a miss, all present, a miss on the latest day, nothing but excused rows) and a member with no rows; the scoped call touches only its members; an empty scope writes 0 rows.
+MEASURED (Local/harness, Postgres 16, NOT production): a whole-academy recompute at 1,500 members 1.2-1.3 s -> 0.39 s, at 5,000 members 4.70 s -> 1.98 s, the member_stats rows EXCEPT-equal both ways at both sizes (0 / 0 differing rows). A whole-offering commit at 5,000 members therefore still recomputes the offering, in well under half the time.
+RE-POINTED, my own phase 5 spec, two lines, with the reason beside each: supabase/tests/62 -- (a) `edit_streak_calls = 1` -> `<= 1`, because the one-pass body does not call current_streak_for at all; the claim (an edit walks one member's history, not the academy's) is carried by the row count on the next line and by spec 66's scoped case. (b) A MEASUREMENT defect, found because 0089 exposed it: pg_stat_xact_user_functions is a per-backend buffer that Postgres 15+ flushes at most once a second, so a count from the PREVIOUS transaction leaks into the next one when it starts inside the same second (reproduced: a call in one transaction, then `calls = 1` read in a fresh transaction before any call). The spec read "got 2 want 1" on two of three replays once the import transaction got fast enough. Every count in the spec is now a delta against a baseline read at the top of its own transaction; the expectations (one call each) are unchanged. `npm run test:db` with 0085-0090: 1,332 PASS, failures = spec 18 (pre-existing) and spec 53 (pre-existing copy-lock on production's update_member hash) only.
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8); G5 PASS; G7 PASS. `npm run typecheck` PASS, `npm run lint` PASS.
+CASES-NA: the SQL side's tests are harness specs (supabase/tests/66, 62); the roster's is src/components/rosterWindowed.test.ts (source-shape, the way the phase 3 window specs are).
+
 ## DEPLOYMENT PREPARATION STEP 2: A SHORT PAGE AFTER A LONGER ONE IS THE END — 06-Oct-2026
 
 docs/PERFORMANCE_FIX_REPORT_2026-10-06.md §5.1 (phase 10, stopped by decision; resolved here on the owner's instruction to resolve it if safe). NOT DEPLOYED. No DB change.
@@ -769,6 +784,56 @@ and the count beside it dropped by one" is asserted by reading `app/course/[id].
 three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
 preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
 all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 1m 07s total - slowest G7 Unit + pure specs (40.9s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (74ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (56ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (100ms)
+- **G5 Types** - PASS (8.9s)
+- **G6 Lint** - FAIL (16.1s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (40.9s)
+- **G8 Functional / integration** - FAIL (200ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (66ms)
+- **G10 Backward compatibility (fixtures)** - PASS (125ms)
+- **G11 Wide tables are configurable** - PASS (66ms)
+- **G12 Installable as an application** - PASS (118ms)
+- **G13 Approved design still being built** - PASS (58ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
