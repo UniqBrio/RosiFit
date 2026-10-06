@@ -19,6 +19,7 @@ import {
 } from './asyncState';
 import { registerRevalidator } from './revalidate';
 import { shouldDefer } from './deferral';
+import { sessionKnown, SIGNED_OUT_MESSAGE } from './sessionGate';
 import { applyAfterMs } from './debounce';
 import { currentWeek, periodBuckets, type Period } from './period';
 import {
@@ -248,7 +249,16 @@ export function useAsync<T>(
     const mine = ++seq.current;
     busy.current = true;
     dispatch({ kind: 'start', fresh, seq: mine });
-    withTimeout(load())
+    /* THE SESSION FIRST (src/data/sessionGate.ts). No protected read goes
+       out until the signed-in identity has been read back from the server;
+       a reader with nobody signed in fails with a sentence and sends
+       nothing, and the guard that redirects to sign in lands over it. The
+       gate's answer is shared and kept, so this costs a request only once
+       per sign-in. */
+    withTimeout(sessionKnown().then(signedIn => {
+      if (!signedIn) throw new Error(SIGNED_OUT_MESSAGE);
+      return load();
+    }))
       .then(result => {
         busy.current = false;
         if (cancelled) return;

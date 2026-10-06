@@ -1,3 +1,16 @@
+## CORRECTNESS FIX PHASE 9: NO PROTECTED READ BEFORE THE SESSION IS KNOWN — 06-Oct-2026
+
+docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md §5 (the unauthenticated fan-out: 33 x 401/403 in a day, 30 "permission denied" in one second at 18:53:41 on 3 Oct). NOT DEPLOYED. No DB change.
+
+FAIL-FIRST: src/data/sessionGate.test.ts - against 6e0501d (phase 8) in a temporary worktree 3 of 3 red ("Cannot find module './sessionGate.ts'", and useAsync still `withTimeout(load())`); 3 of 3 green after.
+Existing specs kept green WITHOUT editing them: hookInvalidation.test.ts, revalidate.test.ts, deferral.test.ts, searchDebounce.test.ts (55 together with the new file), memberRefresh, requestBudget, bucketedMetrics (the fake-network specs call the repository directly and are unaffected; the hook-level gate is open under node's unconfigured client); `npm run typecheck` PASS, `npm run lint` PASS.
+
+WHAT CHANGED: src/data/sessionGate.ts (new) -- sessionKnown(): true once the signed-in identity has been read back from the server under RLS (currentAppUser, the question useIdentity already asks, shared with it through sharedRead so the gate costs no request of its own), false when the server says nobody is signed in or could not be asked; the answer is kept until the auth state changes (SIGNED_IN, SIGNED_OUT, USER_UPDATED -- not INITIAL_SESSION, which is the client announcing what it found at start-up, nor TOKEN_REFRESHED, the same person with a newer token). It never redirects: AdminRouteGuard and the screens' own signedOut branches keep that job, so there is no second opinion to loop against. src/data/hooks.ts useAsync -- `withTimeout(sessionKnown().then(signedIn => { if (!signedIn) throw new Error(SIGNED_OUT_MESSAGE); return load(); }))`: a reader with nobody signed in fails with "Sign in to load this." and sends nothing; the redirect lands over it. The sequence is now: start -> the session resolved (one shared identity read) -> protected reads -> screens. Loading session: readers wait on the shared read. Authenticated: readers run, once per sign-in the gate costs nothing more. Unauthenticated: no request; the guard redirects. Expiry: a refresh GoTrue refuses is reported as SIGNED_OUT, the gate forgets, the next reader (a focus return, a bus bump) asks again and stops. Fixtures mode: open.
+NOT suppressed: nothing catches a 401. The requests that produced them are not sent.
+
+MEASURED: the mechanism is proven by the spec (three readers, one identity read; a signed-out answer kept -- no retry storm; a question that cannot be asked is not a yes). The production figure (33 x 401/403 a day) is UNVERIFIED after: not deployed.
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8), G5 PASS, G7 PASS.
+
 ## PERFORMANCE FIX PHASE 8: FOLLOW-UPS GO OUT FOUR AT A TIME, WITH A CLOCK ON EACH — 06-Oct-2026
 
 docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md RC-10 (send side). NOT DEPLOYED (D-14). No DB change.
@@ -712,6 +725,75 @@ and the count beside it dropped by one" is asserted by reading `app/course/[id].
 three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
 preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
 all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 54.8s total - slowest G7 Unit + pure specs (33.9s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (67ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (99ms)
+- **G5 Types** - PASS (7.1s)
+- **G6 Lint** - FAIL (13.0s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (33.9s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+```
+
+- **G8 Functional / integration** - FAIL (138ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (57ms)
+- **G10 Backward compatibility (fixtures)** - PASS (128ms)
+- **G11 Wide tables are configurable** - PASS (57ms)
+- **G12 Installable as an application** - PASS (80ms)
+- **G13 Approved design still being built** - PASS (57ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
