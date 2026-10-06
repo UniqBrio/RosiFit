@@ -130,8 +130,10 @@ test('Test 4 -- one add with Home, Courses, Members and the form mounted: one me
   assert.equal(firstPages(server.log, 'members'), 1);
   assert.equal(duplicates(server.log), 0);
   assert.ok((results[0] as { id: string }[]).some(m => m.id === id));
-  // 1,640 members = two pages and the empty page that ends a keyset read, per table.
-  assert.equal(server.log.filter(r => r.path === '/rest/v1/members').length, 3);
+  // 1,640 members = two pages per table; the second, shorter page ends the
+  // keyset read (pageAllShortPage.test.ts, 06-Oct-2026 -- an empty third
+  // page used to be asked).
+  assert.equal(server.log.filter(r => r.path === '/rest/v1/members').length, 2);
 });
 
 test('Test 5 -- a failed refresh: every screen sees the failure, nothing retries, the check says "could not read", a later read recovers', async () => {

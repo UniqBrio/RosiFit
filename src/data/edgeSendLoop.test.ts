@@ -124,7 +124,9 @@ test('the batch\'s period figures are one paged read, keyed by member', async ()
   };
   const wanted = ['m00003', 'm01499', 'm00777', 'nobody'];
   const map = await loadPeriodMetrics(admin, wanted, '2026-09-28', '2026-10-04');
-  assert.equal(calls.length, 3, 'two full pages and the empty one that ends it -- not one call per recipient');
+  // A full page and a 500-row page: the shorter page ends the read (the
+  // pager's rule since 06-Oct-2026), so two calls -- not one per recipient.
+  assert.equal(calls.length, 2, 'two pages -- not one call per recipient');
   assert.ok(calls.every(c => c.name === 'member_period_metrics_page'));
   assert.equal(map.get('m00003')?.attended, 3);
   assert.equal(map.get('m01499')?.attended, 3);

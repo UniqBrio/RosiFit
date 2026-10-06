@@ -188,6 +188,11 @@ export async function pageAllByKey<T extends Record<string, unknown>>(
   const cap = opts.cap ?? PAGE_CAP;
   const rows: T[] = [];
   let after: unknown;
+  /* The longest page this read has seen. A page SHORTER than it is the end:
+     a server cap returns pages of exactly the cap until the last one, so a
+     page that is shorter than another page of this same read cannot be a
+     capped page -- the table ran out. (See the termination below.) */
+  let longest = 0;
 
   for (;;) {
     // A FRESH builder every page. Reusing one accumulates `.gt()` filters and
@@ -201,11 +206,29 @@ export async function pageAllByKey<T extends Record<string, unknown>>(
     }
     const got = res.data ?? [];
 
-    // THE ONLY TERMINATION. A short page says nothing: the server's own cap
-    // may be below the page size, and reading that as an ending is defect 1.
+    // THE TERMINATION, in two parts.
+    //
+    // An EMPTY page always ends the read. A short page ON ITS OWN still says
+    // nothing: the server's own cap may be below the page size, and reading
+    // "fewer than I asked for" as an ending is defect 1 (RC-041). But a page
+    // that is shorter than ANOTHER page of this same read is a different
+    // fact. Whatever the cap is, every page before the last one has exactly
+    // the cap's length, so a page shorter than one already seen cannot be a
+    // capped page: the table ran out, and the next request would answer
+    // nothing. That request is the one this saves -- one per paged read of a
+    // table bigger than a page (members, addresses, aliases, stats,
+    // enrolments, the metrics pages). A read whose every page is the same
+    // length, or whose first page is short, still asks once more, because
+    // from inside the read nothing proves which of the two it was.
+    //
+    // Exact under any cap, including one lowered while the app is open: the
+    // comparison is within one read, where the cap is one number. Pinned by
+    // pageAllShortPage.test.ts; the three RC-041 specs stay as they are.
     if (got.length === 0) return rows;
 
     rows.push(...got);
+    if (got.length < longest) return rows;
+    if (got.length > longest) longest = got.length;
 
     const last = got[got.length - 1]?.[key];
     if (last === undefined || last === null) {

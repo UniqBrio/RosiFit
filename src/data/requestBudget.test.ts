@@ -97,7 +97,7 @@ test('the course day joins the names and the catalogue the roster already reads:
   await Promise.all([repo.fetchMembers(week), repo.fetchCourses(), repo.fetchCourseDayRows(uid('c', 1), week.from, null)]);
   const log = server.log;
   assert.equal(count(log, 'courses'), 1);
-  assert.equal(count(log, 'members'), 3, 'the names read once (two pages + the terminator), shared with the register');
+  assert.equal(count(log, 'members'), 2, 'the names read once (two pages; the 644-row page ends the read), shared with the register');
   assert.equal(wire(log).filter(r => r.path.endsWith('/members') && r.search.toString().includes('in.(')).length, 0);
 });
 

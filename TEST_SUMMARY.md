@@ -1,3 +1,17 @@
+## DEPLOYMENT PREPARATION STEP 2: A SHORT PAGE AFTER A LONGER ONE IS THE END — 06-Oct-2026
+
+docs/PERFORMANCE_FIX_REPORT_2026-10-06.md §5.1 (phase 10, stopped by decision; resolved here on the owner's instruction to resolve it if safe). NOT DEPLOYED. No DB change.
+
+WHY IT IS SAFE, exactly: PostgREST answers min(asked, cap, remaining) rows. Within one read `asked` and `cap` are two fixed numbers, so every page before the last has exactly min(asked, cap) rows -- the same length whatever the cap is. A page SHORTER than another page of the same read therefore cannot be a capped page: the table ran out, and the empty request that used to prove it is not sent. A read whose pages are all one length (an exact multiple of the page, or a first page that is short) still asks once more, because nothing inside the read tells those two apart. Exact under any cap, including one lowered while the app is open: the comparison is within one read. A SINGLE short page still proves nothing (RC-041 defect 1 stays closed). The row cap itself cannot be read from SQL (T-006: no pgrst setting in rolconfig or pg_settings); the rule does not need it.
+
+FAIL-FIRST: src/data/pageAllShortPage.test.ts - against c815320 (phase 13) 16 of 16 red for both pagers ("a full page and the 644-row page; no third request": 3 !== 2; "44 pages of 50 and the 20-row end": 46 !== 45); 16 of 16 green after -- every row returned, none twice, none skipped, no cursor asked twice, a cap below the page size, a cap equal to it, an exact multiple, a table smaller than a page, an empty table.
+RE-POINTED, on the owner's instruction (Step 2: "update the affected tests to reflect the correct behavior"), each an expected COUNT with the reason written beside it and nothing else changed: src/data/pageAll.test.ts "DEFECT 1" (46 -> 45 pages: every row and no duplicate still asserted) and "the cursor is the LAST key seen" ([undefined, 10, 20, 25] -> [undefined, 10, 20]); src/data/periodMetricsPage.test.ts "the adapter turns the keyset into the RPC arguments" ([null, id(1000), id(1087)] -> [null, id(1000)]); src/data/memberRefresh.test.ts Test 4 (members requests 3 -> 2); src/data/requestBudget.test.ts (members 3 -> 2); src/data/edgeSendLoop.test.ts (3 -> 2 metrics pages). The three RC-041 specs' termination pins (`if (got.length === 0) return rows;` present, no `got.length < size`, a cap below the page size returns everything) are untouched and green. CP-020 amended in docs/registers/CANONICAL_PATTERNS.md.
+
+WHAT CHANGED: src/data/pageAll.ts and supabase/functions/_shared/pageAll.ts -- `longest`, the longest page this read has seen; after pushing a page, `if (got.length < longest) return rows; if (got.length > longest) longest = got.length;`. Nothing else.
+MEASURED (fake network, 1,644 members): one request fewer per paged read of a table bigger than a page -- members, addresses, aliases, stats, enrolments, the week's metrics and the bucket read. Members screen 25 -> 19 requests, Home 42 -> 35, Attendance 27 -> 22, Follow-ups 25 -> 19, Reports 25 -> 19, Courses 25 -> 19, member save cascade 44 -> 35 (scratchpad requestBaseline, the real data layer on the fake network). Small tables (courses, branches, configs: one short page) still cost their terminator: from inside the read nothing proves a short first page is the end.
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8); G5 PASS; G7 PASS (2,213 unit tests).
+
+
 ## PERFORMANCE FIX PHASES 12-13: REGRESSION RUN, SCORECARD, AUDIT — 06-Oct-2026
 
 docs/PERFORMANCE_FIX_REPORT_2026-10-06.md is the closing report: files changed, the four unapplied migrations, the before/after scorecard, the test totals, what remains (phase 10 stopped by decision -- the pager's empty-page rule is pinned by three specs as deliberate; the roster not windowed; a whole-offering commit still recomputes the offering; the other current_date readers, T-144), and a staged deployment order with smoke tests. NOTHING DEPLOYED OR APPLIED.
@@ -755,6 +769,56 @@ and the count beside it dropped by one" is asserted by reading `app/course/[id].
 three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
 preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
 all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 1m 05s total - slowest G7 Unit + pure specs (39.1s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (59ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (67ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (50ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (86ms)
+- **G5 Types** - PASS (8.1s)
+- **G6 Lint** - FAIL (16.6s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (39.1s)
+- **G8 Functional / integration** - FAIL (196ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (61ms)
+- **G10 Backward compatibility (fixtures)** - PASS (140ms)
+- **G11 Wide tables are configurable** - PASS (60ms)
+- **G12 Installable as an application** - PASS (87ms)
+- **G13 Approved design still being built** - PASS (53ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

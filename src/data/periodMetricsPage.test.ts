@@ -113,9 +113,12 @@ test('the adapter turns the keyset into the RPC arguments', async () => {
 
   // First page from the start, second page strictly after the last id of the
   // first. A `p_after_member_id` that did not advance would loop forever.
+  // 1,087 rows: a full page, then 87. The second page is shorter than the
+  // first, so the read ends there; the empty page after idOf(1087) is no
+  // longer asked (pageAllShortPage.test.ts, 06-Oct-2026).
   assert.deepEqual(
     server.calls.map(c => c.after),
-    [null, idOf(SUPABASE_MAX_ROWS), idOf(1087)],
+    [null, idOf(SUPABASE_MAX_ROWS)],
   );
 });
 
