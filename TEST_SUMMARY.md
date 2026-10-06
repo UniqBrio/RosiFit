@@ -1,3 +1,21 @@
+## PERFORMANCE FIX PHASE 5: A WRITE RECOMPUTES ONLY THE MEMBERS IT TOUCHED — 06-Oct-2026
+
+docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md RC-7/RC-8; ISSUE_TRACKER T-014/T-015. NOT DEPLOYED. ONE MIGRATION, NOT APPLIED: supabase/migrations/0085_a_write_recomputes_only_the_members_it_touched.sql -- edits update_member and commit_csv_import IN PLACE (0061/0071/0073 idiom; six anchors, each guarded to match exactly once) so the recompute is scoped and the expected set is read once per commit. No table, index, policy or grant change. Under D-10 it merges to main only on the day it is applied.
+
+FAIL-FIRST: supabase/tests/62_a_write_recomputes_only_the_members_it_touched.sql - against the schema without 0085 (the file moved aside, fresh replay) 1 red, exit 3: "expected_members_for_session was evaluated five times for a fifteen-row file, not seventeen  got 17 want 5" (the nine neutrality guards before it green, as they must be); with 0085, 21 of 21 green.
+supabase/tests/52_import_recomputes_only_its_own.sql (T-014's fail-first spec, red since 18-Sep-2026: "a member in ANOTHER offering, named in no file, is not recomputed by this import  got 2026-10-05 04:33:08 want 2001-01-01") is GREEN with 0085 -- untouched, 19 of 19.
+`npm run test:db` with 0085: 1,257 PASS, 2 failures, both pre-existing and neither this change's: is_super_admin count (spec 18), and 53_harness_body_matches_production's update_member hash (a copy-lock on the PRODUCTION body, red before this change because the replay already differed from production -- T-120; 0085 moves the replayed hash again, by design, and the lock is re-pinned on the day 0085 is applied, from a read taken after it, as that file instructs). Baseline before phase 1 was 1,219 PASS and 4 failures; spec 52 and the "6-Oct has not happened yet" fixture are the two that turned green (the second by the calendar).
+
+INSPECTED BEFORE CHANGING SQL (the brief's five): migration history (0008 recompute_member_stats, 0027 update_member, 0014->0045 commit_csv_import, 0035/0057/0064/0082 the scoped callers, 0046 the backdating trigger, 0061/0071/0073 in-place edits of these bodies); current definitions in BOTH places -- production read-only 05-Oct-2026 (update_member md5 10915909 9,625 bytes, commit_csv_import md5 ff61afad 18,521 bytes = the 0044 body, 0045 never applied, T-125) and the harness replay; all callers (the csv-import Edge Function and the member form RPC); which columns depend on it (member_stats: current_streak, sessions_expected, sessions_attended, last_present_date, last_countable_date -- all functions of the member's own attendance rows, so update_member can move at most its own member's row and a commit only members with a row for its session); regression specs 52 and 62.
+
+MEASURED (local harness, Postgres 16, seed_scale.sql, scripts/perf/investigation-2026-10-04/loadtest.sh, every write rolled back; before = 12:58-13:03 UTC 05-Oct on the same box, after = 00:20-00:23 UTC 06-Oct):
+| members | commit 100 rows | commit 500 rows | commit 1,000 rows | unscoped recompute (control, unchanged function) |
+| 1,500 | 1.76 s -> 1.11 s | 3.27 s -> 1.24 s | 5.36 s -> 1.21 s | 1.32-1.43 s / 0.99-1.05 s |
+| 5,000 | 3.65 s -> 4.52 s | 6.12 s -> 4.76 s | 7.64 s -> 4.68 s | 2.23 s / 3.67-3.94 s |
+Read with the control column: the box ran about 1.7x slower during the after run (the same untouched function took 2.2 s before and 3.7-3.9 s after). At 5,000 members the seed puts every member in ONE offering, so the sweep writes 4,900 absent rows and every member holds a row for the session -- the scoped set IS the population there, which is the "technically unavoidable" case the brief names; what the commit saved at that size is the per-row expected-set calls (1,002 -> 3 for 1,000 rows), and what remains is the sweep itself (4,900 inserts through the per-row backdating trigger and audit) and a 5,000-member recompute. At 1,500 (nearer production's 1,659) the commit is flat at ~1.2 s whatever the file size, from 1.8-5.4 s. update_member: the recompute it calls walks one member (spec 62 counts current_streak_for calls: 1), 1.8 ms scoped against 1.0-1.4 s unscoped at 1,500 -- production's 249 ms mean / 49k buffers per save (report §8) is the expected saving there and is UNVERIFIED until applied.
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8), G5 PASS, G7 PASS.
+CASES-NA: the test for this change is a harness spec (supabase/tests/62_*.sql), which G1 cannot see (T-117).
+
 ## PERFORMANCE FIX PHASE 4: SEARCH NARROWS AFTER A SHORT QUIET — 05-Oct-2026
 
 docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md RC-7. NOT DEPLOYED. No DB change. No new library.
@@ -618,6 +636,56 @@ and the count beside it dropped by one" is asserted by reading `app/course/[id].
 three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
 preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
 all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 57.8s total - slowest G7 Unit + pure specs (20.8s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (91ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (47ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (77ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (224ms)
+- **G5 Types** - PASS (18.4s)
+- **G6 Lint** - FAIL (17.5s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (20.8s)
+- **G8 Functional / integration** - FAIL (121ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (53ms)
+- **G10 Backward compatibility (fixtures)** - PASS (108ms)
+- **G11 Wide tables are configurable** - PASS (52ms)
+- **G12 Installable as an application** - PASS (82ms)
+- **G13 Approved design still being built** - PASS (45ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
