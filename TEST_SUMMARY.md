@@ -1,3 +1,20 @@
+## PERFORMANCE FIX PHASE 6b: THE OVERVIEW'S BUCKETS IN ONE READ — 06-Oct-2026
+
+docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md RC-9/RC-2. NOT DEPLOYED. ONE MIGRATION, NOT APPLIED: supabase/migrations/0087_member_period_metrics_buckets.sql -- a NEW function, member_period_metrics_buckets(p_from date[], p_to date[], p_after text, p_limit int): the page function's aggregate for every bucket in one keyset read (one row per member per bucket, text cursor member_id:bucket, p_limit bounds rows), plpgsql behind EXECUTE ... USING as 0086. member_period_metrics and member_period_metrics_page untouched. No table, index, policy or data change; anon revoked, authenticated and service_role granted as 0075. Under D-10 it merges to main only on the day it is applied.
+
+FAIL-FIRST: supabase/tests/64_member_period_metrics_buckets.sql - against the schema without 0087 (file moved aside, fresh replay) red at the first call, exit 3: "function public.member_period_metrics_buckets(date[], date[], unknown, integer) does not exist"; with 0087, 17 of 17 green (7 day-buckets over 1,001 members: 7,007 rows equal to seven page-function reads row for row, a cursor walk in pages of 1,000 reads every row once with no seam, p_limit bounds rows not members, mismatched arrays refused, grants as 0075).
+FAIL-FIRST: src/data/bucketedMetrics.test.ts - against 69d424f (phase 6a) in a temporary worktree 4 of 4 red ("splitBuckets is not a function", "a single bucket reads the page RPC", "the bucket RPC is called by its exported name"); 4 of 4 green after.
+Existing specs kept green WITHOUT editing them: memberRefresh.test.ts (13 -- "the attendance figures for a week are read once for the member list and the bars together" still counts 1 + 7 shared period reads: each bucket is still its own shared read in the member store, now SOURCED from one shared wire read rather than making a request of its own; and the wiring count of three `sharedPeriodMetrics(..., () => paged` sites), periodMetrics.test.ts and periodMetricsPage.test.ts (the three page-RPC sites unchanged; the bucket RPC is called by its exported name METRICS_BUCKETS_RPC through paged() keyed on `cursor`, which the new spec pins), requestBudget.test.ts (Home under its ceiling of 50), hookInvalidation, periodBuckets; `npm run typecheck` PASS, `npm run lint` PASS.
+
+WHAT CHANGED: src/data/periodMetrics.ts -- METRICS_BUCKETS_RPC, BucketMetricRow, splitBuckets (deals the flat rows into every bucket asked for, in order, empty buckets present). src/data/repository.ts fetchBucketMetrics -- two or more buckets are one paged read of the bucket RPC (shared through the member store, keyed on the bucket set), dealt into the per-bucket shape the screen and bucketTotals already read; a single bucket keeps the per-period path. src/data/fakePostgrest.testkit.ts answers the bucket RPC with the same constant figures as the page RPC (a testkit, not a spec).
+
+MEASURED (real data layer against the fake network, 1,644 members, the fake giving every member a row in every bucket -- the worst case; scratchpad requestBaseline):
+| screen | before | after |
+| Home cold (register + filters + 7 day buckets + notifications) | 50 requests, 24 of them metrics pages (7 x 3 + 3) | 42 requests, 16 metrics (13 bucket pages + 3 week pages) |
+| Member save cascade, 5 screens mounted | 52 | 44 |
+On production's data (1,659 members, ~300 attendance rows a session, sessions on about three days of seven) a week's seven buckets are ~5,000 rows: 5 full pages plus the terminating empty one, against 7 x (1 to 3) = 13 page reads before. The terminating empty page of every paged read is phase 10. Server cost of the one call, harness 5,000 members: 54,772 buffers / 68 ms for the seven buckets together, against 7 x 12,021 / 7 x 49-60 ms for seven re-planned page calls (and 7 x 158,396 before 0086).
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8), G5 PASS, G7 PASS.
+
 ## PERFORMANCE FIX PHASE 6a: THE METRICS RPC PLANS WITH ITS DATES — 06-Oct-2026
 
 docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md RC-9. NOT DEPLOYED. ONE MIGRATION, NOT APPLIED: supabase/migrations/0086_metrics_page_plans_with_its_dates.sql -- restates member_period_metrics_page (0075) in plpgsql behind `return query execute ... using`, the SELECT unchanged character for character, so every call is planned with its dates known. Same name, arguments, columns, order, SECURITY DEFINER, grants (CREATE OR REPLACE keeps the oid). Guarded on the live body being 0075's (md5 66f8af1d, 1,202 bytes -- identical in production and the replay, read-only 05-Oct-2026). No table, index, policy or grant change. Under D-10 it merges to main only on the day it is applied.
@@ -658,6 +675,75 @@ and the count beside it dropped by one" is asserted by reading `app/course/[id].
 three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
 preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
 all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 42.2s total - slowest G7 Unit + pure specs (21.7s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (64ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (56ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (48ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (69ms)
+- **G5 Types** - PASS (7.1s)
+- **G6 Lint** - FAIL (12.6s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (21.7s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+```
+
+- **G8 Functional / integration** - FAIL (141ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (59ms)
+- **G10 Backward compatibility (fixtures)** - PASS (113ms)
+- **G11 Wide tables are configurable** - PASS (54ms)
+- **G12 Installable as an application** - PASS (74ms)
+- **G13 Approved design still being built** - PASS (49ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

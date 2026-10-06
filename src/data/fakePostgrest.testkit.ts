@@ -82,6 +82,21 @@ export function fakeServer(tables: Record<string, Row[]>, opts: { latencyMs?: nu
         .slice(0, a.p_limit);
       return json(rows);
     }
+    if (rest === 'rpc/member_period_metrics_buckets') {
+      // 0087: one row per member per bucket, keyset by the text cursor
+      // `member_id:bucket`, the same constant figures as the page RPC above
+      // so the two paths answer the same numbers for the same members.
+      const a = JSON.parse(req.body || '{}') as { p_from: string[]; p_to: string[]; p_after: string | null; p_limit: number };
+      const rows: Row[] = [];
+      for (const m of [...tables.members].sort((x, y) => (String(x.id) < String(y.id) ? -1 : 1))) {
+        for (let b = 1; b <= a.p_from.length; b++) {
+          const cursor = `${m.id as string}:${String(b).padStart(2, '0')}`;
+          if (a.p_after != null && cursor <= a.p_after) continue;
+          rows.push({ bucket: b, member_id: m.id, expected: 3, attended: 2, missed: 1, extra: 0, cursor });
+        }
+      }
+      return json(rows.slice(0, a.p_limit));
+    }
     if (rest === 'rpc/create_member') {
       const a = JSON.parse(req.body || '{}') as { p_full_name: string };
       const id = uid('z', created++);

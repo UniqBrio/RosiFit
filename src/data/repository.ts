@@ -19,10 +19,10 @@ import { sentenceOpening } from './refusalCase';
 import { personReadable } from './engineWording';
 import { currentWeek, iso, joinedLabel, type Period } from './period';
 import { SUBJECT_MIN, SUBJECT_MAX, BODY_MIN, COURSE_NAME_MIN, COURSE_NAME_MAX } from './message';
-import { bucketFixture, type BucketMetrics } from './buckets';
+import { bucketFixture, type BucketMetrics, type MemberMetric } from './buckets';
 import type { SentMap } from './sent';
 import type { BatchSummary } from './sendBatch';
-import { metricsPage } from './periodMetrics';
+import { metricsPage, splitBuckets, METRICS_BUCKETS_RPC, type BucketMetricRow } from './periodMetrics';
 import { duringWrite } from './inFlight';
 import { sharedMemberRead, invalidateMemberReads } from './memberStore';
 import { currentSchedules, today } from './schedule';
@@ -2222,6 +2222,32 @@ export async function fetchMonthSessions(year: number, month: number): Promise<S
  */
 export async function fetchBucketMetrics(buckets: Period[]): Promise<BucketMetrics[]> {
   if (!isConfigured) return bucketFixture(buckets, MEMBERS);
+
+  /* ONE READ FOR ALL THE BUCKETS (0087). Seven day-buckets were seven paged
+     reads of the same aggregate over adjacent slices of one period -- 21
+     requests at 1,644 members, 42 at 5,000 (RC-9, RC-2). The bucket RPC
+     answers every bucket in one keyset read, one row per member per bucket,
+     paged by its own `cursor`; `splitBuckets` deals the rows back into the
+     shape the per-bucket read produced, so nothing downstream changes. Shared
+     through the member store like every other period read, keyed on the
+     whole bucket set. A single bucket still takes the per-period path below
+     -- it IS one period, and its read is shared with the week's. */
+  if (buckets.length >= 2) {
+    // The ONE wire read, shared by the bucket set, dealt into buckets once.
+    const setKey = `bucketed:${buckets.map(b => `${b.from}/${b.to}`).join(',')}`;
+    const dealt = () => sharedMemberRead<BucketMetricRow[]>(setKey, () =>
+      paged<BucketMetricRow>('the attendance figures for this period', () => metricsPage<BucketMetricRow>(
+        (after, limit) => supabase.rpc(METRICS_BUCKETS_RPC, {
+          p_from: buckets.map(b => b.from), p_to: buckets.map(b => b.to), p_after: after, p_limit: limit,
+        })), 'cursor')).then(rows => splitBuckets(rows, buckets));
+    // Each bucket is still a period read of its own in the member store --
+    // started once per generation however many callers ask, as
+    // memberRefresh.test.ts pins -- whose source is the shared wire read
+    // above rather than a request of its own.
+    const metrics = await Promise.all(buckets.map((b, i) =>
+      sharedPeriodMetrics<MemberMetric>(b, async () => (await dealt())[i].metrics)));
+    return buckets.map((b, i) => ({ label: b.label, from: b.from, to: b.to, metrics: metrics[i] }));
+  }
 
   return Promise.all(buckets.map(async b => {
     // A bucket that failed silently would draw as a zero bar -- an academy

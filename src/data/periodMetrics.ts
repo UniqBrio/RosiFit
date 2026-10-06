@@ -119,3 +119,58 @@ export function metricsPage<T extends Record<string, unknown> = PeriodMetricRow>
 
   return query;
 }
+
+/* ------------------------------------------------------ several buckets at once
+ *
+ * The Overview's "based on period" bars used to read the page RPC once PER
+ * BUCKET -- seven paged reads for a week, in parallel, each one the same
+ * aggregate over an adjacent slice of the same period (RC-9, RC-2 of
+ * docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md). 0087 adds
+ * member_period_metrics_buckets: every bucket in ONE keyset read, one row per
+ * member per bucket, paged by a text cursor the function itself decodes
+ * (`member_id:bucket`). `metricsPage` drives it unchanged -- it records what
+ * the pager asks for and hands the RPC's answer straight back -- with the
+ * pager keyed on `cursor` rather than `member_id`.
+ *
+ * Named here, not spelt at the call site, for the same reason this file
+ * exists: the rule about how these figures may be read lives beside the spec
+ * that pins it (bucketedMetrics.test.ts).
+ */
+export const METRICS_BUCKETS_RPC = 'member_period_metrics_buckets';
+
+/** One member's figures inside one bucket, as the RPC returns them. */
+export type BucketMetricRow = {
+  /** 1-based index into the bucket arrays the call was made with */
+  bucket: number;
+  member_id: string;
+  expected: number | null;
+  attended: number | null;
+  missed: number | null;
+  extra: number | null;
+  /** the keyset: `member_id:bucket`, two-digit bucket */
+  cursor: string;
+};
+
+/**
+ * The flat rows, dealt back into the buckets they were asked for -- in the
+ * order they were asked for, every bucket present even when it holds no row
+ * (a day with no sessions is a bucket with no figures, not a missing bar).
+ *
+ * The shape is exactly what the per-bucket read produced, so the screen and
+ * `bucketTotals` are untouched. A row naming a bucket outside the range is
+ * not possible from the function (the index comes from the arrays it was
+ * given) and is ignored rather than thrown on, because an extra row cannot
+ * make a bar wrong -- a missing one could, and none is dropped.
+ */
+export function splitBuckets<B extends { label: string; from: string; to: string }>(
+  rows: readonly BucketMetricRow[],
+  buckets: readonly B[],
+): Array<B & { metrics: { member_id: string; expected: number; attended: number }[] }> {
+  const out = buckets.map(b => ({ ...b, metrics: [] as { member_id: string; expected: number; attended: number }[] }));
+  for (const r of rows) {
+    const target = out[r.bucket - 1];
+    if (!target) continue;
+    target.metrics.push({ member_id: r.member_id, expected: r.expected ?? 0, attended: r.attended ?? 0 });
+  }
+  return out;
+}
