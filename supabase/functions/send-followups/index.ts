@@ -11,9 +11,9 @@ import { requireCaller } from '../_shared/authz.ts';
 import { resolveEmailProvider } from './email.ts';
 import { chooseFromAddress, unquoteSecret } from '../_shared/from-address.ts';
 import { buildUnsubscribeUrl, listUnsubscribeHeaders } from '../_shared/unsubscribe-token.ts';
-import { runSendLoop, suppressionReason, type AdminLike, type PreparedRecipient } from './send-loop.ts';
+import { runSendLoop, readConcurrency, suppressionReason, type AdminLike, type PreparedRecipient } from './send-loop.ts';
 import { batchWording, sendable, wordingFor, type Wording } from './wording.ts';
-import { loadSendData } from './load.ts';
+import { loadSendData, loadPeriodMetrics } from './load.ts';
 
 function renderTemplate(tpl: string, vars: Record<string, string>): string {
   return tpl.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] ?? `{{${k}}}`);
@@ -125,22 +125,19 @@ Deno.serve(async (req) => {
       emailByMember, statsByMember, courseIds,
     } = loaded;
 
-    const metricsByMember = new Map<string, { expected: number; attended: number; missed: number; attendance_pct: number | null }>();
-    for (const id of memberIds) {
-      const { data: metric } = await admin.rpc('member_period_metrics', {
-        p_from: periodFrom, p_to: periodTo, p_member_id: id,
-        p_offering_id: null, p_branch_id: null, p_course_id: null,
-      });
-      metricsByMember.set(id, metric?.[0] ?? { expected: 0, attended: 0, missed: 0, attendance_pct: null });
-    }
+    // ONE paged read of the period figures for the whole batch, not one RPC
+    // per recipient (load.ts says why). A recipient with no row keeps the
+    // zeros the per-member call gave them.
+    const metricsByMember = await loadPeriodMetrics(admin, memberIds, periodFrom, periodTo);
 
     // C-66: the EFFECTIVE config per course, snapshotted so a report six
-    // months later can say which rule applied.
+    // months later can say which rule applied. One RPC per course, and the
+    // courses are asked together: a batch spans a handful at most.
     const configSnapshot: Record<string, unknown> = {};
-    for (const cid of courseIds) {
+    await Promise.all(courseIds.map(async (cid) => {
       const { data: cfg } = await admin.rpc('effective_follow_up_config', { p_course_id: cid });
       configSnapshot[cid] = cfg?.[0] ?? null;
-    }
+    }));
 
     // THE COURSE'S OWN WORDING (RC-109). The subject and body a course's form
     // saves -- or the template it names -- resolved by the same function the
@@ -154,12 +151,12 @@ Deno.serve(async (req) => {
     // source, so the rendered emails and the batch snapshot both hold it.
     const templateWording: Wording = sendable(template.subject, template.body_text);
     const wordingByCourse = new Map<string, Wording>();
-    for (const cid of courseIds) {
+    await Promise.all(courseIds.map(async (cid) => {
       const { data: msg, error: msgErr } = await admin.rpc('effective_course_message', { p_course_id: cid });
       if (msgErr) throw new HttpError(500, "Could not load the courses' message wording, so nothing was sent.");
       const row = (msg as Array<{ subject: string; body_text: string }> | null)?.[0];
       if (row) wordingByCourse.set(cid, sendable(row.subject, row.body_text));
-    }
+    }));
     const courseOfMember = (id: string): string | undefined => {
       const enroll = enrollByMember.get(id);
       return enroll ? offeringById.get(enroll.offering_id as string)?.course_id as string | undefined : undefined;
@@ -304,8 +301,12 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Bounded concurrency (send-loop.ts says how many and why). The knob is
+    // an Edge Function secret so the owner's SES rate (T-010) can be matched
+    // without a deploy; unset, it is the default.
     const { results, sent, failed, excluded } = await runSendLoop(
-      admin as unknown as AdminLike, provider, batch.id as string, prepared);
+      admin as unknown as AdminLike, provider, batch.id as string, prepared, undefined,
+      { concurrency: readConcurrency(Deno.env.get('SEND_CONCURRENCY')) });
 
     // Attributed (0023). On the service-role client audit_log() records no
     // actor at all, so every batch this academy has ever sent reads as

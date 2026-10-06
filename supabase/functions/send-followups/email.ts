@@ -72,6 +72,9 @@ async function sha256Hex(msg: string): Promise<string> {
   return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+/** How long one SES call may take. Under send-loop.ts's own race (20 s) so the abort is what fires. */
+const SES_CALL_TIMEOUT_MS = 15_000;
+
 async function sesSendEmail(
   region: string, accessKeyId: string, secretAccessKey: string, bodyObj: unknown
 ): Promise<Response> {
@@ -105,6 +108,11 @@ async function sesSendEmail(
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Amz-Date': amzDate, Authorization: authorization },
     body,
+    // A call that never answers used to hold the serial loop -- and now a
+    // pool slot -- for the function's whole wall clock. Aborted here as well
+    // as raced in send-loop.ts, so the socket is actually released; the
+    // abort surfaces in send()'s catch as a failed recipient with a sentence.
+    signal: AbortSignal.timeout(SES_CALL_TIMEOUT_MS),
   });
 }
 

@@ -105,26 +105,84 @@ export function storableVars(vars: Record<string, string>): Record<string, strin
   return kept;
 }
 
+/**
+ * HOW MANY RECIPIENTS ARE IN FLIGHT AT ONCE, and why not more.
+ *
+ * The loop was strictly serial: write the row, call the provider, record the
+ * outcome, next -- 0.36-0.41 s a recipient in production, 120 s of function
+ * time for 256 members, and a 1,000-member send past the Edge Function's
+ * wall clock (docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md RC-10).
+ *
+ * Now a bounded pool: at most SEND_CONCURRENCY recipients are between their
+ * first write and their last at any moment. Four, by default, because the
+ * ceiling that matters is SES's maximum send rate -- 14 a second once an
+ * account is out of the sandbox, 1 a second inside it -- and four
+ * recipients at ~0.3 s each is ~12 a second, under the production rate with
+ * room for the database writes around each send; ISSUE_TRACKER T-010 is the
+ * owner's read of the real figure, and SEND_CONCURRENCY (an Edge Function
+ * secret) is the knob to turn once it is known. Unlimited concurrency would
+ * trade a slow send for SES throttling (454 Throttling, recorded here as a
+ * failed recipient) and PostgREST pool queueing.
+ *
+ * What the pool does NOT change: every recipient still writes its row before
+ * the provider is called and records its outcome after; a refused write
+ * still fails that recipient only; results come back in the order the
+ * recipients were given; the batch is finalised once, after the last one.
+ */
+export const DEFAULT_SEND_CONCURRENCY = 4;
+
+/** How long one provider call may take before it is recorded as failed
+ *  rather than holding its pool slot -- and the whole send -- for ever. A
+ *  timed-out send is NOT retried here: SES may have accepted it, and a second
+ *  copy is worse than a row that says "failed" the operator can read. */
+export const SEND_TIMEOUT_MS = 20_000;
+
+export function readConcurrency(raw: string | undefined, fallback = DEFAULT_SEND_CONCURRENCY): number {
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 1 && n <= 16 ? n : fallback;
+}
+
+async function withSendTimeout(
+  send: Promise<ProviderResult>, ms: number,
+): Promise<ProviderResult> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<ProviderResult>((resolve) => {
+    timer = setTimeout(() => resolve({ ok: false, error: `The email provider did not answer within ${Math.round(ms / 1000)} s.` }), ms);
+  });
+  try {
+    return await Promise.race([send, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export type SendLoopOptions = { concurrency?: number; timeoutMs?: number };
+
 export async function runSendLoop(
   admin: AdminLike,
   provider: SendingProvider,
   batchId: string,
   recipients: PreparedRecipient[],
   now: () => string = () => new Date().toISOString(),
+  options: SendLoopOptions = {},
 ): Promise<SendLoopOutcome> {
-  const results: SendResultRow[] = [];
+  const concurrency = Math.max(1, Math.min(16, Math.floor(options.concurrency ?? DEFAULT_SEND_CONCURRENCY)));
+  const timeoutMs = options.timeoutMs ?? SEND_TIMEOUT_MS;
+  // One slot per recipient, filled as each settles, so the result list is in
+  // the recipients' order whatever order the pool finishes them in.
+  const results: SendResultRow[] = new Array(recipients.length);
   let sent = 0, failed = 0, excluded = 0;
 
-  for (const r of recipients) {
+  const one = async (r: PreparedRecipient, at: number): Promise<void> => {
     if (r.kind === 'excluded') {
       await admin.from('email_messages').insert({
         batch_id: batchId, member_id: r.memberId, to_email: r.toEmail,
         subject: r.subject, variables: storableVars(r.vars), status: 'excluded', exclusion_reason: r.reason,
         from_email: r.fromAddress ?? null,
       }).select('id').single();
-      results.push({ member_id: r.memberId, name: r.name, status: 'excluded', reason: r.reason });
+      results[at] = ({ member_id: r.memberId, name: r.name, status: 'excluded', reason: r.reason });
       excluded++;
-      continue;
+      return;
     }
 
     const { data: msgRow, error: msgErr } = await admin.from('email_messages').insert({
@@ -149,15 +207,15 @@ export async function runSendLoop(
     // can send again - and nothing is delivered twice.
     if (msgErr || !msgRow) {
       const reason = describeWriteFailure(msgErr);
-      results.push({ member_id: r.memberId, name: r.name, status: 'failed', reason });
+      results[at] = ({ member_id: r.memberId, name: r.name, status: 'failed', reason });
       failed++;
-      continue;
+      return;
     }
 
-    const result = await provider.send({
+    const result = await withSendTimeout(provider.send({
       to: r.toEmail, subject: r.subject, text: r.text, from: r.fromAddress,
       headers: r.headers,
-    });
+    }), timeoutMs);
 
     if (result.ok) {
       await admin.from('email_messages').update({
@@ -165,16 +223,32 @@ export async function runSendLoop(
         sent_at: now(), attempt_count: 1,
       }).eq('id', msgRow.id);
       await admin.from('member_stats').update({ last_emailed_at: now() }).eq('member_id', r.memberId);
-      results.push({ member_id: r.memberId, name: r.name, status: 'sent' });
+      results[at] = ({ member_id: r.memberId, name: r.name, status: 'sent' });
       sent++;
     } else {
       await admin.from('email_messages').update({
         status: 'failed', provider: provider.name, failure_reason: result.error, attempt_count: 1,
       }).eq('id', msgRow.id);
-      results.push({ member_id: r.memberId, name: r.name, status: 'failed', reason: result.error });
+      results[at] = ({ member_id: r.memberId, name: r.name, status: 'failed', reason: result.error });
       failed++;
     }
-  }
+  };
+
+  // THE POOL. `next` is the only shared state: each worker takes the next
+  // recipient in order until there are none, so at most `concurrency` are in
+  // flight and every recipient is taken exactly once. A worker that throws
+  // (it should not -- every failure above is recorded, not thrown) takes the
+  // whole send down the way the serial loop did, rather than silently
+  // skipping the rest.
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const at = next++;
+      if (at >= recipients.length) return;
+      await one(recipients[at], at);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, recipients.length) }, worker));
 
   const finalStatus = failed > 0 ? 'completed_with_failures' : 'completed';
   await admin.from('email_batches').update({

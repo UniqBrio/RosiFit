@@ -1,3 +1,17 @@
+## PERFORMANCE FIX PHASE 8: FOLLOW-UPS GO OUT FOUR AT A TIME, WITH A CLOCK ON EACH — 06-Oct-2026
+
+docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md RC-10 (send side). NOT DEPLOYED (D-14). No DB change.
+
+FAIL-FIRST: src/data/edgeSendLoop.test.ts - against 2dd66bf (phase 7) in a temporary worktree 5 of 5 red (the pool bound; "pooled took 5043 ms against serial 5040 ms"; a hung provider never settles; loadPeriodMetrics missing); 5 of 5 green after.
+supabase/functions/send-followups/send-loop-pool.test.ts (Deno) - the pool claims for CI's `deno test`. NOT RUN HERE (no Deno on this box, see phase 7); UNVERIFIED locally. The node spec exercises the identical modules (send-loop.ts and load.ts are plain TypeScript).
+Existing specs kept green WITHOUT editing them: send-loop.test.ts, load.test.ts, wording.test.ts (Deno; the loop's contract -- row before send, outcome after, a refused insert fails that recipient only, results in order, batch finalised once -- is unchanged, and `runSendLoop`'s existing five arguments are unchanged; CI runs them).
+
+WHAT CHANGED: supabase/functions/send-followups/send-loop.ts -- runSendLoop takes an options argument {concurrency, timeoutMs}; recipients are worked by a pool of DEFAULT_SEND_CONCURRENCY = 4 workers each taking the next recipient in order (at most four between their first write and their last), results are filled by index so they keep the recipients' order, and every provider call is raced against SEND_TIMEOUT_MS = 20 s -- a provider that never answers is recorded as that recipient's failure with a sentence, never retried here (SES may have accepted it; a second copy is worse than a row that says failed). readConcurrency() reads the SEND_CONCURRENCY Edge secret (1-16, else the default). email.ts -- the SES fetch carries AbortSignal.timeout(15 s) so a hung socket is released, surfacing in send()'s existing catch as a failed recipient. load.ts -- loadPeriodMetrics(): the batch's period figures in ONE keyset-paged read of member_period_metrics_page (⌈N/1,000⌉ + 1 requests) instead of one member_period_metrics RPC per recipient; a recipient with no row keeps the zeros. index.ts -- uses both; the per-course config and wording RPCs are asked together instead of one after another.
+WHY FOUR: SES's production maximum send rate is commonly 14 a second (1 in the sandbox); four recipients at ~0.3 s each is ~12 a second with the database writes around each send, under the production rate. The owner's read of the real figure is ISSUE_TRACKER T-010, still open; SEND_CONCURRENCY is the knob to match it without a deploy. Unsubscribe links, suppression (bounced, unsubscribed, complained), the row-before-send rule, idempotency (client_batch_id), the audit row and the batch counters are untouched.
+
+MEASURED (node, fake provider at 50 ms per send, fake admin): 100 recipients serial 5,040 ms -> pooled (4) 1,269 ms (the spec's bound is < serial/3); production's 0.36-0.41 s a recipient (136 recipients 51 s, 256 -> 91 s) is UNVERIFIED after: not deployed. Expected from the same per-recipient cost: 256 recipients ~25 s. Metrics: 256 sequential RPCs -> 3 paged requests.
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8), G5 PASS, G7 PASS; `npm run typecheck` PASS, `npm run lint` PASS.
+
 ## PERFORMANCE FIX PHASE 7: THE CSV PREVIEW READS ONCE AND MATCHES BY LOOKUP — 06-Oct-2026
 
 docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md RC-10 (preview side; the commit side is phase 5). NOT DEPLOYED (D-14: no `supabase functions deploy` by any session). No DB change.
@@ -698,6 +712,75 @@ and the count beside it dropped by one" is asserted by reading `app/course/[id].
 three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
 preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
 all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 56.7s total - slowest G7 Unit + pure specs (35.4s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (76ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (55ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (51ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (104ms)
+- **G5 Types** - PASS (6.9s)
+- **G6 Lint** - FAIL (13.5s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (35.4s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+```
+
+- **G8 Functional / integration** - FAIL (133ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (57ms)
+- **G10 Backward compatibility (fixtures)** - PASS (120ms)
+- **G11 Wide tables are configurable** - PASS (75ms)
+- **G12 Installable as an application** - PASS (94ms)
+- **G13 Approved design still being built** - PASS (52ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
