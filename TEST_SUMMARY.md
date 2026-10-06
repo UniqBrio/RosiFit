@@ -1,3 +1,25 @@
+## PERFORMANCE FIX PHASE 6a: THE METRICS RPC PLANS WITH ITS DATES — 06-Oct-2026
+
+docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md RC-9. NOT DEPLOYED. ONE MIGRATION, NOT APPLIED: supabase/migrations/0086_metrics_page_plans_with_its_dates.sql -- restates member_period_metrics_page (0075) in plpgsql behind `return query execute ... using`, the SELECT unchanged character for character, so every call is planned with its dates known. Same name, arguments, columns, order, SECURITY DEFINER, grants (CREATE OR REPLACE keeps the oid). Guarded on the live body being 0075's (md5 66f8af1d, 1,202 bytes -- identical in production and the replay, read-only 05-Oct-2026). No table, index, policy or grant change. Under D-10 it merges to main only on the day it is applied.
+
+FAIL-FIRST: supabase/tests/63_metrics_page_plans_with_its_dates.sql - against the schema without 0086 (file moved aside, fresh replay, 2,000 members) red at the first assertion, exit 3: "the function reads at most half again the buffers the same SELECT reads with its dates written in" -- function 12,172 buffers, constants 176; with 0086, 14 of 14 green (function 178, constants 176).
+Existing spec kept green WITHOUT editing it: 56_member_period_metrics_page.sql (15 of 15 -- the paged twin still equals the unpaged original row for row over 1,001 members).
+
+INSPECTED BEFORE CHANGING SQL: 0075 (the only migration naming the function; derived from the live member_period_metrics, which 0086 does not touch); production read-only 05-Oct-2026: the live member_period_metrics_page is byte-identical to 0075 (md5 66f8af1d, 1,202 bytes, language sql, SECURITY DEFINER, stable); callers: fetchMembers, fetchBucketMetrics, fetchWeekRows (repository.ts) and send-followups reads the unpaged member_period_metrics (untouched).
+
+WHY THE PLAN WAS BAD, reproduced: a SQL-language SECURITY DEFINER function is not inlined and its body is planned with the dates as parameters; with the dates unknown the planner walks attendance_member over the whole history in member order and discards every row outside the period at the join. `prepare ... ; set plan_cache_mode = force_generic_plan; explain analyze execute` of the body gives the same plan and the same buffers as the function. EXECUTE ... USING plans each call with the values in hand; the planner then reads the period's sessions first.
+
+MEASURED (EXPLAIN (ANALYZE, BUFFERS) of `select * from member_period_metrics_page(week, null, 1000)`):
+| where | before (0075) | after (0086) |
+| production lhpzhkzbnquwjljmbylo, current week, read-only 05-Oct-2026 | 13,999 buffers, 426 ms | UNVERIFIED (not applied); the same SELECT with constants read 527 buffers / 23 ms in the report's measurement |
+| harness 5,000 members, 785k rows, one week | 158,396 buffers, 87 ms | 12,021-12,921 buffers, 49-60 ms (the planner's own choice there is a parallel seq scan over the year; with enable_seqscan off, 278 buffers / 7.7 ms -- not forced, prod has 19k rows not 785k) |
+| harness 3,000 members | 18,251 buffers, 13.4 ms | 262 buffers, 6.8 ms |
+| harness 2,000 members | 12,172 buffers, 9.0 ms | 183 buffers, 5.5 ms |
+| harness 1,001 members | 6,100 (the planner happened to choose the good plan) | 6,100 |
+Call frequency is phase 6b (one bucketed read for the Overview's seven day buckets).
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8), G5 PASS, G7 PASS.
+CASES-NA: the test for this change is a harness spec (supabase/tests/63_*.sql), which G1 cannot see (T-117).
+
 ## PERFORMANCE FIX PHASE 5: A WRITE RECOMPUTES ONLY THE MEMBERS IT TOUCHED — 06-Oct-2026
 
 docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md RC-7/RC-8; ISSUE_TRACKER T-014/T-015. NOT DEPLOYED. ONE MIGRATION, NOT APPLIED: supabase/migrations/0085_a_write_recomputes_only_the_members_it_touched.sql -- edits update_member and commit_csv_import IN PLACE (0061/0071/0073 idiom; six anchors, each guarded to match exactly once) so the recompute is scoped and the expected set is read once per commit. No table, index, policy or grant change. Under D-10 it merges to main only on the day it is applied.
@@ -636,6 +658,56 @@ and the count beside it dropped by one" is asserted by reading `app/course/[id].
 three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
 preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
 all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 58.4s total - slowest G7 Unit + pure specs (21.7s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (99ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (71ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (54ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (93ms)
+- **G5 Types** - PASS (17.3s)
+- **G6 Lint** - FAIL (18.2s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (21.7s)
+- **G8 Functional / integration** - FAIL (164ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (68ms)
+- **G10 Backward compatibility (fixtures)** - PASS (113ms)
+- **G11 Wide tables are configurable** - PASS (55ms)
+- **G12 Installable as an application** - PASS (78ms)
+- **G13 Approved design still being built** - PASS (53ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
