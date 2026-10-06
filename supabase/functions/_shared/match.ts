@@ -91,3 +91,99 @@ export function similarity(a: string, b: string): number {
   }
   return (2 * common) / (ga.length + gb.length);
 }
+
+/* ------------------------------------------------------- the fuzzy tier, prepared
+ *
+ * The fuzzy tier used to call similarity() for every member on every row that
+ * missed the alias and canonical tiers: R x N bigram builds, 5.3 s for 1,000
+ * rows against 1,644 members and 16 s against 5,000 (measured 05-Oct-2026,
+ * docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md RC-10), inside an Edge
+ * Function whose CPU time is the one thing the platform meters.
+ *
+ * Two things change, and neither changes an answer:
+ *
+ *   1. Every member's bigram multiset is built ONCE per request, not once per
+ *      row. The row's own bigrams are built once per row.
+ *   2. A member whose bigram count cannot reach the threshold is never
+ *      scored. Dice = 2c / (la + lb) with c <= min(la, lb), so a score of at
+ *      least t needs 2 min(la, lb) >= t (la + lb): the shorter of the two
+ *      must be at least t / (2 - t) of the longer (0.818 of it at t = 0.9).
+ *      Members are bucketed by bigram count and only the buckets inside
+ *      that band are visited. The bound is exact -- a member outside it
+ *      scores below t by arithmetic -- so `fuzzyCandidates` returns exactly
+ *      what the per-member loop returned, in the same order.
+ */
+
+/** One member's name, scored any number of times without rebuilding it. */
+type PreparedName = { id: string; seq: number; length: number; counts: Map<string, number> };
+
+export type FuzzyIndex = {
+  /** members by bigram count, so the exact length band selects whole buckets */
+  byLength: Map<number, PreparedName[]>;
+  minLength: number;
+  maxLength: number;
+};
+
+function bigramCounts(grams: readonly string[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const g of grams) counts.set(g, (counts.get(g) ?? 0) + 1);
+  return counts;
+}
+
+/** Build the index once per request over every live member's normalised name,
+ *  in the order the members were read (the tie-break order of the old loop). */
+export function prepareFuzzy(names: ReadonlyArray<{ id: string; normalized: string | null | undefined }>): FuzzyIndex {
+  const byLength = new Map<number, PreparedName[]>();
+  let minLength = Infinity, maxLength = 0, seq = 0;
+  for (const n of names) {
+    const grams = bigrams(n.normalized ?? '');
+    seq++;
+    // similarity() answers 0 for a name with no bigrams: never a candidate.
+    if (grams.length === 0) continue;
+    const prepared: PreparedName = { id: n.id, seq, length: grams.length, counts: bigramCounts(grams) };
+    const bucket = byLength.get(grams.length);
+    if (bucket) bucket.push(prepared); else byLength.set(grams.length, [prepared]);
+    if (grams.length < minLength) minLength = grams.length;
+    if (grams.length > maxLength) maxLength = grams.length;
+  }
+  return { byLength, minLength: byLength.size ? minLength : 0, maxLength };
+}
+
+/**
+ * Every member scoring at least `threshold` against `normalized`, best first,
+ * ties in the members' read order -- the ids, scores and order that
+ * `members.map(m => similarity(row, m)).filter(s => s >= t).sort(by score)`
+ * produced (a stable sort over the read order).
+ */
+export function fuzzyCandidates(
+  index: FuzzyIndex, normalized: string, threshold: number,
+): Array<{ id: string; score: number }> {
+  const ga = bigrams(normalized);
+  const la = ga.length;
+  if (la === 0 || index.byLength.size === 0) return [];
+  const rowCounts = bigramCounts(ga);
+  // The exact band of member bigram counts that can reach the threshold:
+  // lb in [t*la / (2-t), la*(2-t) / t]. Widened by one each side so a
+  // rounding error can only add a bucket that then scores itself out.
+  const lo = Math.max(index.minLength, Math.ceil((threshold * la) / (2 - threshold)) - 1);
+  const hi = Math.min(index.maxLength, Math.floor((la * (2 - threshold)) / threshold) + 1);
+  const scored: Array<{ id: string; score: number; seq: number }> = [];
+  for (let lb = lo; lb <= hi; lb++) {
+    const bucket = index.byLength.get(lb);
+    if (!bucket) continue;
+    for (const m of bucket) {
+      // Multiset intersection -- what similarity() counts -- from the smaller map.
+      let common = 0;
+      const [small, large] = rowCounts.size <= m.counts.size ? [rowCounts, m.counts] : [m.counts, rowCounts];
+      for (const [g, c] of small) {
+        const d = large.get(g);
+        if (d) common += c < d ? c : d;
+      }
+      const score = (2 * common) / (la + lb);
+      if (score >= threshold) scored.push({ id: m.id, score, seq: m.seq });
+    }
+  }
+  return scored
+    .sort((a, b) => b.score - a.score || a.seq - b.seq)
+    .map(({ id, score }) => ({ id, score }));
+}

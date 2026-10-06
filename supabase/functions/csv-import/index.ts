@@ -8,7 +8,8 @@ import { handlePreflight } from '../_shared/cors.ts';
 import { json, errorJson, HttpError } from '../_shared/response.ts';
 import { adminClient } from '../_shared/db.ts';
 import { requireCaller } from '../_shared/authz.ts';
-import { normalizeName, similarity, splitByCourse } from '../_shared/match.ts';
+import { normalizeName, fuzzyCandidates, splitByCourse } from '../_shared/match.ts';
+import { indexRegister, type AliasRow, type MemberRow, type EmailRow, type StatsRow, type EnrollmentRow, type OfferingRow, type NamedRow } from './load.ts';
 import { pageAllByKey } from '../_shared/pageAll.ts';
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 
@@ -242,20 +243,16 @@ async function preview(admin: SupabaseClient, actorId: string, body: Record<stri
    * "1 row dropped" about the person who taught the class explains nothing.
    * These are named separately and the screen says why.
    */
-  const { data: staffRows } = await admin.from('app_users')
-    .select('name').is('deleted_at', null);
-  const staffNames = new Set(
-    (staffRows ?? []).map(u => normalizeName((u.name as string) ?? '')).filter(Boolean));
-  const staff: RawRow[] = [];
-  const attendees: RawRow[] = [];
-  for (const r of kept) {
-    if (staffNames.has(normalizeName(r.full_name ?? ''))) staff.push(r);
-    else attendees.push(r);
-  }
-  if (attendees.length === 0) {
-    throw new HttpError(400,
-      'Every name in that file belongs to a staff member, so there is no attendance to import.');
-  }
+  // EVERY READ STARTED BEFORE ANY IS AWAITED. These nine reads do not depend
+  // on one another, and they used to run one after the other -- staff, then
+  // five whole-table keyset reads, then offerings, courses and branches by
+  // id: ~21 sequential round trips for a preview that took 4.4-5.3 s whatever
+  // the file size (docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md RC-10).
+  // Each read is still its own statement, paged and selecting its key
+  // (src/data/edgeFunctionPagedReads.test.ts reads them one by one); only the
+  // awaiting moved. The catalogue tables are read whole rather than by the
+  // enrolments' offering ids, so they need not wait for the enrolments.
+  const staffP = admin.from('app_users').select('name').is('deleted_at', null);
 
   /**
    * EVERY ROW, PAGED (RC-043). PostgREST caps a reply at 1,000 rows and says
@@ -268,49 +265,56 @@ async function preview(admin: SupabaseClient, actorId: string, body: Record<stri
    * SELECTS the key it pages by, because the cursor is read out of the last
    * row returned. `src/data/edgeFunctionPagedReads.test.ts` holds this shut.
    */
-  const aliases = await pageAllByKey(() => admin.from('member_aliases')
+  const aliasesP = pageAllByKey(() => admin.from('member_aliases')
     .select('id, member_id, alias_display, alias_normalized').eq('alias_type', 'name'), { key: 'id' });
-  const members = await pageAllByKey(() => admin.from('members')
+  const membersP = pageAllByKey(() => admin.from('members')
     .select('id, full_name, name_normalized').is('deleted_at', null), { key: 'id' });
   // The ADDRESS, not just whether there is one: with the member code retired
   // it is what tells two same-named candidates apart on the review screen.
-  const primaryEmails = await pageAllByKey(() => admin.from('member_emails')
+  const primaryEmailsP = pageAllByKey(() => admin.from('member_emails')
     .select('id, member_id, email').eq('is_primary', true).is('deleted_at', null).neq('status', 'bounced'),
     { key: 'id' });
-  const stats = await pageAllByKey(() => admin.from('member_stats')
+  const statsP = pageAllByKey(() => admin.from('member_stats')
     .select('member_id, last_present_date'), { key: 'member_id' });
-
-  const hasEmail = new Set((primaryEmails ?? []).map(e => e.member_id as string));
-  const emailBy = new Map((primaryEmails ?? []).map(e => [e.member_id as string, e.email as string]));
-  const memberById = new Map((members ?? []).map(m => [m.id as string, m]));
-  const lastPresentBy = new Map((stats ?? []).map(s => [s.member_id as string, s.last_present_date as string | null]));
 
   // Who she is, in the words the review screen shows: course, branch and the
   // display names already known for her. Outcome C is the prompt that stops
   // a duplicate being created, and it can only do that if the person
   // deciding can see who the candidate actually is.
-  const enrollments = await pageAllByKey(() => admin.from('member_enrollments')
+  const enrollmentsP = pageAllByKey(() => admin.from('member_enrollments')
     .select('id, member_id, offering_id').eq('status', 'active'), { key: 'id' });
-  const offeringIds = [...new Set((enrollments ?? []).map(e => e.offering_id as string))];
-  const zero = '00000000-0000-0000-0000-000000000000';
-  const { data: offeringRows } = await admin.from('course_offerings')
-    .select('id, course_id, branch_id').in('id', offeringIds.length ? offeringIds : [zero]);
-  const courseIds = [...new Set((offeringRows ?? []).map(o => o.course_id as string))];
-  const branchIds = [...new Set((offeringRows ?? []).map(o => o.branch_id as string))];
-  const { data: courseRows } = await admin.from('courses').select('id, name')
-    .in('id', courseIds.length ? courseIds : [zero]);
-  const { data: branchRows } = await admin.from('branches').select('id, name')
-    .in('id', branchIds.length ? branchIds : [zero]);
+  const offeringsP = pageAllByKey(() => admin.from('course_offerings')
+    .select('id, course_id, branch_id'), { key: 'id' });
+  const coursesP = pageAllByKey(() => admin.from('courses')
+    .select('id, name'), { key: 'id' });
+  const branchesP = pageAllByKey(() => admin.from('branches')
+    .select('id, name'), { key: 'id' });
 
-  const offeringById = new Map((offeringRows ?? []).map(o => [o.id as string, o]));
-  const courseNameById = new Map((courseRows ?? []).map(c => [c.id as string, c.name as string]));
-  const branchNameById = new Map((branchRows ?? []).map(b => [b.id as string, b.name as string]));
-  const offeringByMember = new Map((enrollments ?? []).map(e => [e.member_id as string, e.offering_id as string]));
-  const aliasNamesByMember = new Map<string, string[]>();
-  for (const a of aliases ?? []) {
-    const list = aliasNamesByMember.get(a.member_id as string) ?? [];
-    list.push(a.alias_display as string);
-    aliasNamesByMember.set(a.member_id as string, list);
+  const [{ data: staffRows }, aliases, members, primaryEmails, stats, enrollments, offerings, courses, branches] =
+    await Promise.all([staffP, aliasesP, membersP, primaryEmailsP, statsP, enrollmentsP, offeringsP, coursesP, branchesP]);
+
+  // The pager hands back plain rows; the shapes below are the columns each
+  // read selected, written down once where the index is built.
+  const register = indexRegister({
+    staffNames: new Set((staffRows ?? []).map(u => normalizeName((u.name as string) ?? '')).filter(Boolean)),
+    aliases: aliases as unknown as AliasRow[], members: members as unknown as MemberRow[],
+    primaryEmails: primaryEmails as unknown as EmailRow[], stats: stats as unknown as StatsRow[],
+    enrollments: enrollments as unknown as EnrollmentRow[], offerings: offerings as unknown as OfferingRow[],
+    courses: courses as unknown as NamedRow[], branches: branches as unknown as NamedRow[],
+  });
+  const {
+    staffNames, aliasesByNormalized, membersByNormalized, memberById, hasEmail, emailBy, lastPresentBy,
+    offeringByMember, offeringById, courseNameById, branchNameById, aliasNamesByMember, fuzzy,
+  } = register;
+  const staff: RawRow[] = [];
+  const attendees: RawRow[] = [];
+  for (const r of kept) {
+    if (staffNames.has(normalizeName(r.full_name ?? ''))) staff.push(r);
+    else attendees.push(r);
+  }
+  if (attendees.length === 0) {
+    throw new HttpError(400,
+      'Every name in that file belongs to a staff member, so there is no attendance to import.');
   }
 
   const rows = attendees.map((r, i) => {
@@ -318,20 +322,22 @@ async function preview(admin: SupabaseClient, actorId: string, body: Record<stri
     let candidateIds: string[] = [];
     let tier: 'alias' | 'canonical' | 'fuzzy' | 'none' = 'none';
 
-    const aliasHit = (aliases ?? []).filter(a => a.alias_normalized === normalized);
+    // The three tiers, each a lookup in the index built once above rather
+    // than a scan of the whole register per row (RC-10).
+    const aliasHit = aliasesByNormalized.get(normalized) ?? [];
     if (aliasHit.length > 0) {
-      candidateIds = [...new Set(aliasHit.map(a => a.member_id as string))];
+      candidateIds = [...new Set(aliasHit.map(a => a.member_id))];
       tier = 'alias';
     } else {
-      const canonicalHit = (members ?? []).filter(m => m.name_normalized === normalized);
+      const canonicalHit = membersByNormalized.get(normalized) ?? [];
       if (canonicalHit.length > 0) {
-        candidateIds = canonicalHit.map(m => m.id as string);
+        candidateIds = canonicalHit.map(m => m.id);
         tier = 'canonical';
       } else {
-        const scored = (members ?? [])
-          .map(m => ({ id: m.id as string, score: similarity(normalized, (m.name_normalized as string) ?? '') }))
-          .filter(s => s.score >= FUZZY_THRESHOLD)
-          .sort((a, b) => b.score - a.score);
+        // The same ids, scores and order the per-member similarity() loop
+        // gave, from members' bigrams prepared once per request
+        // (_shared/match.ts, src/data/edgeFuzzyMatcher.test.ts).
+        const scored = fuzzyCandidates(fuzzy, normalized, FUZZY_THRESHOLD);
         if (scored.length > 0) {
           candidateIds = [...new Set(scored.map(s => s.id))];
           tier = 'fuzzy';

@@ -1,3 +1,26 @@
+## PERFORMANCE FIX PHASE 7: THE CSV PREVIEW READS ONCE AND MATCHES BY LOOKUP — 06-Oct-2026
+
+docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md RC-10 (preview side; the commit side is phase 5). NOT DEPLOYED (D-14: no `supabase functions deploy` by any session). No DB change.
+
+FAIL-FIRST: src/data/csvPreviewReads.test.ts - against 98fa1b1 (phase 6b) in a temporary worktree 2 of 2 red ("staffP is not started as a promise", "a row still scans every alias or member"); 2 of 2 green after.
+FAIL-FIRST: src/data/edgeFuzzyMatcher.test.ts - against 98fa1b1 4 of 4 red ("prepareFuzzy is not a function"); 4 of 4 green after, including the budget: 1,000 rows x 5,000 members in under 4,000 ms.
+supabase/functions/_shared/match.test.ts (Deno) - the same equivalence for CI's `deno test`. NOT RUN HERE: Deno 2.9.7 is not installed on this box and cannot be fetched through the proxy (403 on dl.deno.land, and no npm release of that version); `npm run check:edge` SKIPS loudly, as CLAUDE.md warns. The Edge tree's type check and this test are therefore CI-verified only -- UNVERIFIED locally. The node spec exercises the identical module (plain TypeScript, no Deno API).
+Existing specs kept green WITHOUT editing them: edgeFunctionPagedReads.test.ts (20 -- every register read is still its own paged statement selecting its key; the pager's rules untouched), csvFormat, meetCsv.
+
+WHAT CHANGED: supabase/functions/csv-import/index.ts -- the nine register reads (staff, aliases, members, addresses, stats, enrolments, offerings, courses, branches) are started together and awaited once; the three catalogue tables are read whole (they are a few dozen rows) instead of by the enrolments' ids after the enrolments. Per row, the alias and canonical tiers are Map lookups and the fuzzy tier reads a prepared index instead of scoring every member (`.filter` over every alias, `.filter` over every member, `similarity()` against every member, per row). supabase/functions/csv-import/load.ts (new) -- indexRegister(): the Maps and the fuzzy index, built once per request. supabase/functions/_shared/match.ts -- prepareFuzzy()/fuzzyCandidates(): every member's bigram multiset built once per request, and only members whose bigram count can reach the threshold are scored (Dice = 2c/(la+lb), c <= min(la, lb): the shorter must be at least t/(2-t) of the longer -- an exact bound, so the ids, scores and order are the loop's, which the specs assert over thousands of generated rows at three thresholds). similarity() itself is untouched.
+
+MEASURED (node on this box, the matcher only -- the same module the Edge Function bundles; threshold 0.8, every row missing the alias and canonical tiers, the worst case):
+| rows x members | per-member loop (before) | prepared (after) |
+| 100 x 1,644 | 523-558 ms | 146 ms |
+| 1,000 x 1,644 | 5,291-5,343 ms | 936 ms |
+| 1,500 x 1,644 | - | 1,393 ms |
+| 100 x 5,000 | 1,544-1,596 ms | 347 ms |
+| 1,000 x 5,000 | 16,110-16,675 ms | 3,305 ms |
+| 1,500 x 5,000 | - | 5,381 ms |
+| 5,000 x 5,000 | - | 17,609 ms (every row fuzzy; a real file of 5,000 unmatched names against 5,000 members is not a case the preview is for) |
+Round trips: the preview's sequential depth falls from ~21 (authz 2, offering, same-file, supersedes, then five paged reads one after another at ⌈N/1000⌉+1 requests each, then offerings, courses, branches, insert, audit) to ~10 (the same five before, the nine reads in parallel -- the longest is three pages -- then insert and audit). Production wall time (4.4-5.3 s a preview, flat) is UNVERIFIED: not deployed, and the function cannot be run here.
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8), G5 PASS, G7 PASS; `npm run typecheck` PASS, `npm run lint` PASS.
+
 ## PERFORMANCE FIX PHASE 6b: THE OVERVIEW'S BUCKETS IN ONE READ — 06-Oct-2026
 
 docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md RC-9/RC-2. NOT DEPLOYED. ONE MIGRATION, NOT APPLIED: supabase/migrations/0087_member_period_metrics_buckets.sql -- a NEW function, member_period_metrics_buckets(p_from date[], p_to date[], p_after text, p_limit int): the page function's aggregate for every bucket in one keyset read (one row per member per bucket, text cursor member_id:bucket, p_limit bounds rows), plpgsql behind EXECUTE ... USING as 0086. member_period_metrics and member_period_metrics_page untouched. No table, index, policy or data change; anon revoked, authenticated and service_role granted as 0075. Under D-10 it merges to main only on the day it is applied.
@@ -675,6 +698,75 @@ and the count beside it dropped by one" is asserted by reading `app/course/[id].
 three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
 preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
 all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 56.2s total - slowest G7 Unit + pure specs (33.8s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (54ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (49ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (93ms)
+- **G5 Types** - PASS (7.6s)
+- **G6 Lint** - FAIL (14.0s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (33.8s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+```
+
+- **G8 Functional / integration** - FAIL (137ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (56ms)
+- **G10 Backward compatibility (fixtures)** - PASS (148ms)
+- **G11 Wide tables are configurable** - PASS (59ms)
+- **G12 Installable as an application** - PASS (78ms)
+- **G13 Approved design still being built** - PASS (53ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
