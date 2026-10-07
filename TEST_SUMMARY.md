@@ -1,3 +1,10 @@
+## CUTOVER BUILD: csv-import UNPINNED, config.toml -> MUMBAI (A10 of the move) — 08-Oct-2026
+
+`requests/2026-10-08-cutover-app-mumbai.md`. Merge only during cutover, after Vercel Production points at Mumbai. `functionRegion.ts` pins nothing (D3); `config.toml` `project_id` = lbyqipunsbzkcvdrxach and `pin-reset-request` verify_jwt = true as deployed (D2). Unsubscribe pages keep accepting Singapore's address for rollback.
+OWNER-APPROVED BEHAVIOUR REVERSAL (CLAUDE.md exemption, 01-Oct-2026): decision D3 ("Remove the Singapore region pin from the post-cutover application") conflicts directly with `src/data/functionRegion.test.ts` test 1, which pinned `forceFunctionRegion` to 'ap-southeast-1'. Only that test's title and its one expectation changed ('ap-southeast-1' -> null); its path assertion and tests 2-4 are untouched.
+FAIL-FIRST: src/data/functionRegion.test.ts - with the test reversed and the code not yet changed, 3 of 4 green, 1 red: "csv-import is no longer pinned..." expected null, actual 'ap-southeast-1'; after the change 4 of 4 green.
+GATES: `npm run check` 6 of 7 PASS (lint, typecheck, check:edge -- SKIPPED, no Deno -- contrast, icons, functions: 11 declared); test:unit fails only on the 2 tests that fail identically on clean main (rosterWindowed, bucketedMetrics). The B2 guard (config.toml must not mention a forwarder) caught a first draft of the config comment and was satisfied by rewording it.
+
 ## SINGAPORE UNSUBSCRIBE FORWARDER (B2 of the move) — 07-Oct-2026
 
 `requests/2026-10-07-singapore-unsubscribe-forwarder.md`. New `supabase/forwarders/unsubscribe/` (outside `supabase/functions/`, so never one of Mumbai's eleven): GET 307 / POST 308 to Mumbai's unsubscribe function with the query string byte for byte; other paths 404, other methods 405, over-long query 414, unparsable 400; no-store, no-referrer; one constant destination; no secret, env or database. NOT deployed.
