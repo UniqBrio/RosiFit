@@ -163,3 +163,99 @@ test('a GET only asks: the write and its audit are reached by a POST alone', () 
   assert.match(src, /const oneClick = method === 'POST' && !url\.searchParams\.has\('a'\);/);
   assert.match(src, /via: oneClick \? 'one_click' : 'link'/);
 });
+
+// Appended 07-Oct-2026: the move to Mumbai (requests/2026-10-06-move-production-to-mumbai.md, B1).
+// After cutover the Mumbai function redirects here with ITS address in `fn`, while links already
+// sent still reach Singapore's. Both pages must accept exactly those two addresses and refuse
+// every other one. These run the page's own script, so they test what a browser does with it.
+
+import vm from 'node:vm';
+
+const SINGAPORE_FN = 'https://lhpzhkzbnquwjljmbylo.supabase.co/functions/v1/unsubscribe';
+const MUMBAI_FN = 'https://lbyqipunsbzkcvdrxach.supabase.co/functions/v1/unsubscribe';
+
+type PageRun = { formHidden: boolean; action: string; brokenHidden: boolean | null; replacedWith: string | null };
+
+/** Run a page's inline script against a stub of the four things it touches. */
+function runPage(file: string, formId: string, params: Record<string, string>): PageRun {
+  const html = read(file);
+  const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
+  assert.equal(scripts.length, 1, `${file} must keep exactly one inline script`);
+  const form = { hidden: true, action: '', addEventListener() {}, querySelector: () => ({ disabled: false }) };
+  const broken = { hidden: true };
+  const els: Record<string, unknown> = { academy: { textContent: '' }, [formId]: form, broken };
+  let replacedWith: string | null = null;
+  const sandbox = {
+    URLSearchParams,
+    location: { search: '?' + new URLSearchParams(params).toString(), pathname: '/page' },
+    document: { getElementById: (id: string) => els[id] ?? null },
+    history: { replaceState: (_s: unknown, _t: string, url: string) => { replacedWith = url; } },
+  };
+  vm.runInNewContext(scripts[0][1], sandbox);
+  return { formHidden: form.hidden, action: form.action, brokenHidden: file.endsWith('unsubscribe.html') ? broken.hidden : null, replacedWith };
+}
+
+const PAGES: Array<[string, string, string]> = [
+  ['public/unsubscribe.html', 'act', 'unsubscribe'],
+  ['public/unsubscribed.html', 'undo', 'resubscribe'],
+];
+
+test('both pages accept the Singapore and the Mumbai unsubscribe function, and post the pair unchanged', () => {
+  for (const [file, formId, action] of PAGES) {
+    for (const fn of [SINGAPORE_FN, MUMBAI_FN]) {
+      const r = runPage(file, formId, { e: 'id-1', t: 'a+b/c', fn });
+      assert.equal(r.formHidden, false, `${file} must offer its button for ${fn}`);
+      assert.equal(r.action, `${fn}?e=id-1&t=a%2Bb%2Fc&a=${action}`,
+        `${file} must post the signed pair, untouched, to the function that sent it`);
+      if (r.brokenHidden !== null) assert.equal(r.brokenHidden, true, `${file} must not say the link is broken`);
+      assert.equal(r.replacedWith, '/page', `${file} must still clear the pair from the address bar`);
+    }
+  }
+});
+
+test('both pages refuse every other address, however close it looks', () => {
+  const refused = [
+    'https://abcdefghijklmnopqrst.supabase.co/functions/v1/unsubscribe',          // another project
+    'https://xlbyqipunsbzkcvdrxach.supabase.co/functions/v1/unsubscribe',         // ref with a prefix
+    'https://lbyqipunsbzkcvdrxach.supabase.co.evil.example/functions/v1/unsubscribe', // host suffix
+    'https://evil.example/lbyqipunsbzkcvdrxach.supabase.co/functions/v1/unsubscribe', // ref in the path
+    'http://lbyqipunsbzkcvdrxach.supabase.co/functions/v1/unsubscribe',           // not https
+    'https://lbyqipunsbzkcvdrxach.supabase.co/functions/v1/unsubscribe/x',        // longer path
+    'https://lbyqipunsbzkcvdrxach.supabase.co/functions/v1/send-followups',       // another function
+    'https://lhpzhkzbnquwjljmbylo.supabase.co/functions/v1/unsubscribe?x=1',      // extra query
+    'HTTPS://LBYQIPUNSBZKCVDRXACH.SUPABASE.CO/functions/v1/unsubscribe',          // case games
+    'javascript:alert(1)//' + MUMBAI_FN,
+  ];
+  for (const [file, formId] of PAGES) {
+    for (const fn of refused) {
+      const r = runPage(file, formId, { e: 'id-1', t: 'tok', fn });
+      assert.equal(r.formHidden, true, `${file} must refuse ${fn}`);
+      assert.equal(r.action, '', `${file} must not aim its form at ${fn}`);
+      if (r.brokenHidden !== null) assert.equal(r.brokenHidden, false, `${file} must say the link did not work`);
+    }
+  }
+});
+
+test('an accepted address is still not enough: without both halves of the signed pair there is no button', () => {
+  for (const [file, formId] of PAGES) {
+    for (const fn of [SINGAPORE_FN, MUMBAI_FN]) {
+      const incomplete: Array<Record<string, string>> = [{ t: 'tok', fn }, { e: 'id-1', fn }, { fn }];
+      for (const params of incomplete) {
+        const r = runPage(file, formId, params);
+        assert.equal(r.formHidden, true, `${file} must hide its button when the pair is incomplete`);
+        assert.equal(r.action, '');
+      }
+    }
+  }
+});
+
+test('each page names exactly two projects, each as its own anchored pattern', () => {
+  for (const [file] of PAGES) {
+    const html = read(file);
+    const patterns = [...html.matchAll(/\/\^https:[^\n]*?\$\//g)].map((m) => m[0]).sort();
+    assert.deepEqual(patterns, [
+      '/^https:\\/\\/lbyqipunsbzkcvdrxach\\.supabase\\.co\\/functions\\/v1\\/unsubscribe$/',
+      '/^https:\\/\\/lhpzhkzbnquwjljmbylo\\.supabase\\.co\\/functions\\/v1\\/unsubscribe$/',
+    ], `${file} must accept these two functions and nothing wider`);
+  }
+});

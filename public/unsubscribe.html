@@ -16,8 +16,10 @@
   asks. The Unsubscribe button posts the signed pair (`e`, `t`) back to the
   function's own address (`fn`) with `a=unsubscribe`, and that press is the
   opt-out; the function then lands on /unsubscribed, which offers the undo.
-  `fn` is accepted only as THIS project's unsubscribe function, so a crafted
-  link cannot point the button at anybody else's. The pair is cleared from
+  `fn` is accepted only as one of THIS academy's two unsubscribe functions --
+  Singapore (lhpzhkzbnquwjljmbylo), where links already sent point, and Mumbai
+  (lbyqipunsbzkcvdrxach), where production moves -- each matched exactly, so a
+  crafted link cannot point the button at anybody else's. The pair is cleared from
   the address bar and history once read. Every value from the
   URL is set as text or as a URL attribute, never as markup, and no-referrer
   keeps the pair out of any request this page makes.
@@ -108,7 +110,8 @@
       if (academy) document.getElementById('academy').textContent = academy.slice(0, 120);
       var q = new URLSearchParams(location.search);
       var e = q.get('e'), t = q.get('t'), fn = q.get('fn');
-      if (e && t && fn && /^https:\/\/lhpzhkzbnquwjljmbylo\.supabase\.co\/functions\/v1\/unsubscribe$/.test(fn)) {
+      if (e && t && fn && (/^https:\/\/lhpzhkzbnquwjljmbylo\.supabase\.co\/functions\/v1\/unsubscribe$/.test(fn) ||
+                           /^https:\/\/lbyqipunsbzkcvdrxach\.supabase\.co\/functions\/v1\/unsubscribe$/.test(fn))) {
         var form = document.getElementById('act');
         form.action = fn + '?e=' + encodeURIComponent(e) + '&t=' + encodeURIComponent(t) + '&a=unsubscribe';
         form.addEventListener('submit', function () { form.querySelector('button').disabled = true; });
