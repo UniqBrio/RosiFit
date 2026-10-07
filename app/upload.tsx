@@ -29,6 +29,7 @@ import {
   planBatch, batchAskWords, batchHeading, mergedFileName, mergedNote,
 } from '../src/data/uploadBatch';
 import { iso } from '../src/data/period';
+import { businessTodayIso } from '../src/data/businessDate';
 import { autoDecisions, heldNames, heldWords, heldSentence } from '../src/data/importDecisions';
 import {
   alreadyImportedWords, nothingChanged, noChangeWords, changeSummary,
@@ -559,7 +560,7 @@ function UploadBody() {
        * only needed the file's own date. It is the same place, and the same
        * shape, as the "no Created on line" refusal directly above.
        */
-      const future = futureFileRefusal(fileDay, iso(new Date()),
+      const future = futureFileRefusal(fileDay, businessTodayIso(),
         { fileName: picked.name, label: dayLabel });
       if (future) {
         setFailure({ text: future, caution: true });
@@ -878,7 +879,7 @@ function UploadBody() {
 
     const order = files.map(f => f.source.name);
     const plan = planBatch(
-      files.map(f => ({ fileName: f.source.name, day: f.day })), iso(new Date()), dayLabel);
+      files.map(f => ({ fileName: f.source.name, day: f.day })), businessTodayIso(), dayLabel);
     const byName = new Map(files.map(f => [f.source.name, f.source]));
 
     const other: BatchRow[] = plan.setAside.map(s => ({

@@ -112,8 +112,13 @@ test('DEFECT 1: a server cap BELOW the page size returns everything, not one pag
 
   assert.equal(rows.length, 2220, 'every row must come back');
   assert.equal(new Set(rows.map(r => r.id)).size, 2220, 'no row may be returned twice');
-  assert.equal(t.state.pages, Math.ceil(2220 / 50) + 1,
-    'it must keep asking until a page is EMPTY — 45 full pages and one empty');
+  // 44 pages of 50 and one of 20. The 20-row page is shorter than a page this
+  // read has already seen, so it is the end and nothing more is asked
+  // (pageAllShortPage.test.ts); before 06-Oct-2026 an empty 46th page was.
+  // What this spec is FOR is unchanged: 2,220 rows, none twice, and a cap
+  // below the page size never read as "that was the end".
+  assert.equal(t.state.pages, Math.ceil(2220 / 50),
+    'it must keep asking until a page is shorter than one already seen, or EMPTY — 44 full pages and the 20-row end');
 });
 
 test('a short page is never read as the end, even at the very first page', async () => {
@@ -169,7 +174,10 @@ test('the cursor is the LAST key seen, and the first request carries no key at a
   // that can collide with a real key and is a type assumption besides.
   const t = fakeTable(seedOf(25));
   await pageAllByKey<Row>(t.build, { key: 'id', pageSize: 10 });
-  assert.deepEqual(t.state.asked, [undefined, 10, 20, 25],
+  // 25 rows at 10 a page: 10, 10, then 5. The 5-row page is shorter than
+  // the 10-row pages before it, so the read ends there and gt(25) is never
+  // asked (pageAllShortPage.test.ts, 06-Oct-2026).
+  assert.deepEqual(t.state.asked, [undefined, 10, 20],
     'first page unfiltered, then gt(last id of the previous page)');
 });
 

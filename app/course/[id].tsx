@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, Pressable, ScrollView, TextInput, useWindowDimensions } from 'react-native';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactElement, type Dispatch, type SetStateAction, type MutableRefObject } from 'react';
+import { View, Text, Pressable, ScrollView, TextInput, FlatList, useWindowDimensions, type ListRenderItem } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Muted, Label, Skeleton, EmptyState, ErrorState, DeepBackground } from '../../src/components/ui';
 import { Icon } from '../../src/components/Icon';
@@ -12,8 +12,9 @@ import { useAutoFocus } from '../../src/components/openingFocus';
 import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, TAP_MIN, STATUS, statusSurface, type StatusKey } from '../../src/theme/tokens';
 import { DAY_NAMES, ruleSentence, AVATAR_TINTS, initials, primaryEmail, type Member, type MemberStatus } from '../../src/data/mock';
-import { useCourses, useFollowUp, useCourseWeekDays, useCourseDay } from '../../src/data/hooks';
-import { weekStart, iso, label as periodLabel } from '../../src/data/period';
+import { useCourses, useFollowUp, useCourseWeekDays, useCourseDay, useDebouncedQuery } from '../../src/data/hooks';
+import { weekStart, iso, businessToday, label as periodLabel } from '../../src/data/period';
+import { businessTodayIso } from '../../src/data/businessDate';
 import {
   setMemberStatus, mergeMemberInto, deleteMember, memberDeletionPreview, dataSource,
   attendanceResetPreview, resetDayAttendance, bulkDeleteMembers,
@@ -266,7 +267,7 @@ function CourseDetailBody() {
   // The week being shown, as a Period -- the shape useAttendance takes, so
   // stepping weeks refetches rather than re-slicing a stale load.
   const week = useMemo(() => {
-    const start = weekStart(new Date());
+    const start = weekStart(businessToday());        // the academy's week, not the device's
     start.setDate(start.getDate() + weekOffset * 7);
     const end = new Date(start);
     end.setDate(end.getDate() + 6);
@@ -276,7 +277,7 @@ function CourseDetailBody() {
   // ONE read of the clock for this screen. The strip asks it twice -- which
   // day is selected by default, and which days may offer an upload -- and two
   // reads is how those two answers end up on different sides of midnight.
-  const todayIso = iso(new Date());
+  const todayIso = businessTodayIso();
 
   const course = (courses.data ?? []).find(c => c.id === id);
   const members = followUp.data?.members ?? [];
@@ -507,7 +508,11 @@ function CourseDetailBody() {
 
   // The members of that day, less anything the search box hides. Name or
   // address, because those are the two things written on a card.
-  const searched = useMemo(() => narrowToSearch(onDay, query), [onDay, query]);
+  // The query the roster is narrowed by: applied after a short quiet
+  // (src/data/debounce.ts). `query` itself still drives the box and the
+  // sentences that quote it.
+  const appliedQuery = useDebouncedQuery(query);
+  const searched = useMemo(() => narrowToSearch(onDay, appliedQuery), [onDay, appliedQuery]);
   /* The SAME search over the section below, because a member somebody is
      looking for by name is no less findable for having gone inactive -- and a
      search that emptied the roster while leaving the inactive list whole would
@@ -515,7 +520,7 @@ function CourseDetailBody() {
      reach it: Present, Absent and Yet to mark are readings of the day's
      register, and these members are not on it. */
   const inactiveShown = useMemo(
-    () => narrowToSearch(inactiveOnDay, query), [inactiveOnDay, query]);
+    () => narrowToSearch(inactiveOnDay, appliedQuery), [inactiveOnDay, appliedQuery]);
 
   /**
    * ...and then the READING filter, asked for by name: "add filter to choose
@@ -658,11 +663,37 @@ function CourseDetailBody() {
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
-  const toggleSelected = (id: string) => setSelected(prev => {
+  const toggleSelected = useCallback((id: string) => setSelected(prev => {
     const next = new Set(prev);
     if (next.has(id)) next.delete(id); else next.add(id);
     return next;
-  });
+  }), []);
+
+  /* THE DAY'S ROWS, INDEXED BY MEMBER, ONCE PER LOAD. Every card used to be
+     handed the whole day and scan it for its own row (dayAttendance's
+     `rows.filter`), so one render of a 629-member roster was 629 × 629 row
+     comparisons, and every keystroke in the search box was a render
+     (docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md, RC-6). Each card now
+     gets only its member's rows; dayAttendance still filters them by member
+     and date, so its answer is unchanged. */
+  const rowsByMember = useMemo(() => {
+    const index = new Map<string, AttendanceRow[]>();
+    for (const r of marks.data ?? []) {
+      const list = index.get(r.member_id) ?? [];
+      list.push(r);
+      index.set(r.member_id, list);
+    }
+    return index;
+  }, [marks.data]);
+  const rowsFor = (id: string) => rowsByMember.get(id) ?? NO_DAY_ROWS;
+  /* The cards are drawn only past every state the header draws instead:
+     loading, failed, nobody enrolled, nobody joined by the day, nobody on the
+     register, nothing matching the search, nothing matching the filter. The
+     Inactive section is NOT behind this gate -- it never was: a filtered-away
+     register still lists the members off it (rosterItems). */
+  const rosterReady = followUp.state !== 'loading' && followUp.state !== 'error'
+    && scoped.length > 0 && joinedByDay.length > 0 && onDay.length > 0
+    && searched.length > 0 && shown.length > 0;
 
   // A selection is about the day it was made on. Leaving it standing across a
   // day change would carry ticks onto a roster that never showed them.
@@ -915,8 +946,33 @@ function CourseDetailBody() {
           </View>
         </DeepBackground>
 
-      <ScrollView style={{ flex: 1, backgroundColor: theme.bg }}
-        contentContainerStyle={{ paddingBottom: 110 }}>
+      {/* WINDOWED (06-Oct-2026). This was a ScrollView holding every member
+          card at once -- 11,986 DOM nodes at 1,644 members and 36,063 at
+          5,000, with 0.8-1.9 s long tasks on load and on every keystroke.
+          The list owns the scroll; everything that was above the cards is
+          its header (the lift chain for the two pop-up panels is unchanged:
+          the header is a sibling BEFORE the cells, as the lifted block was
+          before the cards), and the cards, with their section headings and
+          notes between them, are its items (rosterItems). Same insets: the
+          header keeps its own padding and every item wears SPACE.lg at the
+          sides; the bottom inset is the one the ScrollView had. */}
+      <FlatList
+        testID="course-roster"
+        style={{ flex: 1, backgroundColor: theme.bg }}
+        contentContainerStyle={{ paddingBottom: 110 }}
+        data={rosterItems({
+          ready: rosterReady, withEmail, withoutEmail, issueGroups, issueTotal, issuesOpen, inactiveListed,
+          shown, joinedByDay, members, week, chosen, scopeWeekdays, marks, rowsFor, selectMode, selected,
+          toggleSelected, noEmailSelected, setSelected, setConfirmBulkDelete, setIssuesOpen, closedByHand,
+          theme, dangerInk,
+        })}
+        keyExtractor={rosterItemKey}
+        renderItem={renderRosterItem}
+        keyboardShouldPersistTaps="handled"
+        initialNumToRender={12}
+        maxToRenderPerBatch={12}
+        windowSize={7}
+        ListHeaderComponent={<View>
         {/* THE LIFT THAT LETS A FILTER PANEL FLOAT. Read with the twin on
             the members block below and the note on the Show filter itself.
 
@@ -1747,314 +1803,15 @@ function CourseDetailBody() {
                 action="Show all members" onAction={() => setRosterShow([])} />
             </View>
           ) : (
-            <>
-              <View style={{ gap: SPACE.sm, marginTop: SPACE.md }}>
-                {withEmail.map((m, i) => (
-                  <MemberCard key={m.id} member={m} tint={AVATAR_TINTS[(i + 3) % AVATAR_TINTS.length]}
-                    weekLabel={week.label} noEmail={false} allMembers={members}
-                    dayIso={chosen?.iso ?? null} weekdays={scopeWeekdays}
-                    rows={marks.data ?? []} attendanceState={marks.state}
-                    selectable={selectMode} selected={selected.has(m.id)}
-                    onToggleSelect={() => toggleSelected(m.id)} />
-                ))}
-              </View>
-
-              {/* C-76: a member with no address is still listed and still
-                  counted. The separation is because the follow-up rule cannot
-                  reach the member, which is a fact about the SEND and not
-                  about their attendance -- and the note says exactly that. */}
-              {withoutEmail.length > 0 ? (
-                <View style={{ marginTop: SPACE.xl }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                    <Icon name="mail_off" size={16} color={dangerInk} />
-                    <Label style={{ flex: 1, color: dangerInk }}>No email</Label>
-                    <Text style={{ fontSize: 11.5, color: theme.muted, fontVariant: ['tabular-nums'] }}>
-                      {`${withoutEmail.length} of ${shown.length}`}
-                    </Text>
-                  </View>
-                  <View style={{
-                    marginTop: 9, padding: 13, borderRadius: RADIUS.md,
-                    backgroundColor: statusSurface(dangerInk).bg,
-                    borderWidth: 1, borderColor: statusSurface(dangerInk).border,
-                  }}>
-                    <Muted style={{ color: theme.fg }}>
-                      Their attendance is recorded as usual, but they are never counted for
-                      follow-up: there is no address to send to. Add an email and they join the rule.
-                    </Muted>
-                  </View>
-                  {/* SELECT AND DELETE, ON THIS SECTION AND ABOVE ITS CARDS.
-                      The requester asked for it here by name -- "for no email
-                      member give select and deselect right above that section
-                      so that they can select in bulk".
-
-                      It is drawn WITHOUT the header's Select toggle having
-                      been pressed, which is the part that had actually gone
-                      wrong: selection existed, but behind a control at the top
-                      of the screen, so from down here the feature simply was
-                      not there. A section that offers a bulk delete has to
-                      offer the ticking that feeds it, in the same place.
-
-                      Only these members are ever counted or deleted here --
-                      `withoutEmail`, never the whole roster. A member the
-                      academy can still email is not on this list and cannot be
-                      swept up by it. */}
-                  <View testID="course-noemail-bar" style={{
-                    flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
-                    marginTop: 10, paddingHorizontal: 11, paddingVertical: 8,
-                    borderRadius: RADIUS.md,
-                    backgroundColor: theme.surface2,
-                    borderWidth: 1, borderColor: theme.line,
-                  }}>
-                    <Text style={{
-                      flex: 1, minWidth: 0, fontSize: 11.5, fontWeight: '700',
-                      color: theme.fg, fontVariant: ['tabular-nums'],
-                    }}>
-                      {noEmailSelected.length === 0
-                        ? 'Tick the ones to delete'
-                        : `${noEmailSelected.length} of ${withoutEmail.length} selected`}
-                    </Text>
-
-                    <Pressable testID="course-noemail-select-all"
-                      onPress={() => setSelected(prev => {
-                        const next = new Set(prev);
-                        if (noEmailSelected.length === withoutEmail.length) {
-                          for (const m of withoutEmail) next.delete(m.id);
-                        } else {
-                          for (const m of withoutEmail) next.add(m.id);
-                        }
-                        return next;
-                      })}
-                      accessibilityRole="button"
-                      accessibilityLabel={noEmailSelected.length === withoutEmail.length
-                        ? 'Deselect every member with no email'
-                        : 'Select every member with no email'}
-                      style={({ pressed }) => ({
-                        minHeight: 28, paddingHorizontal: 10, borderRadius: RADIUS.sm,
-                        justifyContent: 'center', backgroundColor: theme.surface,
-                        borderWidth: 1, borderColor: theme.lineStrong,
-                        opacity: pressed ? 0.7 : 1,
-                      })}>
-                      <Text style={{ fontSize: 11, fontWeight: '800', color: theme.fg }}>
-                        {noEmailSelected.length === withoutEmail.length ? 'Deselect all' : 'Select all'}
-                      </Text>
-                    </Pressable>
-
-                    {/* Drawn only once something is ticked: a delete button
-                        over an empty selection is a control that lies. */}
-                    {noEmailSelected.length > 0 ? (
-                      <Pressable testID="course-noemail-delete"
-                        onPress={() => setConfirmBulkDelete(true)}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Delete ${noEmailSelected.length} selected members with no email`}
-                        style={({ pressed }) => ({
-                          minHeight: 28, paddingHorizontal: 10, borderRadius: RADIUS.sm,
-                          flexDirection: 'row', alignItems: 'center', gap: 5,
-                          justifyContent: 'center',
-                          backgroundColor: statusSurface(dangerInk).bg,
-                          borderWidth: 1, borderColor: statusSurface(dangerInk).border,
-                          opacity: pressed ? 0.7 : 1,
-                        })}>
-                        <Icon name="delete" size={13} color={dangerInk} />
-                        {/* the WORD, never the colour alone (guardrail 3) */}
-                        <Text style={{ fontSize: 11, fontWeight: '800', color: dangerInk }}>
-                          {`Delete ${noEmailSelected.length}`}
-                        </Text>
-                      </Pressable>
-                    ) : null}
-                  </View>
-
-                  <View style={{ gap: SPACE.sm, marginTop: 10 }}>
-                    {withoutEmail.map((m, i) => (
-                      <MemberCard key={m.id} member={m} tint={AVATAR_TINTS[i % AVATAR_TINTS.length]}
-                        weekLabel={week.label} noEmail allMembers={members}
-                        dayIso={chosen?.iso ?? null} weekdays={scopeWeekdays}
-                        rows={marks.data ?? []} attendanceState={marks.state}
-                        /* Always tickable, toggle or no toggle: the bar above
-                           offers a delete over these cards, so the cards have
-                           to be selectable from here. */
-                        selectable selected={selected.has(m.id)}
-                        onToggleSelect={() => toggleSelected(m.id)} />
-                    ))}
-                  </View>
-                </View>
-              ) : null}
-
-              {/* ------------------------------------------- EMAIL ISSUES
-                  IMMEDIATELY BELOW "No email", and deliberately NOT merged
-                  into it: the two answer different questions and have
-                  different answers. "No email" is no address on file, and the
-                  way out is to add one. This is an address that exists and
-                  cannot be used, and what to do depends entirely on WHY --
-                  which is why the rows are grouped by the reason.
-
-                  Drawn only when there is something to say. A collapsed
-                  heading over an empty list is a section that costs a reader
-                  attention and gives nothing back. */}
-              {issueTotal > 0 ? (
-                <View testID="course-email-issues" style={{ marginTop: SPACE.xl }}>
-                  <Pressable
-                    testID="course-email-issues-toggle"
-                    onPress={() => setIssuesOpen(o => {
-                      /* A close the OPERATOR chose outranks the filter's
-                         opening of it, for as long as that filter stays
-                         ticked. Re-opening it on every render would be the
-                         screen arguing with the person using it. */
-                      if (o) closedByHand.current = true;
-                      return !o;
-                    })}
-                    accessibilityRole="button"
-                    accessibilityState={{ expanded: issuesOpen }}
-                    accessibilityLabel={`Email issues, ${issueTotal} ${issueTotal === 1 ? 'member' : 'members'}`}
-                    accessibilityHint={issuesOpen ? 'Hides the list' : 'Shows the list, grouped by reason'}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 7, minHeight: TAP_MIN }}>
-                    <Icon name="error" size={16} color={dangerInk} />
-                    <Label style={{ flex: 1, color: dangerInk }}>Email issues</Label>
-                    <Text style={{ fontSize: 11.5, color: theme.muted, fontVariant: ['tabular-nums'] }}>
-                      {`${issueTotal} of ${shown.length}`}
-                    </Text>
-                    <Icon name={issuesOpen ? 'expand_less' : 'expand_more'} size={18} color={theme.muted} />
-                  </Pressable>
-
-                  {issuesOpen ? (
-                    <View style={{ gap: SPACE.xl, marginTop: 9 }}>
-                      {issueGroups.map(group => {
-                        const reading = ISSUE_READING[group.kind];
-                        return (
-                          <View key={group.kind} testID={`course-email-issue-group-${group.kind}`}>
-                            {/* The reason, with its own count. The word carries
-                                it as well as the colour (guardrail 3, CP-010). */}
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                              {/* word AND icon, on the heading as on the rows
-                                  below it (guardrail 3). */}
-                              <Icon name="error" size={13} color={dangerInk} />
-                              <Text style={{ fontSize: 11.5, fontWeight: '800', color: dangerInk }}>
-                                {group.label}
-                              </Text>
-                              <Text style={{ fontSize: 11.5, color: theme.muted, fontVariant: ['tabular-nums'] }}>
-                                {`· ${group.rows.length}`}
-                              </Text>
-                            </View>
-
-                            {/* THE REASON ONCE, OVER THE GROUP IT IS TRUE OF,
-                                which is what the grouping buys: every card
-                                below this note carries this exact reason, so
-                                repeating it per member would be the same
-                                sentence printed N times.
-
-                                ONLY A BOUNCE IS OFFERED A WAY OUT, and it is
-                                the Edit control the card already has: the
-                                address is wrong and the answer is to change
-                                it. An opt-out and a spam report are the
-                                member's own decision, so nothing here offers
-                                to override them -- no email goes out from this
-                                section and no suppression is lifted by it, and
-                                the note says so in as many words. */}
-                            <View style={{
-                              marginTop: 9, padding: 13, borderRadius: RADIUS.md,
-                              backgroundColor: statusSurface(dangerInk).bg,
-                              borderWidth: 1, borderColor: statusSurface(dangerInk).border,
-                            }}>
-                              <Text style={{ fontSize: 12.5, fontWeight: '800', color: dangerInk }}>
-                                {reading.title}
-                              </Text>
-                              <Muted style={{ color: theme.fg, marginTop: 3 }}>
-                                {reading.action === 'edit'
-                                  ? `${reading.detail} Attendance is recorded as usual. Use Edit on a member below to add a different email address.`
-                                  : `${reading.detail} Attendance is recorded as usual, and no email is sent to these addresses. There is nothing to change here.`}
-                              </Muted>
-                            </View>
-
-                            {/* THE SAME CARD THE ROSTER ABOVE DRAWS, because
-                                moving a member down here must not cost the
-                                thing the screen is for: the attendance reading
-                                and the day's tick are on this card and nowhere
-                                else. What changes is the line under the name,
-                                which names the address that is the problem and
-                                the app's own word for its state -- not the
-                                plain muted address, which is what made an
-                                unusable address read as a working one. */}
-                            <View style={{ gap: SPACE.sm, marginTop: 10 }}>
-                              {group.rows.map((row, i) => (
-                                <MemberCard key={row.member.id} member={row.member}
-                                  tint={AVATAR_TINTS[i % AVATAR_TINTS.length]}
-                                  weekLabel={week.label} noEmail={false} allMembers={members}
-                                  emailIssue={{ address: row.address, word: issueBadge(row.kind) }}
-                                  dayIso={chosen?.iso ?? null} weekdays={scopeWeekdays}
-                                  rows={marks.data ?? []} attendanceState={marks.state}
-                                  selectable={selectMode} selected={selected.has(row.member.id)}
-                                  onToggleSelect={() => toggleSelected(row.member.id)} />
-                              ))}
-                            </View>
-                          </View>
-                        );
-                      })}
-                    </View>
-                  ) : null}
-                </View>
-              ) : null}
-            </>
+            /* THE CARDS ARE THE LIST'S OWN ROWS NOW, not children of this
+               block: rosterItems() below turns the live roster, the No email
+               section, the Email issues groups and the Inactive section into
+               the windowed list's items, in this order, each section's
+               heading and note an item of its own. This branch is the gate:
+               the items are built only when every state above is passed. */
+            null
           )}
 
-          {/* ------------------------------------------- INACTIVE, AT THE FOOT
-              "in attendnace section show inactive members at bottom".
-
-              OUTSIDE the states above, not inside the last of them: a day on
-              which every member was inactive draws an empty state AND this
-              section, and a search that matches only an inactive member still
-              finds them. Placing it in the list branch would have made the
-              section disappear in exactly the cases it is most needed.
-
-              WHY A SECTION AND NOT A SORT. The 08-Sep rule -- a member off the
-              register is not one of that day's rows -- is unchanged, and it is
-              the reason these cards carry no attendance reading: there is no
-              session they were expected at, so Present, Absent and Yet to mark
-              would each be a claim about a register they were not on. What the
-              cards do carry is the pill, which is the whole point of listing
-              them: marking a member active again is one tap from the day
-              somebody noticed they were missing.
-
-              They are not counted in the day's figures, not reachable by the
-              roster's Select all, and not offered to the reset or the bulk
-              delete -- every one of those is about the day's register. */}
-          {inactiveListed.length > 0 ? (
-            <View testID="course-inactive-section" style={{ marginTop: SPACE.xl }}>
-              {/* The heading wears the same ink as the pills under it, for
-                  the reason the No email heading wears its section's: a
-                  grey heading over red tags reads as two different facts. */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-                <Icon name="pause_circle" size={16} color={dangerInk} />
-                <Label style={{ flex: 1, color: dangerInk }}>Inactive</Label>
-                <Text style={{ fontSize: 11.5, color: theme.muted, fontVariant: ['tabular-nums'] }}>
-                  {`${inactiveListed.length} of ${joinedByDay.length}`}
-                </Text>
-              </View>
-              <View style={{
-                marginTop: 9, padding: 13, borderRadius: RADIUS.md,
-                backgroundColor: theme.surface2,
-                borderWidth: 1, borderColor: theme.line,
-              }}>
-                <Muted style={{ color: theme.fg }}>
-                  {`Off the register on ${chosen ? dayLabel(chosen.iso) : 'that day'}, so they are not part of it`
-                    + ' and no attendance is expected. The enrolment and the history are untouched —'
-                    + ' tap Inactive on a card to put a member back.'}
-                </Muted>
-              </View>
-              <View style={{ gap: SPACE.sm, marginTop: 10 }}>
-                {inactiveListed.map((m, i) => (
-                  <MemberCard key={m.id} member={m} tint={AVATAR_TINTS[i % AVATAR_TINTS.length]}
-                    weekLabel={week.label} noEmail={m.emails.length === 0} allMembers={members}
-                    dayIso={chosen?.iso ?? null} weekdays={scopeWeekdays}
-                    rows={marks.data ?? []} attendanceState={marks.state}
-                    /* The day's register is what the ticks feed, and these
-                       members are not on it. A checkbox here would put them in
-                       front of a reset and a delete that were never about
-                       them. */
-                    offRegister selectable={false} selected={false}
-                    onToggleSelect={() => {}} />
-                ))}
-              </View>
-            </View>
-          ) : null}
 
           {/* THE "ATTENDANCE" ACTION ROWS ARE GONE, on request.
               Send Communication was the same destination as the button in
@@ -2068,9 +1825,9 @@ function CourseDetailBody() {
               reachable only by URL. Recorded rather than quietly accepted --
               see TECH_DEBT TD-014, which this joins. */}
         </View>
-      </ScrollView>
+      </View>} />
 
-      {/* Outside the ScrollView, like every other dialog on this screen: a
+      {/* Outside the list, like every other dialog on this screen: a
           modal nested in a scroller inherits its clipping on web. */}
       <ResetRegisterDialog
         open={resetOpen}
@@ -2205,7 +1962,368 @@ function DayLegend({ failed }: { failed: boolean }) {
  * no-email sections draw the SAME card with a different reason attached, and
  * two copies would be two places for the miss counts to drift.
  */
-function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
+const NO_DAY_ROWS: AttendanceRow[] = [];
+
+/* ------------------------------------------------------ the roster's rows
+ *
+ * The windowed list's items: one per card, with each section's heading and
+ * note as an item of its own before its cards, in the order the ScrollView
+ * drew them -- the live roster, No email, Email issues (grouped by reason,
+ * only while open), Inactive. The elements are built here, once per render,
+ * and the list mounts only the ones on screen; MemberCard is memoised, so a
+ * rebuilt element with the same props costs no card a re-render.
+ *
+ * Defined AFTER the component on purpose: the specs read this file in
+ * order, and the first card must come after the selection bar. */
+type RosterItem = { key: string; top: number; element: ReactElement };
+
+function rosterItems(c: {
+  ready: boolean;
+  withEmail: Member[]; withoutEmail: Member[];
+  issueGroups: ReturnType<typeof emailIssueGroups>; issueTotal: number; issuesOpen: boolean;
+  inactiveListed: Member[];
+  shown: Member[]; joinedByDay: Member[]; members: Member[];
+  week: { label: string }; chosen: { iso: string } | undefined; scopeWeekdays: number[];
+  marks: { state: 'loading' | 'ready' | 'error'; data: AttendanceRow[] | null };
+  rowsFor: (id: string) => AttendanceRow[];
+  selectMode: boolean; selected: Set<string>; toggleSelected: (id: string) => void;
+  noEmailSelected: Member[];
+  setSelected: Dispatch<SetStateAction<Set<string>>>;
+  setConfirmBulkDelete: (v: boolean) => void;
+  setIssuesOpen: Dispatch<SetStateAction<boolean>>;
+  closedByHand: MutableRefObject<boolean>;
+  theme: ReturnType<typeof useTheme>['theme']; dangerInk: string;
+}): RosterItem[] {
+  const {
+    withEmail, withoutEmail, issueGroups, issueTotal, issuesOpen, inactiveListed, shown, joinedByDay,
+    members, week, chosen, scopeWeekdays, marks, rowsFor, selectMode, selected, toggleSelected,
+    noEmailSelected, setSelected, setConfirmBulkDelete, setIssuesOpen, closedByHand, theme, dangerInk,
+  } = c;
+  const items: RosterItem[] = [];
+  const push = (key: string, top: number, element: ReactElement) => items.push({ key, top, element });
+
+  if (c.ready) {
+    withEmail.map((m, i) => push(`live:${m.id}`, i === 0 ? SPACE.md : SPACE.sm, (
+      <MemberCard key={m.id} member={m} tint={AVATAR_TINTS[(i + 3) % AVATAR_TINTS.length]}
+                    weekLabel={week.label} noEmail={false} allMembers={members}
+                    dayIso={chosen?.iso ?? null} weekdays={scopeWeekdays}
+                    rows={rowsFor(m.id)} attendanceState={marks.state}
+                    selectable={selectMode} selected={selected.has(m.id)}
+                    onToggleSelect={toggleSelected} />
+    )));
+
+    {/* C-76: a member with no address is still listed and still
+                  counted. The separation is because the follow-up rule cannot
+                  reach the member, which is a fact about the SEND and not
+                  about their attendance -- and the note says exactly that. */}
+    if (withoutEmail.length > 0) {
+      push('noemail', SPACE.xl, (
+        <View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                    <Icon name="mail_off" size={16} color={dangerInk} />
+                    <Label style={{ flex: 1, color: dangerInk }}>No email</Label>
+                    <Text style={{ fontSize: 11.5, color: theme.muted, fontVariant: ['tabular-nums'] }}>
+                      {`${withoutEmail.length} of ${shown.length}`}
+                    </Text>
+                  </View>
+                  <View style={{
+                    marginTop: 9, padding: 13, borderRadius: RADIUS.md,
+                    backgroundColor: statusSurface(dangerInk).bg,
+                    borderWidth: 1, borderColor: statusSurface(dangerInk).border,
+                  }}>
+                    <Muted style={{ color: theme.fg }}>
+                      Their attendance is recorded as usual, but they are never counted for
+                      follow-up: there is no address to send to. Add an email and they join the rule.
+                    </Muted>
+                  </View>
+                  {/* SELECT AND DELETE, ON THIS SECTION AND ABOVE ITS CARDS.
+                      The requester asked for it here by name -- "for no email
+                      member give select and deselect right above that section
+                      so that they can select in bulk".
+
+                      It is drawn WITHOUT the header's Select toggle having
+                      been pressed, which is the part that had actually gone
+                      wrong: selection existed, but behind a control at the top
+                      of the screen, so from down here the feature simply was
+                      not there. A section that offers a bulk delete has to
+                      offer the ticking that feeds it, in the same place.
+
+                      Only these members are ever counted or deleted here --
+                      `withoutEmail`, never the whole roster. A member the
+                      academy can still email is not on this list and cannot be
+                      swept up by it. */}
+                  <View testID="course-noemail-bar" style={{
+                    flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
+                    marginTop: 10, paddingHorizontal: 11, paddingVertical: 8,
+                    borderRadius: RADIUS.md,
+                    backgroundColor: theme.surface2,
+                    borderWidth: 1, borderColor: theme.line,
+                  }}>
+                    <Text style={{
+                      flex: 1, minWidth: 0, fontSize: 11.5, fontWeight: '700',
+                      color: theme.fg, fontVariant: ['tabular-nums'],
+                    }}>
+                      {noEmailSelected.length === 0
+                        ? 'Tick the ones to delete'
+                        : `${noEmailSelected.length} of ${withoutEmail.length} selected`}
+                    </Text>
+
+                    <Pressable testID="course-noemail-select-all"
+                      onPress={() => setSelected(prev => {
+                        const next = new Set(prev);
+                        if (noEmailSelected.length === withoutEmail.length) {
+                          for (const m of withoutEmail) next.delete(m.id);
+                        } else {
+                          for (const m of withoutEmail) next.add(m.id);
+                        }
+                        return next;
+                      })}
+                      accessibilityRole="button"
+                      accessibilityLabel={noEmailSelected.length === withoutEmail.length
+                        ? 'Deselect every member with no email'
+                        : 'Select every member with no email'}
+                      style={({ pressed }) => ({
+                        minHeight: 28, paddingHorizontal: 10, borderRadius: RADIUS.sm,
+                        justifyContent: 'center', backgroundColor: theme.surface,
+                        borderWidth: 1, borderColor: theme.lineStrong,
+                        opacity: pressed ? 0.7 : 1,
+                      })}>
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: theme.fg }}>
+                        {noEmailSelected.length === withoutEmail.length ? 'Deselect all' : 'Select all'}
+                      </Text>
+                    </Pressable>
+
+                    {/* Drawn only once something is ticked: a delete button
+                        over an empty selection is a control that lies. */}
+                    {noEmailSelected.length > 0 ? (
+                      <Pressable testID="course-noemail-delete"
+                        onPress={() => setConfirmBulkDelete(true)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Delete ${noEmailSelected.length} selected members with no email`}
+                        style={({ pressed }) => ({
+                          minHeight: 28, paddingHorizontal: 10, borderRadius: RADIUS.sm,
+                          flexDirection: 'row', alignItems: 'center', gap: 5,
+                          justifyContent: 'center',
+                          backgroundColor: statusSurface(dangerInk).bg,
+                          borderWidth: 1, borderColor: statusSurface(dangerInk).border,
+                          opacity: pressed ? 0.7 : 1,
+                        })}>
+                        <Icon name="delete" size={13} color={dangerInk} />
+                        {/* the WORD, never the colour alone (guardrail 3) */}
+                        <Text style={{ fontSize: 11, fontWeight: '800', color: dangerInk }}>
+                          {`Delete ${noEmailSelected.length}`}
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+        </View>
+      ));
+      withoutEmail.map((m, i) => push(`noemail:${m.id}`, i === 0 ? 10 : SPACE.sm, (
+        <MemberCard key={m.id} member={m} tint={AVATAR_TINTS[i % AVATAR_TINTS.length]}
+                        weekLabel={week.label} noEmail allMembers={members}
+                        dayIso={chosen?.iso ?? null} weekdays={scopeWeekdays}
+                        rows={rowsFor(m.id)} attendanceState={marks.state}
+                        /* Always tickable, toggle or no toggle: the bar above
+                           offers a delete over these cards, so the cards have
+                           to be selectable from here. */
+                        selectable selected={selected.has(m.id)}
+                        onToggleSelect={toggleSelected} />
+      )));
+    }
+
+    {/* ------------------------------------------- EMAIL ISSUES
+                  IMMEDIATELY BELOW "No email", and deliberately NOT merged
+                  into it: the two answer different questions and have
+                  different answers. "No email" is no address on file, and the
+                  way out is to add one. This is an address that exists and
+                  cannot be used, and what to do depends entirely on WHY --
+                  which is why the rows are grouped by the reason.
+
+                  Drawn only when there is something to say. A collapsed
+                  heading over an empty list is a section that costs a reader
+                  attention and gives nothing back. */}
+    if (issueTotal > 0) {
+      push('issues', SPACE.xl, (
+        <View testID="course-email-issues">
+          <Pressable
+                    testID="course-email-issues-toggle"
+                    onPress={() => setIssuesOpen(o => {
+                      /* A close the OPERATOR chose outranks the filter's
+                         opening of it, for as long as that filter stays
+                         ticked. Re-opening it on every render would be the
+                         screen arguing with the person using it. */
+                      if (o) closedByHand.current = true;
+                      return !o;
+                    })}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: issuesOpen }}
+                    accessibilityLabel={`Email issues, ${issueTotal} ${issueTotal === 1 ? 'member' : 'members'}`}
+                    accessibilityHint={issuesOpen ? 'Hides the list' : 'Shows the list, grouped by reason'}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 7, minHeight: TAP_MIN }}>
+                    <Icon name="error" size={16} color={dangerInk} />
+                    <Label style={{ flex: 1, color: dangerInk }}>Email issues</Label>
+                    <Text style={{ fontSize: 11.5, color: theme.muted, fontVariant: ['tabular-nums'] }}>
+                      {`${issueTotal} of ${shown.length}`}
+                    </Text>
+                    <Icon name={issuesOpen ? 'expand_less' : 'expand_more'} size={18} color={theme.muted} />
+                  </Pressable>
+        </View>
+      ));
+      if (issuesOpen) {
+        issueGroups.map(group => {
+          const reading = ISSUE_READING[group.kind];
+          push(`issue-group:${group.kind}`, group === issueGroups[0] ? 9 : SPACE.xl, (
+            <View testID={`course-email-issue-group-${group.kind}`}>
+              {/* The reason, with its own count. The word carries
+                                it as well as the colour (guardrail 3, CP-010). */}
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              {/* word AND icon, on the heading as on the rows
+                                  below it (guardrail 3). */}
+                              <Icon name="error" size={13} color={dangerInk} />
+                              <Text style={{ fontSize: 11.5, fontWeight: '800', color: dangerInk }}>
+                                {group.label}
+                              </Text>
+                              <Text style={{ fontSize: 11.5, color: theme.muted, fontVariant: ['tabular-nums'] }}>
+                                {`· ${group.rows.length}`}
+                              </Text>
+                            </View>
+
+                            {/* THE REASON ONCE, OVER THE GROUP IT IS TRUE OF,
+                                which is what the grouping buys: every card
+                                below this note carries this exact reason, so
+                                repeating it per member would be the same
+                                sentence printed N times.
+
+                                ONLY A BOUNCE IS OFFERED A WAY OUT, and it is
+                                the Edit control the card already has: the
+                                address is wrong and the answer is to change
+                                it. An opt-out and a spam report are the
+                                member's own decision, so nothing here offers
+                                to override them -- no email goes out from this
+                                section and no suppression is lifted by it, and
+                                the note says so in as many words. */}
+                            <View style={{
+                              marginTop: 9, padding: 13, borderRadius: RADIUS.md,
+                              backgroundColor: statusSurface(dangerInk).bg,
+                              borderWidth: 1, borderColor: statusSurface(dangerInk).border,
+                            }}>
+                              <Text style={{ fontSize: 12.5, fontWeight: '800', color: dangerInk }}>
+                                {reading.title}
+                              </Text>
+                              <Muted style={{ color: theme.fg, marginTop: 3 }}>
+                                {reading.action === 'edit'
+                                  ? `${reading.detail} Attendance is recorded as usual. Use Edit on a member below to add a different email address.`
+                                  : `${reading.detail} Attendance is recorded as usual, and no email is sent to these addresses. There is nothing to change here.`}
+                              </Muted>
+                            </View>
+            </View>
+          ));
+          {/* THE SAME CARD THE ROSTER ABOVE DRAWS, because
+                                moving a member down here must not cost the
+                                thing the screen is for: the attendance reading
+                                and the day's tick are on this card and nowhere
+                                else. What changes is the line under the name,
+                                which names the address that is the problem and
+                                the app's own word for its state -- not the
+                                plain muted address, which is what made an
+                                unusable address read as a working one. */}
+          group.rows.map((row, i) => push(`issue:${row.member.id}`, i === 0 ? 10 : SPACE.sm, (
+            <MemberCard key={row.member.id} member={row.member}
+                                  tint={AVATAR_TINTS[i % AVATAR_TINTS.length]}
+                                  weekLabel={week.label} noEmail={false} allMembers={members}
+                                  emailIssue={{ address: row.address, word: issueBadge(row.kind) }}
+                                  dayIso={chosen?.iso ?? null} weekdays={scopeWeekdays}
+                                  rows={rowsFor(row.member.id)} attendanceState={marks.state}
+                                  selectable={selectMode} selected={selected.has(row.member.id)}
+                                  onToggleSelect={toggleSelected} />
+          )));
+        });
+      }
+    }
+  }
+
+          {/* ------------------------------------------- INACTIVE, AT THE FOOT
+              "in attendnace section show inactive members at bottom".
+
+              OUTSIDE the states above, not inside the last of them: a day on
+              which every member was inactive draws an empty state AND this
+              section, and a search that matches only an inactive member still
+              finds them. Placing it in the list branch would have made the
+              section disappear in exactly the cases it is most needed.
+
+              WHY A SECTION AND NOT A SORT. The 08-Sep rule -- a member off the
+              register is not one of that day's rows -- is unchanged, and it is
+              the reason these cards carry no attendance reading: there is no
+              session they were expected at, so Present, Absent and Yet to mark
+              would each be a claim about a register they were not on. What the
+              cards do carry is the pill, which is the whole point of listing
+              them: marking a member active again is one tap from the day
+              somebody noticed they were missing.
+
+              They are not counted in the day's figures, not reachable by the
+              roster's Select all, and not offered to the reset or the bulk
+              delete -- every one of those is about the day's register. */}
+  if (inactiveListed.length > 0) {
+    push('inactive', SPACE.xl, (
+      <View testID="course-inactive-section">
+        {/* The heading wears the same ink as the pills under it, for
+                  the reason the No email heading wears its section's: a
+                  grey heading over red tags reads as two different facts. */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                <Icon name="pause_circle" size={16} color={dangerInk} />
+                <Label style={{ flex: 1, color: dangerInk }}>Inactive</Label>
+                <Text style={{ fontSize: 11.5, color: theme.muted, fontVariant: ['tabular-nums'] }}>
+                  {`${inactiveListed.length} of ${joinedByDay.length}`}
+                </Text>
+              </View>
+              <View style={{
+                marginTop: 9, padding: 13, borderRadius: RADIUS.md,
+                backgroundColor: theme.surface2,
+                borderWidth: 1, borderColor: theme.line,
+              }}>
+                <Muted style={{ color: theme.fg }}>
+                  {`Off the register on ${chosen ? dayLabel(chosen.iso) : 'that day'}, so they are not part of it`
+                    + ' and no attendance is expected. The enrolment and the history are untouched —'
+                    + ' tap Inactive on a card to put a member back.'}
+                </Muted>
+              </View>
+      </View>
+    ));
+    inactiveListed.map((m, i) => push(`inactive:${m.id}`, i === 0 ? 10 : SPACE.sm, (
+      <MemberCard key={m.id} member={m} tint={AVATAR_TINTS[i % AVATAR_TINTS.length]}
+                    weekLabel={week.label} noEmail={m.emails.length === 0} allMembers={members}
+                    dayIso={chosen?.iso ?? null} weekdays={scopeWeekdays}
+                    /* The whole day, unread: an inactive card is off the
+                        register (offRegister) and draws no attendance
+                        reading. The live sections take their member's rows
+                        from the same source, indexed (rowsFor). */
+                    rows={marks.data ?? []} attendanceState={marks.state}
+                    /* The day's register is what the ticks feed, and these
+                       members are not on it. A checkbox here would put them in
+                       front of a reset and a delete that were never about
+                       them. */
+                    offRegister selectable={false} selected={false}
+                    onToggleSelect={noToggle} />
+    )));
+  }
+  return items;
+}
+
+const rosterItemKey = (item: RosterItem) => item.key;
+/** Every row wears the sides the ScrollView's inner block wore, and the gap
+ *  the section it is in used to draw with `gap`. */
+const renderRosterItem: ListRenderItem<RosterItem> = ({ item }) => (
+  <View style={{ paddingHorizontal: SPACE.lg, marginTop: item.top }}>{item.element}</View>
+);
+
+const noToggle = (): void => {};
+
+/**
+ * MEMOISED. The roster re-renders on every keystroke and every tick; with
+ * stable handlers and per-member rows, a card now re-renders only when
+ * something about THAT member changed.
+ */
+const MemberCard = memo(function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
   dayIso, weekdays, rows, attendanceState, offRegister = false,
   emailIssue, selectable, selected, onToggleSelect }:
   { member: Member; tint: string; weekLabel: string; noEmail: boolean;
@@ -2251,7 +2369,7 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
      */
     selectable?: boolean;
     selected?: boolean;
-    onToggleSelect?: () => void;
+    onToggleSelect?: (memberId: string) => void;
     /** the register this member's display name can be linked INTO -- only a
      *  no-email card offers it, but the prop is passed by both call sites so
      *  the two cards stay one component */
@@ -2273,7 +2391,7 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
   const dangerInk = theme.isDark ? STATUS.absent.fgDark : STATUS.absent.fgLight;
   const okInk = theme.isDark ? STATUS.present.fgDark : STATUS.present.fgLight;
 
-  const todayIso = iso(new Date());
+  const todayIso = businessTodayIso();
 
   /**
    * ON the register, or off it -- `members.status`, not `expected === 0`.
@@ -2381,6 +2499,30 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
   // "Add display name to existing member" -- open, and mid-save.
   const [linking, setLinking] = useState(false);
   const [linkingSave, setLinkingSave] = useState(false);
+  /* THE PICKER'S OPTIONS, BUILT ONLY WHILE IT IS OPEN. Every card on the
+     roster built a 1,644-row option array for a picker that was closed, on
+     every render -- a million objects per roster render. Closed, the picker
+     draws nothing and gets nothing to filter. */
+  const pickerOptions = useMemo(() => !linking ? [] : allMembers
+    .filter(m => m.id !== member.id)
+    .map(m => ({
+      label: m.name,
+      /* C-76's own words, the ones this screen already prints two cards
+         up: a member with no address is NAMED, never silently blank. A
+         blank line here reads as "still loading", and two same-named
+         members with no address between them would be two identical
+         rows again -- which is the defect this picker was opened for. */
+      sub: primaryEmail(m) || 'No email on file',
+      /* THE ADDRESS IS ON THE ROW, not only in the query. The register holds
+         two live members called "Kavitha Ramesh"; on a name alone these were
+         two identical rows over an irreversible merge. `search` carries
+         EVERY address she holds, so an old address on a spreadsheet still
+         finds her, while the row prints the primary one -- the same address
+         the roster card and the send list print for her. */
+      search: m.emails.map(e => e.address).join(' '),
+      meta: `${m.course} · ${m.branch}`,
+      value: m.id,
+    })), [linking, allMembers, member.id]);
 
   /** Where the member stands on the selected day -- read here, never written.
    *  Not read at all in the Inactive section: no reading of that day's
@@ -2490,7 +2632,7 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
             follows one screen up. */}
         {selectable ? (
           <Pressable testID={`course-member-select-${member.id}`}
-            onPress={onToggleSelect}
+            onPress={() => onToggleSelect?.(member.id)}
             accessibilityRole="checkbox"
             accessibilityState={{ checked: !!selected }}
             accessibilityLabel={`Select ${member.name}`}
@@ -2836,20 +2978,7 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
            EVERY address she holds, so an old address on a spreadsheet still
            finds her, while the row prints the primary one -- the same address
            the roster card and the send list print for her. */
-        options={allMembers
-          .filter(m => m.id !== member.id)
-          .map(m => ({
-            label: m.name,
-            /* C-76's own words, the ones this screen already prints two cards
-               up: a member with no address is NAMED, never silently blank. A
-               blank line here reads as "still loading", and two same-named
-               members with no address between them would be two identical
-               rows again -- which is the defect this picker was opened for. */
-            sub: primaryEmail(m) || 'No email on file',
-            search: m.emails.map(e => e.address).join(' '),
-            meta: `${m.course} · ${m.branch}`,
-            value: m.id,
-          }))}
+        options={pickerOptions}
         confirmLabel="Add as display name"
         busy={linkingSave}
         /* WHAT IT WILL DO, naming both halves. The attendance move is the
@@ -2956,7 +3085,7 @@ function MemberCard({ member, tint, weekLabel, noEmail, allMembers,
         onConfirm={() => { void remove(); }} />
     </View>
   );
-}
+});
 
 /**
  * Under the shell, not instead of it. This screen is pushed on the root

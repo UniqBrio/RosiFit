@@ -18,11 +18,12 @@ import { cleanAlias, aliasProblem, aliasSaveError, MERGE_FAILED } from './alias'
 import { sentenceOpening } from './refusalCase';
 import { personReadable } from './engineWording';
 import { currentWeek, iso, joinedLabel, type Period } from './period';
+import { businessTodayIso, businessDayBounds } from './businessDate';
 import { SUBJECT_MIN, SUBJECT_MAX, BODY_MIN, COURSE_NAME_MIN, COURSE_NAME_MAX } from './message';
-import { bucketFixture, type BucketMetrics } from './buckets';
+import { bucketFixture, type BucketMetrics, type MemberMetric } from './buckets';
 import type { SentMap } from './sent';
 import type { BatchSummary } from './sendBatch';
-import { metricsPage } from './periodMetrics';
+import { metricsPage, splitBuckets, METRICS_BUCKETS_RPC, type BucketMetricRow } from './periodMetrics';
 import { duringWrite } from './inFlight';
 import { sharedMemberRead, invalidateMemberReads } from './memberStore';
 import { currentSchedules, today } from './schedule';
@@ -54,7 +55,7 @@ import { memberWeek, NO_SESSIONS_ROW, type MemberWeekSession } from './memberWee
 // id list of member scale -- goes through this. PostgREST stops at 1000 rows
 // and calls it success; see src/data/pageAll.ts and RC-039.
 import {
-  pageAllByKey, guardUntruncated, PagedReadError, inChunks, type ChunkedSource,
+  pageAllByKey, guardUntruncated, PagedReadError, inChunks, MAX_IDS_PER_REQUEST, type ChunkedSource,
   type QueryFactory,
 } from './pageAll';
 import {
@@ -199,6 +200,142 @@ function sharedPeriodMetrics<T>(period: { from: string; to: string }, read: () =
 }
 
 /**
+ * THE CATALOGUE: the live courses, their offerings, the branches and the
+ * timetable -- the four small tables that name everything else.
+ *
+ * ONE SHARED READ, IN ONE SHAPE. Before this, a Home load read `courses` in
+ * three shapes (`id,name` for the rules, `name` for the filter chips, five
+ * columns for the course list), `branches` in two, `course_offerings` by id
+ * and whole, and the timetable twice -- nine requests for four tables, none
+ * of them shareable with each other because T-406 shares only an IDENTICAL
+ * URL (RC-12, docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md). Every reader
+ * now asks for the catalogue, in flight once per generation through the
+ * member store, and takes the slice it needs. It also flattens the chains
+ * that used to run offerings -> courses/branches by id after their main read:
+ * the catalogue is read IN PARALLEL with the main read, so the register, the
+ * pending sessions, the course day and a member's week each lose two
+ * sequential round trips.
+ *
+ * Live rows only (`deleted_at is null`), which is what every consumer already
+ * filtered to; a deleted course or branch reads as '—', exactly as before.
+ */
+type CatalogueCourse = {
+  id: string; name: string;
+  default_start_time: string | null; default_end_time: string | null; default_frequency: number | null;
+};
+type CatalogueOffering = {
+  id: string; course_id: string; branch_id: string; start_time: string | null; end_time: string | null;
+};
+type Catalogue = {
+  /** live courses, by name */
+  courses: CatalogueCourse[];
+  /** live offerings of every course */
+  offerings: CatalogueOffering[];
+  /** live branches, by name */
+  branches: { id: string; name: string }[];
+  courseName: Map<string, string>;
+  branchName: Map<string, string>;
+  offeringById: Map<string, CatalogueOffering>;
+  /** the timetable version in force today, per offering (src/data/schedule.ts) */
+  weekdaysByOffering: Map<string, { weekdays: number[]; effective_from: string | null }>;
+};
+
+async function readCatalogue(): Promise<Catalogue> {
+  const [coursesRes, offeringsRes, branchesRes, schedulesRes] = await Promise.all([
+    supabase.from('courses')
+      .select('id, name, default_start_time, default_end_time, default_frequency')
+      .is('deleted_at', null).order('name'),
+    supabase.from('course_offerings')
+      .select('id, course_id, branch_id, start_time, end_time').is('deleted_at', null),
+    supabase.from('branches').select('id, name').is('deleted_at', null).order('name'),
+    supabase.from('offering_schedules').select('offering_id, weekdays, effective_from, effective_to'),
+  ]);
+  if (coursesRes.error) fail('Could not load courses', coursesRes.error);
+  if (offeringsRes.error) fail('Could not load courses', offeringsRes.error);
+  if (branchesRes.error) fail('Could not load branches', branchesRes.error);
+  if (schedulesRes.error) fail('Could not load the timetable', schedulesRes.error);
+
+  const courses = (coursesRes.data ?? []) as unknown as CatalogueCourse[];
+  const offerings = (offeringsRes.data ?? []) as unknown as CatalogueOffering[];
+  const branches = (branchesRes.data ?? []) as { id: string; name: string }[];
+  // The version in force today, per offering. One shared, tested resolver --
+  // fetchCourses and fetchOfferings each carried their own copy of the window
+  // arithmetic and had to agree with each other by hand.
+  const weekdaysByOffering = currentSchedules(
+    (schedulesRes.data ?? []).map(s => ({
+      offering_id: s.offering_id as string,
+      weekdays: (s.weekdays as number[]) ?? [],
+      effective_from: s.effective_from as string,
+      effective_to: (s.effective_to as string | null) ?? null,
+    })), today());
+  return {
+    courses, offerings, branches,
+    courseName: new Map(courses.map(c => [c.id, c.name])),
+    branchName: new Map(branches.map(b => [b.id, b.name])),
+    offeringById: new Map(offerings.map(o => [o.id, o])),
+    weekdaysByOffering,
+  };
+}
+
+/** The catalogue, joined while in flight (src/data/memberStore.ts). */
+function fetchCatalogue(): Promise<Catalogue> {
+  return sharedMemberRead('catalogue', readCatalogue);
+}
+
+/**
+ * THE NAMES: every live member's name and code, display names and addresses
+ * -- the three member-scale tables a screen needs to put a name beside an
+ * attendance row.
+ *
+ * Read WHOLE, paged, and shared, rather than by id in chunks of 150 (RC-4).
+ * The attendance tab asked for the names on the week by id: 937 members was
+ * seven chunks of two pages each, for three tables, one after another -- 42
+ * sequential requests to label rows the register read already holds. Whole
+ * and paged, the three tables cost ⌈N/1000⌉ pages each however many rows are
+ * being labelled, and the register read joins the same flight.
+ */
+type Names = {
+  membersRes: Record<string, unknown>[];
+  aliasesRes: Record<string, unknown>[];
+  /** live AND soft-deleted rows, `deleted_at` carried -- see readRegister */
+  emailsRes: Record<string, unknown>[];
+};
+
+async function readNames(): Promise<Names> {
+  const [membersRes, aliasesRes, emailsRes] = await Promise.all([
+    paged('the member list', () => supabase.from('members').select('id, member_code, full_name, status, inactive_from, active_again_from, joined_on').is('deleted_at', null), 'id'),
+    paged('member alternate names', () => supabase.from('member_aliases').select('id, member_id, alias_display').eq('alias_type', 'name'), 'id'),
+    paged('member addresses', () => supabase.from('member_emails').select('id, member_id, email, is_primary, status, deleted_at'), 'id'),
+  ]);
+  return { membersRes, aliasesRes, emailsRes };
+}
+
+function fetchNames(): Promise<Names> {
+  return sharedMemberRead('names', readNames);
+}
+
+/**
+ * The names on ONE week, by id -- the read fetchAttendance makes while the
+ * week's members fit one chunk. Chunked (RC-045) and paged (RC-039) exactly
+ * as the whole read is; past one chunk the caller takes the whole read.
+ */
+async function namesOnWeekById(memberIds: string[]): Promise<Names> {
+  const [membersRes, aliasesRes, emailsRes] = await Promise.all([
+    paged('the names on this week', inChunks(memberIds, ids =>
+      supabase.from('members').select('id, full_name, member_code').in('id', ids)), 'id'),
+    // What the search box also finds a row by: the Google Meet display names
+    // and the live addresses of the SAME members, paged and chunked alike.
+    paged('the display names on this week', inChunks(memberIds, ids =>
+      supabase.from('member_aliases').select('id, member_id, alias_display')
+        .eq('alias_type', 'name').in('member_id', ids)), 'id'),
+    paged('the addresses on this week', inChunks(memberIds, ids =>
+      supabase.from('member_emails').select('id, member_id, email')
+        .in('member_id', ids).is('deleted_at', null)), 'id'),
+  ]);
+  return { membersRes, aliasesRes, emailsRes };
+}
+
+/**
  * Is the member just added in the member list the screens are showing?
  *
  * Asked once, after `createMember` has returned. It reads through the SAME
@@ -223,6 +360,85 @@ export function fetchMembers(period: Period): Promise<Member[]> {
 }
 
 /**
+ * THE REGISTER: the six member-scale tables and the offering/course/branch
+ * names they point at -- everything about the members that does NOT depend on
+ * the period being asked about.
+ *
+ * ONE SHARED READ FOR EVERY PERIOD. The Overview asks for its selected range,
+ * Members and the weekly review for the current week, Reports for the month,
+ * and the member store shared a read only with callers asking for the SAME
+ * period -- so three screens mounted at once still read the register three
+ * times after one Save (52 requests in the fake-network baseline, 27 of them
+ * metrics pages; RC-2 in docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md).
+ * Only the attendance figures differ per period, so only they are read per
+ * period (`sharedPeriodMetrics`); this is read once per generation and joined
+ * to whichever figures each caller asked for.
+ */
+type Register = Names & {
+  statsRes: Record<string, unknown>[];
+  enrolRes: Record<string, unknown>[];
+  schedRes: Record<string, unknown>[];
+  offeringById: Map<string, CatalogueOffering>;
+  courseName: Map<string, string>;
+  branchName: Map<string, string>;
+};
+
+async function readRegister(): Promise<Register> {
+  // SIX WHOLE-TABLE READS, every one of them at member scale, so every one of
+  // them is paged: at 1000 rows PostgREST stops and reports success, and a
+  // member list that quietly loses its tail takes the roster, the counts and
+  // the follow-up list with it (RC-039). Three of the six are the NAMES
+  // (readNames) and are shared with the attendance screens; the other three
+  // are the figures, the enrolments and a member's own days. The catalogue
+  // is read beside them rather than after them, so the names of courses and
+  // branches no longer cost two further round trips once the enrolments are
+  // in hand.
+  /*
+   * KEYSET, NOT OFFSET, AND THE KEY IS IN EVERY SELECT.
+   *
+   * Three of these six selected only the columns the screen wanted and were
+   * keyed on `id`, which was therefore not in the payload the cursor is read
+   * from. `id` is added to each. That is a few bytes a row against a reader
+   * that would otherwise not terminate correctly.
+   *
+   * `members` LOSES its server-side `.order('full_name')`: a keyset read is
+   * ordered by its key and nothing else. The alphabetical order is the one
+   * the screens actually render, so it is restored in readMembers, client-
+   * side, after the whole list is in hand.
+   */
+  const [names, statsRes, enrolRes, schedRes, catalogue] = await Promise.all([
+    fetchNames(),
+    // last_present_date DATES the streak beside it. The run was printed bare
+    // ("consecutive 6") beside a weekly miss count on a five-day course, which
+    // is a number a reader can neither verify nor divide by anything on
+    // screen; the day it counts back to is what makes it checkable.
+    paged('member figures', () => supabase.from('member_stats').select('member_id, current_streak, last_present_date, last_emailed_at'), 'member_id'),
+    paged('member enrolments', () => supabase.from('member_enrollments').select('id, member_id, offering_id').eq('status', 'active'), 'id'),
+    paged('the days members have of their own', () => supabase.from('member_schedules').select('id, member_id, weekdays, effective_from, effective_to'), 'id'),
+    fetchCatalogue(),
+  ]);
+  /*
+   * NO `if (res.error)` LINE SURVIVES HERE, and that is the point of the
+   * change rather than a tidy-up. A paged read now THROWS, through `paged()`
+   * below, so a failure cannot reach this code as an empty array at all.
+   *
+   * The one that mattered most is the schedules read (RC-020): an empty
+   * result read as "nobody has days of her own", the edit form then opened
+   * her row on the course's days, and Save ended an override nobody asked to
+   * end. That class is now impossible by construction rather than by a
+   * remembered guard -- which is the same lesson as RC-039, one level up.
+   */
+  // `deleted_at is null` on every catalogue table, the same filter
+  // fetchCourses applies. Without it a member could resolve onto a course the
+  // course list does not have -- delete_course ends her enrolment, but a row
+  // that somehow stayed active would still name the deleted course, and the
+  // next course created with that name would inherit her. The course list
+  // and the member list read the SAME catalogue, so they cannot disagree.
+  return { ...names, statsRes, enrolRes, schedRes,
+    offeringById: catalogue.offeringById, courseName: catalogue.courseName, branchName: catalogue.branchName };
+}
+
+/**
  * The read itself. Only `fetchMembers` calls it: anything that went round the
  * shared read would bring back the per-screen duplicate reloads.
  */
@@ -242,48 +458,9 @@ async function readMembers(period: Period): Promise<Member[]> {
   // a new array is a new identity for every memo that depends on one.
   if (!isConfigured) return [...MEMBERS];
 
-  // SIX WHOLE-TABLE READS, every one of them at member scale, so every one of
-  // them is paged: at 1000 rows PostgREST stops and reports success, and a
-  // member list that quietly loses its tail takes the roster, the counts and
-  // the follow-up list with it (RC-039). `full_name` is not unique -- two
-  // members may share a name -- so the key is appended to make the order
-  // total; without a total order two pages can return the same row.
-  /*
-   * KEYSET, NOT OFFSET, AND THE KEY IS IN EVERY SELECT.
-   *
-   * Three of these six selected only the columns the screen wanted and were
-   * keyed on `id`, which was therefore not in the payload the cursor is read
-   * from. `id` is added to each. That is a few bytes a row against a reader
-   * that would otherwise not terminate correctly.
-   *
-   * `members` LOSES its server-side `.order('full_name')`: a keyset read is
-   * ordered by its key and nothing else. The alphabetical order is the one
-   * the screens actually render, so it is restored below, client-side, after
-   * the whole list is in hand. Dropping the sort without restoring it would
-   * have shuffled every member list in the app into UUID order.
-   */
-  const [membersRes, emailsRes, aliasesRes, statsRes, enrolRes, schedRes, metricsRes] = await Promise.all([
-    paged('the member list', () => supabase.from('members').select('id, member_code, full_name, status, inactive_from, active_again_from, joined_on').is('deleted_at', null), 'id'),
-    /* SOFT-DELETED ROWS ARE READ TOO, and `deleted_at` comes with them.
-       The filter that used to be here hid the member's SUPPRESSION HISTORY:
-       `update_member` soft-deletes an address left out of a save, so removing
-       a bounced or opted-out address and typing it back in produced a
-       brand-new row at 'unknown' -- the suppression silently erased, and for
-       an opt-out that is a member being put back on the send list after
-       asking not to be (RC-107). The live rows are partitioned out below and
-       behave exactly as before; the deleted ones feed `suppressedBefore` and
-       nothing else. Measured cost on production, 23-Sep-2026: 4 deleted rows
-       against 1,245 live. */
-    paged('member addresses', () => supabase.from('member_emails').select('id, member_id, email, is_primary, status, deleted_at'), 'id'),
-    paged('member alternate names', () => supabase.from('member_aliases').select('id, member_id, alias_display').eq('alias_type', 'name'), 'id'),
-    // last_present_date DATES the streak beside it. The run was printed bare
-    // ("consecutive 6") beside a weekly miss count on a five-day course, which
-    // is a number a reader can neither verify nor divide by anything on
-    // screen; the day it counts back to is what makes it checkable.
-    paged('member figures', () => supabase.from('member_stats').select('member_id, current_streak, last_present_date, last_emailed_at'), 'member_id'),
-    paged('member enrolments', () => supabase.from('member_enrollments').select('id, member_id, offering_id').eq('status', 'active'), 'id'),
-    paged('the days members have of their own', () => supabase.from('member_schedules').select('id, member_id, weekdays, effective_from, effective_to'), 'id'),
-    /* PAGED like the six above it (T-042). It was the one read in this block
+  const [register, metricsRes] = await Promise.all([
+    sharedMemberRead('register', readRegister),
+    /* PAGED like the six register reads (T-042). It was the one read in this block
        that was not, and at 1,087 members it was the one that decided whether
        anybody past row 1,000 had figures at all. */
     sharedPeriodMetrics(period, () => paged('the attendance figures for this period', () => metricsPage(
@@ -291,38 +468,7 @@ async function readMembers(period: Period): Promise<Member[]> {
         p_from: period.from, p_to: period.to, p_after_member_id: after, p_limit: limit,
       })), 'member_id')),
   ]);
-  /*
-   * NO `if (res.error)` LINE SURVIVES HERE, and that is the point of the
-   * change rather than a tidy-up. A paged read now THROWS, through `paged()`
-   * below, so a failure cannot reach this code as an empty array at all.
-   *
-   * The one that mattered most is the schedules read (RC-020): an empty
-   * result read as "nobody has days of her own", the edit form then opened
-   * her row on the course's days, and Save ended an override nobody asked to
-   * end. That class is now impossible by construction rather than by a
-   * remembered guard -- which is the same lesson as RC-039, one level up.
-   */
-  const offeringIds = [...new Set(enrolRes.map(e => e.offering_id as string))];
-  // `deleted_at is null` on BOTH joins below, the same filter fetchCourses
-  // applies. Without it a member could resolve onto a course the course list
-  // does not have -- delete_course ends her enrolment, but a row that somehow
-  // stayed active would still name the deleted course, and the next course
-  // created with that name would inherit her. The course list and the member
-  // list have to be reading the same set of courses or they cannot agree.
-  const offerings = offeringIds.length
-    ? await supabase.from('course_offerings').select('id, course_id, branch_id')
-        .in('id', offeringIds).is('deleted_at', null)
-    : { data: [], error: null };
-  const courseIds = [...new Set((offerings.data ?? []).map(o => o.course_id as string))];
-  const branchIds = [...new Set((offerings.data ?? []).map(o => o.branch_id as string))];
-  const [coursesRes, branchesRes] = await Promise.all([
-    courseIds.length ? supabase.from('courses').select('id, name').in('id', courseIds).is('deleted_at', null) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
-    branchIds.length ? supabase.from('branches').select('id, name').in('id', branchIds) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
-  ]);
-
-  const offeringById = new Map((offerings.data ?? []).map(o => [o.id as string, o]));
-  const courseName = new Map((coursesRes.data ?? []).map(c => [c.id, c.name]));
-  const branchName = new Map((branchesRes.data ?? []).map(b => [b.id, b.name]));
+  const { membersRes, emailsRes, aliasesRes, statsRes, enrolRes, schedRes, offeringById, courseName, branchName } = register;
   const enrolByMember = new Map(enrolRes.map(e => [e.member_id as string, e.offering_id as string]));
   // Her OWN days, when she has any. member_schedules is effective-dated the
   // same way offering_schedules is, so it is answered by the same tested
@@ -525,18 +671,20 @@ export async function fetchRules(): Promise<Rules> {
     return { global: GLOBAL_RULE, byCourseName };
   }
 
-  const [globalRes, courseRes, coursesRes] = await Promise.all([
+  const [globalRes, courseRes, cat] = await Promise.all([
     supabase.from('follow_up_config')
       .select('weekly_enabled, weekly_threshold, consecutive_enabled, consecutive_threshold, combination')
       .eq('is_active', true).maybeSingle(),
     supabase.from('course_follow_up_config')
       .select('course_id, weekly_enabled, weekly_threshold, consecutive_enabled, consecutive_threshold, combination')
       .eq('is_active', true),
-    supabase.from('courses').select('id, name').is('deleted_at', null),
+    // the live course names, from the shared catalogue rather than a third
+    // shape of the courses read
+    fetchCatalogue(),
   ]);
   if (globalRes.error) fail('Could not load the follow-up rule', globalRes.error);
 
-  const nameById = new Map((coursesRes.data ?? []).map(c => [c.id as string, c.name as string]));
+  const nameById = cat.courseName;
   const byCourseName: Record<string, FollowUpRule> = {};
   for (const r of courseRes.data ?? []) {
     const name = nameById.get(r.course_id as string);
@@ -567,42 +715,24 @@ export async function fetchRules(): Promise<Rules> {
 export async function fetchCourses(): Promise<Course[]> {
   if (!isConfigured) return COURSE_LIST;
 
-  const [coursesRes, offeringsRes, branchesRes, schedulesRes] = await Promise.all([
-    supabase.from('courses')
-      .select('id, name, default_start_time, default_end_time, default_frequency')
-      .is('deleted_at', null).order('name'),
-    supabase.from('course_offerings').select('id, course_id, branch_id').is('deleted_at', null),
-    supabase.from('branches').select('id, name').is('deleted_at', null),
-    supabase.from('offering_schedules').select('offering_id, weekdays, effective_from, effective_to'),
-  ]);
-  if (coursesRes.error) fail('Could not load courses', coursesRes.error);
+  // The catalogue, shared with every other reader of these four tables
+  // (readCatalogue) rather than four reads of this function's own.
+  const cat = await fetchCatalogue();
 
-  const branchName = new Map((branchesRes.data ?? []).map(b => [b.id as string, b.name as string]));
-  // The version in force today, per offering. One shared, tested resolver --
-  // this and fetchOfferings each carried their own copy of the window
-  // arithmetic and had to agree with each other by hand.
-  const weekdaysByOffering = currentSchedules(
-    (schedulesRes.data ?? []).map(s => ({
-      offering_id: s.offering_id as string,
-      weekdays: (s.weekdays as number[]) ?? [],
-      effective_from: s.effective_from as string,
-      effective_to: (s.effective_to as string | null) ?? null,
-    })), today());
-
-  return (coursesRes.data ?? []).map(c => ({
-    id: c.id as string,
-    name: c.name as string,
-    start_time: (c.default_start_time as string | null)?.slice(0, 5) ?? null,
-    end_time: (c.default_end_time as string | null)?.slice(0, 5) ?? null,
-    frequency: (c.default_frequency as number | null) ?? null,
-    offerings: (offeringsRes.data ?? [])
+  return cat.courses.map(c => ({
+    id: c.id,
+    name: c.name,
+    start_time: c.default_start_time?.slice(0, 5) ?? null,
+    end_time: c.default_end_time?.slice(0, 5) ?? null,
+    frequency: c.default_frequency ?? null,
+    offerings: cat.offerings
       .filter(o => o.course_id === c.id)
       .map(o => ({
         // the id travels with the offering: enrolling a member names the
         // course AT a branch, and that is this row, not the course
-        id: o.id as string,
-        branch: branchName.get(o.branch_id as string) ?? '—',
-        weekdays: weekdaysByOffering.get(o.id as string)?.weekdays ?? [],
+        id: o.id,
+        branch: cat.branchName.get(o.branch_id) ?? '—',
+        weekdays: cat.weekdaysByOffering.get(o.id)?.weekdays ?? [],
       })),
   }));
 }
@@ -983,15 +1113,16 @@ export async function fetchBranchUsage(): Promise<BranchUsage[]> {
     }));
   }
 
-  const [branchesRes, offeringsRes, enrolRes] = await Promise.all([
-    supabase.from('branches').select('id, name').is('deleted_at', null).order('name'),
-    supabase.from('course_offerings').select('id, course_id, branch_id').is('deleted_at', null),
+  const [cat, enrolRes] = await Promise.all([
+    // the live branches and offerings, from the shared catalogue
+    fetchCatalogue(),
     // Whole table, member scale: paged, or a branch's member count is however
     // many enrolments happened to fit in one reply (RC-039).
     paged('branch membership', () => supabase.from('member_enrollments')
       .select('id, member_id, offering_id').eq('status', 'active'), 'id'),
   ]);
-  if (branchesRes.error) fail('The branch list could not be loaded', branchesRes.error);
+  const branchesRes = { data: cat.branches };
+  const offeringsRes = { data: cat.offerings };
 
   // A course running at a branch twice is ONE course there, so the count is of
   // distinct courses rather than of offerings -- the row reads "2 courses",
@@ -1151,35 +1282,20 @@ export async function fetchOfferings(courseId: string): Promise<OfferingDetail[]
     }));
   }
 
-  const [offeringsRes, branchesRes, schedulesRes] = await Promise.all([
-    supabase.from('course_offerings')
-      .select('id, branch_id, start_time, end_time')
-      .eq('course_id', courseId).is('deleted_at', null),
-    supabase.from('branches').select('id, name').is('deleted_at', null),
-    supabase.from('offering_schedules')
-      .select('offering_id, weekdays, effective_from, effective_to'),
-  ]);
-  if (offeringsRes.error) fail('The offerings could not be loaded', offeringsRes.error);
+  // This course's slice of the shared catalogue: the same offerings, branch
+  // names and timetable version the Courses tab reads, so the two cannot
+  // disagree about an offering's days.
+  const cat = await fetchCatalogue();
+  const current = cat.weekdaysByOffering;
 
-  const branchName = new Map((branchesRes.data ?? []).map(b => [b.id as string, b.name as string]));
-  // the version in force TODAY -- the same resolver fetchCourses reads, so the
-  // Courses tab and this screen cannot disagree about an offering's days
-  const current = currentSchedules(
-    (schedulesRes.data ?? []).map(sc => ({
-      offering_id: sc.offering_id as string,
-      weekdays: (sc.weekdays as number[]) ?? [],
-      effective_from: sc.effective_from as string,
-      effective_to: (sc.effective_to as string | null) ?? null,
-    })), today());
-
-  return (offeringsRes.data ?? []).map(o => ({
-    id: o.id as string,
-    branch_id: o.branch_id as string,
-    branch: branchName.get(o.branch_id as string) ?? '—',
-    start_time: (o.start_time as string | null)?.slice(0, 5) ?? null,
-    end_time: (o.end_time as string | null)?.slice(0, 5) ?? null,
-    weekdays: current.get(o.id as string)?.weekdays ?? [],
-    effective_from: current.get(o.id as string)?.effective_from ?? null,
+  return cat.offerings.filter(o => o.course_id === courseId).map(o => ({
+    id: o.id,
+    branch_id: o.branch_id,
+    branch: cat.branchName.get(o.branch_id) ?? '—',
+    start_time: o.start_time?.slice(0, 5) ?? null,
+    end_time: o.end_time?.slice(0, 5) ?? null,
+    weekdays: current.get(o.id)?.weekdays ?? [],
+    effective_from: current.get(o.id)?.effective_from ?? null,
   }));
 }
 
@@ -1800,10 +1916,9 @@ async function resolveContext(ids: string[]): Promise<AuditContext> {
  * date string with no Z is parsed local) and sent as instants.
  */
 function dayBounds(period: Period): { from: string; to: string } {
-  return {
-    from: new Date(`${period.from}T00:00:00`).toISOString(),
-    to: new Date(`${period.to}T23:59:59.999`).toISOString(),
-  };
+  // The academy's day, by its own offset -- not the device's local midnight
+  // (src/data/businessDate.ts).
+  return businessDayBounds(period.from, period.to);
 }
 
 /**
@@ -2026,13 +2141,12 @@ export async function addRemark(body: string, entryId: string): Promise<void> {
 export async function fetchFilterOptions(): Promise<{ branches: string[]; courses: string[] }> {
   if (!isConfigured) return { branches: BRANCHES, courses: COURSES };
 
-  const [b, c] = await Promise.all([
-    supabase.from('branches').select('name').is('deleted_at', null).order('name'),
-    supabase.from('courses').select('name').is('deleted_at', null).order('name'),
-  ]);
+  // Branch and course NAMES, by name -- the catalogue already holds both in
+  // that order, so this is a slice of a read every screen shares.
+  const cat = await fetchCatalogue();
   return {
-    branches: ['All branches', ...(b.data ?? []).map(x => x.name as string)],
-    courses: ['All courses', ...(c.data ?? []).map(x => x.name as string)],
+    branches: ['All branches', ...cat.branches.map(x => x.name)],
+    courses: ['All courses', ...cat.courses.map(x => x.name)],
   };
 }
 
@@ -2109,6 +2223,32 @@ export async function fetchMonthSessions(year: number, month: number): Promise<S
 export async function fetchBucketMetrics(buckets: Period[]): Promise<BucketMetrics[]> {
   if (!isConfigured) return bucketFixture(buckets, MEMBERS);
 
+  /* ONE READ FOR ALL THE BUCKETS (0087). Seven day-buckets were seven paged
+     reads of the same aggregate over adjacent slices of one period -- 21
+     requests at 1,644 members, 42 at 5,000 (RC-9, RC-2). The bucket RPC
+     answers every bucket in one keyset read, one row per member per bucket,
+     paged by its own `cursor`; `splitBuckets` deals the rows back into the
+     shape the per-bucket read produced, so nothing downstream changes. Shared
+     through the member store like every other period read, keyed on the
+     whole bucket set. A single bucket still takes the per-period path below
+     -- it IS one period, and its read is shared with the week's. */
+  if (buckets.length >= 2) {
+    // The ONE wire read, shared by the bucket set, dealt into buckets once.
+    const setKey = `bucketed:${buckets.map(b => `${b.from}/${b.to}`).join(',')}`;
+    const dealt = () => sharedMemberRead<BucketMetricRow[]>(setKey, () =>
+      paged<BucketMetricRow>('the attendance figures for this period', () => metricsPage<BucketMetricRow>(
+        (after, limit) => supabase.rpc(METRICS_BUCKETS_RPC, {
+          p_from: buckets.map(b => b.from), p_to: buckets.map(b => b.to), p_after: after, p_limit: limit,
+        })), 'cursor')).then(rows => splitBuckets(rows, buckets));
+    // Each bucket is still a period read of its own in the member store --
+    // started once per generation however many callers ask, as
+    // memberRefresh.test.ts pins -- whose source is the shared wire read
+    // above rather than a request of its own.
+    const metrics = await Promise.all(buckets.map((b, i) =>
+      sharedPeriodMetrics<MemberMetric>(b, async () => (await dealt())[i].metrics)));
+    return buckets.map((b, i) => ({ label: b.label, from: b.from, to: b.to, metrics: metrics[i] }));
+  }
+
   return Promise.all(buckets.map(async b => {
     // A bucket that failed silently would draw as a zero bar -- an academy
     // that attended nothing that week, which is a different fact from a
@@ -2179,26 +2319,23 @@ export async function fetchPendingSessions(): Promise<PendingSession[]> {
     }));
   }
 
-  const today = new Date().toISOString().slice(0, 10);
-  const { data: sessions, error } = await supabase.from('sessions')
-    .select('id, offering_id, session_date, start_time, expected_count')
-    .eq('status', 'scheduled').lte('session_date', today).is('deleted_at', null)
-    .order('session_date', { ascending: false }).limit(20);
-  if (error) fail('Could not load sessions awaiting upload', error);
-
-  const offeringIds = [...new Set((sessions ?? []).map(s => s.offering_id as string))];
-  if (offeringIds.length === 0) return [];
-  const { data: offerings } = await supabase.from('course_offerings')
-    .select('id, course_id, branch_id').in('id', offeringIds);
-  const courseIds = [...new Set((offerings ?? []).map(o => o.course_id as string))];
-  const branchIds = [...new Set((offerings ?? []).map(o => o.branch_id as string))];
-  const [coursesRes, branchesRes] = await Promise.all([
-    supabase.from('courses').select('id, name').in('id', courseIds),
-    supabase.from('branches').select('id, name').in('id', branchIds),
+  // The academy's day, not the UTC one: a session this morning was "still to
+  // come" until 05:30 (src/data/businessDate.ts).
+  const today = businessTodayIso();
+  // The catalogue beside the sessions, not after them: this was a four-deep
+  // chain (sessions -> offerings -> courses, branches) run by every mounted
+  // AcademyHeader; it is one round trip now, and the catalogue is shared.
+  const [{ data: sessions, error }, cat] = await Promise.all([
+    supabase.from('sessions')
+      .select('id, offering_id, session_date, start_time, expected_count')
+      .eq('status', 'scheduled').lte('session_date', today).is('deleted_at', null)
+      .order('session_date', { ascending: false }).limit(20),
+    fetchCatalogue(),
   ]);
-  const offeringById = new Map((offerings ?? []).map(o => [o.id as string, o]));
-  const courseName = new Map((coursesRes.data ?? []).map(c => [c.id as string, c.name as string]));
-  const branchName = new Map((branchesRes.data ?? []).map(b => [b.id as string, b.name as string]));
+  if (error) fail('Could not load sessions awaiting upload', error);
+  if ((sessions ?? []).length === 0) return [];
+
+  const { offeringById, courseName, branchName } = cat;
 
   return (sessions ?? []).map(s => {
     const offering = offeringById.get(s.offering_id as string);
@@ -2247,7 +2384,13 @@ export async function fetchPendingSessions(): Promise<PendingSession[]> {
  */
 export type { Notification } from './notifications';
 
-export async function fetchNotifications(): Promise<Notification[]> {
+export function fetchNotifications(): Promise<Notification[]> {
+  // ONE read however many AcademyHeaders are mounted -- there is one per
+  // visited tab, and each ran this five-stage chain for itself (RC-12).
+  return sharedMemberRead('notifications', readNotifications);
+}
+
+async function readNotifications(): Promise<Notification[]> {
   const pending = await fetchPendingSessions();
   const awaiting = pending.slice(0, NOTIFICATION_LIMIT).map((p, i) =>
     awaitingNotification({
@@ -2583,52 +2726,39 @@ export async function fetchAttendance(period: Period): Promise<AttendanceRow[]> 
   // The same manual joins the rest of this file uses, rather than a PostgREST
   // embed: an embed silently returns null for a row RLS hides on the far
   // side, and a member who vanished that way would read as a blank name.
+  // The names, display names and live addresses on this week.
+  //
+  // BY ID WHILE THE LIST FITS ONE CHUNK, WHOLE ONCE IT DOES NOT. A member-
+  // scale id list is sent in chunks of 150 (RC-045) -- and by id this read
+  // was three tables × seven chunks × two pages, one after another, to label
+  // 937 members' rows: 42 sequential requests. The shared names read
+  // (readNames) is ⌈N/1000⌉ pages per table however many rows are being
+  // labelled, and it is the same flight the register on every other screen
+  // shares -- so past one chunk it is always the cheaper read. Under one
+  // chunk (a quiet week) the id read is one request per table and stays.
+  // The catalogue beside it replaces the offerings -> courses/branches chain.
   const memberIds = [...new Set(records.map(r => r.member_id as string))];
-  const offeringIds = [...new Set(weekSessions.map(s => s.offering_id as string))];
-  const [membersRes, offeringsRes, aliasesRes, emailsRes] = await Promise.all([
-    // The id list is every member who attended anything this week, so it is
-    // member-scale and paged for the same reason the records above are — and
-    // chunked for the reason the roster's own name read is: a member-scale id
-    // list is too long to SEND in one request, whatever the reply would hold
-    // (RC-045). A period is larger than a day, so this one is further over.
-    paged('the names on this week', inChunks(memberIds, ids =>
-      supabase.from('members').select('id, full_name, member_code').in('id', ids)), 'id'),
-    supabase.from('course_offerings').select('id, course_id, branch_id').in('id', offeringIds),
-    // What the search box also finds a row by: the Google Meet display names
-    // and the live addresses of the SAME members, paged and chunked alike.
-    paged('the display names on this week', inChunks(memberIds, ids =>
-      supabase.from('member_aliases').select('id, member_id, alias_display')
-        .eq('alias_type', 'name').in('member_id', ids)), 'id'),
-    paged('the addresses on this week', inChunks(memberIds, ids =>
-      supabase.from('member_emails').select('id, member_id, email')
-        .in('member_id', ids).is('deleted_at', null)), 'id'),
+  const [names, cat] = await Promise.all([
+    memberIds.length <= MAX_IDS_PER_REQUEST ? namesOnWeekById(memberIds) : fetchNames(),
+    fetchCatalogue(),
   ]);
   const aliasesBy = new Map<string, string[]>();
-  for (const a of aliasesRes) {
+  for (const a of names.aliasesRes) {
     const list = aliasesBy.get(a.member_id as string) ?? [];
     list.push(a.alias_display as string);
     aliasesBy.set(a.member_id as string, list);
   }
   const emailsBy = new Map<string, string[]>();
-  for (const e of emailsRes) {
+  for (const e of names.emailsRes) {
+    if (e.deleted_at) continue;                          // live addresses only, as before
     const list = emailsBy.get(e.member_id as string) ?? [];
     list.push(e.email as string);
     emailsBy.set(e.member_id as string, list);
   }
-  const courseIds = [...new Set((offeringsRes.data ?? []).map(o => o.course_id as string))];
-  const branchIds = [...new Set((offeringsRes.data ?? []).map(o => o.branch_id as string))];
-  const [coursesRes, branchesRes] = await Promise.all([
-    courseIds.length ? supabase.from('courses').select('id, name').in('id', courseIds)
-                     : Promise.resolve({ data: [] as { id: string; name: string }[] }),
-    branchIds.length ? supabase.from('branches').select('id, name').in('id', branchIds)
-                     : Promise.resolve({ data: [] as { id: string; name: string }[] }),
-  ]);
 
   const sessionById = new Map(weekSessions.map(s => [s.id as string, s]));
-  const memberById = new Map(membersRes.map(m => [m.id as string, m]));
-  const offeringById = new Map((offeringsRes.data ?? []).map(o => [o.id as string, o]));
-  const courseName = new Map((coursesRes.data ?? []).map(c => [c.id as string, c.name as string]));
-  const branchName = new Map((branchesRes.data ?? []).map(b => [b.id as string, b.name as string]));
+  const memberById = new Map(names.membersRes.map(m => [m.id as string, m]));
+  const { offeringById, courseName, branchName } = cat;
 
   return records.map(r => {
     const session = sessionById.get(r.session_id as string);
@@ -2681,24 +2811,19 @@ export async function fetchCourseDayRows(
       .filter(r => r.course_id === courseId && (branch === null || r.branch === branch));
   }
 
-  // The offerings of THIS course, at the branches in scope. Everything below
-  // hangs off this list, so a course that runs nowhere in scope is an empty
-  // day rather than a query for every session in the academy.
-  const offerings = await supabase.from('course_offerings')
-    .select('id, course_id, branch_id').eq('course_id', courseId).is('deleted_at', null);
-  if (offerings.error) fail('Could not load this day', offerings.error);
+  // The offerings of THIS course, at the branches in scope, from the shared
+  // catalogue. Everything below hangs off this list, so a course that runs
+  // nowhere in scope is an empty day rather than a query for every session in
+  // the academy. This was a five-deep chain (offerings -> course, branches ->
+  // sessions -> records -> names in chunks); it is three round trips now, and
+  // the first and last are shared with every other screen.
+  const cat = await fetchCatalogue();
+  const { branchName } = cat;
+  const courseOfferings = cat.offerings.filter(o => o.course_id === courseId);
 
-  const branchIds = [...new Set(checked('this day', offerings).map(o => o.branch_id as string))];
-  const [coursesRes, branchesRes] = await Promise.all([
-    supabase.from('courses').select('id, name').eq('id', courseId).maybeSingle(),
-    branchIds.length ? supabase.from('branches').select('id, name').in('id', branchIds)
-                     : Promise.resolve({ data: [] as { id: string; name: string }[] }),
-  ]);
-  const branchName = new Map((branchesRes.data ?? []).map(b => [b.id as string, b.name as string]));
-
-  const offeringIds = checked('this day', offerings)
-    .filter(o => branch === null || branchName.get(o.branch_id as string) === branch)
-    .map(o => o.id as string);
+  const offeringIds = courseOfferings
+    .filter(o => branch === null || branchName.get(o.branch_id) === branch)
+    .map(o => o.id);
   if (offeringIds.length === 0) return [];
 
   const sessions = await supabase.from('sessions')
@@ -2725,15 +2850,21 @@ export async function fetchCourseDayRows(
   // `400 Bad Request` — so every card on the roster read "Attendance for this
   // week could not be loaded" while the rows sat there, perfectly readable, in
   // a table nothing had asked for correctly (RC-045).
+  // The names on this day. By id while the roster fits one chunk of 150
+  // (RC-045), one request; past that the shared names read (readNames):
+  // ⌈N/1000⌉ pages whatever the roster, and the same flight the register on
+  // this screen is reading, where by id Postnatal's 629 were five chunks of
+  // two pages each, one after another.
   const memberIds = [...new Set(dayRecords.map(r => r.member_id as string))];
-  const members = await paged('the names on this day',
-    inChunks(memberIds, ids =>
-      supabase.from('members').select('id, full_name').in('id', ids)), 'id');
+  const names = memberIds.length <= MAX_IDS_PER_REQUEST
+    ? { membersRes: await paged('the names on this day', inChunks(memberIds, ids =>
+          supabase.from('members').select('id, full_name').in('id', ids)), 'id') }
+    : await fetchNames();
 
   const sessionById = new Map(daySessions.map(s => [s.id as string, s]));
-  const offeringById = new Map(checked('this day', offerings).map(o => [o.id as string, o]));
-  const memberById = new Map(members.map(m => [m.id as string, m]));
-  const name = (coursesRes.data?.name as string | undefined) ?? '—';
+  const offeringById = new Map(courseOfferings.map(o => [o.id, o]));
+  const memberById = new Map(names.membersRes.map(m => [m.id as string, m]));
+  const name = cat.courseName.get(courseId) ?? '—';
 
   return dayRecords.map(r => {
     const session = sessionById.get(r.session_id as string);
@@ -2783,10 +2914,13 @@ export async function fetchMemberWeek(memberId: string, period: Period): Promise
     return m ? sessionsFor(m).map(s => ({ ...s })) : [NO_SESSIONS_ROW];
   }
 
+  // The catalogue starts beside the first read rather than after the third:
+  // the course and branch names used to be two more round trips at the end.
+  const catalogue = fetchCatalogue();
   const { data: enrol, error: enrolError } = await supabase
     .from('member_enrollments').select('offering_id')
     .eq('member_id', memberId).eq('status', 'active');
-  if (enrolError) fail('Could not load these sessions', enrolError);
+  if (enrolError) { void catalogue.catch(() => undefined); fail('Could not load these sessions', enrolError); }
 
   const offeringIds = [...new Set((enrol ?? []).map(e => e.offering_id as string))];
   // Enrolled at nothing is a fact, and it is the "No sessions" row -- not an
@@ -2818,24 +2952,15 @@ export async function fetchMemberWeek(memberId: string, period: Period): Promise
   // The same manual joins the rest of this file uses rather than a PostgREST
   // embed: an embed returns null for a row RLS hides on the far side, and a
   // course that vanished that way would read as a blank name on her card.
-  const offerings = await supabase.from('course_offerings')
-    .select('id, course_id, branch_id').in('id', offeringIds).is('deleted_at', null);
-  const courseIds = [...new Set((offerings.data ?? []).map(o => o.course_id as string))];
-  const branchIds = [...new Set((offerings.data ?? []).map(o => o.branch_id as string))];
   const holidayIds = [...new Set(
     weekSessions.map(s => s.holiday_id as string | null).filter((x): x is string => Boolean(x)))];
-  const [coursesRes, branchesRes, holidaysRes] = await Promise.all([
-    courseIds.length ? supabase.from('courses').select('id, name').in('id', courseIds)
-                     : Promise.resolve({ data: [] as { id: string; name: string }[] }),
-    branchIds.length ? supabase.from('branches').select('id, name').in('id', branchIds)
-                     : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+  const [cat, holidaysRes] = await Promise.all([
+    catalogue,
     holidayIds.length ? supabase.from('holidays').select('id, name').in('id', holidayIds)
                       : Promise.resolve({ data: [] as { id: string; name: string }[] }),
   ]);
 
-  const offeringById = new Map((offerings.data ?? []).map(o => [o.id as string, o]));
-  const courseName = new Map((coursesRes.data ?? []).map(c => [c.id as string, c.name as string]));
-  const branchName = new Map((branchesRes.data ?? []).map(b => [b.id as string, b.name as string]));
+  const { offeringById, courseName, branchName } = cat;
   const holidayName = new Map((holidaysRes.data ?? []).map(h => [h.id as string, h.name as string]));
   const recordBySession = new Map(weekRecords.map(r => [r.session_id as string, r]));
 
@@ -2858,10 +2983,10 @@ export async function fetchMemberWeek(memberId: string, period: Period): Promise
     };
   });
 
-  // `iso(new Date())` and NOT schedule.ts's `today()`, which is
+  // `businessTodayIso()` and NOT schedule.ts's `today()`, which is
   // toISOString().slice(0,10) and so reads UTC: before 05:30 IST that names
   // yesterday, and a day still to run would be listed as "Awaiting upload".
-  return memberWeek(rows, iso(new Date()));
+  return memberWeek(rows, businessTodayIso());
 }
 
 // ----------------------------------------------------------------- holidays
@@ -3074,9 +3199,38 @@ export function onMembersChanged(listener: () => void): () => void {
   return () => { memberListeners.delete(listener); };
 }
 
+/**
+ * A BULK ACT ANNOUNCES ONCE.
+ *
+ * While `work` runs, every bus rung inside it is HELD -- the shared reads are
+ * still moved on at once (a read begun before any of the writes must not be
+ * joined after them), but the listeners, which are every mounted screen's
+ * refetch, hear each bus once, after the last write. Forty deletions are one
+ * act to a screen reading the register, not forty-one refreshes of it.
+ * Nested holds collapse into the outermost one.
+ */
+let heldAnnouncements: Set<() => void> | null = null;
+
+async function announcingOnce<T>(work: () => Promise<T>): Promise<T> {
+  const outer = heldAnnouncements;
+  const held = outer ?? new Set<() => void>();
+  heldAnnouncements = held;
+  try {
+    return await work();
+  } finally {
+    if (!outer) {
+      heldAnnouncements = null;
+      for (const emit of held) emit();
+    }
+  }
+}
+
+// `invalidateMemberReads()` FIRST, so every screen the listeners wake reads
+// AFTER the change -- one shared read, not a join on one that began before
+// it. Inside a bulk act the announcement is held (announcingOnce) and the
+// listeners hear it once, after the last write; the reads still move on now.
 function membersChanged(): void {
-  // First, so every screen the listeners wake reads AFTER the change -- one
-  // shared read, not a join on one that began before it.
+  if (heldAnnouncements) { invalidateMemberReads(); heldAnnouncements.add(membersChanged); return; }
   invalidateMemberReads();
   for (const listener of memberListeners) listener();
 }
@@ -3148,8 +3302,8 @@ export async function createMember(input: MemberInput): Promise<{ id: string }> 
       aliases: input.aliases,
       // create_member (0016) coalesces a null date to current_date; offline
       // says the same, and says it once -- the label is derived from the date.
-      joinedOn: input.joined_on ?? iso(new Date()),
-      joined: joinedLabel(input.joined_on ?? iso(new Date())),
+      joinedOn: input.joined_on ?? businessTodayIso(),
+      joined: joinedLabel(input.joined_on ?? businessTodayIso()),
       // 'unknown' is what create_member (0016) and update_member (0027) write
       // on every address they insert, so the offline store holds what the
       // live one would. Never left absent: absent reads as usable and a
@@ -3241,7 +3395,7 @@ export async function bulkImportMembers(input: {
         // is what she joins on; offline says the same, in the same words the
         // rest of the register uses. It used to say 'today', which is the one
         // label that stops being true tomorrow.
-        joinedOn: iso(new Date()), joined: joinedLabel(iso(new Date())),
+        joinedOn: businessTodayIso(), joined: joinedLabel(businessTodayIso()),
       });
       result.inserted++;
       result.rows.push({ row: r.row, full_name: r.full_name, status: 'inserted', member_id: id });
@@ -3852,7 +4006,7 @@ export async function setMemberActiveFrom(
     const i = MEMBERS.findIndex(m => m.id === id);
     if (i < 0) throw new Error('That member is not on the register. Nothing has been saved.');
     const problem = activeFromProblem(
-      activeFrom, MEMBERS[i].inactiveFrom ?? null, iso(new Date()));
+      activeFrom, MEMBERS[i].inactiveFrom ?? null, businessTodayIso());
     if (problem) throw new Error(`${problem}. Nothing has been saved.`);
     const changed = (MEMBERS[i].joinedOn ?? null) !== activeFrom;
     // `joined` is the SUBTITLE derived from this column (period.joinedLabel).
@@ -4230,7 +4384,9 @@ export async function bulkDeleteMembers(
   let deleted = 0;
   // The WHOLE loop, not each member (T-021): a flag released between members
   // leaves a gap after every one of them for the reload to land in.
-  await duringWrite(async () => {
+  // ONE announcement for the whole act: the buses deleteMember rings are held
+  // until the loop ends, then rung once each (announcingOnce, RC-3).
+  await announcingOnce(() => duringWrite(async () => {
     for (const id of ids) {
       try {
         await deleteMember(id);
@@ -4239,11 +4395,7 @@ export async function bulkDeleteMembers(
         failed.push({ id, reason: err instanceof Error ? err.message : 'could not be deleted' });
       }
     }
-  });
-  // Once, after the loop, not once per member: forty writes are one act to
-  // every screen reading the register.
-  membersChanged();
-  attendanceChanged();
+  }));
   return { deleted, failed };
 }
 
@@ -4261,9 +4413,11 @@ export function onAttendanceChanged(listener: () => void): () => void {
   return () => { attendanceListeners.delete(listener); };
 }
 
+// The figures every member read carries move with the register, so a read
+// begun before this change must not be joined after it. Held during a bulk
+// act exactly as membersChanged is.
 function attendanceChanged(): void {
-  // The figures every member read carries move with the register, so a read
-  // begun before this change must not be joined after it.
+  if (heldAnnouncements) { invalidateMemberReads(); heldAnnouncements.add(attendanceChanged); return; }
   invalidateMemberReads();
   for (const listener of attendanceListeners) listener();
 }

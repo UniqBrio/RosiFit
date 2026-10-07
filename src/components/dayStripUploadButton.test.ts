@@ -173,7 +173,7 @@ test('the visibility is not a UI-only test of the step counter', () => {
 });
 
 test('the screen reads the clock once, and the strip shares it', () => {
-  assert.match(src, /const todayIso = iso\(new Date\(\)\);/,
+  assert.match(src, /const todayIso = businessTodayIso\(\);/,
     'the course screen no longer holds one todayIso for the strip');
 });
 

@@ -159,4 +159,55 @@ export async function loadSendData(
   };
 }
 
+/**
+ * THE PERIOD FIGURES FOR THE WHOLE BATCH, IN ONE PAGED READ.
+ *
+ * The send used to call member_period_metrics once PER RECIPIENT -- M
+ * sequential RPCs before the first email went out, 30 ms a call at the
+ * database and a full round trip each (docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md
+ * RC-10; 4,978 calls a day). member_period_metrics_page (0075) answers every
+ * member with attendance in the period, keyset by member_id, in
+ * ⌈members/1,000⌉ + 1 requests; supabase/tests/56 pins that it answers the
+ * same six numbers the unpaged function does, row for row. A recipient with
+ * no row has no attendance in the period and keeps the zeros the per-member
+ * call gave them.
+ *
+ * The RPC pages by ARGUMENT, so the pager's `.gt()`/`.limit()` are turned
+ * into p_after_member_id/p_limit here -- the same adapter src/data/periodMetrics.ts
+ * uses for the client; nothing decides anything, the pager's rules (empty page
+ * ends the read, a page error throws) stay in pageAllByKey.
+ */
+export type MetricRow = {
+  member_id: string; expected: number | null; attended: number | null; missed: number | null;
+  attendance_pct: number | null; [k: string]: unknown;
+};
+
+export interface MetricsAdmin {
+  rpc(name: string, args: Record<string, unknown>): PromiseLike<{ data: unknown; error: { message?: string } | null }>;
+}
+
+export async function loadPeriodMetrics(
+  admin: MetricsAdmin, memberIds: readonly string[], periodFrom: string, periodTo: string,
+): Promise<Map<string, MetricRow>> {
+  const wanted = new Set(memberIds);
+  const rows = await pageAllByKey<MetricRow>(() => {
+    let after: string | null = null;
+    let limit = 1000;
+    const query = {
+      gt(_column: string, value: unknown) { after = value as string; return query; },
+      order() { return query; },
+      limit(count: number) { limit = count; return query; },
+      then<R>(onfulfilled: (value: { data: MetricRow[] | null; error: { message?: string } | null }) => R) {
+        return admin.rpc('member_period_metrics_page', {
+          p_from: periodFrom, p_to: periodTo, p_after_member_id: after, p_limit: limit,
+        }).then((res) => onfulfilled({ data: (res.data as MetricRow[] | null), error: res.error }));
+      },
+    };
+    return query;
+  }, { key: 'member_id' });
+  const byMember = new Map<string, MetricRow>();
+  for (const r of rows) if (wanted.has(r.member_id)) byMember.set(r.member_id, r);
+  return byMember;
+}
+
 export { PagedReadError };

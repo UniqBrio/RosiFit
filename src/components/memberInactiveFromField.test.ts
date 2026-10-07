@@ -106,7 +106,7 @@ test('the form does not invent a date for a record that never had one', () => {
 });
 
 test('picking Inactive fills today in, so the ordinary case costs no extra decision', () => {
-  assert.match(read(FORM), /if \(next !== 'active' && !inactiveFrom\.trim\(\)\) setInactiveFrom\(iso\(new Date\(\)\)\)/,
+  assert.match(read(FORM), /if \(next !== 'active' && !inactiveFrom\.trim\(\)\) setInactiveFrom\(businessTodayIso\(\)\)/,
     'the pick used to mean "she is off the register now" and must go on meaning it; '
     + 'a date already in the box is left alone');
 });

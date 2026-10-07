@@ -49,6 +49,7 @@ import { parseStatusXlsx, detectImportKind } from '../../src/data/statusXlsx';
 import { DATE_FORMAT_EXAMPLE } from '../../src/data/memberDate';
 import { bulkSetMemberDates } from '../../src/data/repository';
 import { iso } from '../../src/data/period';
+import { businessTodayIso } from '../../src/data/businessDate';
 import type { ImportKind } from '../../src/data/importKind';
 
 const ink = (k: keyof typeof STATUS, dark: boolean) => (dark ? STATUS[k].fgDark : STATUS[k].fgLight);
@@ -155,7 +156,7 @@ function MemberImportBody() {
       joinedOn: m.joinedOn ?? null,
       inactiveFrom: m.inactiveFrom ?? null,
     })),
-    todayIso: iso(new Date()),
+    todayIso: businessTodayIso(),
   }), [roster.data]);
 
   const dateTally = useMemo(

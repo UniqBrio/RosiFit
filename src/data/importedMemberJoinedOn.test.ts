@@ -131,7 +131,7 @@ test('offline says the same thing the database now says', () => {
   const open = src.indexOf('export async function bulkImportMembers');
   assert.notEqual(open, -1, 'bulkImportMembers is gone');
   const offline = src.slice(open, src.indexOf("supabase.rpc('bulk_import_members'", open));
-  assert.match(offline, /joinedOn: iso\(new Date\(\)\), joined: joinedLabel\(iso\(new Date\(\)\)\)/,
+  assert.match(offline, /joinedOn: businessTodayIso\(\), joined: joinedLabel\(businessTodayIso\(\)\)/,
     'the offline register must date an imported member today, as the database does');
 });
 

@@ -28,3 +28,4 @@ supabase/.temp/
 # run-log.mjs open-run state and close-out marker (docs/FRAMEWORK_ADOPTION.md) -- transient, never committed
 .run-log.json
 .close-out-commit.txt
+scripts/perf/investigation-2026-10-04/certs/

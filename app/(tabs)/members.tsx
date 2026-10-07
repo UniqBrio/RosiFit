@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, TextInput, ScrollView } from 'react-native';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { View, Text, Pressable, TextInput, ScrollView, FlatList, type ListRenderItem } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Screen, Muted, Button, Skeleton, EmptyState, ErrorState } from '../../src/components/ui';
+import { Screen, Muted, Button, Skeleton, EmptyState, ErrorState, screenBodyPadding } from '../../src/components/ui';
 import { ScreenHeader } from '../../src/components/AppShell';
 import { safeBackTarget } from '../../src/data/nav';
 import { Icon } from '../../src/components/Icon';
@@ -13,7 +13,7 @@ import {
   isEligible, hasEmailOnFile, primaryEmail, AVATAR_TINTS, initials, type Member,
 } from '../../src/data/mock';
 import { isReachable, emailExclusionReason } from '../../src/data/followup';
-import { useFollowUp, useFilterOptions } from '../../src/data/hooks';
+import { useFollowUp, useFilterOptions, useDebouncedQuery } from '../../src/data/hooks';
 import { rosterScope } from '../../src/data/course';
 import { ConfirmDialog } from '../../src/components/Sheet';
 import { deleteMember, memberDeletionPreview, dataSource } from '../../src/data/repository';
@@ -86,6 +86,20 @@ export default function Members() {
 
   const members = useMemo(() => data?.members ?? [], [data]);
   const rules = data?.rules;
+  /* Applied after a short quiet (src/data/debounce.ts), so six letters typed
+     quickly narrow the list once, not six times. */
+  const applied = useDebouncedQuery(query);
+  /* WHAT EACH MEMBER IS SEARCHED BY, built once per register: the name, the
+     code, the primary address and every Meet alias, lower-cased and joined.
+     The filter below used to build and lower-case that array for every
+     member on every keystroke (RC-6). */
+  const searchText = useMemo(() => new Map(members.map(m => [m.id,
+    // the search covers everything the placeholder promises, including the
+    // Meet aliases -- that is how a name from a CSV gets found at all. The
+    // code stays SEARCHABLE but is no longer advertised: anybody holding one
+    // from an export can still find her, and nobody is promised a field the
+    // app does not show.
+    [m.name, m.code, primaryEmail(m), ...m.aliases].join('\n').toLowerCase()])), [members]);
 
   /**
    * The count behind the question, asked the moment the dialog opens and
@@ -139,16 +153,9 @@ export default function Members() {
     [members, scopedTo, courseId]);
 
   const list = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = applied.trim().toLowerCase();
     return members.filter(m => {
-      // the search covers everything the placeholder promises, including the
-      // Meet aliases -- that is how a name from a CSV gets found at all
-      const matches = !q || [
-        // The code stays SEARCHABLE but is no longer advertised: anybody
-        // holding one from an export can still find her, and nobody is
-        // promised a field the app does not show.
-        m.name, m.code, primaryEmail(m), ...m.aliases,
-      ].some(v => v.toLowerCase().includes(q));
+      const matches = !q || (searchText.get(m.id) ?? '').includes(q);
       // The scope is an AND, applied before the chips: inside one course,
       // "No email" means that course's members with no email, not the
       // academy's. A chip that quietly widened back to everyone would be a
@@ -166,7 +173,20 @@ export default function Members() {
       return inScope && matches && passes;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, filter, members, rules, scopedTo, courseId]);
+  }, [applied, searchText, filter, members, rules, scopedTo, courseId]);
+
+  /* ONE handler each, stable across renders, so a card re-renders only when
+     ITS member changes (MemberCard is memoised). Inline arrows per row gave
+     every card new props on every keystroke, and 1,644 cards re-rendered for
+     one typed letter (docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md, RC-6). */
+  const openMember = useCallback((m: Member) => router.push(`/member/${m.id}`), [router]);
+  const editMember = useCallback(
+    (m: Member) => router.push({ pathname: '/member/edit', params: { id: m.id } }), [router]);
+  const askRemove = useCallback((m: Member) => setConfirmRemove(m), []);
+  const renderItem = useCallback<ListRenderItem<Member>>(({ item, index }) => (
+    <MemberCard member={item} index={index}
+      onOpen={openMember} onEdit={editMember} onRemove={askRemove} />
+  ), [openMember, editMember, askRemove]);
 
   const chips: { key: Filter; label: string; icon: string }[] = [
     { key: 'all',        label: 'All',             icon: 'group' },
@@ -188,118 +208,135 @@ export default function Members() {
         onBack={() => router.navigate(backTo)}
         right={<Button label="Add" onPress={() => router.push(scopedTo && courseId
           ? { pathname: '/member/edit', params: { courseId } }
-          : { pathname: '/member/edit' })} />} />}>
-      {/* How old this data is, and whether the last attempt to bring it up
-          to date got through — src/components/FreshnessLine.tsx. */}
-      <FreshnessLine read={followUp} testID="members-freshness" />
+          : { pathname: '/member/edit' })} />} />}
+      scroll={false} pad={false}>
+      {/* THE LIST IS THE SCROLL CONTAINER, and it is WINDOWED. 1,644 members
+          rendered every card into the DOM at once -- 29,703 nodes and a
+          1.4 s render on a fast machine, 90,111 nodes at 5,000 members
+          (docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md, RC-6). A FlatList
+          draws the cards near the viewport and recycles the rest, and only
+          windows when it owns the scroll, so everything that used to scroll
+          above the cards scrolls as the list's header instead -- the same
+          content, in the same order, with the same insets (screenBodyPadding).
+          The search box lives in that header: typing narrows `list` and the
+          window redraws from the top, exactly as the full render did. */}
+      <FlatList
+        testID="members-list"
+        data={state === 'ready' ? list : NO_MEMBERS}
+        keyExtractor={memberKey}
+        renderItem={renderItem}
+        ItemSeparatorComponent={CardGap}
+        ListHeaderComponent={
+          <View>
+            {/* How old this data is, and whether the last attempt to bring it up
+                to date got through — src/components/FreshnessLine.tsx. */}
+            <FreshnessLine read={followUp} testID="members-freshness" />
 
-      {/* A filtered list that does not say it is filtered is a list that has
-          silently lost rows -- so the narrowing is stated AND escapable, the
-          same rule the scoped upload follows. */}
-      {scopedTo ? (
-        <Pressable testID="members-show-all" onPress={() => router.replace('/members?from=/courses')}
-          accessibilityRole="button" accessibilityLabel="Show every member in the academy"
-          style={({ pressed }) => ({
-            alignSelf: 'flex-start', marginTop: SPACE.sm,
-            minHeight: 34, paddingHorizontal: 12, borderRadius: RADIUS.sm,
-            flexDirection: 'row', alignItems: 'center', gap: 6,
-            backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
-            opacity: pressed ? 0.7 : 1,
-          })}>
-          <Icon name="group" size={15} color={theme.accentInk} />
-          <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.fg }}>
-            Show every member
-          </Text>
-        </Pressable>
-      ) : null}
+            {/* A filtered list that does not say it is filtered is a list that has
+                silently lost rows -- so the narrowing is stated AND escapable, the
+                same rule the scoped upload follows. */}
+            {scopedTo ? (
+              <Pressable testID="members-show-all" onPress={() => router.replace('/members?from=/courses')}
+                accessibilityRole="button" accessibilityLabel="Show every member in the academy"
+                style={({ pressed }) => ({
+                  alignSelf: 'flex-start', marginTop: SPACE.sm,
+                  minHeight: 34, paddingHorizontal: 12, borderRadius: RADIUS.sm,
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                  backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.lineStrong,
+                  opacity: pressed ? 0.7 : 1,
+                })}>
+                <Icon name="group" size={15} color={theme.accentInk} />
+                <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.fg }}>
+                  Show every member
+                </Text>
+              </Pressable>
+            ) : null}
 
-      <View style={{
-        flexDirection: 'row', alignItems: 'center', gap: SPACE.md, marginTop: SPACE.md,
-        height: 46, borderRadius: RADIUS.md, backgroundColor: theme.surface,
-        borderWidth: 1, borderColor: searching ? theme.accent : theme.lineStrong,
-        paddingHorizontal: 13,
-      }}>
-        <Icon name="search" size={19} color={theme.muted} />
-        <TextInput
-          ref={search}
-          value={query} onChangeText={setQuery}
-          placeholder="Name, email or Meet alias"
-          placeholderTextColor={theme.muted}
-          accessibilityLabel="Search members"
-          onFocus={() => setSearching(true)} onBlur={() => setSearching(false)}
-          selectionColor={theme.accent}
-          style={{ flex: 1, color: theme.fgStrong, fontSize: 13.5, fontWeight: '600',
-            outlineWidth: 0, outlineStyle: 'solid' }} />
-      </View>
+            <View style={{
+              flexDirection: 'row', alignItems: 'center', gap: SPACE.md, marginTop: SPACE.md,
+              height: 46, borderRadius: RADIUS.md, backgroundColor: theme.surface,
+              borderWidth: 1, borderColor: searching ? theme.accent : theme.lineStrong,
+              paddingHorizontal: 13,
+            }}>
+              <Icon name="search" size={19} color={theme.muted} />
+              <TextInput
+                ref={search}
+                value={query} onChangeText={setQuery}
+                placeholder="Name, email or Meet alias"
+                placeholderTextColor={theme.muted}
+                accessibilityLabel="Search members"
+                onFocus={() => setSearching(true)} onBlur={() => setSearching(false)}
+                selectionColor={theme.accent}
+                style={{ flex: 1, color: theme.fgStrong, fontSize: 13.5, fontWeight: '600',
+                  outlineWidth: 0, outlineStyle: 'solid' }} />
+            </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ gap: SPACE.sm, paddingVertical: SPACE.md }}>
-        {chips.map(c => {
-          const on = filter === c.key;
-          return (
-            <Pressable key={c.key} onPress={() => setFilter(c.key)}
-              accessibilityRole="radio" accessibilityState={{ selected: on }}
-              style={{
-                minHeight: TAP_MIN, flexDirection: 'row', alignItems: 'center', gap: 5,
-                paddingHorizontal: 12, borderRadius: RADIUS.pill,
-                backgroundColor: on ? theme.accent : theme.surface,
-                borderWidth: 1, borderColor: on ? theme.accent : theme.lineStrong,
-              }}>
-              <Icon name={c.icon} size={15} color={on ? theme.onAccent : theme.fg} />
-              <Text style={{ fontSize: 12, fontWeight: '700', color: on ? theme.onAccent : theme.fg }}>
-                {c.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: SPACE.sm, paddingVertical: SPACE.md }}>
+              {chips.map(c => {
+                const on = filter === c.key;
+                return (
+                  <Pressable key={c.key} onPress={() => setFilter(c.key)}
+                    accessibilityRole="radio" accessibilityState={{ selected: on }}
+                    style={{
+                      minHeight: TAP_MIN, flexDirection: 'row', alignItems: 'center', gap: 5,
+                      paddingHorizontal: 12, borderRadius: RADIUS.pill,
+                      backgroundColor: on ? theme.accent : theme.surface,
+                      borderWidth: 1, borderColor: on ? theme.accent : theme.lineStrong,
+                    }}>
+                    <Icon name={c.icon} size={15} color={on ? theme.onAccent : theme.fg} />
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: on ? theme.onAccent : theme.fg }}>
+                      {c.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
 
-      {state === 'loading' && <Skeleton lines={4} />}
+            {state === 'loading' && <Skeleton lines={4} />}
 
-      {state === 'error' && (
-        <ErrorState onRetry={retry}
-          message={error ?? 'The member list could not be loaded. Nothing has been changed.'} />
-      )}
+            {state === 'error' && (
+              <ErrorState onRetry={retry}
+                message={error ?? 'The member list could not be loaded. Nothing has been changed.'} />
+            )}
 
-      {state === 'ready' && members.length === 0 && (
-        // no members yet is NOT the same as no search results
-        <EmptyState
-          title="No members yet"
-          body="Add your first member, or import a member list. Attendance starts counting from the first session after joining."
-          action="Add a member" onAction={() => router.push('/member/edit')} />
-      )}
+            {state === 'ready' && members.length === 0 && (
+              // no members yet is NOT the same as no search results
+              <EmptyState
+                title="No members yet"
+                body="Add your first member, or import a member list. Attendance starts counting from the first session after joining."
+                action="Add a member" onAction={() => router.push('/member/edit')} />
+            )}
 
-      {/* An empty COURSE is not an empty search. "Clear one of them to widen
-          the list" points at a search box that is not the reason, and leaves
-          the person clearing filters that were never set. */}
-      {state === 'ready' && members.length > 0 && scoped.length === 0 && scopedTo && (
-        <EmptyState
-          title={`Nobody is enrolled in ${scopedTo}`}
-          body="Add the member here and they are enrolled at this course's branch. Attendance starts counting from the first session after joining."
-          action="Add a member"
-          onAction={() => router.push(courseId
-            ? { pathname: '/member/edit', params: { courseId } }
-            : { pathname: '/member/edit' })} />
-      )}
+            {/* An empty COURSE is not an empty search. "Clear one of them to widen
+                the list" points at a search box that is not the reason, and leaves
+                the person clearing filters that were never set. */}
+            {state === 'ready' && members.length > 0 && scoped.length === 0 && scopedTo && (
+              <EmptyState
+                title={`Nobody is enrolled in ${scopedTo}`}
+                body="Add the member here and they are enrolled at this course's branch. Attendance starts counting from the first session after joining."
+                action="Add a member"
+                onAction={() => router.push(courseId
+                  ? { pathname: '/member/edit', params: { courseId } }
+                  : { pathname: '/member/edit' })} />
+            )}
 
-      {state === 'ready' && scoped.length > 0 && list.length === 0 && (
-        <EmptyState
-          title="Nothing matches"
-          body={scopedTo
-            ? `No member of ${scopedTo} matches that search and filter. Clear one of them to widen the list.`
-            : 'No member matches that search and filter. Clear one of them to widen the list.'} />
-      )}
+            {state === 'ready' && scoped.length > 0 && list.length === 0 && (
+              <EmptyState
+                title="Nothing matches"
+                body={scopedTo
+                  ? `No member of ${scopedTo} matches that search and filter. Clear one of them to widen the list.`
+                  : 'No member matches that search and filter. Clear one of them to widen the list.'} />
+            )}
 
-      {state === 'ready' && list.length > 0 && (
-        <View style={{ gap: 10 }}>
-          {list.map((m, i) => (
-            <MemberCard key={m.id} member={m} index={i}
-              onOpen={() => router.push(`/member/${m.id}`)}
-              onEdit={() => router.push({ pathname: '/member/edit', params: { id: m.id } })}
-              onRemove={() => setConfirmRemove(m)} />
-          ))}
-        </View>
-      )}
+          </View>
+        }
+        contentContainerStyle={screenBodyPadding(true)}
+        keyboardShouldPersistTaps="handled"
+        initialNumToRender={12}
+        maxToRenderPerBatch={12}
+        windowSize={7}
+        style={{ flex: 1 }} />
 
       {/* Two short sentences and a Yes/No, since the repo owner cut the counted
           paragraph on 08-Sep-2026: what goes, and whether to. The words live in
@@ -319,8 +356,21 @@ export default function Members() {
   );
 }
 
-function MemberCard({ member, index, onOpen, onEdit, onRemove }:
-  { member: Member; index: number; onOpen: () => void; onEdit: () => void; onRemove: () => void }) {
+/** The list's empty answer while loading or failed: one shared array, so the
+ *  list's data identity does not change on every render. */
+const NO_MEMBERS: Member[] = [];
+const memberKey = (m: Member) => m.id;
+/** The 10pt gap the card column used to draw with `gap: 10`. */
+const CardGap = () => <View style={{ height: 10 }} />;
+
+/**
+ * MEMOISED: a card re-renders when its member, its position or a handler
+ * changes, and the handlers are stable -- so a keystroke in the search box
+ * re-renders the cards that moved and nothing else.
+ */
+const MemberCard = memo(function MemberCard({ member, index, onOpen, onEdit, onRemove }:
+  { member: Member; index: number;
+    onOpen: (m: Member) => void; onEdit: (m: Member) => void; onRemove: (m: Member) => void }) {
   const { theme } = useTheme();
   const noMail = !isReachable(member);
   const ink = noMail
@@ -348,8 +398,8 @@ function MemberCard({ member, index, onOpen, onEdit, onRemove }:
             {`${member.course} · ${member.branch}`}
           </Text>
         </View>
-        <IconButton icon="edit" label={`Edit ${member.name}`} tint={theme.accentInk} onPress={onEdit} />
-        <IconButton icon="delete" label={`Remove ${member.name}`} tint={dangerInk} onPress={onRemove} />
+        <IconButton icon="edit" label={`Edit ${member.name}`} tint={theme.accentInk} onPress={() => onEdit(member)} />
+        <IconButton icon="delete" label={`Remove ${member.name}`} tint={dangerInk} onPress={() => onRemove(member)} />
       </View>
 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, marginTop: 11 }}>
@@ -381,14 +431,14 @@ function MemberCard({ member, index, onOpen, onEdit, onRemove }:
                 : 'No address on file')
             : primaryEmail(member)}
         </Text>
-        <Pressable onPress={onOpen} accessibilityRole="button"
+        <Pressable onPress={() => onOpen(member)} accessibilityRole="button"
           accessibilityLabel={`Attendance for ${member.name}`}>
           <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.accentInk }}>Attendance</Text>
         </Pressable>
       </View>
     </View>
   );
-}
+});
 
 function IconButton({ icon, label, tint, onPress }:
   { icon: string; label: string; tint: string; onPress: () => void }) {

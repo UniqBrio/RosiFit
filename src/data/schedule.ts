@@ -14,6 +14,7 @@
  * exactly how the dashboard count and the weekly list drift apart, so it is
  * one function now, and the cases are in schedule.test.ts.
  */
+import { businessTodayIso } from './businessDate';
 export type ScheduleWindow = {
   offering_id: string;
   weekdays: number[];
@@ -57,7 +58,10 @@ export function currentSchedules<T extends ScheduleWindow>(
   return out;
 }
 
-/** Today, as the ISO day the schedule columns are compared against. */
+/** Today, as the ISO day the schedule columns are compared against -- the
+ *  ACADEMY'S day (src/data/businessDate.ts). This read the UTC day, so
+ *  between midnight and 05:30 in Chennai the timetable in force was
+ *  yesterday's. */
 export function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return businessTodayIso();
 }

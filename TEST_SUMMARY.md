@@ -1,3 +1,277 @@
+## CI ROUND 1 ON PR #65: THE DENO TYPE CHECK FOUND A GENUINE DEFECT — 06-Oct-2026
+
+PR #65 (claude/loving-euler-8nz5a8 -> main) is this branch's FIRST CI run (ci.yml triggers on push to main/dev and on pull_request only). Run 37443357842 on c912054: gate job -- guards PASS, Edge Function specs (deno test) PASS, `npm run check`: lint PASS, typecheck PASS, test:unit 2,213 (2,212 pass, 1 skipped: the dist/ check), contrast 2,852/2,852, icons 75/75, functions PASS, **check:edge FAIL**; the ratchets step skipped behind it. Baseline for comparison: the last merged PR's run (37147373800, 03-Oct) had check:edge PASS, so this is NOT pre-existing and NOT environmental: it is this branch's.
+THE DEFECT, a genuine regression from phase 7 (commit 2dd66bf): supabase/functions/csv-import/load.ts used eight type names it never declared (AliasRow, MemberRow, EmailRow, StatsRow, EnrollmentRow, OfferingRow, NamedRow, Register) and index.ts imported seven of them from it; RegisterIndex lacked the staffNames index.ts destructures. Nothing local could see it: Deno is not installable on the dev box (check:edge SKIPS), node strips types, and the node spec reads the source as text. Reproduced here with a tsc stand-in over the Edge tree (paths-mapped npm: specifier): 27 errors in load.ts/index.ts, every one of them these names or their cascade; after the fix the only errors left are the two `Deno.serve` callback parameters the stand-in cannot type (Deno's own globals; the same lines were green in CI on main).
+FIXED: the eight types declared and exported from the columns each read in index.ts selects (the shapes the matcher already relied on at runtime); Register and RegisterIndex carry staffNames; indexRegister passes it through. No behaviour change: types only. src/data/csvPreviewReads.test.ts, edgeFuzzyMatcher.test.ts and edgeFunctionPagedReads.test.ts 22/22; `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6 the conformance warning, G8); G5 PASS; G7 PASS. check:edge itself is proven only by CI's next run.
+CASES-NA: a type declaration fix with no runtime change; the existing node specs over the same module stay green and CI's check:edge is the test.
+
+## READ-ONLY PRE-DEPLOYMENT REVIEW — 06-Oct-2026
+
+docs/PRE_DEPLOYMENT_REVIEW_2026-10-06.md answers the owner's three decisions with evidence: 0090 APPROVE (subscription_state is read only through is_subscription_writable -- 28 policies and 16 functions in production -- written by nothing in code, does not read start_date; the only behavioural difference is the write gate closing at the academy's midnight instead of 05:30 IST on the last day of the subscription and of grace; production's row expires 2027-09-01 with 14 days' grace, so nothing observable moves for eleven months); 0089 APPLY SEPARATELY from 0085 (production's recompute_member_stats already carries p_member_ids uuid[] default null -- md5 142f926f, 1,502 bytes; 0089 alone on a 0084 replay applies and spec 66 is 18/18; the proposed order 0086, 0087, 0085, 0088, 0090, 0089 replays with an inventory identical to the filename order; 0090 without 0088 refuses); SEND_CONCURRENCY = 2 (the SES account is OUT of the sandbox by the production ledger -- 31 completed batches, 1,288 sent, 0 failed, largest 291 -- the maximum send rate still unread, T-010; the assumption is written beside the value). Every 0085/0088/0090 anchor and every 0086/0089 md5 re-read in production read-only 06-Oct-2026 09:00 UTC and present exactly once. CI has never run on this branch (ci.yml: push to main/dev and pull_request only; zero workflow runs), so the Edge Functions are NOT READY until the PR's first run is green. NOTHING DEPLOYED, APPLIED OR CHANGED IN PRODUCTION.
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8); G5 PASS; G7 PASS.
+CASES-NA: this commit adds a review document and this entry; no behaviour changes.
+
+## DEPLOYMENT PREPARATION STEPS 6-12: PIPELINE, MIGRATION ORDER, PLANS, FINAL REPORT — 06-Oct-2026
+
+docs/PERFORMANCE_FIX_FINAL_REPORT_2026-10-06.md is the final report of the brief "Finish Remaining Issues & Prepare Deployment": completed / remaining / tests / performance (every figure labelled Local/harness, CI or Production) / the date audit / the six unapplied migrations and their dependency order / the deployment plan Stages A-G (NOT executed) / the smoke-test checklist / the production verification plan / the risks and the three owner decisions / the status. NOTHING DEPLOYED, NOTHING APPLIED, NO PRODUCTION DATA OR SETTING TOUCHED. ISSUE_TRACKER T-144 updated (the remaining current_date sites closed on this branch by 0090; status still "not applied").
+
+STEP 6: SEND_CONCURRENCY stays 4 (documented knob 1-16): client_batch_id is unique (0009) so a resend is a 409 and cannot double-send; there are no automatic retries; a suppressed address fails its recipient before any provider call; the SES rate is unread (T-010, AWS console) -- set 1 before deploying if the account is in the sandbox.
+STEP 7, the full pipeline on the committed tree (Local/harness): `npm run test:unit` 2,213 of 2,213 (26 new, all passing); `npm run typecheck` PASS; `npm run lint` PASS; `npm run check` PASS exit 0; `npx expo export --platform web` PASS (6.5 MB); `npm run test:db` 1,332 PASS with exactly the 2 PRE-EXISTING failures (spec 18 is_super_admin count; spec 53 production copy-lock on update_member, moved on purpose by 0085/0088) and NO genuine failure; `npm run check:edge` SKIPPED and the Deno specs NOT RUN HERE (ENVIRONMENT LIMITATION: no Deno 2.9.7 through this box's proxy; CI runs them); `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8), G5 PASS, G7 PASS.
+STEP 8, migration order validated by object inventory diff (tables, columns, indexes, triggers, policies, RLS, functions with body md5, function and table grants) on two fresh replays, through 0084 and through 0090: the diff is exactly 2 new functions (business_today, member_period_metrics_buckets -- both anon=false) and 13 changed bodies; NO table, column, index, trigger, policy, RLS or table-grant change. Order: 0086 -> 0087 (the client needs 0087), then 0085, 0088 -> 0090 (0090 refuses without business_today()), 0089 independent.
+CASES-NA: this commit adds the final report, the tracker update and this entry; no behaviour changes.
+
+## DEPLOYMENT PREPARATION STEP 5: THE REST OF THE DAYS ARE THE ACADEMY'S — 06-Oct-2026
+
+docs/PERFORMANCE_FIX_REPORT_2026-10-06.md §5.4 and ISSUE_TRACKER T-144 (the current_date readers phase 11 deliberately left, and period.ts's device-day arithmetic). NOT DEPLOYED. ONE MIGRATION, NOT APPLIED: supabase/migrations/0090_the_rest_of_the_days_are_the_academys.sql -- requires 0088's business_today(). Under D-10 it merges to main only on the day it is applied.
+
+THE AUDIT, every date/time read in app/, src/, supabase/functions/ and supabase/migrations/ (the grep list of the brief), classified and tabled in docs/PERFORMANCE_FIX_FINAL_REPORT_2026-10-06.md §5: class A (a real instant: audit and sent timestamps, freshness, relative "x minutes ago" labels, Edge Function timestamps, timestamptz columns) is correct as it is and untouched; class C (local parsing of a YYYY-MM-DD string for a label or a weekday, the calendar grid, the upload file's label, memberDate's Date.UTC probe) is safe because the same string goes in and out and untouched; class B (a business date derived from "now") is the defect class and is FIXED here, in both tiers.
+CLIENT: src/data/period.ts gains businessToday(): the academy's day as a date-only Date, which currentWeek/lastWeek/lastFourWeeks/thisMonth/presetPeriod/resolvePeriod now default to (the week and month turn at 00:00 Chennai, not at the device's midnight); src/data/hooks.ts useWeekRows (the week's rows), src/components/DateTimePicker.tsx (the calendar's "today", twice), src/data/message.ts (the sample message's day) read it; src/data/repository.ts's dayBounds is businessDayBounds(from, to) -- the period's bounds as instants at Chennai's midnight and end (src/data/businessDate.ts, fixed +05:30), instead of `new Date("YYYY-MM-DDT00:00:00")`, which is the DEVICE's midnight and on a device outside India selected a different day's rows.
+SERVER (0090): the five remaining current_date readers edited IN PLACE, one anchor each, every anchor read read-only in production 06-Oct-2026 and present exactly once in the live body (md5s in the migration: subscription_state 78d1e4ab, save_course a4248f1d, merge_member_into 91467511, is_in_course 871e3b16, follow_up_candidates 76d0c98a): subscription_state's active/grace window (2 anchors), save_course's effective schedule window and "saved with the course" effective_from (3), merge_member_into's enrolment-ending least(...) (1), is_in_course's live-enrolment test (1), follow_up_candidates' member_status_on(..., current_date) (1); a final guard refuses the migration if any of the five still reads current_date. delete_course and delete_member in production no longer read current_date (verified read-only) and are not touched. Column defaults in 0002 are not touched (an applied migration; they are overridden by every writing function, which now pass business_today()).
+FAIL-FIRST: src/data/businessPeriod.test.ts - against a48b750 in a temporary worktree 6 of 6 red ("# pass 0 / # fail 6": businessToday is not exported); 6 of 6 green after: at 00:30 on Monday in Chennai (Sunday 18:30 UTC) the week is the new one whatever the device says, one minute earlier it is still Sunday's week, the month turns at midnight in Chennai, the presets and a resolved choice start from the same day, the default is a date-only value, a day's bounds as instants are Chennai's midnight and end under every device zone.
+FAIL-FIRST: supabase/tests/67_the_rest_of_the_days_are_the_academys.sql - against the schema without 0090 (file moved aside, fresh replay) exit 3 at line 18: "FAIL  subscription_state judges active and grace by the academy's day"; with 0090, 11 of 11 green under a session clock pinned to 20:00 UTC (01:30 the next day in Chennai): a subscription expiring on the academy's today is active, yesterday's with grace is in grace, the one whose grace ended is expired; save_course picks the schedule in force on the academy's day; merge_member_into ends the stray's enrolment on the academy's day; is_in_course sees an enrolment effective on the academy's day; follow_up_candidates judges "active" on the academy's day; none of the five reads current_date.
+`npm run test:db` with 0085-0090: 1,332 PASS, failures = spec 18 and spec 53 (both pre-existing) only.
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8); G5 PASS; G7 PASS. `npm run typecheck` PASS, `npm run lint` PASS.
+CASES-NA: the SQL side's test is a harness spec (supabase/tests/67); the client side's is src/data/businessPeriod.test.ts.
+
+## DEPLOYMENT PREPARATION STEPS 3-4: THE ROSTER IS WINDOWED; THE RECOMPUTE IS ONE PASS — 06-Oct-2026
+
+docs/PERFORMANCE_FIX_REPORT_2026-10-06.md §5.2 (the course roster, deferred) and §5.3 (a whole-offering commit recomputes the offering). NOT DEPLOYED. ONE MIGRATION, NOT APPLIED: supabase/migrations/0089_recompute_member_stats_in_one_pass.sql. Under D-10 it merges to main only on the day it is applied.
+
+STEP 3, THE ROSTER (app/course/[id].tsx): the ScrollView is a FlatList whose header is the old content unchanged -- title, course picker, day strip, search, filters, selection bar, empty states -- and whose items are the cards: the live cards, the "No email" head and its cards, the "Email issues" toggle, each issue group's head and its cards, the "Inactive" head and its cards (still off-register, still unselectable), each item wearing the block's side padding and its section's gap. rosterItems() builds the items from the same scoped/joinedByDay/onDay/searched/shown chain as before; the gate that decides whether cards render at all is the same chain the header's empty states read, so "no members on this day", "no match" and the loading/error states draw exactly as they did and the cards branch is null then. Selection, search, filters, the picker, the day strip, navigation, accessibility labels and the responsive layout are untouched: every card is the same MemberCard with the same props. 12 initially, 12 per batch, window 7.
+FAIL-FIRST: src/components/rosterWindowed.test.ts - against a48b750 in a temporary worktree 4 of 4 red ("# pass 0 / # fail 4": "the roster is a FlatList that owns the scroll, with the old content as its header", "the items keep the sections in order: live cards, No email, Email issues, Inactive", "every item wears the sides the block wore, and its section's gap", "the gate matches the header's own empty states, and Inactive is outside it"); 4 of 4 green after.
+MEASURED (scenario B, standin on the exported bundle, Local/harness, NOT production): roster DOM nodes 11,986 (1,644 members) and 36,063 (5,000) -> 699 and 699; long tasks on open, summed, 1,590 ms / 2,899 ms -> 439 / 432 ms; a keystroke in the roster search 24-168 ms of input events -> 16-80 ms; network requests while typing 0 before and after. The DOM is bounded at 5,000 members by the window, not the roster.
+
+STEP 4, THE RECOMPUTE (0089): WHY every member of an offering gets a row on a whole-offering commit -- the absentee sweep inserts an absent row for every expected member of that offering's sessions, so every one of their figures (sessions, absences, streak, last seen) genuinely changes; the per-member scope of 0085 is exact and cannot be narrowed further without maintaining streaks incrementally on every attendance write, which is a schema redesign and is REPORTED, not done (final report §Remaining). What is done instead: the body is ONE PASS. 0008's loop called current_streak_for(member) per member, a correlated walk of that member's rows for each of N members; 0089 computes the streak with one window (sum(present) over (partition by member order by session_date desc, id desc) -- the count of rows before the first non-present row, read as the streak) and the aggregates in one grouped scan over the same rows, scoped by p_member_ids exactly as 0085 scoped it, then the same upsert and the same return. Guarded: the migration refuses unless the live body's md5 is 142f926f13f2c64db8ca6aab9c034ea9 (1502 bytes; identical in production, read read-only 06-Oct-2026, and in the harness).
+FAIL-FIRST: supabase/tests/66_recompute_member_stats_in_one_pass.sql - against the schema without 0089 (file moved aside, fresh replay) exit 3 at line 132: "FAIL  the body no longer calls current_streak_for per member (the prose may name it; the call is gone)"; with 0089, 18 of 18 green: a reference built from 0008's own body (pg_temp.recompute_reference, with current_streak_for) agrees row for row with the one-pass body over the seeded academy and over four hand-made members (a run then a miss, all present, a miss on the latest day, nothing but excused rows) and a member with no rows; the scoped call touches only its members; an empty scope writes 0 rows.
+MEASURED (Local/harness, Postgres 16, NOT production): a whole-academy recompute at 1,500 members 1.2-1.3 s -> 0.39 s, at 5,000 members 4.70 s -> 1.98 s, the member_stats rows EXCEPT-equal both ways at both sizes (0 / 0 differing rows). A whole-offering commit at 5,000 members therefore still recomputes the offering, in well under half the time.
+RE-POINTED, my own phase 5 spec, two lines, with the reason beside each: supabase/tests/62 -- (a) `edit_streak_calls = 1` -> `<= 1`, because the one-pass body does not call current_streak_for at all; the claim (an edit walks one member's history, not the academy's) is carried by the row count on the next line and by spec 66's scoped case. (b) A MEASUREMENT defect, found because 0089 exposed it: pg_stat_xact_user_functions is a per-backend buffer that Postgres 15+ flushes at most once a second, so a count from the PREVIOUS transaction leaks into the next one when it starts inside the same second (reproduced: a call in one transaction, then `calls = 1` read in a fresh transaction before any call). The spec read "got 2 want 1" on two of three replays once the import transaction got fast enough. Every count in the spec is now a delta against a baseline read at the top of its own transaction; the expectations (one call each) are unchanged. `npm run test:db` with 0085-0090: 1,332 PASS, failures = spec 18 (pre-existing) and spec 53 (pre-existing copy-lock on production's update_member hash) only.
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8); G5 PASS; G7 PASS. `npm run typecheck` PASS, `npm run lint` PASS.
+CASES-NA: the SQL side's tests are harness specs (supabase/tests/66, 62); the roster's is src/components/rosterWindowed.test.ts (source-shape, the way the phase 3 window specs are).
+
+## DEPLOYMENT PREPARATION STEP 2: A SHORT PAGE AFTER A LONGER ONE IS THE END — 06-Oct-2026
+
+docs/PERFORMANCE_FIX_REPORT_2026-10-06.md §5.1 (phase 10, stopped by decision; resolved here on the owner's instruction to resolve it if safe). NOT DEPLOYED. No DB change.
+
+WHY IT IS SAFE, exactly: PostgREST answers min(asked, cap, remaining) rows. Within one read `asked` and `cap` are two fixed numbers, so every page before the last has exactly min(asked, cap) rows -- the same length whatever the cap is. A page SHORTER than another page of the same read therefore cannot be a capped page: the table ran out, and the empty request that used to prove it is not sent. A read whose pages are all one length (an exact multiple of the page, or a first page that is short) still asks once more, because nothing inside the read tells those two apart. Exact under any cap, including one lowered while the app is open: the comparison is within one read. A SINGLE short page still proves nothing (RC-041 defect 1 stays closed). The row cap itself cannot be read from SQL (T-006: no pgrst setting in rolconfig or pg_settings); the rule does not need it.
+
+FAIL-FIRST: src/data/pageAllShortPage.test.ts - against c815320 (phase 13) 16 of 16 red for both pagers ("a full page and the 644-row page; no third request": 3 !== 2; "44 pages of 50 and the 20-row end": 46 !== 45); 16 of 16 green after -- every row returned, none twice, none skipped, no cursor asked twice, a cap below the page size, a cap equal to it, an exact multiple, a table smaller than a page, an empty table.
+RE-POINTED, on the owner's instruction (Step 2: "update the affected tests to reflect the correct behavior"), each an expected COUNT with the reason written beside it and nothing else changed: src/data/pageAll.test.ts "DEFECT 1" (46 -> 45 pages: every row and no duplicate still asserted) and "the cursor is the LAST key seen" ([undefined, 10, 20, 25] -> [undefined, 10, 20]); src/data/periodMetricsPage.test.ts "the adapter turns the keyset into the RPC arguments" ([null, id(1000), id(1087)] -> [null, id(1000)]); src/data/memberRefresh.test.ts Test 4 (members requests 3 -> 2); src/data/requestBudget.test.ts (members 3 -> 2); src/data/edgeSendLoop.test.ts (3 -> 2 metrics pages). The three RC-041 specs' termination pins (`if (got.length === 0) return rows;` present, no `got.length < size`, a cap below the page size returns everything) are untouched and green. CP-020 amended in docs/registers/CANONICAL_PATTERNS.md.
+
+WHAT CHANGED: src/data/pageAll.ts and supabase/functions/_shared/pageAll.ts -- `longest`, the longest page this read has seen; after pushing a page, `if (got.length < longest) return rows; if (got.length > longest) longest = got.length;`. Nothing else.
+MEASURED (fake network, 1,644 members): one request fewer per paged read of a table bigger than a page -- members, addresses, aliases, stats, enrolments, the week's metrics and the bucket read. Members screen 25 -> 19 requests, Home 42 -> 35, Attendance 27 -> 22, Follow-ups 25 -> 19, Reports 25 -> 19, Courses 25 -> 19, member save cascade 44 -> 35 (scratchpad requestBaseline, the real data layer on the fake network). Small tables (courses, branches, configs: one short page) still cost their terminator: from inside the read nothing proves a short first page is the end.
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8); G5 PASS; G7 PASS (2,213 unit tests).
+
+
+## PERFORMANCE FIX PHASES 12-13: REGRESSION RUN, SCORECARD, AUDIT — 06-Oct-2026
+
+docs/PERFORMANCE_FIX_REPORT_2026-10-06.md is the closing report: files changed, the four unapplied migrations, the before/after scorecard, the test totals, what remains (phase 10 stopped by decision -- the pager's empty-page rule is pinned by three specs as deliberate; the roster not windowed; a whole-offering commit still recomputes the offering; the other current_date readers, T-144), and a staged deployment order with smoke tests. NOTHING DEPLOYED OR APPLIED.
+
+REGRESSION, on the final tree: `npm run test:unit` 2,187 tests green (after the phase 11 correction); `npm run test:db` 1,303 PASS with the 2 pre-existing failures (spec 18 is_super_admin count; spec 53's production copy-lock on update_member, moved on purpose by 0085/0088, re-pinned on apply); `npm run typecheck` PASS; `npm run lint` PASS; `npm run check` contrast/icons/functions PASS; `npx expo export --platform web` PASS; Edge Function Deno tests NOT RUN HERE (no Deno; CI runs them) -- UNVERIFIED locally, their claims proven under node by the three edge* node specs. `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8); G5 PASS; G7 PASS.
+CASES-NA: this commit adds the closing report and this entry; no behaviour changes.
+
+## CORRECTION TO PHASE 11 (06-Oct-2026): THE PHASE 11 ENTRY BELOW OVERSTATED G7
+
+The phase 11 entry says "G7 PASS". The gate it cites (53.1 s) had G7 FAIL on three specs, which the full `npm run test:unit` run afterwards (2,187 tests, 2,184 pass) named: src/components/dayStripUploadButton.test.ts ("the screen reads the clock once" -- pinned `const todayIso = iso(new Date());`), src/components/memberInactiveFromField.test.ts ("picking Inactive fills today in" -- pinned `setInactiveFrom(iso(new Date()))`), and src/data/migrationGrants.test.ts ("EVERY function granted to authenticated is also revoked from anon DIRECTLY" -- 0087 and 0088 revoked with `revoke all ... from public, anon`, and the guard looks for `revoke execute ... from ... anon`, 0012's wording). A fourth, found by the next gate: phase 7's own src/data/edgeFuzzyMatcher.test.ts had an ABSOLUTE budget (1,000 x 5,000 under 4,000 ms) that crossed under the gate's parallel load.
+
+FIXED in this entry's commit: 0087 and 0088 (unapplied drafts, corrected in place under D-8) now `revoke execute ... from public, anon`; the harness replays both and specs 64 (17/17) and 65 (13/13) stay green; anon still cannot execute either function. The member form's Inactive pick is `setInactiveFrom(businessTodayIso())` again (the form's once-per-render `today` stays for the other five reads). The two remaining literal pins of the device's day are re-pointed exactly as the two in the phase 11 entry were, under the same owner-approved reversal exemption and for the same requirement: dayStripUploadButton.test.ts:176 `iso\(new Date\(\)\)` -> `businessTodayIso\(\)`; memberInactiveFromField.test.ts:109 the same expression inside its regex. Nothing else in either spec changes. The matcher's timing assertion is now RELATIVE -- the loop and the prepared tier back to back on the same fixture in the same process, prepared x 2.5 < loop (measured alone ~5x; the same candidates asserted) -- so whatever the box is doing, the ratio stands.
+GATES, this time read from the step's own line: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8); G5 PASS; G7 PASS. `npm run typecheck` PASS, `npm run lint` PASS.
+
+## CORRECTNESS FIX PHASE 11: A DATE IS THE ACADEMY'S DAY — 06-Oct-2026
+
+docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md §12 (four members refused on 3 Oct 2026, 00:37-01:02 IST, "a joining date in the future cannot be recorded"); ISSUE_TRACKER T-144. NOT DEPLOYED. ONE MIGRATION, NOT APPLIED: supabase/migrations/0088_a_date_is_the_academys_day.sql -- adds public.business_today() = (now() at time zone 'Asia/Kolkata')::date and edits four functions IN PLACE, one anchor each (create_member's default joining date and its "in the future" check; update_member's v_today; set_member_active_from's check; set_attendance's check), every anchor read in production read-only 06-Oct-2026 and present exactly once in the live body. The database's TimeZone and every timestamptz stay UTC. No table, index, policy or data change. Under D-10 it merges to main only on the day it is applied.
+
+FAIL-FIRST: supabase/tests/65_a_date_is_the_academys_day.sql - against the schema without 0088 (file moved aside, fresh replay) red at the first call, exit 3: "function public.business_today() does not exist"; with 0088, 13 of 13 green under UTC, Chennai and Los Angeles sessions, including create_member accepting business_today() as a joining date, refusing business_today() + 1, accepting business_today() - 1, and dating a member added with no date on the academy's today.
+FAIL-FIRST: src/data/businessDate.test.ts - against c5a4b0e (phase 9) in a temporary worktree red ("Cannot find module './businessDate'"); 5 of 5 green after: 00:37 IST on the 3rd is the 3rd (the server said the 2nd), the transition at 18:30 UTC to the minute, UTC midnight is 05:30 the same Chennai day, month/year/leap-day ends, today/yesterday/tomorrow judged from 00:30 IST, and the same answer under four process time zones.
+RE-POINTED, under the owner-approved behaviour-reversal exemption (CLAUDE.md, 01-Oct-2026; the requirement is this brief's phase 11, "default 'today' generation ... use an explicit business timezone"): src/data/memberJoinedOn.test.ts:123 and src/data/importedMemberJoinedOn.test.ts:134 pinned the Add form's and the offline import's "today" as the literal `iso(new Date())` -- the device's day, the very mechanism this phase replaces. Each diff is the expression literal inside one regex changing to `businessTodayIso()`; no assertion removed, nothing skipped, every downstream assertion preserved (105 of 105 across the ten date specs).
+Existing specs kept green WITHOUT editing them: joined.test.ts, memberDate, schedule, followup, course, memberValidationToast, memberInactiveFromField; `npm run typecheck` PASS, `npm run lint` PASS.
+
+WHAT CHANGED (client): src/data/businessDate.ts (new) -- BUSINESS_TIME_ZONE = 'Asia/Kolkata', a fixed +05:30 (no daylight saving since 1945), businessDateOf(instant) and businessTodayIso(); the day is arithmetic on the instant, so a device elsewhere, a locale, or an Intl table without the zone cannot move it. Every "today" that feeds a date-only business value now reads it: the member form (opens on today, the inactive/active-again window, the picker ceilings), the member pop-up, the member import, the attendance upload's future-file refusal, the course screen, Reports, the period filter's calendar ceiling, the follow-up rule's default day, the course roster's default day, the repository's offline joining defaults and fetchPendingSessions' "still to come" cut-off, the offering form's default start, and schedule.ts's today() -- which read the UTC day outright, so between midnight and 05:30 the timetable in force was yesterday's. Date-only values travel as YYYY-MM-DD strings end to end (the form already sent `joined_on` as text; nothing passes through a Date on the way). Edge Functions: no date-only "today" is derived server-side -- the session day and the import day come from the client -- and the server-side rules are 0088's.
+DELIBERATELY NOT CHANGED, listed in T-144 for a row each: the other current_date readers (subscription window, "saved with the course" effective_from, the enrolment-ending least(...) in three delete/merge paths, is_in_course, member_status_on reads) and period.ts's week arithmetic (local Date math; identical to the academy's day on an Indian device, and a wider change than this phase).
+
+MEASURED: the refusal is reproduced by arithmetic in the spec (3 Oct 00:37 IST = 2 Oct 19:07 UTC: the device said the 3rd, current_date said the 2nd); production's four refusals a night cannot be re-measured until 0088 is applied -- UNVERIFIED there.
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8), G5 PASS, G7 PASS.
+CASES-NA: the SQL side's test is a harness spec (supabase/tests/65_*.sql); the client side's is src/data/businessDate.test.ts.
+
+## CORRECTNESS FIX PHASE 9: NO PROTECTED READ BEFORE THE SESSION IS KNOWN — 06-Oct-2026
+
+docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md §5 (the unauthenticated fan-out: 33 x 401/403 in a day, 30 "permission denied" in one second at 18:53:41 on 3 Oct). NOT DEPLOYED. No DB change.
+
+FAIL-FIRST: src/data/sessionGate.test.ts - against 6e0501d (phase 8) in a temporary worktree 3 of 3 red ("Cannot find module './sessionGate.ts'", and useAsync still `withTimeout(load())`); 3 of 3 green after.
+Existing specs kept green WITHOUT editing them: hookInvalidation.test.ts, revalidate.test.ts, deferral.test.ts, searchDebounce.test.ts (55 together with the new file), memberRefresh, requestBudget, bucketedMetrics (the fake-network specs call the repository directly and are unaffected; the hook-level gate is open under node's unconfigured client); `npm run typecheck` PASS, `npm run lint` PASS.
+
+WHAT CHANGED: src/data/sessionGate.ts (new) -- sessionKnown(): true once the signed-in identity has been read back from the server under RLS (currentAppUser, the question useIdentity already asks, shared with it through sharedRead so the gate costs no request of its own), false when the server says nobody is signed in or could not be asked; the answer is kept until the auth state changes (SIGNED_IN, SIGNED_OUT, USER_UPDATED -- not INITIAL_SESSION, which is the client announcing what it found at start-up, nor TOKEN_REFRESHED, the same person with a newer token). It never redirects: AdminRouteGuard and the screens' own signedOut branches keep that job, so there is no second opinion to loop against. src/data/hooks.ts useAsync -- `withTimeout(sessionKnown().then(signedIn => { if (!signedIn) throw new Error(SIGNED_OUT_MESSAGE); return load(); }))`: a reader with nobody signed in fails with "Sign in to load this." and sends nothing; the redirect lands over it. The sequence is now: start -> the session resolved (one shared identity read) -> protected reads -> screens. Loading session: readers wait on the shared read. Authenticated: readers run, once per sign-in the gate costs nothing more. Unauthenticated: no request; the guard redirects. Expiry: a refresh GoTrue refuses is reported as SIGNED_OUT, the gate forgets, the next reader (a focus return, a bus bump) asks again and stops. Fixtures mode: open.
+NOT suppressed: nothing catches a 401. The requests that produced them are not sent.
+
+MEASURED: the mechanism is proven by the spec (three readers, one identity read; a signed-out answer kept -- no retry storm; a question that cannot be asked is not a yes). The production figure (33 x 401/403 a day) is UNVERIFIED after: not deployed.
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8), G5 PASS, G7 PASS.
+
+## PERFORMANCE FIX PHASE 8: FOLLOW-UPS GO OUT FOUR AT A TIME, WITH A CLOCK ON EACH — 06-Oct-2026
+
+docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md RC-10 (send side). NOT DEPLOYED (D-14). No DB change.
+
+FAIL-FIRST: src/data/edgeSendLoop.test.ts - against 2dd66bf (phase 7) in a temporary worktree 5 of 5 red (the pool bound; "pooled took 5043 ms against serial 5040 ms"; a hung provider never settles; loadPeriodMetrics missing); 5 of 5 green after.
+supabase/functions/send-followups/send-loop-pool.test.ts (Deno) - the pool claims for CI's `deno test`. NOT RUN HERE (no Deno on this box, see phase 7); UNVERIFIED locally. The node spec exercises the identical modules (send-loop.ts and load.ts are plain TypeScript).
+Existing specs kept green WITHOUT editing them: send-loop.test.ts, load.test.ts, wording.test.ts (Deno; the loop's contract -- row before send, outcome after, a refused insert fails that recipient only, results in order, batch finalised once -- is unchanged, and `runSendLoop`'s existing five arguments are unchanged; CI runs them).
+
+WHAT CHANGED: supabase/functions/send-followups/send-loop.ts -- runSendLoop takes an options argument {concurrency, timeoutMs}; recipients are worked by a pool of DEFAULT_SEND_CONCURRENCY = 4 workers each taking the next recipient in order (at most four between their first write and their last), results are filled by index so they keep the recipients' order, and every provider call is raced against SEND_TIMEOUT_MS = 20 s -- a provider that never answers is recorded as that recipient's failure with a sentence, never retried here (SES may have accepted it; a second copy is worse than a row that says failed). readConcurrency() reads the SEND_CONCURRENCY Edge secret (1-16, else the default). email.ts -- the SES fetch carries AbortSignal.timeout(15 s) so a hung socket is released, surfacing in send()'s existing catch as a failed recipient. load.ts -- loadPeriodMetrics(): the batch's period figures in ONE keyset-paged read of member_period_metrics_page (⌈N/1,000⌉ + 1 requests) instead of one member_period_metrics RPC per recipient; a recipient with no row keeps the zeros. index.ts -- uses both; the per-course config and wording RPCs are asked together instead of one after another.
+WHY FOUR: SES's production maximum send rate is commonly 14 a second (1 in the sandbox); four recipients at ~0.3 s each is ~12 a second with the database writes around each send, under the production rate. The owner's read of the real figure is ISSUE_TRACKER T-010, still open; SEND_CONCURRENCY is the knob to match it without a deploy. Unsubscribe links, suppression (bounced, unsubscribed, complained), the row-before-send rule, idempotency (client_batch_id), the audit row and the batch counters are untouched.
+
+MEASURED (node, fake provider at 50 ms per send, fake admin): 100 recipients serial 5,040 ms -> pooled (4) 1,269 ms (the spec's bound is < serial/3); production's 0.36-0.41 s a recipient (136 recipients 51 s, 256 -> 91 s) is UNVERIFIED after: not deployed. Expected from the same per-recipient cost: 256 recipients ~25 s. Metrics: 256 sequential RPCs -> 3 paged requests.
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8), G5 PASS, G7 PASS; `npm run typecheck` PASS, `npm run lint` PASS.
+
+## PERFORMANCE FIX PHASE 7: THE CSV PREVIEW READS ONCE AND MATCHES BY LOOKUP — 06-Oct-2026
+
+docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md RC-10 (preview side; the commit side is phase 5). NOT DEPLOYED (D-14: no `supabase functions deploy` by any session). No DB change.
+
+FAIL-FIRST: src/data/csvPreviewReads.test.ts - against 98fa1b1 (phase 6b) in a temporary worktree 2 of 2 red ("staffP is not started as a promise", "a row still scans every alias or member"); 2 of 2 green after.
+FAIL-FIRST: src/data/edgeFuzzyMatcher.test.ts - against 98fa1b1 4 of 4 red ("prepareFuzzy is not a function"); 4 of 4 green after, including the budget: 1,000 rows x 5,000 members in under 4,000 ms.
+supabase/functions/_shared/match.test.ts (Deno) - the same equivalence for CI's `deno test`. NOT RUN HERE: Deno 2.9.7 is not installed on this box and cannot be fetched through the proxy (403 on dl.deno.land, and no npm release of that version); `npm run check:edge` SKIPS loudly, as CLAUDE.md warns. The Edge tree's type check and this test are therefore CI-verified only -- UNVERIFIED locally. The node spec exercises the identical module (plain TypeScript, no Deno API).
+Existing specs kept green WITHOUT editing them: edgeFunctionPagedReads.test.ts (20 -- every register read is still its own paged statement selecting its key; the pager's rules untouched), csvFormat, meetCsv.
+
+WHAT CHANGED: supabase/functions/csv-import/index.ts -- the nine register reads (staff, aliases, members, addresses, stats, enrolments, offerings, courses, branches) are started together and awaited once; the three catalogue tables are read whole (they are a few dozen rows) instead of by the enrolments' ids after the enrolments. Per row, the alias and canonical tiers are Map lookups and the fuzzy tier reads a prepared index instead of scoring every member (`.filter` over every alias, `.filter` over every member, `similarity()` against every member, per row). supabase/functions/csv-import/load.ts (new) -- indexRegister(): the Maps and the fuzzy index, built once per request. supabase/functions/_shared/match.ts -- prepareFuzzy()/fuzzyCandidates(): every member's bigram multiset built once per request, and only members whose bigram count can reach the threshold are scored (Dice = 2c/(la+lb), c <= min(la, lb): the shorter must be at least t/(2-t) of the longer -- an exact bound, so the ids, scores and order are the loop's, which the specs assert over thousands of generated rows at three thresholds). similarity() itself is untouched.
+
+MEASURED (node on this box, the matcher only -- the same module the Edge Function bundles; threshold 0.8, every row missing the alias and canonical tiers, the worst case):
+| rows x members | per-member loop (before) | prepared (after) |
+| 100 x 1,644 | 523-558 ms | 146 ms |
+| 1,000 x 1,644 | 5,291-5,343 ms | 936 ms |
+| 1,500 x 1,644 | - | 1,393 ms |
+| 100 x 5,000 | 1,544-1,596 ms | 347 ms |
+| 1,000 x 5,000 | 16,110-16,675 ms | 3,305 ms |
+| 1,500 x 5,000 | - | 5,381 ms |
+| 5,000 x 5,000 | - | 17,609 ms (every row fuzzy; a real file of 5,000 unmatched names against 5,000 members is not a case the preview is for) |
+Round trips: the preview's sequential depth falls from ~21 (authz 2, offering, same-file, supersedes, then five paged reads one after another at ⌈N/1000⌉+1 requests each, then offerings, courses, branches, insert, audit) to ~10 (the same five before, the nine reads in parallel -- the longest is three pages -- then insert and audit). Production wall time (4.4-5.3 s a preview, flat) is UNVERIFIED: not deployed, and the function cannot be run here.
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8), G5 PASS, G7 PASS; `npm run typecheck` PASS, `npm run lint` PASS.
+
+## PERFORMANCE FIX PHASE 6b: THE OVERVIEW'S BUCKETS IN ONE READ — 06-Oct-2026
+
+docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md RC-9/RC-2. NOT DEPLOYED. ONE MIGRATION, NOT APPLIED: supabase/migrations/0087_member_period_metrics_buckets.sql -- a NEW function, member_period_metrics_buckets(p_from date[], p_to date[], p_after text, p_limit int): the page function's aggregate for every bucket in one keyset read (one row per member per bucket, text cursor member_id:bucket, p_limit bounds rows), plpgsql behind EXECUTE ... USING as 0086. member_period_metrics and member_period_metrics_page untouched. No table, index, policy or data change; anon revoked, authenticated and service_role granted as 0075. Under D-10 it merges to main only on the day it is applied.
+
+FAIL-FIRST: supabase/tests/64_member_period_metrics_buckets.sql - against the schema without 0087 (file moved aside, fresh replay) red at the first call, exit 3: "function public.member_period_metrics_buckets(date[], date[], unknown, integer) does not exist"; with 0087, 17 of 17 green (7 day-buckets over 1,001 members: 7,007 rows equal to seven page-function reads row for row, a cursor walk in pages of 1,000 reads every row once with no seam, p_limit bounds rows not members, mismatched arrays refused, grants as 0075).
+FAIL-FIRST: src/data/bucketedMetrics.test.ts - against 69d424f (phase 6a) in a temporary worktree 4 of 4 red ("splitBuckets is not a function", "a single bucket reads the page RPC", "the bucket RPC is called by its exported name"); 4 of 4 green after.
+Existing specs kept green WITHOUT editing them: memberRefresh.test.ts (13 -- "the attendance figures for a week are read once for the member list and the bars together" still counts 1 + 7 shared period reads: each bucket is still its own shared read in the member store, now SOURCED from one shared wire read rather than making a request of its own; and the wiring count of three `sharedPeriodMetrics(..., () => paged` sites), periodMetrics.test.ts and periodMetricsPage.test.ts (the three page-RPC sites unchanged; the bucket RPC is called by its exported name METRICS_BUCKETS_RPC through paged() keyed on `cursor`, which the new spec pins), requestBudget.test.ts (Home under its ceiling of 50), hookInvalidation, periodBuckets; `npm run typecheck` PASS, `npm run lint` PASS.
+
+WHAT CHANGED: src/data/periodMetrics.ts -- METRICS_BUCKETS_RPC, BucketMetricRow, splitBuckets (deals the flat rows into every bucket asked for, in order, empty buckets present). src/data/repository.ts fetchBucketMetrics -- two or more buckets are one paged read of the bucket RPC (shared through the member store, keyed on the bucket set), dealt into the per-bucket shape the screen and bucketTotals already read; a single bucket keeps the per-period path. src/data/fakePostgrest.testkit.ts answers the bucket RPC with the same constant figures as the page RPC (a testkit, not a spec).
+
+MEASURED (real data layer against the fake network, 1,644 members, the fake giving every member a row in every bucket -- the worst case; scratchpad requestBaseline):
+| screen | before | after |
+| Home cold (register + filters + 7 day buckets + notifications) | 50 requests, 24 of them metrics pages (7 x 3 + 3) | 42 requests, 16 metrics (13 bucket pages + 3 week pages) |
+| Member save cascade, 5 screens mounted | 52 | 44 |
+On production's data (1,659 members, ~300 attendance rows a session, sessions on about three days of seven) a week's seven buckets are ~5,000 rows: 5 full pages plus the terminating empty one, against 7 x (1 to 3) = 13 page reads before. The terminating empty page of every paged read is phase 10. Server cost of the one call, harness 5,000 members: 54,772 buffers / 68 ms for the seven buckets together, against 7 x 12,021 / 7 x 49-60 ms for seven re-planned page calls (and 7 x 158,396 before 0086).
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8), G5 PASS, G7 PASS.
+
+## PERFORMANCE FIX PHASE 6a: THE METRICS RPC PLANS WITH ITS DATES — 06-Oct-2026
+
+docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md RC-9. NOT DEPLOYED. ONE MIGRATION, NOT APPLIED: supabase/migrations/0086_metrics_page_plans_with_its_dates.sql -- restates member_period_metrics_page (0075) in plpgsql behind `return query execute ... using`, the SELECT unchanged character for character, so every call is planned with its dates known. Same name, arguments, columns, order, SECURITY DEFINER, grants (CREATE OR REPLACE keeps the oid). Guarded on the live body being 0075's (md5 66f8af1d, 1,202 bytes -- identical in production and the replay, read-only 05-Oct-2026). No table, index, policy or grant change. Under D-10 it merges to main only on the day it is applied.
+
+FAIL-FIRST: supabase/tests/63_metrics_page_plans_with_its_dates.sql - against the schema without 0086 (file moved aside, fresh replay, 2,000 members) red at the first assertion, exit 3: "the function reads at most half again the buffers the same SELECT reads with its dates written in" -- function 12,172 buffers, constants 176; with 0086, 14 of 14 green (function 178, constants 176).
+Existing spec kept green WITHOUT editing it: 56_member_period_metrics_page.sql (15 of 15 -- the paged twin still equals the unpaged original row for row over 1,001 members).
+
+INSPECTED BEFORE CHANGING SQL: 0075 (the only migration naming the function; derived from the live member_period_metrics, which 0086 does not touch); production read-only 05-Oct-2026: the live member_period_metrics_page is byte-identical to 0075 (md5 66f8af1d, 1,202 bytes, language sql, SECURITY DEFINER, stable); callers: fetchMembers, fetchBucketMetrics, fetchWeekRows (repository.ts) and send-followups reads the unpaged member_period_metrics (untouched).
+
+WHY THE PLAN WAS BAD, reproduced: a SQL-language SECURITY DEFINER function is not inlined and its body is planned with the dates as parameters; with the dates unknown the planner walks attendance_member over the whole history in member order and discards every row outside the period at the join. `prepare ... ; set plan_cache_mode = force_generic_plan; explain analyze execute` of the body gives the same plan and the same buffers as the function. EXECUTE ... USING plans each call with the values in hand; the planner then reads the period's sessions first.
+
+MEASURED (EXPLAIN (ANALYZE, BUFFERS) of `select * from member_period_metrics_page(week, null, 1000)`):
+| where | before (0075) | after (0086) |
+| production lhpzhkzbnquwjljmbylo, current week, read-only 05-Oct-2026 | 13,999 buffers, 426 ms | UNVERIFIED (not applied); the same SELECT with constants read 527 buffers / 23 ms in the report's measurement |
+| harness 5,000 members, 785k rows, one week | 158,396 buffers, 87 ms | 12,021-12,921 buffers, 49-60 ms (the planner's own choice there is a parallel seq scan over the year; with enable_seqscan off, 278 buffers / 7.7 ms -- not forced, prod has 19k rows not 785k) |
+| harness 3,000 members | 18,251 buffers, 13.4 ms | 262 buffers, 6.8 ms |
+| harness 2,000 members | 12,172 buffers, 9.0 ms | 183 buffers, 5.5 ms |
+| harness 1,001 members | 6,100 (the planner happened to choose the good plan) | 6,100 |
+Call frequency is phase 6b (one bucketed read for the Overview's seven day buckets).
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8), G5 PASS, G7 PASS.
+CASES-NA: the test for this change is a harness spec (supabase/tests/63_*.sql), which G1 cannot see (T-117).
+
+## PERFORMANCE FIX PHASE 5: A WRITE RECOMPUTES ONLY THE MEMBERS IT TOUCHED — 06-Oct-2026
+
+docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md RC-7/RC-8; ISSUE_TRACKER T-014/T-015. NOT DEPLOYED. ONE MIGRATION, NOT APPLIED: supabase/migrations/0085_a_write_recomputes_only_the_members_it_touched.sql -- edits update_member and commit_csv_import IN PLACE (0061/0071/0073 idiom; six anchors, each guarded to match exactly once) so the recompute is scoped and the expected set is read once per commit. No table, index, policy or grant change. Under D-10 it merges to main only on the day it is applied.
+
+FAIL-FIRST: supabase/tests/62_a_write_recomputes_only_the_members_it_touched.sql - against the schema without 0085 (the file moved aside, fresh replay) 1 red, exit 3: "expected_members_for_session was evaluated five times for a fifteen-row file, not seventeen  got 17 want 5" (the nine neutrality guards before it green, as they must be); with 0085, 21 of 21 green.
+supabase/tests/52_import_recomputes_only_its_own.sql (T-014's fail-first spec, red since 18-Sep-2026: "a member in ANOTHER offering, named in no file, is not recomputed by this import  got 2026-10-05 04:33:08 want 2001-01-01") is GREEN with 0085 -- untouched, 19 of 19.
+`npm run test:db` with 0085: 1,257 PASS, 2 failures, both pre-existing and neither this change's: is_super_admin count (spec 18), and 53_harness_body_matches_production's update_member hash (a copy-lock on the PRODUCTION body, red before this change because the replay already differed from production -- T-120; 0085 moves the replayed hash again, by design, and the lock is re-pinned on the day 0085 is applied, from a read taken after it, as that file instructs). Baseline before phase 1 was 1,219 PASS and 4 failures; spec 52 and the "6-Oct has not happened yet" fixture are the two that turned green (the second by the calendar).
+
+INSPECTED BEFORE CHANGING SQL (the brief's five): migration history (0008 recompute_member_stats, 0027 update_member, 0014->0045 commit_csv_import, 0035/0057/0064/0082 the scoped callers, 0046 the backdating trigger, 0061/0071/0073 in-place edits of these bodies); current definitions in BOTH places -- production read-only 05-Oct-2026 (update_member md5 10915909 9,625 bytes, commit_csv_import md5 ff61afad 18,521 bytes = the 0044 body, 0045 never applied, T-125) and the harness replay; all callers (the csv-import Edge Function and the member form RPC); which columns depend on it (member_stats: current_streak, sessions_expected, sessions_attended, last_present_date, last_countable_date -- all functions of the member's own attendance rows, so update_member can move at most its own member's row and a commit only members with a row for its session); regression specs 52 and 62.
+
+MEASURED (local harness, Postgres 16, seed_scale.sql, scripts/perf/investigation-2026-10-04/loadtest.sh, every write rolled back; before = 12:58-13:03 UTC 05-Oct on the same box, after = 00:20-00:23 UTC 06-Oct):
+| members | commit 100 rows | commit 500 rows | commit 1,000 rows | unscoped recompute (control, unchanged function) |
+| 1,500 | 1.76 s -> 1.11 s | 3.27 s -> 1.24 s | 5.36 s -> 1.21 s | 1.32-1.43 s / 0.99-1.05 s |
+| 5,000 | 3.65 s -> 4.52 s | 6.12 s -> 4.76 s | 7.64 s -> 4.68 s | 2.23 s / 3.67-3.94 s |
+Read with the control column: the box ran about 1.7x slower during the after run (the same untouched function took 2.2 s before and 3.7-3.9 s after). At 5,000 members the seed puts every member in ONE offering, so the sweep writes 4,900 absent rows and every member holds a row for the session -- the scoped set IS the population there, which is the "technically unavoidable" case the brief names; what the commit saved at that size is the per-row expected-set calls (1,002 -> 3 for 1,000 rows), and what remains is the sweep itself (4,900 inserts through the per-row backdating trigger and audit) and a 5,000-member recompute. At 1,500 (nearer production's 1,659) the commit is flat at ~1.2 s whatever the file size, from 1.8-5.4 s. update_member: the recompute it calls walks one member (spec 62 counts current_streak_for calls: 1), 1.8 ms scoped against 1.0-1.4 s unscoped at 1,500 -- production's 249 ms mean / 49k buffers per save (report §8) is the expected saving there and is UNVERIFIED until applied.
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8), G5 PASS, G7 PASS.
+CASES-NA: the test for this change is a harness spec (supabase/tests/62_*.sql), which G1 cannot see (T-117).
+
+## PERFORMANCE FIX PHASE 4: SEARCH NARROWS AFTER A SHORT QUIET — 05-Oct-2026
+
+docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md RC-7. NOT DEPLOYED. No DB change. No new library.
+
+FAIL-FIRST: src/data/searchDebounce.test.ts - against e8c7d74 (phase 3) in a temporary worktree, 6 of 6 red ("Members narrows by the applied query, not the keystroke", "Attendance narrows by the applied query, not the keystroke", "the course roster narrows by the applied query but its sentences still quote what was typed", "useDebouncedQuery is exported by the hooks"); 6 of 6 green after.
+FAIL-FIRST: src/data/debounce.test.ts - against e8c7d74 the module under test did not exist ("Cannot find module './debounce'", 0 of 3 ran); 3 of 3 green after.
+Existing specs kept green WITHOUT editing them: memberSearch.test.ts (the matcher is unchanged -- name, code, address, alias), attendanceSearch.test.ts (`matchesAttendanceQuery(r, q)` literal kept), pickerSearch.test.ts, hookInvalidation.test.ts, windowedLists.test.ts (8).
+
+WHAT CHANGED: src/data/debounce.ts -- `applyAfterMs(next)`: 0 for an empty or blank query (clearing the box narrows at once, no wait), else QUIET_MS = 150. src/data/hooks.ts -- `useDebouncedQuery(query)` returns the query the list is narrowed by; the box, its clear button and every sentence that quotes what was typed still read the live `query`. Members: the filter now narrows by the applied query over a per-member lower-cased search text built ONCE per register load (`searchText` Map) instead of lower-casing name, code, address and every alias of every member on every keystroke. Attendance and the course roster narrow by the applied query. Nothing is dropped: the applied query always catches up to the last keystroke after 150 ms of quiet, and a typed query that the user stops on is the query the list shows.
+NOT a delay added for its own sake: the typing-time cost was the filter re-running per keystroke over 5,000 members with a list re-render each time (RC-7); the quiet window coalesces keystrokes into one narrowing and the list stays live.
+
+MEASURED (production bundle, headless Chromium on a fast CPU, realistic stand-in at 5,000 members, scripts/perf/investigation-2026-10-04/scenarioB.js, five keys typed 150 ms apart so every key still narrows once):
+| screen | per-key wall to next frame, phase 3 -> phase 4 (ms) | input event durations after (ms) | long tasks while typing |
+| Members 5,000 | 16-64 event durations -> 31-40 wall / 16-32 events | 16/16/16/16/32/32/24/24 | none |
+| Attendance week | 40 -> 48-52 wall / 16-24 events | 16-24 | none |
+| Course roster 1,250 cards | 72-216 -> 48-443 wall / 16-392 events | 16-392 | 158/362/51 |
+Reading: Members and Attendance are at the 16 ms floor per event with no long task; the course roster is still bounded by its un-windowed ScrollView (36,061 DOM nodes, phase 3 note) -- the debounce cannot hide a 1,250-card re-render, and that remains an open item for the roster (not in scope here: the sectioned screen). No network request is caused by typing on any of the three. Both themes unchanged: the search box, clear button and quoted sentences render from the live query as before.
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3 design/tokens.json absent, G6 the scripts/conformance.mjs warning, G8), G5 PASS, G7 PASS; `npm run lint` PASS, `npm run typecheck` PASS.
+
+## PERFORMANCE FIX PHASE 3: THE BIG LISTS ARE WINDOWED — 05-Oct-2026
+
+docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md RC-6. NOT DEPLOYED. No DB change.
+
+FAIL-FIRST: src/components/windowedLists.test.ts - against 1a758ca (phase 2) in a temporary worktree, 8 of 8 red ("no FlatList: the rows are all in the DOM", "MemberCard is not memo()", "the day is indexed by member once per load"); 8 of 8 green after.
+Existing specs kept green WITHOUT editing them: screenHeaderPinned (the header prop stays first, `<Screen header={`), freshnessLineWiring, attendanceSearch (`matchesAttendanceQuery(r, q)` literal kept), staffResubscribeEntryPoints, resetRegisterDialog ("the marks it is gated on are the rows the strip itself drew" -- the inactive cards, which read no attendance, still take `rows={marks.data ?? []}`; the three live sections take their member's rows from the same source, indexed), memberCardAttendanceReadOnly, courseRosterRemoveMember, noEmailResolvesInPlace, bulkDeleteNoEmail (24 more).
+
+WHAT CHANGED: Members, Follow-ups (weekly) and Attendance render through a FlatList that owns the scroll (Screen `scroll={false} pad={false}`, content padded by the new `screenBodyPadding` exactly as the ScrollView padded it); everything that scrolled above the rows scrolls as the list's header, the weekly footnote and Reach out button as its footer; rows are `memo()` components with stable handlers (no inline arrow per row). Course roster: MemberCard memoised, the day's rows indexed per member once per load (dayAttendance scanned the whole day per card), the closed picker no longer handed the whole register per card, the selection toggle stable. The roster's own ScrollView is NOT windowed (sectioned screen, left for a later change).
+
+MEASURED (production bundle, headless Chromium on a fast CPU, realistic stand-in, scripts/perf/investigation-2026-10-04/scenarioB.js; the stand-in's clock now follows the real date):
+| screen | DOM nodes before -> after | script ms | long tasks sum/max ms | first keystroke event ms |
+| Members 1,644 | 29,703 -> 594 | 1,655 -> 337 | 2,565/1,435 -> 282/108 | (not captured) -> 16 |
+| Members 5,000 | 90,111 -> 594 | 2,203 -> 373 | 7,073/4,055 -> 312/126 | -> 16-64 |
+| Attendance week | 49,476 -> 543 | 1,197 -> 354 | 2,390/1,182 -> 192/102 | 928 -> 40 |
+| Follow-ups 1,644 / 5,000 | 16,346 / 49,466 -> 615 / 595 | 777 / 1,558 -> 325 / 344 | 1,052 / 2,245 -> 190 / 304 | - |
+| Course roster 411 / 1,250 cards | 11,988 / 36,063 (unchanged) | 1,316 / 2,261 -> 1,016 / 2,306 | 1,388 / 8,850 -> 1,245 / 3,056 | 824 / 7,656 -> 72 / 216 |
+Both themes: /members, /attendance, /weekly rendered dark and light with the stand-in, 0 page or console errors, no horizontal overflow (scratchpad fix/shots.js).
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8), G5 PASS, G7 PASS; `npm run lint` PASS, `npm run typecheck` PASS.
+
+## PERFORMANCE FIX PHASE 2: ONE CATALOGUE, ONE NAMES READ, FLATTER CHAINS — 05-Oct-2026
+
+docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md RC-4/RC-12. NOT DEPLOYED. No DB change.
+
+FAIL-FIRST: src/data/requestBudget.test.ts - against 5757c48 (phase 1) in a temporary worktree, 4 of 5 red: "85 requests, budget 27" (Attendance), "54 requests, budget 50" (Home), "27 requests, budget 25" (Members), and the course day still fetched names by id; 5 of 5 green after.
+Existing specs kept green WITHOUT editing them: requestSize.test.ts ("every member-scale id list is sent in chunks" -- the by-id reads labelled 'the names on this day' / 'the names on this week' stay, chunked, for a roster that fits one chunk of 150; above that the shared whole-table names read is cheaper and is taken instead), memberRefresh.test.ts (13), dataLayerBoundary, pagedReads, periodMetrics, periodMetricsPage.
+
+WHAT CHANGED (src/data/repository.ts only): readCatalogue -- courses, offerings, branches and the timetable in ONE shape, joined while in flight through the member store, consumed by fetchCourses, fetchRules, fetchFilterOptions, fetchOfferings, fetchBranchUsage, the register, fetchPendingSessions, fetchCourseDayRows, fetchMemberWeek and fetchAttendance (each loses its own offerings -> courses/branches chain and reads the catalogue beside its main read). readNames -- members, display names and addresses, whole and paged, shared by the register, Attendance and the course day. fetchNotifications is one shared read for every mounted header.
+
+MEASURED (real data layer, fake network, 1,644 members, scratchpad requestBaseline): Attendance week 85 -> 27 requests; Home 54 -> 50; Members 27 -> 25; Follow-ups 25 -> 25; Reports 29 -> 25; Courses tab 29 -> 25; course day: no id chunks and no offerings chain (sequential depth 5 -> 3). What remains on Home is the 24 metrics pages (phase 6) and one empty terminating page per paged read (phase 10).
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8), G5 PASS, G7 PASS (unit 2,152); `npm run lint` PASS, `npm run typecheck` PASS.
+
+## PERFORMANCE FIX PHASE 1: REFETCH ONLY THE SCREEN ON SCREEN — 05-Oct-2026
+
+docs/PERFORMANCE_ROOT_CAUSE_REPORT_2026-10-04.md RC-1/RC-2/RC-3. NOT DEPLOYED.
+
+FAIL-FIRST: src/data/revalidate.test.ts - T8A-T8E appended; against d32e345 T8A/T8B/T8C/T8E red (4 of 5; "a stale reader on a hidden screen is deferred": asked 1 want 0 -- the registry had no notion of a screen); 5 of 5 green.
+FAIL-FIRST: src/data/memberRefresh.test.ts - Tests 6-7 appended; against d32e345 Test 7 red (register read 3 times for three periods, want 1); 13 of 13 green.
+FAIL-FIRST: src/data/bulkDeleteAnnouncesOnce.test.ts - against d32e345 red (member and attendance buses rung 5 and 5 for four deletions, want 1 and 1); green after.
+FAIL-FIRST: src/data/deferral.test.ts - against the hook's previous behaviour (no deferral: shouldDefer modelled as always false) 1 of 6 red ("a bus bump on a hidden screen holding data is deferred"); 6 of 6 green.
+Existing specs kept green WITHOUT editing them: bulkDeleteNoEmail.test.ts ("deletes through the audited
+per-member path" -- the loop still says `await deleteMember(id)`; the buses are held, not bypassed),
+hookInvalidation.test.ts, inFlight.test.ts, memberStore.test.ts.
+
+MEASURED (production bundle, headless Chromium, stand-in API at 130 ms, scripts/perf/investigation-2026-10-04/scenarioA.js):
+- return to the app after 13 s with Home, Courses and Reports visited: 28 requests before -> 23 after,
+  every one of the 23 a Home reader (the Courses and Reports readers defer until shown); 0 within 12 s.
+- cold start on Home 27 -> 26. Fake network, five screens mounted, one Save: 52 HTTP requests before and
+  after (T-406 already collapsed identical URLs) but ONE register read in JavaScript instead of five.
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3 design/tokens.json absent, G6 the
+scripts/conformance.mjs warning, G8), identical to the 25-Sep and 24-Sep runs; G5 types PASS, G7 unit PASS,
+`npm run lint` PASS, `npm run typecheck` PASS. `npm run test:db` baseline before this change:
+1,219 PASS, 4 pre-existing failures (T-014's fail-first spec 52, the 6-Oct joining-date fixture, the
+is_super_admin count, the update_member body hash); no DB change in this phase.
+
 ## MEMBER FORM: VALIDATION SAID AS A TOAST — 03-Oct-2026
 
 `requests/2026-10-03-member-form-validation-toast.md` (CHANGE, scoped).
@@ -545,6 +819,1120 @@ and the count beside it dropped by one" is asserted by reading `app/course/[id].
 three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
 preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
 all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 1m 04s total - slowest G7 Unit + pure specs (40.0s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (71ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (50ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (55ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (78ms)
+- **G5 Types** - PASS (8.7s)
+- **G6 Lint** - FAIL (14.1s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (40.0s)
+- **G8 Functional / integration** - FAIL (159ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (70ms)
+- **G10 Backward compatibility (fixtures)** - PASS (128ms)
+- **G11 Wide tables are configurable** - PASS (83ms)
+- **G12 Installable as an application** - PASS (91ms)
+- **G13 Approved design still being built** - PASS (66ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 1m 08s total - slowest G7 Unit + pure specs (42.2s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (124ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (61ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (114ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (187ms)
+- **G5 Types** - PASS (10.2s)
+- **G6 Lint** - FAIL (14.9s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (42.2s)
+- **G8 Functional / integration** - FAIL (181ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (90ms)
+- **G10 Backward compatibility (fixtures)** - PASS (139ms)
+- **G11 Wide tables are configurable** - PASS (89ms)
+- **G12 Installable as an application** - PASS (111ms)
+- **G13 Approved design still being built** - PASS (77ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 1m 07s total - slowest G7 Unit + pure specs (41.0s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (143ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (130ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (132ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (166ms)
+- **G5 Types** - PASS (9.7s)
+- **G6 Lint** - FAIL (14.7s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (41.0s)
+- **G8 Functional / integration** - FAIL (140ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (64ms)
+- **G10 Backward compatibility (fixtures)** - PASS (132ms)
+- **G11 Wide tables are configurable** - PASS (64ms)
+- **G12 Installable as an application** - PASS (88ms)
+- **G13 Approved design still being built** - PASS (57ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 1m 04s total - slowest G7 Unit + pure specs (40.0s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (69ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (54ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (91ms)
+- **G5 Types** - PASS (8.1s)
+- **G6 Lint** - FAIL (15.1s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (40.0s)
+- **G8 Functional / integration** - FAIL (172ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (64ms)
+- **G10 Backward compatibility (fixtures)** - PASS (133ms)
+- **G11 Wide tables are configurable** - PASS (58ms)
+- **G12 Installable as an application** - PASS (84ms)
+- **G13 Approved design still being built** - PASS (53ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 1m 07s total - slowest G7 Unit + pure specs (40.9s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (74ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (56ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (100ms)
+- **G5 Types** - PASS (8.9s)
+- **G6 Lint** - FAIL (16.1s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (40.9s)
+- **G8 Functional / integration** - FAIL (200ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (66ms)
+- **G10 Backward compatibility (fixtures)** - PASS (125ms)
+- **G11 Wide tables are configurable** - PASS (66ms)
+- **G12 Installable as an application** - PASS (118ms)
+- **G13 Approved design still being built** - PASS (58ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 1m 05s total - slowest G7 Unit + pure specs (39.1s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (59ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (67ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (50ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (86ms)
+- **G5 Types** - PASS (8.1s)
+- **G6 Lint** - FAIL (16.6s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (39.1s)
+- **G8 Functional / integration** - FAIL (196ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (61ms)
+- **G10 Backward compatibility (fixtures)** - PASS (140ms)
+- **G11 Wide tables are configurable** - PASS (60ms)
+- **G12 Installable as an application** - PASS (87ms)
+- **G13 Approved design still being built** - PASS (53ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 57.0s total - slowest G7 Unit + pure specs (37.0s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (74ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (56ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (56ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (75ms)
+- **G5 Types** - PASS (7.7s)
+- **G6 Lint** - FAIL (11.4s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (37.0s)
+- **G8 Functional / integration** - FAIL (141ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (63ms)
+- **G10 Backward compatibility (fixtures)** - PASS (135ms)
+- **G11 Wide tables are configurable** - PASS (63ms)
+- **G12 Installable as an application** - PASS (83ms)
+- **G13 Approved design still being built** - PASS (55ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 56.1s total - slowest G7 Unit + pure specs (37.0s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (66ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (50ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (52ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (74ms)
+- **G5 Types** - PASS (7.7s)
+- **G6 Lint** - FAIL (10.6s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (37.0s)
+- **G8 Functional / integration** - FAIL (132ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (63ms)
+- **G10 Backward compatibility (fixtures)** - PASS (165ms)
+- **G11 Wide tables are configurable** - PASS (57ms)
+- **G12 Installable as an application** - PASS (85ms)
+- **G13 Approved design still being built** - PASS (54ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 58.0s total - slowest G7 Unit + pure specs (38.9s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (58ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (55ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (84ms)
+- **G5 Types** - PASS (7.2s)
+- **G6 Lint** - FAIL (11.0s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (38.9s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+```
+
+- **G8 Functional / integration** - FAIL (141ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (61ms)
+- **G10 Backward compatibility (fixtures)** - PASS (159ms)
+- **G11 Wide tables are configurable** - PASS (70ms)
+- **G12 Installable as an application** - PASS (94ms)
+- **G13 Approved design still being built** - PASS (72ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 53.1s total - slowest G7 Unit + pure specs (33.5s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (58ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (50ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (74ms)
+- **G5 Types** - PASS (6.6s)
+- **G6 Lint** - FAIL (12.3s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (33.5s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+  error: 'the course screen no longer holds one todayIso for the strip'
+  name: 'AssertionError'
+  expected:
+    import { Muted, Label, Skeleton, EmptyState, ErrorState, DeepBackground } from '../../src/components/ui';
+    import { MERGE_FAILED } from '../../src/data/alias';
+     * A course states a frequency; 0005 says out loud that expected attendance is
+     * expected" rather than inventing a session from `frequency`. That is the
+```
+
+- **G8 Functional / integration** - FAIL (133ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (69ms)
+- **G10 Backward compatibility (fixtures)** - PASS (115ms)
+- **G11 Wide tables are configurable** - PASS (54ms)
+- **G12 Installable as an application** - PASS (74ms)
+- **G13 Approved design still being built** - PASS (48ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 54.8s total - slowest G7 Unit + pure specs (33.9s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (67ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (99ms)
+- **G5 Types** - PASS (7.1s)
+- **G6 Lint** - FAIL (13.0s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (33.9s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+```
+
+- **G8 Functional / integration** - FAIL (138ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (57ms)
+- **G10 Backward compatibility (fixtures)** - PASS (128ms)
+- **G11 Wide tables are configurable** - PASS (57ms)
+- **G12 Installable as an application** - PASS (80ms)
+- **G13 Approved design still being built** - PASS (57ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 56.7s total - slowest G7 Unit + pure specs (35.4s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (76ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (55ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (51ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (104ms)
+- **G5 Types** - PASS (6.9s)
+- **G6 Lint** - FAIL (13.5s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (35.4s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+```
+
+- **G8 Functional / integration** - FAIL (133ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (57ms)
+- **G10 Backward compatibility (fixtures)** - PASS (120ms)
+- **G11 Wide tables are configurable** - PASS (75ms)
+- **G12 Installable as an application** - PASS (94ms)
+- **G13 Approved design still being built** - PASS (52ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 56.2s total - slowest G7 Unit + pure specs (33.8s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (54ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (49ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (93ms)
+- **G5 Types** - PASS (7.6s)
+- **G6 Lint** - FAIL (14.0s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (33.8s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+```
+
+- **G8 Functional / integration** - FAIL (137ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (56ms)
+- **G10 Backward compatibility (fixtures)** - PASS (148ms)
+- **G11 Wide tables are configurable** - PASS (59ms)
+- **G12 Installable as an application** - PASS (78ms)
+- **G13 Approved design still being built** - PASS (53ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 42.2s total - slowest G7 Unit + pure specs (21.7s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (64ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (56ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (48ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (69ms)
+- **G5 Types** - PASS (7.1s)
+- **G6 Lint** - FAIL (12.6s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (21.7s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+```
+
+- **G8 Functional / integration** - FAIL (141ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (59ms)
+- **G10 Backward compatibility (fixtures)** - PASS (113ms)
+- **G11 Wide tables are configurable** - PASS (54ms)
+- **G12 Installable as an application** - PASS (74ms)
+- **G13 Approved design still being built** - PASS (49ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 58.4s total - slowest G7 Unit + pure specs (21.7s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (99ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (71ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (54ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (93ms)
+- **G5 Types** - PASS (17.3s)
+- **G6 Lint** - FAIL (18.2s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (21.7s)
+- **G8 Functional / integration** - FAIL (164ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (68ms)
+- **G10 Backward compatibility (fixtures)** - PASS (113ms)
+- **G11 Wide tables are configurable** - PASS (55ms)
+- **G12 Installable as an application** - PASS (78ms)
+- **G13 Approved design still being built** - PASS (53ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-10-06 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 57.8s total - slowest G7 Unit + pure specs (20.8s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (91ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (47ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (77ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (224ms)
+- **G5 Types** - PASS (18.4s)
+- **G6 Lint** - FAIL (17.5s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (20.8s)
+- **G8 Functional / integration** - FAIL (121ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (53ms)
+- **G10 Backward compatibility (fixtures)** - PASS (108ms)
+- **G11 Wide tables are configurable** - PASS (52ms)
+- **G12 Installable as an application** - PASS (82ms)
+- **G13 Approved design still being built** - PASS (45ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-10-05 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 41.1s total - slowest G7 Unit + pure specs (22.1s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (51ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (51ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (98ms)
+- **G5 Types** - PASS (7.2s)
+- **G6 Lint** - FAIL (11.0s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (22.1s)
+- **G8 Functional / integration** - FAIL (135ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (55ms)
+- **G10 Backward compatibility (fixtures)** - PASS (118ms)
+- **G11 Wide tables are configurable** - PASS (55ms)
+- **G12 Installable as an application** - PASS (78ms)
+- **G13 Approved design still being built** - PASS (57ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-10-05 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 41.0s total - slowest G7 Unit + pure specs (22.6s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (53ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (50ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (51ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (71ms)
+- **G5 Types** - PASS (7.0s)
+- **G6 Lint** - FAIL (10.7s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (22.6s)
+- **G8 Functional / integration** - FAIL (129ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (58ms)
+- **G10 Backward compatibility (fixtures)** - PASS (142ms)
+- **G11 Wide tables are configurable** - PASS (54ms)
+- **G12 Installable as an application** - PASS (73ms)
+- **G13 Approved design still being built** - PASS (48ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-10-05 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 37.9s total - slowest G7 Unit + pure specs (20.9s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (49ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (54ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (49ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (78ms)
+- **G5 Types** - PASS (6.5s)
+- **G6 Lint** - FAIL (9.7s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (20.9s)
+- **G8 Functional / integration** - FAIL (121ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (74ms)
+- **G10 Backward compatibility (fixtures)** - PASS (126ms)
+- **G11 Wide tables are configurable** - PASS (52ms)
+- **G12 Installable as an application** - PASS (75ms)
+- **G13 Approved design still being built** - PASS (48ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-10-05 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 39.7s total - slowest G7 Unit + pure specs (21.8s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (52ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (49ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (50ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (72ms)
+- **G5 Types** - PASS (6.7s)
+- **G6 Lint** - FAIL (10.4s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (21.8s)
+- **G8 Functional / integration** - FAIL (170ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (57ms)
+- **G10 Backward compatibility (fixtures)** - PASS (123ms)
+- **G11 Wide tables are configurable** - PASS (62ms)
+- **G12 Installable as an application** - PASS (100ms)
+- **G13 Approved design still being built** - PASS (56ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

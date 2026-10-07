@@ -9,6 +9,7 @@ import {
   PERIOD_PRESETS, CUSTOM_PERIOD, presetPeriod, resolvePeriod, iso,
   type PeriodChoice,
 } from '../data/period';
+import { businessTodayIso } from '../data/businessDate';
 
 /**
  * The date filter, in one place so every screen that has one offers the same
@@ -107,7 +108,7 @@ export function PeriodPanel({ choice, onChange, onDone, testID }:
           </View>
 
           <MonthCalendar from={draft.from} to={draft.to} onPick={pick}
-            max={iso(new Date())} testID={`${testID}-calendar`} />
+            max={businessTodayIso()} testID={`${testID}-calendar`} />
 
           <Text style={{ fontSize: 11.5, color: theme.muted, lineHeight: 17, marginTop: SPACE.md }}>
             Tap the first day, then the last. One day? Tap it twice. Days after today

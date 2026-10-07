@@ -23,6 +23,7 @@ import { emailIssueGroups, emailIssueIds } from './emailIssues';
 import { membersOnDay } from './joined';
 import { membersActiveOn } from './inactiveFrom';
 import { iso } from './period';
+import { businessTodayIso } from './businessDate';
 
 export type CourseSummary = {
   /** "3 days/week · 3 members", or "No days set · 1 member" */
@@ -108,7 +109,7 @@ export function endEnrolment<T extends { course: string; course_id: string | nul
 
 export function courseSummary(
   members: Member[], weekdayCount: number, rule: FollowUpRule,
-  todayIso: string = iso(new Date()),
+  todayIso: string = businessTodayIso(),
 ): CourseSummary {
   const noDays = weekdayCount === 0;
 
