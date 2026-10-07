@@ -1,3 +1,25 @@
+## PRODUCTION DEPLOY, STAGE F: csv-import v20 AND send-followups v25 — 07-Oct-2026
+
+On the owner's go-ahead, after the owner had set SEND_CONCURRENCY in the project's Edge Function secrets (screenshot, 07-Oct-2026), both functions were deployed to lhpzhkzbnquwjljmbylo from origin/main 6a03c51 (= PR #65, e6fe1c5), each file taken verbatim from `git show origin/main:` -- the import closure only (no deno.json, no *.test.ts): csv-import (8 files) and send-followups (12 files), verify_jwt true on both as before. Deployed 11:55 and 12:01 UTC; csv-import v18 -> v20, send-followups v23 -> v25.
+VERIFIED INDEPENDENTLY of the deploying worker: every file of both deployed bundles pulled back with get_edge_function and md5-compared against origin/main -- 8 of 8 and 12 of 12 byte-identical. The deploy carries this work's changes AND main's T-041 change the previous deploys lacked (send-followups index.ts + load.ts; _shared/pageAll.ts), as the pre-deployment review said it would. Edge logs 11:40-12:05 UTC: no invocations and no boot errors; the first preview and the first batch are the owner's live smoke tests (§7.1 of the final report): a preview of last week's file identical to its last preview, a batch of ten to staff with ten rows in order, then a 100+ batch with no Throttling failure reason. The secret's value is not readable from this session; the pool reads it at each invocation (1-16, default 4).
+CASES-NA: a deploy record; no code change.
+
+## PRODUCTION APPLY: MIGRATIONS 0086, 0087, 0085, 0088, 0090, 0089 — 07-Oct-2026
+
+On the owner's explicit go-ahead (raw SQL of all six shown first; "apply all six in order, one at a time, reporting and verifying each") the six migrations merged in PR #65 (main e6fe1c5) were applied to production lhpzhkzbnquwjljmbylo via the Supabase MCP, each verbatim from its file, one at a time, each verified read-only before the next. Ledger rows: 0086 20261007114436 · 0087 20261007114600 · 0085 20261007114704 · 0088 20261007114750 · 0090 20261007114900 · 0089 20261007115016. Every guard matched the live body it expected; no migration raised.
+VERIFIED, production, read-only, after each apply:
+- 0086: member_period_metrics_page is plpgsql (md5 a9a3b615, 1,397 bytes), same identity arguments, anon false / authenticated true; this week's page: 1,064 buffers, 13 ms (was 13,999 buffers, 426 ms).
+- 0087: member_period_metrics_buckets exists, anon false; the seven-day bucket read equals seven page calls row for row (2,541 rows, 0 differences either way); paging past the first 1,000 rows returns the remaining 59.
+- 0085: update_member (md5 1ff8772a then, after 0088, 6cb2a236 at 9,806 bytes) and commit_csv_import (ca45c093, 20,731 bytes) carry no recompute_member_stats(); the per-row expected-set call is gone; grants unchanged (commit_csv_import stays service_role-only, as before).
+- 0088: business_today() present, anon false / authenticated and service_role true, = 2026-10-07; create_member, update_member, set_member_active_from, set_attendance read it and none reads current_date in a rule.
+- 0090: subscription_state (a810e137), save_course, merge_member_into, is_in_course, follow_up_candidates read business_today(); only create_member still carries the word current_date, in prose; subscription_state() = active; follow_up_candidates answers (530 rows this week).
+- 0089: BEFORE the apply, 0089's one-pass SELECT was compared with 0008's per-member SELECT on production rows, read-only: 1,610 live members, 0 rows differing either way. After: body 74917e12 (= harness), no current_streak_for call, grants anon false / authenticated false / service_role true, an empty scope writes 0. Whole-academy compute, read-only EXPLAIN: 362 ms, 21,937 buffers (the old SELECT: 52,846 buffers before its upsert).
+- Observed, not caused by this work: 4 stored member_stats rows differ from what either body computes (stale before the apply); the next write touching those members, or a by-hand `select public.recompute_member_stats();`, corrects them.
+- Security advisors after the DDL: nothing new; the two new functions carry the same SECURITY DEFINER posture as 0075's page function and are revoked from anon.
+RE-PINNED, the copy-lock exemption: supabase/tests/53 pins production's update_member and commit_csv_import hashes; the four literals move to the post-apply reads (6cb2a236…/9,806 and ca45c093…/20,731, dated 07-Oct-2026). The spec stays RED on the harness replay (replayed update_member c1d122a0, 11,394 bytes) for T-120's reason -- the replayed body never matched production's -- which this re-pin records rather than hides. ISSUE_TRACKER T-014, T-015, T-144 marked applied with their ledger rows.
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8); G5 PASS; G7 PASS.
+CASES-NA: a production apply record, a copy-lock re-pin and tracker rows; no code change. The Edge Function deploy (Stage F) is recorded in its own entry.
+
 ## CI ROUND 1 ON PR #65: THE DENO TYPE CHECK FOUND A GENUINE DEFECT — 06-Oct-2026
 
 PR #65 (claude/loving-euler-8nz5a8 -> main) is this branch's FIRST CI run (ci.yml triggers on push to main/dev and on pull_request only). Run 37443357842 on c912054: gate job -- guards PASS, Edge Function specs (deno test) PASS, `npm run check`: lint PASS, typecheck PASS, test:unit 2,213 (2,212 pass, 1 skipped: the dist/ check), contrast 2,852/2,852, icons 75/75, functions PASS, **check:edge FAIL**; the ratchets step skipped behind it. Baseline for comparison: the last merged PR's run (37147373800, 03-Oct) had check:edge PASS, so this is NOT pre-existing and NOT environmental: it is this branch's.
@@ -819,6 +841,106 @@ and the count beside it dropped by one" is asserted by reading `app/course/[id].
 three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
 preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
 all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-10-07 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 45.2s total - slowest G7 Unit + pure specs (24.5s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (40ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (38ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (37ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (56ms)
+- **G5 Types** - PASS (5.8s)
+- **G6 Lint** - FAIL (14.4s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (24.5s)
+- **G8 Functional / integration** - FAIL (94ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (46ms)
+- **G10 Backward compatibility (fixtures)** - PASS (107ms)
+- **G11 Wide tables are configurable** - PASS (41ms)
+- **G12 Installable as an application** - PASS (61ms)
+- **G13 Approved design still being built** - PASS (37ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-10-07 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 1m 05s total - slowest G7 Unit + pure specs (25.9s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (50ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (100ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (78ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (1.4s)
+- **G5 Types** - PASS (18.7s)
+- **G6 Lint** - FAIL (18.3s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (25.9s)
+- **G8 Functional / integration** - FAIL (100ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (54ms)
+- **G10 Backward compatibility (fixtures)** - PASS (92ms)
+- **G11 Wide tables are configurable** - PASS (42ms)
+- **G12 Installable as an application** - PASS (59ms)
+- **G13 Approved design still being built** - PASS (42ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
