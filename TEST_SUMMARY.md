@@ -1,3 +1,10 @@
+## SINGAPORE UNSUBSCRIBE FORWARDER (B2 of the move) — 07-Oct-2026
+
+`requests/2026-10-07-singapore-unsubscribe-forwarder.md`. New `supabase/forwarders/unsubscribe/` (outside `supabase/functions/`, so never one of Mumbai's eleven): GET 307 / POST 308 to Mumbai's unsubscribe function with the query string byte for byte; other paths 404, other methods 405, over-long query 414, unparsable 400; no-store, no-referrer; one constant destination; no secret, env or database. NOT deployed.
+FAIL-FIRST: src/data/unsubscribeForwarder.test.ts - before the module existed, 0 of 1 green: "Cannot find module '../../supabase/forwarders/unsubscribe/forward.ts'"; after, 11 of 11 green.
+Covered: seven query shapes kept byte for byte (encoded characters, order, repeats, empty values, academy) on both path forms; POST press / Resubscribe / one-click to 308; eleven wrong paths 404 with no Location; five other methods 405; a destination in the query, a fragment, credentials and a foreign host cannot move the destination; 414 and 400 refuse without a Location; source reads no env/secret/client and names one address only.
+GATES: `npm run check` 6 of 7 PASS (lint, typecheck, check:edge -- SKIPPED, no Deno here; it does not cover supabase/forwarders/ -- contrast, icons, functions); test:unit fails only on the 2 tests that fail identically on clean origin/main (rosterWindowed, bucketedMetrics).
+
 ## PRODUCTION DEPLOY, STAGE F: csv-import v20 AND send-followups v25 — 07-Oct-2026
 
 On the owner's go-ahead, after the owner had set SEND_CONCURRENCY in the project's Edge Function secrets (screenshot, 07-Oct-2026), both functions were deployed to lhpzhkzbnquwjljmbylo from origin/main 6a03c51 (= PR #65, e6fe1c5), each file taken verbatim from `git show origin/main:` -- the import closure only (no deno.json, no *.test.ts): csv-import (8 files) and send-followups (12 files), verify_jwt true on both as before. Deployed 11:55 and 12:01 UTC; csv-import v18 -> v20, send-followups v23 -> v25.
