@@ -1,3 +1,9 @@
+## PRODUCTION DEPLOY, STAGE F: csv-import v20 AND send-followups v25 — 07-Oct-2026
+
+On the owner's go-ahead, after the owner had set SEND_CONCURRENCY in the project's Edge Function secrets (screenshot, 07-Oct-2026), both functions were deployed to lhpzhkzbnquwjljmbylo from origin/main 6a03c51 (= PR #65, e6fe1c5), each file taken verbatim from `git show origin/main:` -- the import closure only (no deno.json, no *.test.ts): csv-import (8 files) and send-followups (12 files), verify_jwt true on both as before. Deployed 11:55 and 12:01 UTC; csv-import v18 -> v20, send-followups v23 -> v25.
+VERIFIED INDEPENDENTLY of the deploying worker: every file of both deployed bundles pulled back with get_edge_function and md5-compared against origin/main -- 8 of 8 and 12 of 12 byte-identical. The deploy carries this work's changes AND main's T-041 change the previous deploys lacked (send-followups index.ts + load.ts; _shared/pageAll.ts), as the pre-deployment review said it would. Edge logs 11:40-12:05 UTC: no invocations and no boot errors; the first preview and the first batch are the owner's live smoke tests (§7.1 of the final report): a preview of last week's file identical to its last preview, a batch of ten to staff with ten rows in order, then a 100+ batch with no Throttling failure reason. The secret's value is not readable from this session; the pool reads it at each invocation (1-16, default 4).
+CASES-NA: a deploy record; no code change.
+
 ## PRODUCTION APPLY: MIGRATIONS 0086, 0087, 0085, 0088, 0090, 0089 — 07-Oct-2026
 
 On the owner's explicit go-ahead (raw SQL of all six shown first; "apply all six in order, one at a time, reporting and verifying each") the six migrations merged in PR #65 (main e6fe1c5) were applied to production lhpzhkzbnquwjljmbylo via the Supabase MCP, each verbatim from its file, one at a time, each verified read-only before the next. Ledger rows: 0086 20261007114436 · 0087 20261007114600 · 0085 20261007114704 · 0088 20261007114750 · 0090 20261007114900 · 0089 20261007115016. Every guard matched the live body it expected; no migration raised.
@@ -835,6 +841,56 @@ and the count beside it dropped by one" is asserted by reading `app/course/[id].
 three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
 preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
 all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-10-07 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 45.2s total - slowest G7 Unit + pure specs (24.5s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (40ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (38ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (37ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (56ms)
+- **G5 Types** - PASS (5.8s)
+- **G6 Lint** - FAIL (14.4s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (24.5s)
+- **G8 Functional / integration** - FAIL (94ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (46ms)
+- **G10 Backward compatibility (fixtures)** - PASS (107ms)
+- **G11 Wide tables are configurable** - PASS (41ms)
+- **G12 Installable as an application** - PASS (61ms)
+- **G13 Approved design still being built** - PASS (37ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 
