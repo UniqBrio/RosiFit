@@ -15,9 +15,10 @@ import { adminClient } from '../_shared/db.ts';
 import { toE164India } from '../_shared/phone.ts';
 import {
   hashAnswer, isFourDigitPin, signRecoveryToken, verifyRecoveryToken,
-  derivePinSecret, syntheticEmail,
+  derivePinSecret, syntheticEmail, CURRENT_PIN_PEPPER_VERSION,
 } from '../_shared/pin.ts';
 import { rotatePin } from '../_shared/identity.ts';
+import { verifyAnswersWithSingapore } from '../_shared/pinVerifyClient.ts';
 
 const MAX_ATTEMPTS = 3;
 const LOCK_MS = 30 * 60 * 1000;
@@ -110,17 +111,36 @@ Deno.serve(async (req) => {
     }
 
     const { data: stored, error: recErr } = await admin
-      .from('super_admin_recovery').select('question_id, answer_hash').eq('app_user_id', appUser.id);
+      .from('super_admin_recovery').select('question_id, answer_hash, pepper_version').eq('app_user_id', appUser.id);
     if (recErr || !stored || stored.length === 0) {
       throw new HttpError(500, 'Recovery is not set up for this account. Contact RosiFit for help.');
     }
-    const byQuestion = new Map(stored.map(r => [r.question_id, r.answer_hash]));
+    const byQuestion = new Map(stored.map(r => [r.question_id, r]));
 
+    // 0091 / docs/security/PIN_PEPPER_MIGRATION.md. Answers hashed under THIS project's pepper are
+    // checked here; answers still under the OLD pepper are collected and checked by Singapore,
+    // once, only if every local one already matched. The rate-limit check above has already run.
     let allMatch = answers.length > 0;
+    const oldPepper: AnswerInput[] = [];
     for (const a of answers) {
-      const expected = byQuestion.get(a.question_id);
-      const actual = expected ? await hashAnswer(appUser.id, a.answer) : null;
-      if (!expected || actual !== expected) allMatch = false;
+      const row = byQuestion.get(a.question_id);
+      if (!row) { allMatch = false; continue; }
+      if ((row.pepper_version ?? 0) >= CURRENT_PIN_PEPPER_VERSION) {
+        if (await hashAnswer(appUser.id, a.answer) !== row.answer_hash) allMatch = false;
+      } else {
+        oldPepper.push(a);
+      }
+    }
+    if (allMatch && oldPepper.length > 0) {
+      const remote = await verifyAnswersWithSingapore(appUser.id, oldPepper, { readEnv: (n) => Deno.env.get(n) });
+      if (remote === 'unavailable') {
+        // Fail closed and do not count it against the person.
+        throw new HttpError(503, 'Recovery is temporarily unavailable. Try again in a few minutes. Your PIN has not changed.');
+      }
+      if (remote === 'locked') {
+        throw new HttpError(423, 'Too many wrong answers. Recovery is locked for now. Your PIN has not changed.');
+      }
+      if (remote !== 'valid') allMatch = false;
     }
 
     if (!allMatch) {
@@ -143,9 +163,20 @@ Deno.serve(async (req) => {
         `That does not match. ${remaining} attempt${remaining === 1 ? '' : 's'} left before recovery closes.`);
     }
 
+    // Singapore confirmed the old-pepper answers: re-hash them under THIS project's pepper now,
+    // while the plaintext is in hand, so they are never sent to Singapore again. Unanswered
+    // questions stay at 0 until a later recovery uses them.
+    for (const a of oldPepper) {
+      const { error: rehashErr } = await admin.from('super_admin_recovery')
+        .update({ answer_hash: await hashAnswer(appUser.id, a.answer), pepper_version: CURRENT_PIN_PEPPER_VERSION })
+        .eq('app_user_id', appUser.id).eq('question_id', a.question_id);
+      if (rehashErr) throw new HttpError(500, 'Could not finish checking your answers. Try again. Your PIN has not changed.');
+    }
+
     await admin.from('auth_rate_limits').delete().eq('key', key);
     await admin.rpc('audit_log', {
       p_action: 'auth.recovery_passed', p_entity_type: 'app_user', p_entity_id: appUser.id,
+      ...(oldPepper.length > 0 ? { p_metadata: { answers_rekeyed: oldPepper.length } } : {}),
     });
 
     const recovery_token = await signRecoveryToken(appUser.id);

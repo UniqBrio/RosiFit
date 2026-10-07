@@ -21,6 +21,7 @@ import { adminClient } from '../_shared/db.ts';
 import { toE164India } from '../_shared/phone.ts';
 import {
   hashAnswer, isFourDigitPin, syntheticEmail, derivePinSecret, pinSecretsConfigured,
+  CURRENT_PIN_PEPPER_VERSION,
 } from '../_shared/pin.ts';
 import { createAuthIdentity } from '../_shared/identity.ts';
 
@@ -111,6 +112,7 @@ Deno.serve(async (req) => {
         const answer_hash = await hashAnswer(appUserId, a.answer);
         const { error: recErr } = await admin.from('super_admin_recovery').insert({
           app_user_id: appUserId, question_id: a.question_id, answer_hash,
+          pepper_version: CURRENT_PIN_PEPPER_VERSION,   // hashed under this project's pepper (0091)
         });
         if (recErr) throw new Error(`Could not save recovery answers: ${recErr.message}`);
       }

@@ -4,7 +4,9 @@ import { handlePreflight } from '../_shared/cors.ts';
 import { json, errorJson, HttpError } from '../_shared/response.ts';
 import { adminClient } from '../_shared/db.ts';
 import { toE164India } from '../_shared/phone.ts';
-import { derivePinSecret, isFourDigitPin, syntheticEmail } from '../_shared/pin.ts';
+import { CURRENT_PIN_PEPPER_VERSION, derivePinSecret, isFourDigitPin, syntheticEmail } from '../_shared/pin.ts';
+import { rotatePin } from '../_shared/identity.ts';
+import { verifyPinWithSingapore } from '../_shared/pinVerifyClient.ts';
 
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 15 * 60 * 1000;
@@ -26,7 +28,7 @@ Deno.serve(async (req) => {
 
     const { data: appUser, error: findErr } = await admin
       .from('app_users')
-      .select('id, is_active, failed_attempts, locked_until, must_change_pin, auth_user_id, kind, name, role_label')
+      .select('id, is_active, failed_attempts, locked_until, must_change_pin, auth_user_id, kind, name, role_label, pin_pepper_version')
       .eq('phone_e164', e164)
       .is('deleted_at', null)
       .maybeSingle();
@@ -55,13 +57,41 @@ Deno.serve(async (req) => {
     }
     if (!appUser.is_active) throw new HttpError(403, 'This account has been disabled. Contact your academy admin.');
 
-    const secret = await derivePinSecret(appUser.id, pin);
-    const { data: signIn, error: signInErr } = await admin.auth.signInWithPassword({
-      email: syntheticEmail(appUser.id),
-      password: secret,
-    });
+    // Local sign-in under THIS project's pepper.
+    const signInLocally = async () => {
+      const secret = await derivePinSecret(appUser.id, pin);
+      const { data: signIn, error: signInErr } = await admin.auth.signInWithPassword({
+        email: syntheticEmail(appUser.id),
+        password: secret,
+      });
+      return signInErr || !signIn.session ? null : signIn.session;
+    };
 
-    if (signInErr || !signIn.session) {
+    // 0091 / docs/security/PIN_PEPPER_MIGRATION.md. Lock and disabled were checked above, so
+    // nothing below can reach Singapore for an account this project already refuses.
+    let session: Awaited<ReturnType<typeof signInLocally>> = null;
+    let pinRekeyed = false;
+    if ((appUser.pin_pepper_version ?? 0) >= CURRENT_PIN_PEPPER_VERSION) {
+      session = await signInLocally();
+    } else {
+      // Secured under the OLD pepper: only Singapore can check it, once, then it is re-secured.
+      const remote = await verifyPinWithSingapore(appUser.id, pin, { readEnv: (n) => Deno.env.get(n) });
+      if (remote === 'unavailable') {
+        // Fail closed and do not count it: the person did nothing wrong.
+        throw new HttpError(503, 'Sign-in is temporarily unavailable. Try again in a few minutes.');
+      }
+      if (remote === 'locked') throw new HttpError(423, 'Too many attempts. Try again later.');
+      if (remote === 'disabled') throw new HttpError(403, 'This account has been disabled. Contact your academy admin.');
+      if (remote === 'valid') {
+        await rotatePin(admin, appUser.id, appUser.auth_user_id, pin);   // marks it current (identity.ts)
+        pinRekeyed = true;
+        session = await signInLocally();
+        if (!session) throw new HttpError(500, 'Your PIN was confirmed, but sign-in could not finish. Try again.');
+      }
+      // 'invalid' and 'not_found' fall through as a wrong PIN, counted exactly as below.
+    }
+
+    if (!session) {
       const nextAttempts = appUser.failed_attempts + 1;
       const locked = nextAttempts >= MAX_ATTEMPTS;
       await admin.from('app_users').update({
@@ -87,10 +117,11 @@ Deno.serve(async (req) => {
     }).eq('id', appUser.id);
     await admin.rpc('audit_log', {
       p_action: 'auth.login_succeeded', p_entity_type: 'app_user', p_entity_id: appUser.id,
+      ...(pinRekeyed ? { p_metadata: { pin_rekeyed: true } } : {}),
     });
 
     return json({
-      session: signIn.session,
+      session,
       user: {
         id: appUser.id, name: appUser.name, kind: appUser.kind,
         role_label: appUser.role_label, must_change_pin: appUser.must_change_pin,
