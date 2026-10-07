@@ -54,25 +54,25 @@
 select t.eq((select md5(p.prosrc) from pg_proc p
                join pg_namespace n on n.oid = p.pronamespace
               where n.nspname = 'public' and p.proname = 'update_member'),
-            '10915909963daa3824b58c4407f8c0fb',
-  'update_member: the replayed body is byte-identical to production (18-Sep-2026, post-0073)');
+            '6cb2a2364de29d9d993df47524c108fe',
+  'update_member: the replayed body is byte-identical to production (07-Oct-2026, post-0088)');
 
 select t.eq((select length(p.prosrc) from pg_proc p
                join pg_namespace n on n.oid = p.pronamespace
               where n.nspname = 'public' and p.proname = 'update_member'),
-            9625,
+            9806,
   'update_member: and the same length');
 
 select t.eq((select md5(p.prosrc) from pg_proc p
                join pg_namespace n on n.oid = p.pronamespace
               where n.nspname = 'public' and p.proname = 'commit_csv_import'),
-            'ff61afadd104c0d507dfa9731e756a51',
-  'commit_csv_import: the replayed body is byte-identical to production (18-Sep-2026, post-0073)');
+            'ca45c0935e04e02c355fc7e5b1a82d01',
+  'commit_csv_import: the replayed body is byte-identical to production (07-Oct-2026, post-0085)');
 
 select t.eq((select length(p.prosrc) from pg_proc p
                join pg_namespace n on n.oid = p.pronamespace
               where n.nspname = 'public' and p.proname = 'commit_csv_import'),
-            18521,
+            20731,
   'commit_csv_import: and the same length, so a hash mismatch is a real difference, not an encoding one');
 
 -- The finding that prompted this file, asserted so it cannot quietly go away.

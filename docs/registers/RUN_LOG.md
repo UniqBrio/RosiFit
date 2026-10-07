@@ -88,6 +88,7 @@ should start by reading this table rather than by guessing which part felt slow.
 
 | ID | Action | Type | Scale | Started | Ended | Total | Stages | Gate | Verdict | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
+| R-046 | Production apply of 0086, 0087, 0085, 0088, 0090, 0089 (one at a time, verified); spec 53 re-pin; tracker | CHANGE | scoped | 2026-10-07 11:56 | 2026-10-07 11:56 | 0s elapsed · active: no marks | - | 1m 05s | FAIL | gate FAIL on the pre-existing set only; G5 PASS; G7 PASS; all six migrations applied and verified in production; spec 53 re-pinned (stays red for T-120) |
 | R-045 | PR #65 CI round 1: csv-import/load.ts row types never declared (check:edge) | BUG | micro | 2026-10-06 09:37 | 2026-10-06 09:37 | 0s elapsed · active: no marks | - | 1m 04s | FAIL | gate FAIL on the pre-existing set only; G5 PASS; G7 PASS; types-only fix; CI check:edge is the proof |
 | R-044 | Read-only pre-deployment review: 0090, 0089 order, SEND_CONCURRENCY, migration safety | CHANGE | scoped | 2026-10-06 09:05 | 2026-10-06 09:05 | 0s elapsed · active: no marks | - | 1m 08s | FAIL | gate FAIL on the pre-existing set only; G5 PASS; G7 PASS; review document only, nothing deployed or applied |
 | R-043 | Deployment prep steps 6-12: pipeline, migration order, plans, final report | CHANGE | scoped | 2026-10-06 07:37 | 2026-10-06 07:37 | 0s elapsed · active: no marks | - | 1m 07s | FAIL | gate FAIL on the pre-existing set only; G5 PASS; G7 PASS; final report written; nothing deployed or applied |
