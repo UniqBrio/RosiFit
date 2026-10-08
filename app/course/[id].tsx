@@ -972,6 +972,14 @@ function CourseDetailBody() {
         initialNumToRender={12}
         maxToRenderPerBatch={12}
         windowSize={7}
+        // THE TOP OF THE LIFT CHAIN (08-Oct-2026). VirtualizedList wraps the
+        // header in a View of its own and renders the cells after it, so the
+        // cards are later siblings of THAT View, not of the lifted blocks
+        // inside the header. The Show panel therefore painted behind the
+        // cards however high the chain below lifted. This is that View's
+        // style; it lifts with the rest of the chain, only while a panel is
+        // out.
+        ListHeaderComponentStyle={{ zIndex: branchOpen || showOpen ? 40 : 0 }}
         ListHeaderComponent={<View>
         {/* THE LIFT THAT LETS A FILTER PANEL FLOAT. Read with the twin on
             the members block below and the note on the Show filter itself.
