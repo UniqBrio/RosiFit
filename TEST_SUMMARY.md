@@ -1,3 +1,10 @@
+## CUTOVER BUILD: csv-import UNPINNED, config.toml -> MUMBAI (A10 of the move) — 08-Oct-2026
+
+`requests/2026-10-08-cutover-app-mumbai.md`. Merge only during cutover, after Vercel Production points at Mumbai. `functionRegion.ts` pins nothing (D3); `config.toml` `project_id` = lbyqipunsbzkcvdrxach and `pin-reset-request` verify_jwt = true as deployed (D2). Unsubscribe pages keep accepting Singapore's address for rollback.
+OWNER-APPROVED BEHAVIOUR REVERSAL (CLAUDE.md exemption, 01-Oct-2026): decision D3 ("Remove the Singapore region pin from the post-cutover application") conflicts directly with `src/data/functionRegion.test.ts` test 1, which pinned `forceFunctionRegion` to 'ap-southeast-1'. Only that test's title and its one expectation changed ('ap-southeast-1' -> null); its path assertion and tests 2-4 are untouched.
+FAIL-FIRST: src/data/functionRegion.test.ts - with the test reversed and the code not yet changed, 3 of 4 green, 1 red: "csv-import is no longer pinned..." expected null, actual 'ap-southeast-1'; after the change 4 of 4 green.
+GATES: `npm run check` 6 of 7 PASS (lint, typecheck, check:edge -- SKIPPED, no Deno -- contrast, icons, functions: 11 declared); test:unit fails only on the 2 tests that fail identically on clean main (rosterWindowed, bucketedMetrics). The B2 guard (config.toml must not mention a forwarder) caught a first draft of the config comment and was satisfied by rewording it.
+
 ## THE SINGAPORE FORWARDER RE-SIGNS OLD UNSUBSCRIBE LINKS FOR MUMBAI — 08-Oct-2026
 
 `requests/2026-10-08-unsubscribe-forwarder-resigns.md`. `supabase/forwarders/unsubscribe/`: a pair valid under Singapore's `UNSUBSCRIBE_SECRET` (shared constant-time check) has the same id re-signed under `UNSUBSCRIBE_SECRET_NEXT` (Mumbai's key) in place of its first `t`, the rest of the query byte for byte; GET 307, POST 308. Any other pair is forwarded exactly as B2 forwarded it, and Mumbai refuses it as before. No log of a token or key, no client, no fetch, no write. Mumbai's `unsubscribe` unchanged. NOT deployed; no secret set.
