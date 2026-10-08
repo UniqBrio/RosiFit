@@ -26,7 +26,10 @@ select t.eq((select count(*)::int from public.super_admin_recovery r join public
               where u.phone_e164 = '+919900000041' and r.pepper_version = 0), 2,
   'a recovery answer written without a version reads 0');
 
+-- As the service role: since 0092 the guard refuses this column from anyone else (spec 69).
+set role service_role;
 update public.app_users set pin_pepper_version = 1 where phone_e164 = '+919900000042';
+reset role;
 select t.eq((select pin_pepper_version::int from public.app_users where phone_e164 = '+919900000042'), 1,
   'the functions can mark a credential current');
 
