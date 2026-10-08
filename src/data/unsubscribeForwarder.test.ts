@@ -111,12 +111,19 @@ test('every answer is uncacheable and leaks no referrer', () => {
   }
 });
 
-test('the forwarder reads no secret, no environment and no database -- it cannot write anywhere', () => {
+test('the forwarder reads no database and only its two signing keys -- it cannot write anywhere', () => {
   const dir = path.join(process.cwd(), 'supabase/forwarders/unsubscribe');
+  // Owner-approved behaviour reversal (08-Oct-2026, TEST_SUMMARY): re-signing old links for Mumbai
+  // needs Singapore's key and Mumbai's. forward.ts still reads nothing; index.ts reads those two.
   for (const f of ['index.ts', 'forward.ts']) {
     const src = fs.readFileSync(path.join(dir, f), 'utf8');
-    assert.doesNotMatch(src, /Deno\.env|createClient|supabase-js|SUPABASE_|_SECRET|fetch\(/, `${f} must stay a pure redirect`);
+    assert.doesNotMatch(src, /createClient|supabase-js|SUPABASE_|fetch\(/, `${f} must stay a redirect`);
   }
+  assert.doesNotMatch(fs.readFileSync(path.join(dir, 'forward.ts'), 'utf8'), /Deno\.env|_SECRET/, 'forward.ts reads no key itself');
+  const index = fs.readFileSync(path.join(dir, 'index.ts'), 'utf8');
+  assert.equal(index.match(/Deno\.env/g)?.length, 1, 'index.ts reads the environment in one place');
+  assert.deepEqual([...index.matchAll(/read\('([A-Z0-9_]+)'\)/g)].map(m => m[1]), ['UNSUBSCRIBE_SECRET', 'UNSUBSCRIBE_SECRET_NEXT'],
+    'and reads exactly the two keys');
   const literals = fs.readFileSync(path.join(dir, 'forward.ts'), 'utf8').match(/https:\/\/[^'"`\s]+/g) ?? [];
   assert.deepEqual([...new Set(literals)], [MUMBAI_UNSUBSCRIBE], 'the only address in the source is Mumbai\'s function');
 });
