@@ -1,3 +1,11 @@
+## GUARDRAIL 4 ALLOW-LIST: app_users.pin_pepper_version — 08-Oct-2026
+
+OWNER-APPROVED SPEC CHANGE (CLAUDE.md exemption, 01-Oct-2026), approved 08-Oct-2026: "Approve the guardrail-4 allow-list fix. Do NOT rename pin_pepper_version." Reason, owner's: pin_pepper_version holds only credential-version metadata (0/1); it never stores a PIN, password, secret, security answer, hash, token or derived credential. The old assertion directly conflicted with 0091, which the owner approved.
+CHANGE: supabase/tests/01_auth.sql, one line -- the explicit allow-list of `no column stores a PIN, password, secret or security answer` gains ('app_users','pin_pepper_version') beside must_change_pin and pin_set_at. The pattern `(^|_)(pin|password|passwd|secret|answer|token)(_|$)` is unchanged; no assertion removed; no broader exception.
+FAIL-FIRST: with 0091 present and the old allow-list, 01_auth FAILED "no column stores a PIN, password, secret or security answer" (previous entry); after, PASS.
+STILL A GUARD: on the same rebuild a throwaway `alter table app_users add column pin_plain text` makes the assertion FAIL again (not committed) -- only the one named column is allowed.
+DB, each spec on its own fresh local Postgres 17 rebuild (through 0070, then 0091 + 0092): 01_auth 15/15, 68 7/7, 69 12/12. pinPepperMigration.test.ts 20/20; unsubscribe specs 55/55; `npm run check` 6 of 7 PASS, test:unit fails only on the 2 tests that fail identically on clean main.
+
 ## 0092: ONLY THE SERVICE ROLE MAY CHANGE app_users.pin_pepper_version — 08-Oct-2026
 
 Owner-approved security fix, found on the Mumbai rehearsal: guard_app_users() (0003) did not list 0091's pin_pepper_version, so a signed-in staff member (own row) or a super admin (any row) could change it, and setting 0 could re-secure a credential back to an old Singapore PIN. 0092 adds `or new.pin_pepper_version is distinct from old.pin_pepper_version` to the guard, rebuilt from its own live definition with the anchor (its deleted_at line) required exactly once, the service_role exemption and the 42501 refusal required present, and a re-run a no-op. NOT applied to any Supabase project.

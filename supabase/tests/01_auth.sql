@@ -38,7 +38,7 @@ select t.ok(not exists (select 1 from information_schema.columns
     where table_schema='public'
       and column_name ~* '(^|_)(pin|password|passwd|secret|answer|token)(_|$)'
       and (table_name, column_name) not in
-            (('app_users','must_change_pin'), ('app_users','pin_set_at'),
+            (('app_users','must_change_pin'), ('app_users','pin_set_at'), ('app_users','pin_pepper_version'),
              ('super_admin_recovery','answer_hash'))),
   'no column stores a PIN, password, secret or security answer');
 -- the one hash we DO keep is the super-admin recovery answer, and it is
