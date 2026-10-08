@@ -33,7 +33,10 @@
 # Measured against production 18-Sep-2026, read-only via the Supabase API. Every
 # other entry below matches the deployed state exactly.
 
-project_id = "lhpzhkzbnquwjljmbylo"
+# Production moved to Mumbai (requests/2026-10-06-move-production-to-mumbai.md).
+# Singapore (lhpzhkzbnquwjljmbylo) keeps only the redirect for old unsubscribe
+# links and is never a default deploy target again.
+project_id = "lbyqipunsbzkcvdrxach"
 
 # ── PUBLIC (verify_jwt = false) ─────────────────────────────────────────────────
 # Each of these is called BEFORE a session exists, or by something that cannot
@@ -83,10 +86,11 @@ verify_jwt = false
 # terms as recovery-check: the caller is there BECAUSE they cannot sign in.
 # DEPLOYED v5 WITH verify_jwt = true, measured 18-Sep-2026. The divergence was
 # first noticed in ENVIRONMENTS.md ("Noticed in passing, NOT changed") and is
-# still live. Recorded here as the source intends; deploying this function
-# changes production. Do not do it as a side effect of deploying something else.
+# still live. OWNER DECISION D2 (move to Mumbai, 07-Oct-2026): keep verify_jwt =
+# true, preserving production behaviour through the move; T-127 stays open and is
+# decided separately. Recorded as deployed, so a redeploy cannot flip it silently.
 [functions.pin-reset-request]
-verify_jwt = false
+verify_jwt = true
 
 # ── AUTHENTICATED (verify_jwt = true) ───────────────────────────────────────────
 # These four have no header comment stating a posture. Their value is taken from

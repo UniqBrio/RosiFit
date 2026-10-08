@@ -23,6 +23,21 @@ Covered with the REAL auth-login, recovery-check and pin-verify, two projects, t
 DB: supabase/tests/68_pin_pepper_version.sql 7/7 PASS. 0091 applied twice to a local Postgres 17 (idempotent); the full harness replay stops at 0071 ("does not contain the anchor this migration expects") on the unchanged code too -- the known replay failure, not this change's, not repaired.
 GATES: `npm run check`: lint, typecheck, check:edge (SKIPPED, no Deno here -- CI type-checks the Deno code), contrast, icons, functions (12 declared: 8 public, 4 authenticated) PASS; test:unit fails only on the 2 tests that fail identically on clean main (rosterWindowed, bucketedMetrics).
 
+## BUG: THE COURSE ROSTER'S SHOW PANEL PAINTED BEHIND THE MEMBER CARDS — 08-Oct-2026
+
+Reported by the owner with a screenshot (08-Oct-2026): on the course screen, the Show filter's open panel was covered by the member cards below it. A regression from the windowed roster (06-Oct, PR #65): the screen's lift chain -- every View from the panel up to the cards' parent at zIndex 40 while a panel is out, RC-035's fix -- ended at the header, because VirtualizedList wraps ListHeaderComponent in a View of its own and renders the cells after it; the cards became later siblings of THAT View, which nothing lifted.
+FIX, one line in app/course/[id].tsx: `ListHeaderComponentStyle={{ zIndex: branchOpen || showOpen ? 40 : 0 }}` -- the header container lifts with the rest of the chain, only while a panel is out (the branch panel sits in the same header and gets the same lift).
+FAIL-FIRST: src/components/rosterWindowed.test.ts - one case appended ("the header container is lifted while a filter panel is open, so the panel paints over the cards"): against the unfixed screen "not ok 5", "# fail 1"; 5 of 5 green after. And the defect itself, reproduced in a browser: the exported bundle (main c79f88e, unfixed) on the stand-in server with 300 members, Chromium 1280x800, the Show field clicked, document.elementFromPoint at the centre of the "Absent" option row -> a member card's text ("Missed 5-11 Oct 2026: 0"): FAIL; after the fix the same probe -> the "Absent" row itself: PASS. Screenshots before and after in the session scratchpad (show-before.png, show-after.png): the panel's rows are cut off behind the first card before, fully drawn over the cards after.
+NOT CHANGED: Dropdown.tsx and the chain below the header (they were right; the chain was one link short); the Members, Attendance and Follow-ups lists (their filters are not inside a FlatList header). Both themes: the z-order is theme-independent; the stand-in screenshot is the dark theme.
+GATES: `npm run gate` VERDICT FAIL on the pre-existing set only (G1-G3, G6, G8); G5 PASS; G7 . `npm run typecheck` PASS, `npm run lint` PASS.
+
+## CUTOVER BUILD: csv-import UNPINNED, config.toml -> MUMBAI (A10 of the move) — 08-Oct-2026
+
+`requests/2026-10-08-cutover-app-mumbai.md`. Merge only during cutover, after Vercel Production points at Mumbai. `functionRegion.ts` pins nothing (D3); `config.toml` `project_id` = lbyqipunsbzkcvdrxach and `pin-reset-request` verify_jwt = true as deployed (D2). Unsubscribe pages keep accepting Singapore's address for rollback.
+OWNER-APPROVED BEHAVIOUR REVERSAL (CLAUDE.md exemption, 01-Oct-2026): decision D3 ("Remove the Singapore region pin from the post-cutover application") conflicts directly with `src/data/functionRegion.test.ts` test 1, which pinned `forceFunctionRegion` to 'ap-southeast-1'. Only that test's title and its one expectation changed ('ap-southeast-1' -> null); its path assertion and tests 2-4 are untouched.
+FAIL-FIRST: src/data/functionRegion.test.ts - with the test reversed and the code not yet changed, 3 of 4 green, 1 red: "csv-import is no longer pinned..." expected null, actual 'ap-southeast-1'; after the change 4 of 4 green.
+GATES: `npm run check` 6 of 7 PASS (lint, typecheck, check:edge -- SKIPPED, no Deno -- contrast, icons, functions: 11 declared); test:unit fails only on the 2 tests that fail identically on clean main (rosterWindowed, bucketedMetrics). The B2 guard (config.toml must not mention a forwarder) caught a first draft of the config comment and was satisfied by rewording it.
+
 ## THE SINGAPORE FORWARDER RE-SIGNS OLD UNSUBSCRIBE LINKS FOR MUMBAI — 08-Oct-2026
 
 `requests/2026-10-08-unsubscribe-forwarder-resigns.md`. `supabase/forwarders/unsubscribe/`: a pair valid under Singapore's `UNSUBSCRIBE_SECRET` (shared constant-time check) has the same id re-signed under `UNSUBSCRIBE_SECRET_NEXT` (Mumbai's key) in place of its first `t`, the rest of the query byte for byte; GET 307, POST 308. Any other pair is forwarded exactly as B2 forwarded it, and Mumbai refuses it as before. No log of a token or key, no client, no fetch, no write. Mumbai's `unsubscribe` unchanged. NOT deployed; no secret set.
@@ -888,6 +903,56 @@ and the count beside it dropped by one" is asserted by reading `app/course/[id].
 three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
 preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
 all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-10-08 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 37.0s total - slowest G7 Unit + pure specs (24.7s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (39ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (39ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (34ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (53ms)
+- **G5 Types** - PASS (5.1s)
+- **G6 Lint** - FAIL (6.7s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (24.7s)
+- **G8 Functional / integration** - FAIL (90ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (40ms)
+- **G10 Backward compatibility (fixtures)** - PASS (82ms)
+- **G11 Wide tables are configurable** - PASS (39ms)
+- **G12 Installable as an application** - PASS (52ms)
+- **G13 Approved design still being built** - PASS (34ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

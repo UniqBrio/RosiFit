@@ -47,10 +47,10 @@ async function send(name: string): Promise<Seen> {
   return seen;
 }
 
-test('csv-import is sent to ap-southeast-1, next to the database', async () => {
+test('csv-import is no longer pinned: after the move the database is in ap-south-1, beside its callers', async () => {
   const { url } = await send('csv-import');
   assert.equal(url.pathname, '/functions/v1/csv-import', 'the function path is unchanged');
-  assert.equal(url.searchParams.get('forceFunctionRegion'), 'ap-southeast-1');
+  assert.equal(url.searchParams.get('forceFunctionRegion'), null);
 });
 
 test('csv-import carries NO x-region header -- the CORS allow-list would refuse the preflight', async () => {
