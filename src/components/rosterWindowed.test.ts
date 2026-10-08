@@ -64,3 +64,16 @@ test('the gate matches the header\'s own empty states, and Inactive is outside i
   const readyEnd = body.indexOf('\n  }\n', ready);
   assert.ok(ready > 0 && inactive > readyEnd, 'the Inactive section must be built whether or not the register is shown');
 });
+
+test('the header container is lifted while a filter panel is open, so the panel paints over the cards', () => {
+  // 08-Oct-2026: the Show panel appeared BEHIND the member cards. The lift
+  // chain the ScrollView had (every View from the panel up to the cards'
+  // parent at zIndex 40 while a panel is out) stopped at the header, because
+  // VirtualizedList wraps ListHeaderComponent in a View of its own and the
+  // cells come after it as later siblings. ListHeaderComponentStyle is that
+  // View's style; it has to carry the same lift.
+  const list = code.indexOf('<FlatList\n        testID="course-roster"');
+  const block = code.slice(list, code.indexOf('ListHeaderComponent={<View>', list) + 30);
+  assert.match(block, /ListHeaderComponentStyle=\{\{ zIndex: branchOpen \|\| showOpen \? 40 : 0 \}\}/,
+    'the header container must lift with the panel chain');
+});
