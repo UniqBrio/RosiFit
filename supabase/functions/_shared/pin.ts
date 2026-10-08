@@ -6,6 +6,14 @@
 
 import { HttpError } from './response.ts';
 
+/**
+ * The PIN_PEPPER generation THIS project's secret belongs to (0091). Production moved to Mumbai
+ * with a new pepper: 1. Credentials and recovery answers copied from Singapore are 0 until
+ * Singapore's `pin-verify` confirms them once and they are re-secured under this pepper
+ * (docs/security/PIN_PEPPER_MIGRATION.md). Anything this code SETS is, by construction, current.
+ */
+export const CURRENT_PIN_PEPPER_VERSION = 1;
+
 const encoder = new TextEncoder();
 
 /**

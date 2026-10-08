@@ -117,3 +117,14 @@ verify_jwt = true
 # Deployed v18, verify_jwt = true. Matches. Source header silent.
 [functions.send-followups]
 verify_jwt = true
+
+# ── SINGAPORE ONLY ──────────────────────────────────────────────────────────────
+# The authenticated PIN / recovery-answer verifier for the move to Mumbai (0091,
+# docs/security/PIN_PEPPER_MIGRATION.md). Its caller is Mumbai's auth-login and
+# recovery-check -- another project's server, with no session here -- so the
+# gateway JWT check cannot apply. Its own door is stricter: an HMAC over the exact
+# request under PIN_VERIFY_KEY, a 60-second timestamp and a single-use nonce. It
+# answers 404 on any project but Singapore, so deploying it elsewhere is inert.
+# Deploy to Singapore ONLY, never as part of a Mumbai deploy.
+[functions.pin-verify]
+verify_jwt = false

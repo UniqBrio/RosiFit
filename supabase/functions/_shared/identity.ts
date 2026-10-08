@@ -1,5 +1,5 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
-import { derivePinSecret, syntheticEmail } from './pin.ts';
+import { CURRENT_PIN_PEPPER_VERSION, derivePinSecret, syntheticEmail } from './pin.ts';
 
 /** Creates the shadow GoTrue user for a brand-new app_user and links it back.
  *  Every credential-issuing path (bootstrap, pin-issue on create) goes
@@ -17,8 +17,10 @@ export async function createAuthIdentity(
   if (error || !data?.user) {
     throw new Error(`Could not create the sign-in credential: ${error?.message ?? 'unknown error'}`);
   }
-  const { error: linkErr } = await admin
-    .from('app_users').update({ auth_user_id: data.user.id }).eq('id', appUserId);
+  // The credential was just derived under THIS project's pepper, so it is current (0091).
+  const { error: linkErr } = await admin.from('app_users')
+    .update({ auth_user_id: data.user.id, pin_pepper_version: CURRENT_PIN_PEPPER_VERSION })
+    .eq('id', appUserId);
   if (linkErr) throw new Error(`Could not link the sign-in credential: ${linkErr.message}`);
   return data.user.id as string;
 }
@@ -32,6 +34,14 @@ export async function rotatePin(
   const password = await derivePinSecret(appUserId, pin);
   const { error } = await admin.auth.admin.updateUserById(authUserId, { password });
   if (error) throw new Error(`Could not update the sign-in credential: ${error.message}`);
+  // Every PIN this code sets -- pin-issue, pin-reset, recovery, the version-0 re-secure in
+  // auth-login -- is derived under THIS project's pepper, so it is current (0091). If this write
+  // fails, the row still reads 0 and this throws: for the SAME PIN (the auth-login re-secure) the
+  // next sign-in simply re-secures again; for a CHANGED PIN, Singapore refuses it and the person
+  // needs a re-issue -- closed, never open.
+  const { error: markErr } = await admin.from('app_users')
+    .update({ pin_pepper_version: CURRENT_PIN_PEPPER_VERSION }).eq('id', appUserId);
+  if (markErr) throw new Error(`Could not record the credential version: ${markErr.message}`);
   return authUserId;
 }
 
