@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — See the subscription under More
+
+**More now has a Subscription row**, under Configuration, showing when the academy's subscription
+next renews. Tapping it opens a page with the plan, the start date, the end date, the grace
+period and whether the subscription is active, in grace, expired or suspended. Both the super
+admin and staff can see it, so anyone can find out why the app has become read-only. Nothing on
+the page can be changed; renewals are still handled by UniqBrio support.
+
+**RosiFit's end date moves to 24 Sep 2027**, which is the next renewal date. It is applied to
+the live academy only after the owner approves it.
+
 ## Unreleased — Every follow-up says how to stop them again
 
 **A course that wrote its own wording was sending emails with no visible way to opt out.**

@@ -154,6 +154,7 @@ function Nav() {
         <Stack.Screen name="appearance"    options={{ headerShown: false }} />
         <Stack.Screen name="profile"       options={{ headerShown: false }} />
         <Stack.Screen name="help"          options={{ headerShown: false }} />
+        <Stack.Screen name="subscription"  options={{ headerShown: false }} />
       </Stack>
     </View>
   );
