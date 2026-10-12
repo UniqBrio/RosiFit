@@ -65,7 +65,6 @@ function SubscriptionBody() {
     { icon: 'workspace_premium', label: 'Plan',         value: s.plan },
     { icon: 'event',             label: 'Start date',   value: longDate(s.startDate) },
     { icon: 'event_repeat',      label: 'End date',     value: endDate },
-    { icon: 'hourglass_empty',   label: 'Grace period', value: `${s.graceDays} ${s.graceDays === 1 ? 'day' : 'days'}` },
   ];
 
   return (

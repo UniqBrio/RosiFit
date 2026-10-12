@@ -577,3 +577,19 @@ Owner's go-ahead in session, after the raw SQL was shown ("approve"). Applied to
   `subscription_state() = active`, `is_subscription_writable() = true`; ledger row present.
 - The More > Subscription screen (`app/subscription.tsx`) is on branch
   `claude/kind-goldberg-9nyfwd`, not yet merged or deployed.
+
+## 12-Oct-2026 — 0094 applied to production (Mumbai): no grace period — ✅ VERIFIED
+
+Owner's go-ahead in session, after the raw SQL was shown ("approve"). Applied to
+`lbyqipunsbzkcvdrxach` (Mumbai, production) only.
+
+- **Before (read immediately prior):** `expires_at 2027-09-24, grace_days 14, status active`,
+  one renewal_history entry (0093's); state `active`.
+- **Applied:** `0094_rosifit_has_no_grace_period` through the migration ledger.
+- **After (read back):** `grace_days 0`; start date, end date, status, plan, `renewed_at` (null)
+  and renewal_history (still 1 entry) unchanged; `subscription_state() = active`,
+  `is_subscription_writable() = true`; ledger row present.
+- **Effect:** writes stop on 25-Sep-2027, the day after the end date (was 09-Oct-2027 with 14
+  days' grace). Reads continue. Not recorded in renewal_history (see 0094's header).
+- The screen change (Grace period row removed) is on branch `claude/kind-goldberg-9nyfwd`, not
+  yet merged.
