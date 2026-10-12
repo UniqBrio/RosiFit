@@ -11,6 +11,8 @@
  * rather than re-deriving one that could disagree with it on the last day.
  */
 import { parseISO } from './period';
+import { formatDate } from './memberDate';
+import { SUPPORT_NAME } from './mock';
 
 export type SubscriptionState = 'active' | 'grace' | 'expired' | 'suspended';
 
@@ -25,12 +27,10 @@ export type Subscription = {
   state: SubscriptionState;
 };
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-/** '2027-09-24' -> '24 Sep 2027'; '—' when the date is missing. */
+/** '2027-09-24' -> '24-Sep-2027', the academy's one date shape (memberDate.ts);
+ *  '—' when the date is missing, so a blank can never pass for a day. */
 export function longDate(value: string | null): string {
-  const d = parseISO(value ?? '');
-  return d ? `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}` : '—';
+  return value && parseISO(value) ? formatDate(value) : '—';
 }
 
 /** Whole calendar days from `todayIso` to `endIso`; negative once past. */
@@ -43,7 +43,8 @@ export function daysUntil(endIso: string, todayIso: string): number {
   return Math.round((utc(end) - utc(today)) / 86_400_000);
 }
 
-/** The day writes stop: the end date plus the grace days. */
+/** The LAST day writes still work: the end date plus the grace days
+ *  (subscription_state() counts that day as grace, `<=`). */
 export function lastGraceDay(endIso: string, graceDays: number): string {
   const end = parseISO(endIso);
   if (!end) return endIso;
@@ -59,20 +60,34 @@ export const STATE_WORD: Record<SubscriptionState, string> = {
   suspended: 'Suspended',
 };
 
+/** Whether the end date still lies ahead -- the only state in which it is a RENEWAL date. */
+export function renewsAhead(s: Subscription): boolean {
+  return s.state === 'active';
+}
+
+/** The More row's meta: what the date means in this state. */
+export function moreMeta(s: Subscription): string {
+  if (s.state === 'suspended') return STATE_WORD.suspended;
+  return `${renewsAhead(s) ? 'Renews' : 'Ended'} ${longDate(s.endDate)}`;
+}
+
+const LOCKED = 'You can still see every record, but nothing can be added or changed';
+
 /** One sentence under the dates: what this state means for the academy. */
 export function stateSentence(s: Subscription, todayIso: string): string {
   const left = daysUntil(s.endDate, todayIso);
   const graceEnd = longDate(lastGraceDay(s.endDate, s.graceDays));
   switch (s.state) {
     case 'active':
-      return left === 0
-        ? 'The subscription ends today. Renew it to keep everything working.'
-        : `${left} ${left === 1 ? 'day' : 'days'} left until the next renewal.`;
+      if (left > 0) return `${left} ${left === 1 ? 'day' : 'days'} left until the next renewal.`;
+      return s.graceDays > 0
+        ? `The subscription ends today. Everything keeps working through ${graceEnd}. To renew, call ${SUPPORT_NAME}.`
+        : `The subscription ends today. To keep adding and changing records, call ${SUPPORT_NAME} to renew it.`;
     case 'grace':
-      return `The subscription has ended. Everything keeps working until ${graceEnd}; after that the app becomes read-only.`;
+      return `The subscription has ended. Everything keeps working through ${graceEnd}; after that, records can be seen but not added or changed until it is renewed.`;
     case 'expired':
-      return 'The subscription has ended. You can still see every record, but nothing can be added or changed until it is renewed.';
+      return `The subscription has ended. ${LOCKED} until it is renewed.`;
     case 'suspended':
-      return 'The subscription is suspended. You can still see every record, but nothing can be added or changed.';
+      return `The subscription is suspended. ${LOCKED}. To find out why, or to restore it, call ${SUPPORT_NAME}.`;
   }
 }

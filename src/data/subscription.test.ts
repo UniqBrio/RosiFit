@@ -5,7 +5,9 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { longDate, daysUntil, lastGraceDay, stateSentence, type Subscription } from './subscription';
+import {
+  longDate, daysUntil, lastGraceDay, stateSentence, moreMeta, type Subscription,
+} from './subscription';
 
 const rosifit: Subscription = {
   customer: 'RosiFit Academy', plan: 'Standard',
@@ -13,7 +15,7 @@ const rosifit: Subscription = {
 };
 
 test('the end date reads as a person writes it', () => {
-  assert.equal(longDate('2027-09-24'), '24 Sep 2027');
+  assert.equal(longDate('2027-09-24'), '24-Sep-2027');
   assert.equal(longDate(null), '—');
   assert.equal(longDate('not a date'), '—');
 });
@@ -32,8 +34,18 @@ test('the grace period ends grace_days after the end date', () => {
 test('each state says what it means', () => {
   assert.equal(stateSentence(rosifit, '2026-10-12'), '347 days left until the next renewal.');
   assert.equal(stateSentence(rosifit, '2027-09-23'), '1 day left until the next renewal.');
-  assert.equal(stateSentence(rosifit, '2027-09-24'), 'The subscription ends today. Renew it to keep everything working.');
-  assert.match(stateSentence({ ...rosifit, state: 'grace' }, '2027-09-30'), /until 8 Oct 2027/);
+  assert.match(stateSentence(rosifit, '2027-09-24'), /ends today\. Everything keeps working through 08-Oct-2027/);
+  // a device a day ahead of the server must never print a negative count
+  assert.match(stateSentence(rosifit, '2027-09-25'), /ends today/);
+  assert.match(stateSentence({ ...rosifit, graceDays: 0 }, '2027-09-24'), /call UniqBrio support to renew it/);
+  assert.match(stateSentence({ ...rosifit, state: 'grace' }, '2027-09-30'), /through 08-Oct-2027/);
   assert.match(stateSentence({ ...rosifit, state: 'expired' }, '2027-10-09'), /nothing can be added or changed/);
   assert.match(stateSentence({ ...rosifit, state: 'suspended' }, '2026-10-12'), /suspended/);
+});
+
+test('the More row says Renews only while the date lies ahead', () => {
+  assert.equal(moreMeta(rosifit), 'Renews 24-Sep-2027');
+  assert.equal(moreMeta({ ...rosifit, state: 'grace' }), 'Ended 24-Sep-2027');
+  assert.equal(moreMeta({ ...rosifit, state: 'expired' }), 'Ended 24-Sep-2027');
+  assert.equal(moreMeta({ ...rosifit, state: 'suspended' }), 'Suspended');
 });

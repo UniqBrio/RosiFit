@@ -9,7 +9,7 @@ import { useTheme } from '../../src/theme/ThemeProvider';
 import { SPACE, RADIUS, TAP_MIN, STATUS } from '../../src/theme/tokens';
 import { SUPPORT_PHONE_DISPLAY } from '../../src/data/mock';
 import { useBranchUsage, useStaff, useSubscription } from '../../src/data/hooks';
-import { longDate } from '../../src/data/subscription';
+import { moreMeta } from '../../src/data/subscription';
 import { useIdentity, signOut } from '../../src/data/session';
 import { SIGN_OUT_PROMPT } from '../../src/data/signOutPrompt';
 import { useGoToSignIn } from '../../src/components/useGoToSignIn';
@@ -60,10 +60,10 @@ export default function More() {
   const count = (n: number | undefined) => (n === undefined ? '' : String(n));
   const branchCount = count(branches.data?.length);
   const staffCount = count(staff.data?.length);
-  // The row states the next renewal date, read live like the counts above;
-  // '' until it is known, for the same reason.
+  // The row states the renewal date, read live like the counts above; '' until
+  // it is known, for the same reason. "Ended" once the date is past.
   const subscription = useSubscription();
-  const renewalMeta = subscription.data ? `Renews ${longDate(subscription.data.endDate)}` : '';
+  const renewalMeta = subscription.data ? moreMeta(subscription.data) : '';
 
   const toSignIn = useGoToSignIn();
   /**

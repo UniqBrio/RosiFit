@@ -9,7 +9,7 @@ import { useSubscription } from '../src/data/hooks';
 import { businessTodayIso } from '../src/data/businessDate';
 import { SUPPORT_NAME, SUPPORT_PHONE_DISPLAY } from '../src/data/mock';
 import {
-  longDate, stateSentence, STATE_WORD, type SubscriptionState,
+  longDate, stateSentence, renewsAhead, STATE_WORD, type SubscriptionState,
 } from '../src/data/subscription';
 
 /**
@@ -38,7 +38,7 @@ function SubscriptionBody() {
   const sub = useSubscription(forced);
 
   const header = (
-    <ScreenHeader title="Subscription" subtitle={sub.data ? `${sub.data.plan} plan` : undefined}
+    <ScreenHeader title="Subscription" subtitle={sub.data?.plan}
       onBack={() => router.back()} />
   );
 
@@ -50,7 +50,7 @@ function SubscriptionBody() {
       <Screen>
         {header}
         <ErrorState onRetry={sub.retry}
-          message={sub.error ?? 'The subscription could not be loaded. Nothing has been changed.'} />
+          message={sub.error ?? 'The subscription could not be loaded.'} />
       </Screen>
     );
   }
@@ -90,7 +90,7 @@ function SubscriptionBody() {
           </View>
         </View>
 
-        <Label style={{ marginTop: SPACE.lg }}>Next renewal</Label>
+        <Label style={{ marginTop: SPACE.lg }}>{renewsAhead(s) ? 'Next renewal' : 'Ended on'}</Label>
         <Text testID="subscription-renewal" style={{
           fontSize: 28, fontWeight: '800', color: theme.fgStrong, marginTop: 4,
           fontVariant: ['tabular-nums'], letterSpacing: -0.3,
