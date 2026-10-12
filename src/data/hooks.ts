@@ -35,7 +35,7 @@ import {
   type Branch, type BranchUsage, type OfferingDetail,
   fetchAttendance, fetchUnsubscribedAddresses, type UnsubscribedAddress, onCoursesChanged, onMembersChanged, onAttendanceChanged, onRulesChanged,
   fetchCourseWeekDays, fetchCourseDayRows, type CourseDayStatus,
-  fetchHolidays, onHolidaysChanged, fetchMemberWeek, onStaffChanged,
+  fetchHolidays, onHolidaysChanged, fetchMemberWeek, onStaffChanged, fetchSubscription,
   type Rules, type PendingSession, type Holiday,
 } from './repository';
 import { flagged } from './followup';
@@ -45,6 +45,7 @@ import type {
   MemberSession,
 } from './mock';
 import { onSentChanged, type SentMap } from './sent';
+import type { Subscription } from './subscription';
 
 export type Async<T> = {
   state: ScreenState;
@@ -416,6 +417,12 @@ export function useStaff(forced?: string): Async<Staff[]> {
      screen; neither can reach the list's own retry(). */
   const version = useVersion(onStaffChanged);
   return useAsync(() => fetchStaff(), [], forced, undefined, version);
+}
+
+/** The subscription row and its derived state (More > Subscription). No
+ *  change bus: nothing in the client can write app_subscription. */
+export function useSubscription(forced?: string): Async<Subscription> {
+  return useAsync(() => fetchSubscription(), [], forced);
 }
 
 /**

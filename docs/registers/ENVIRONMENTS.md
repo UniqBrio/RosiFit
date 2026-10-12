@@ -561,3 +561,19 @@ producing the evidence would have invalidated the evidence.
   one-click branch are all still unexercised.
 - **A complaint-suppressed address has not yet been refused by a later send.**
   The bounce half of that check passed; the complaint half has not been run.
+
+## 12-Oct-2026, 12:27 UTC — 0093 applied to production (Mumbai) — ✅ VERIFIED
+
+Owner's go-ahead in session, after the raw SQL was shown ("approve"). Applied to
+`lbyqipunsbzkcvdrxach` (Mumbai, production) only; Singapore (`lhpzhkzbnquwjljmbylo`,
+`status = 'suspended'`) was read and not touched.
+
+- **Before (read immediately prior):** `start_date 2026-09-01, expires_at 2027-09-01,
+  grace_days 14, status active, renewal_history []`; state `active`.
+- **Applied:** `0093_rosifit_renews_on_24_sep_2027` through the migration ledger.
+- **After (read back):** `expires_at 2027-09-24`; start date, grace days, status, plan and
+  `renewed_at` (null) unchanged; `renewal_history` has one entry
+  `{expires_at_from 2027-09-01, expires_at_to 2027-09-24, source 0093_…}`;
+  `subscription_state() = active`, `is_subscription_writable() = true`; ledger row present.
+- The More > Subscription screen (`app/subscription.tsx`) is on branch
+  `claude/kind-goldberg-9nyfwd`, not yet merged or deployed.
