@@ -97,8 +97,7 @@ function SubscriptionBody() {
 
         <Label style={{ marginTop: SPACE.lg }}>{renewsAhead(s) ? 'Next renewal' : 'Ended on'}</Label>
         <Text testID="subscription-renewal" style={{
-          fontSize: 28, fontWeight: '800', color: theme.fgStrong, marginTop: 4,
-          fontVariant: ['tabular-nums'], letterSpacing: -0.3,
+          fontSize: 28, fontWeight: '800', color: theme.fgStrong, marginTop: 4, letterSpacing: -0.3,
         }}>{endDate}</Text>
         <Muted style={{ marginTop: SPACE.sm }}>{stateSentence(s, businessTodayIso())}</Muted>
       </View>
@@ -121,7 +120,7 @@ function SubscriptionBody() {
               <Icon name={r.icon} size={18} color={theme.accentInk} />
             </View>
             <Text style={{ flex: 1, fontSize: 15, fontWeight: '700', color: theme.fgStrong }}>{r.label}</Text>
-            <Text style={{ fontSize: 14, color: theme.muted, fontVariant: ['tabular-nums'] }}>{r.value}</Text>
+            <Text style={{ fontSize: 14, color: theme.muted }}>{r.value}</Text>
           </View>
         ))}
       </View>
