@@ -2,6 +2,7 @@ import { View, Text } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Screen, Muted, Label, Skeleton, ErrorState } from '../src/components/ui';
 import { ScreenHeader, ShellScreen } from '../src/components/AppShell';
+import { FreshnessLine } from '../src/components/FreshnessLine';
 import { Icon } from '../src/components/Icon';
 import { useTheme } from '../src/theme/ThemeProvider';
 import { SPACE, RADIUS, STATUS, type StatusKey } from '../src/theme/tokens';
@@ -70,6 +71,10 @@ function SubscriptionBody() {
   return (
     <Screen>
       {header}
+      {/* A failed refresh keeps the last answer on screen (asyncState.ts), and
+          a stale "Active" is the worst thing this screen could show -- so it
+          says how old the answer is, like Branches. */}
+      <FreshnessLine read={sub} testID="subscription-freshness" />
 
       {/* The next renewal date is the one figure this screen exists for, so it
           leads, with the state beside it in a word and an icon. */}
@@ -79,7 +84,7 @@ function SubscriptionBody() {
       }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACE.md }}>
           <Text style={{ flex: 1, fontSize: 15, fontWeight: '700', color: theme.fgStrong }}>{s.customer}</Text>
-          <View accessibilityLabel={`Status: ${STATE_WORD[s.state]}`} style={{
+          <View accessible accessibilityLabel={`Status: ${STATE_WORD[s.state]}`} style={{
             flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 4,
             borderRadius: RADIUS.pill, borderWidth: 1, borderColor: ink,
           }}>

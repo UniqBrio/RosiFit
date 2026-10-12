@@ -90,6 +90,7 @@ const WIRED: [string, string][] = [
   ['app/(tabs)/courses.tsx', 'courses-freshness'],
   ['app/branches.tsx', 'branches-freshness'],
   ['app/staff/index.tsx', 'staff-freshness'],
+  ['app/subscription.tsx', 'subscription-freshness'],
 ];
 
 for (const [screen, testID] of WIRED) {

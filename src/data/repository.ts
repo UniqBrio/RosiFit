@@ -1702,6 +1702,48 @@ export async function setTemplateActive(id: string, active: boolean): Promise<vo
   if (error) fail('Could not change that template', error);
 }
 
+// ------------------------------------------------------------- subscription
+
+/**
+ * The academy's subscription -- the singleton app_subscription row and the
+ * state every write gate derives from it (src/data/subscription.ts).
+ *
+ * Both roles may read it (app_subscription_read, 0003): a staff member has to
+ * be able to see why the app went read-only. Nobody can write it from here.
+ */
+export async function fetchSubscription(): Promise<Subscription> {
+  if (!isConfigured) {
+    return {
+      customer: 'RosiFit Academy', plan: 'Standard',
+      startDate: '2026-09-01', endDate: '2027-09-24', graceDays: 14, state: 'active',
+    };
+  }
+
+  const [row, state] = await Promise.all([
+    supabase.from('app_subscription')
+      .select('customer_name, plan_label, start_date, expires_at, grace_days')
+      .eq('id', 1).single(),
+    supabase.rpc('subscription_state'),
+  ]);
+  if (row.error) fail('Could not load the subscription', row.error);
+  if (state.error) fail('Could not load the subscription', state.error);
+  // Checked, not cast: an unknown word would have no chip and no sentence,
+  // and would crash the screen past its own error state.
+  const known: SubscriptionState[] = ['active', 'grace', 'expired', 'suspended'];
+  if (!known.includes(state.data as SubscriptionState)) {
+    fail('Could not load the subscription', { message: `unknown state ${String(state.data)}` });
+  }
+
+  return {
+    customer: row.data.customer_name as string,
+    plan: row.data.plan_label as string,
+    startDate: row.data.start_date as string,
+    endDate: row.data.expires_at as string,
+    graceDays: row.data.grace_days as number,
+    state: state.data as SubscriptionState,
+  };
+}
+
 // -------------------------------------------------------------------- staff
 /** The four-state access fact (see mock.ts): "has a record", "has a PIN",
  *  "has used it" and "was turned off" need different actions, so they are
@@ -1738,40 +1780,6 @@ function accessOf(u: { is_active: boolean; pin_set_at: string | null; last_login
  * `attendanceImported()`: the caller says it, because the caller is the only
  * one who knows the Edge Function returned.
  */
-/**
- * The academy's subscription -- the singleton app_subscription row and the
- * state every write gate derives from it (src/data/subscription.ts).
- *
- * Both roles may read it (app_subscription_read, 0003): a staff member has to
- * be able to see why the app went read-only. Nobody can write it from here.
- */
-export async function fetchSubscription(): Promise<Subscription> {
-  if (!isConfigured) {
-    return {
-      customer: 'RosiFit Academy', plan: 'Standard',
-      startDate: '2026-09-01', endDate: '2027-09-24', graceDays: 14, state: 'active',
-    };
-  }
-
-  const [row, state] = await Promise.all([
-    supabase.from('app_subscription')
-      .select('customer_name, plan_label, start_date, expires_at, grace_days')
-      .eq('id', 1).single(),
-    supabase.rpc('subscription_state'),
-  ]);
-  if (row.error) fail('Could not load the subscription', row.error);
-  if (state.error) fail('Could not load the subscription', state.error);
-
-  return {
-    customer: row.data.customer_name as string,
-    plan: row.data.plan_label as string,
-    startDate: row.data.start_date as string,
-    endDate: row.data.expires_at as string,
-    graceDays: row.data.grace_days as number,
-    state: state.data as SubscriptionState,
-  };
-}
-
 const staffListeners = new Set<() => void>();
 
 export function onStaffChanged(listener: () => void): () => void {

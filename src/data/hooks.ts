@@ -419,7 +419,8 @@ export function useStaff(forced?: string): Async<Staff[]> {
   return useAsync(() => fetchStaff(), [], forced, undefined, version);
 }
 
-/** The subscription row and its derived state (More > Subscription). */
+/** The subscription row and its derived state (More > Subscription). No
+ *  change bus: nothing in the client can write app_subscription. */
 export function useSubscription(forced?: string): Async<Subscription> {
   return useAsync(() => fetchSubscription(), [], forced);
 }
