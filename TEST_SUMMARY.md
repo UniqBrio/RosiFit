@@ -1,3 +1,11 @@
+## 0094: ROSIFIT HAS NO GRACE PERIOD — 12-Oct-2026
+
+`requests/2026-10-12-no-grace-period.md`. Owner: "Grace period is not required", clarified as remove it entirely. 0094 sets app_subscription.grace_days 14 -> 0 (re-runnable; missing row or a 0-row update stops it); not recorded in renewal_history, because spec 70 (merged, append-only) pins a replayed row's history as empty. The Subscription screen's Grace period row is removed; the offline fixture's grace days -> 0.
+FAIL-FIRST: supabase/tests/71_rosifit_has_no_grace_period.sql - its first assertion, "grace_days is 0 after the replay", fails on main (14) and passes with 0094.
+DB, each spec on its own fresh local Postgres 16 rebuild: 71 8/8 (14 -> 0, every other column and the history untouched, re-run a no-op, end date still active and writable, the next day expired and not writable). Unchanged and still green with 0094 in the replay: 70 14/14, 33 11/11, 67 11/11, 10 28/28 (each sets grace itself). Full `db/harness/test.sh`: every spec PASS but 27, 39 and 53, which fail identically on main (see the entry below).
+GATES: lint, typecheck, contrast, icons, functions PASS; test:unit 2276/2276 run alone -- under the concurrent DB suite pinPepperMigration's "Singapore unreachable during recovery" case fails intermittently, on main too (timing), not touched here.
+CORRECTION to the entry below: spec 70 has 14 assertions, not 15 -- the earlier count included 0093's own NOTICE line.
+
 ## SUBSCRIPTION SECTION UNDER MORE; 0093 ROSIFIT RENEWS ON 24-SEP-2027 — 12-Oct-2026
 
 `requests/2026-10-12-subscription-section.md`. Read-only More > Subscription (both roles) and 0093, which moves app_subscription.expires_at 2027-09-01 -> 2027-09-24 and appends the old date to renewal_history. 0093 moves the date ONLY from 2027-09-01: already 2027-09-24 is a no-op, any other date is left alone with a notice, a missing row or a 0-row update stops it. APPLIED to production (Mumbai) 12-Oct-2026 12:27 UTC on the owner's go-ahead, verified by read-back (docs/registers/ENVIRONMENTS.md).

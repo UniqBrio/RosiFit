@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — No grace period
+
+**RosiFit no longer has a grace period.** When the subscription ends on 24-Sep-2027, adding and
+changing records stops the next day, instead of 14 days later. Every record can still be seen.
+The Subscription page no longer shows a Grace period row.
+
 ## Unreleased — See the subscription under More
 
 **More now has a Subscription row**, under Configuration, showing when the academy's subscription

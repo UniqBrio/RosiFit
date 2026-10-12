@@ -1715,7 +1715,7 @@ export async function fetchSubscription(): Promise<Subscription> {
   if (!isConfigured) {
     return {
       customer: 'RosiFit Academy', plan: 'Standard',
-      startDate: '2026-09-01', endDate: '2027-09-24', graceDays: 14, state: 'active',
+      startDate: '2026-09-01', endDate: '2027-09-24', graceDays: 0, state: 'active',
     };
   }
 
