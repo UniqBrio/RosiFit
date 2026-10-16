@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — Export a bulk email send; the import template says it never deletes
+
+**The Result dialog after a bulk email now has Export full list.** It saves an Excel file named
+with the date and time of the send (`rosifit-email-send-2026-10-16-1210.xlsx`). The Summary sheet
+gives the totals: members, sent, failed, bounced and excluded. The Members sheet lists every member
+with a status (Sent, Failed, Bounced or Excluded) and the reason when an email did not go out.
+
+**The member import template now says, in bold, that importing never deletes anyone.** It only
+adds the new members in the file. Every member already in RosiFit stays in the app, even if the
+file leaves them out.
+
 ## Unreleased — No grace period
 
 **RosiFit no longer has a grace period.** When the subscription ends on 24-Sep-2027, adding and
