@@ -925,6 +925,90 @@ all found by a person using the app, which is three for three, and RC-108's proc
 
 ## Gate run - 2026-10-16 - VERDICT: FAIL
 
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 1m 25s total - slowest G7 Unit + pure specs (55.4s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (76ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (65ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (66ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (97ms)
+- **G5 Types** - PASS (11.1s)
+- **G6 Lint** - FAIL (17.8s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (55.4s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+```
+
+- **G8 Functional / integration** - FAIL (239ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (95ms)
+- **G10 Backward compatibility (fixtures)** - PASS (175ms)
+- **G11 Wide tables are configurable** - PASS (85ms)
+- **G12 Installable as an application** - PASS (101ms)
+- **G13 Approved design still being built** - PASS (65ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+**Note (export the full send list — follow-up on requests/2026-10-16-export-failed-bounced-and-import-never-deletes.md):**
+G1–G3, G6 and G8 are the same pre-existing FAILs as the 2026-10-08 run and are outside this diff.
+G7's only failures are in `src/data/pinPepperMigration.test.ts` (Singapore/Mumbai recovery), a file
+this change does not touch: tests 1580/1581 in one full run and 1579/1580 in the next, while the file
+alone passes 20/20 three runs in a row. It is a load-sensitive flake that predates this change. Every
+other unit spec passes, and lint, typecheck, contrast, icons and functions are green.
+
+**Spec reshaped, not overwritten:** `src/data/sendProblems.test.ts` (added in 89692d2 on this same
+unmerged branch) becomes `src/data/sendReport.test.ts`. The requester reversed the behaviour the
+same day ("export all not just failed ... with full list with status ... date in its name"), so
+the old "sent and every other exclusion are not exported" assertion now directly contradicts the
+ask (CLAUDE.md, owner-approved reversal exemption). The bounce-wording and CSV-escaping assertions
+are kept, and the status, counts and dated-file-name assertions are new.
+FAIL-FIRST: src/data/sendReport.test.ts - with sendReportRows reduced to the failed/bounced/excluded rows only (the previous behaviour), 3 of 6 failed (full list, counts, CSV); restored, 6/6 pass.
+
+---
+
+## Gate run - 2026-10-16 - VERDICT: FAIL
+
 Steps: 8 pass, 5 fail, 0 blocked.
 Time: 1m 21s total - slowest G7 Unit + pure specs (53.1s).
 Application steps ran in .

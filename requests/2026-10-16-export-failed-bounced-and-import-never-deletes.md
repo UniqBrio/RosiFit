@@ -33,3 +33,20 @@ bounce arrives, and is in the next send's file as Bounced.
 **Specs:** `src/data/sendProblems.test.ts` (4, new); one test appended to `src/data/memberXlsx.test.ts`.
 **Verified:** `npm run check` green; Result dialog rendered and the CSV downloaded, light and dark
 (420 px, web export via `.harness/serve.mjs`).
+
+---
+
+## Follow-up, same day — export the whole send
+
+**Asked (verbatim):** "export all not just failed total number of emails sent with full list with
+status and downlable fiel should contain date in its name"
+
+**What changes (replaces the failed & bounced export above):**
+- The Result dialog's button becomes **Export full list (n)**, where n is every member in the send.
+  It is shown whenever the send has at least one member.
+- The CSV opens with the send's date and time and the totals (Total members, Sent, Failed, Bounced,
+  Excluded), then a blank line, then one line per member: Member, Status, Reason. Members are
+  grouped Sent → Failed → Bounced → Excluded.
+- The file name carries the LOCAL date and time of the send: `rosifit-email-send-YYYY-MM-DD-HHMM.csv`
+  (the minute keeps two sends on one day as two files).
+- `src/data/sendProblems.ts` → `src/data/sendReport.ts`; its spec moves with it (see TEST_SUMMARY).
