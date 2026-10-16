@@ -463,3 +463,22 @@ test('the instructions still say a member joins today, as prose and not as a col
   });
   assert.equal(said, 1, 'stated once');
 });
+
+// ------------------------------------------- importing never deletes anyone
+
+/**
+ * On request (16-Oct-2026): the sample sheet says that importing adds new
+ * members and leaves every existing one in the app. Pinned as the words a
+ * person reads, and kept beside the skip line so neither contradicts the other.
+ */
+test('the instructions say importing never deletes an existing member', async () => {
+  const bytes = await buildMemberTemplate(opts);
+  const wb = new (await excel()).Workbook();
+  await wb.xlsx.load(bytes);
+  const info = wb.getWorksheet(SHEET_INSTRUCTIONS)!;
+  const lines: string[] = [];
+  info.eachRow(r => lines.push(String(r.getCell(2).value ?? '')));
+  assert.ok(lines.includes('Importing never deletes anyone. It only adds the new members in this file — every member already in RosiFit stays in the app, even if this file leaves them out.'),
+    'the never-deletes line is on the instructions sheet');
+  assert.ok(lines.some(l => /skipped, never changed/.test(l)), 'and the skip line still stands beside it');
+});

@@ -10,6 +10,11 @@ import { SPACE, RADIUS, STATUS, statusSurface } from '../../src/theme/tokens';
 import { flaggedMembers } from '../../src/data/mock';
 import { isReachable, emailExclusionReason } from '../../src/data/followup';
 import { peekSendAlready, peekSendResult } from '../../src/data/pending';
+import { sendReportRows, sendReportSheets, sendReportFileName } from '../../src/data/sendReport';
+import { buildReportWorkbook } from '../../src/data/reportXlsx';
+import { downloadBlob } from '../../src/data/csv';
+
+const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 /**
  * The last step: RESULT, per member. "Sent" is claimed per address, never for
@@ -49,6 +54,26 @@ function SendResultBody() {
     ? result.results.filter(r => r.status === 'excluded').map(r => ({ id: r.member_id, name: r.name, reason: r.reason }))
     : fallbackFlagged.filter(m => !isReachable(m))
         .map(m => ({ id: m.id, name: m.name, reason: emailExclusionReason(m) }));
+
+  /* The WHOLE send as an Excel file -- every member with a status, the
+     totals on their own sheet, dated in its name (16-Oct-2026). Built from
+     the rows on screen, so the file and the dialog cannot disagree. The time
+     is the one this dialog opened at, read once, like the result itself. */
+  const [sentAt] = useState(() => new Date());
+  const report = sendReportRows([
+    ...sent.map(m => ({ member_id: m.id, name: m.name, status: 'sent' as const })),
+    ...failed.map(m => ({ member_id: m.id, name: m.name, status: 'failed' as const, reason: m.reason })),
+    ...excluded.map(m => ({ member_id: m.id, name: m.name, status: 'excluded' as const, reason: m.reason })),
+  ]);
+  const exportReport = async () => {
+    try {
+      const bytes = await buildReportWorkbook(sendReportSheets(report, sentAt));
+      downloadBlob(sendReportFileName(sentAt), new Blob([bytes], { type: XLSX }));
+      flash(`Exported ${report.length} ${report.length === 1 ? 'member' : 'members'} · Excel`);
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'The list could not be exported.', 'warn');
+    }
+  };
 
   const ink = (k: keyof typeof STATUS) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
   const okInk = ink('present'); const badInk = ink('absent');
@@ -121,17 +146,23 @@ function SendResultBody() {
       onClose={close}
       /* One way out, not a Cancel/Save pair: nothing here is being decided.
          Closing returns to the screen the send was started from, which is
-         still mounted underneath. */
+         still mounted underneath. Export sits beside it only when there is
+         somebody to export -- a button that saves an empty file is noise. */
       footer={(
         <View style={{
+          gap: SPACE.md,
           padding: SPACE.lg, borderTopWidth: 1, borderTopColor: theme.line,
           backgroundColor: theme.shell,
         }}>
+          {report.length > 0 ? (
+            <Button testID="result-export" variant="secondary"
+              label={`Export full list (${report.length})`} onPress={exportReport} />
+          ) : null}
           <Button testID="result-done" label="Done" onPress={close} />
         </View>
       )}
     >
-      <Muted>{result ? `Sent ${new Date().toLocaleString()}` : 'Sent 8:42 pm · 22 Aug'}</Muted>
+      <Muted>{result ? `Sent ${sentAt.toLocaleString()}` : 'Sent 8:42 pm · 22 Aug'}</Muted>
 
       <View style={{ flexDirection: 'row', marginTop: SPACE.lg, gap: SPACE.md }}>
         <Count n={sent.length} label="Sent" color={okInk} />
