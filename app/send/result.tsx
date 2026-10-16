@@ -9,8 +9,8 @@ import { useToast } from '../../src/components/Toast';
 import { SPACE, RADIUS, STATUS, statusSurface } from '../../src/theme/tokens';
 import { flaggedMembers } from '../../src/data/mock';
 import { isReachable, emailExclusionReason } from '../../src/data/followup';
-import { peekSendAlready, peekSendResult } from '../../src/data/pending';
-import { sendReportRows, sendReportSheets, sendReportFileName } from '../../src/data/sendReport';
+import { peekSendAlready, peekSendResult, peekSendEmails } from '../../src/data/pending';
+import { sendReportRows, sendReportSheets, sendReportFileName, sendAddress } from '../../src/data/sendReport';
 import { buildReportWorkbook } from '../../src/data/reportXlsx';
 import { downloadBlob } from '../../src/data/csv';
 
@@ -60,11 +60,17 @@ function SendResultBody() {
      the rows on screen, so the file and the dialog cannot disagree. The time
      is the one this dialog opened at, read once, like the result itself. */
   const [sentAt] = useState(() => new Date());
+  /* Each member's address beside the name -- two members can share a name.
+     A real send carries them from the draft; the fixtures read them off the
+     same records the rows above were built from. */
+  const [emails] = useState(() => result
+    ? peekSendEmails()
+    : Object.fromEntries(fallbackFlagged.map(m => [m.id, sendAddress(m)])));
   const report = sendReportRows([
     ...sent.map(m => ({ member_id: m.id, name: m.name, status: 'sent' as const })),
     ...failed.map(m => ({ member_id: m.id, name: m.name, status: 'failed' as const, reason: m.reason })),
     ...excluded.map(m => ({ member_id: m.id, name: m.name, status: 'excluded' as const, reason: m.reason })),
-  ]);
+  ], id => emails[id] ?? '');
   const exportReport = async () => {
     try {
       const bytes = await buildReportWorkbook(sendReportSheets(report, sentAt));

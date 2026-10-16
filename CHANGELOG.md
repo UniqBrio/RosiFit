@@ -5,7 +5,8 @@
 **The Result dialog after a bulk email now has Export full list.** It saves an Excel file named
 with the date and time of the send (`rosifit-email-send-2026-10-16-1210.xlsx`). The Summary sheet
 gives the totals: members, sent, failed, bounced and excluded. The Members sheet lists every member
-with a status (Sent, Failed, Bounced or Excluded) and the reason when an email did not go out.
+with their email address and a status (Sent, Failed, Bounced or Excluded), and gives the reason
+when an email did not go out. The email tells apart two members who share a name.
 
 **The member import template now says, in bold, that importing never deletes anyone.** It only
 adds the new members in the file. Every member already in RosiFit stays in the app, even if the

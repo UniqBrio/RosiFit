@@ -20,6 +20,11 @@
  * the send function's (`suppressionReason`, send-loop.ts) and the offline
  * fixtures' (`emailExclusionReason`, followup.ts).
  *
+ * WITH THE EMAIL, beside the name -- the fourth word, the same day: "Add email
+ * also in the sheet because there can me many members with same name but
+ * email ids will be different". A name does not identify a member; on a
+ * register with two Priyas, the address is what tells the rows apart.
+ *
  * AN EXCEL WORKBOOK, not a CSV -- the requester's third word on it, the same
  * day: "excel sheet would be good". Two sheets: Summary (when, and the
  * totals) and Members (the full list). Built by reportXlsx.ts'
@@ -32,12 +37,13 @@
  */
 import type { SendResult } from './sendBatch';
 import type { Sheet } from './reportSheets';
+import type { Member } from './mock';
 
 type ResultRow = SendResult['results'][number];
 
 export const SEND_REPORT_STATUSES = ['Sent', 'Failed', 'Bounced', 'Excluded'] as const;
 export type SendReportStatus = typeof SEND_REPORT_STATUSES[number];
-export type SendReportRow = { name: string; status: SendReportStatus; reason: string };
+export type SendReportRow = { name: string; email: string; status: SendReportStatus; reason: string };
 
 export const isBounceReason = (reason: string | undefined): boolean => /\bbounced\b/i.test(reason ?? '');
 
@@ -47,14 +53,27 @@ function statusOf(r: ResultRow): SendReportStatus {
   return isBounceReason(r.reason) ? 'Bounced' : 'Excluded';
 }
 
+/**
+ * The address a send writes to: the member's PRIMARY address, and only that.
+ * The send function reads `member_emails` with `is_primary = true` (load.ts),
+ * so a member with addresses but none marked primary was excluded as "No
+ * email on file" -- and the file must say blank, not name an address that was
+ * never tried. A bounced or unsubscribed primary IS named: that is the
+ * address the Reason is about.
+ */
+export function sendAddress(m: Pick<Member, 'emails'>): string {
+  return m.emails.find(e => e.primary)?.address ?? '';
+}
+
 /** Every member, grouped Sent, Failed, Bounced, Excluded -- each group in the
- *  order the result listed it. */
-export function sendReportRows(results: ResultRow[]): SendReportRow[] {
+ *  order the result listed it. `emailOf` answers by member id; blank when it
+ *  does not know. */
+export function sendReportRows(results: ResultRow[], emailOf: (memberId: string) => string = () => ''): SendReportRow[] {
   const rows = results.map(r => {
     const status = statusOf(r);
     const reason = status === 'Sent' ? ''
       : r.reason ?? (status === 'Failed' ? 'The provider refused the message.' : 'No email on file');
-    return { name: r.name, status, reason };
+    return { name: r.name, email: emailOf(r.member_id), status, reason };
   });
   return SEND_REPORT_STATUSES.flatMap(s => rows.filter(r => r.status === s));
 }
@@ -84,8 +103,8 @@ export function sendReportSheets(rows: SendReportRow[], sentAt: Date): Sheet[] {
       ['Bounced', String(c.Bounced)],
       ['Excluded', String(c.Excluded)],
     ] },
-    { name: SHEET_SEND_MEMBERS, header: ['Member', 'Status', 'Reason'],
-      rows: rows.map(r => [r.name, r.status, r.reason]) },
+    { name: SHEET_SEND_MEMBERS, header: ['Member', 'Email', 'Status', 'Reason'],
+      rows: rows.map(r => [r.name, r.email, r.status, r.reason]) },
   ];
 }
 

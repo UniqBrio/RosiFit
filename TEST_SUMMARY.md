@@ -926,6 +926,69 @@ all found by a person using the app, which is three for three, and RC-108's proc
 ## Gate run - 2026-10-16 - VERDICT: FAIL
 
 Steps: 8 pass, 5 fail, 0 blocked.
+Time: 1m 29s total - slowest G7 Unit + pure specs (55.6s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (73ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (71ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (62ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (98ms)
+- **G5 Types** - PASS (11.1s)
+- **G6 Lint** - FAIL (21.4s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (55.6s)
+- **G8 Functional / integration** - FAIL (178ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (78ms)
+- **G10 Backward compatibility (fixtures)** - PASS (159ms)
+- **G11 Wide tables are configurable** - PASS (77ms)
+- **G12 Installable as an application** - PASS (102ms)
+- **G13 Approved design still being built** - PASS (62ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+**Note (send export gains an Email column — requests/2026-10-16-send-export-email-column.md):**
+G1–G3, G6 and G8 are the same pre-existing FAILs as the 2026-10-08 run, all outside this diff. G7
+passes. `npm run check` passes 7/7.
+
+**Spec re-pointed, under the owner-approved reversal exemption (CLAUDE.md):** `src/data/sendReport.test.ts`
+(merged in #75) pinned the Members sheet as Member / Status / Reason and each row without an address.
+The requester asked for an Email column ("there can me many members with same name but email ids will
+be different"), so those two expectations conflict directly with the ask. The only changes are an
+`email: ''` key on each expected row, the added Email column in the expected sheet, and the status
+cell moving from B3 to C3. No assertion was removed or loosened. Four tests are appended.
+FAIL-FIRST: src/data/sendReport.test.ts "two members with one name are told apart by their email" - with the email dropped from each row, it failed (1 of 10); restored, 10/10 pass.
+FAIL-FIRST: src/data/sendReport.test.ts "the address named is the PRIMARY one" - with sendAddress falling back to the first address when none is primary, it failed (1 of 10); restored, 10/10 pass.
+
+---
+
+## Gate run - 2026-10-16 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
 Time: 1m 36s total - slowest G7 Unit + pure specs (58.1s).
 Application steps ran in .
 
