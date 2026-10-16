@@ -59,3 +59,8 @@ sending account. Without them, an email that arrived reads as *Sent*, never as a
 **Specs:** `supabase/tests/72_email_log.sql` (20 assertions); `src/data/emailLog.test.ts` (12); one
 test appended to `src/data/sendReport.test.ts`. `src/components/memberDialog.test.ts`'s tab list is
 re-pointed to include Emails (see TEST_SUMMARY).
+
+**Applied:** 0095 was applied to production (Mumbai) on 16-Oct-2026 on the requester's "proceed and
+apply", and verified by read-back (docs/registers/ENVIRONMENTS.md). Production has no Delivery
+events, so *Delivered* will not appear until SES delivery notifications are switched on. 23 earlier
+emails had a temporary bounce but still read as *sent*; they now show as Bounced (temporary).

@@ -972,10 +972,11 @@ exit 1
 _Merge blocked. Every FAIL above must resolve. No partial merges._
 
 **Note (Attendance emails in Reports, member Emails tab, 0095 email_log — requests/2026-10-16-attendance-email-report-and-member-email-history.md):**
-NOT DEPLOYED. ONE MIGRATION, NOT APPLIED: supabase/migrations/0095_email_log.sql, a new read-only
-SECURITY DEFINER function `email_log` that is active app users only, keyset-paged, and changes no
-table, index, policy or data. Under D-10 it merges to main only on the day it is applied, after the
-requester's go-ahead on the raw SQL.
+ONE MIGRATION, APPLIED TO PRODUCTION 16-Oct-2026 after the requester's go-ahead on the raw SQL:
+supabase/migrations/0095_email_log.sql, a new read-only SECURITY DEFINER function `email_log` that
+is active app users only, keyset-paged, and changes no table, index, policy or data. Its production
+body md5 dc0cd2e8… is identical to the harness replay (docs/registers/ENVIRONMENTS.md). It merges
+the same day, per D-10.
 Gate: G1–G3, G6 and G8 are the same pre-existing FAILs as the 2026-10-08 run, all outside this diff.
 G7 and G9 pass (no new test-ID violation). `npm run check` passes 7/7.
 `bash db/harness/test.sh`: 1,394 PASS, and spec 72 passes 20/20. Two FAILs, both pre-existing and

@@ -593,3 +593,29 @@ Owner's go-ahead in session, after the raw SQL was shown ("approve"). Applied to
   days' grace). Reads continue. Not recorded in renewal_history (see 0094's header).
 - The screen change (Grace period row removed) is on branch `claude/kind-goldberg-9nyfwd`, not
   yet merged.
+
+## 16-Oct-2026 — 0095 applied to production (Mumbai): the email log — ✅ VERIFIED
+
+The owner gave the go-ahead in session ("proceed and apply") after the raw SQL was shown. Applied
+to `lbyqipunsbzkcvdrxach` (Mumbai, production) only.
+
+- **Before (read immediately prior):** the ledger ended at `0094_rosifit_has_no_grace_period`; no
+  `public.email_log`. Production held 1,768 email_messages in 47 batches (1,758 `sent`,
+  10 `bounced`). email_events held 40 Bounce events (14 Permanent, 26 Transient), 1 Complaint
+  and **no Delivery events**, so SES delivery notifications are not switched on.
+- **Applied:** `0095_email_log` through the migration ledger, the file byte-identical to commit
+  890e843 (md5 65f50ab0…).
+- **After (read back):** the function is present, SECURITY DEFINER and STABLE; anon cannot execute
+  it and authenticated can. Its body md5 is `dc0cd2e8f54f2e25f5f82975cf888032` (2,411 bytes),
+  **identical to the harness replay**. The ledger row is present.
+- **Behaviour (read-only, rolled back):** as an active app user, `email_log('2026-10-01',
+  '2026-10-31')` returns 991 messages in 17 sends (5 permanent bounces, 12 transient bounces on
+  messages still `sent`, 974 sent with no further event, 0 delivered). A caller who is no app user
+  is refused (42501).
+- **Found in passing:** 23 messages hold a Transient bounce while their status still reads `sent`.
+  SES reports a transient bounce only after it stops retrying, so those members did not get that
+  email. The new screens show them as Bounced (temporary). ses-feedback is unchanged; it still
+  suppresses only on a Permanent bounce.
+- The screens (Reports → Attendance emails, the member Emails tab) are on branch
+  `claude/nifty-ride-axo1up` and merge with this record, per D-10.
+
