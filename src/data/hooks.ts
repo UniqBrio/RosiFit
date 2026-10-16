@@ -31,7 +31,7 @@ import {
   fetchBranchUsage, onBranchesChanged, fetchCourseMessage, fetchSenders,
   type CourseMessage,
   fetchNotifications, type Notification,
-  fetchSentForPeriod,
+  fetchSentForPeriod, fetchEmailLog,
   type Branch, type BranchUsage, type OfferingDetail,
   fetchAttendance, fetchUnsubscribedAddresses, type UnsubscribedAddress, onCoursesChanged, onMembersChanged, onAttendanceChanged, onRulesChanged,
   fetchCourseWeekDays, fetchCourseDayRows, type CourseDayStatus,
@@ -45,6 +45,7 @@ import type {
   MemberSession,
 } from './mock';
 import { onSentChanged, type SentMap } from './sent';
+import type { EmailLogRow } from './emailLog';
 import type { Subscription } from './subscription';
 
 export type Async<T> = {
@@ -677,6 +678,29 @@ export function useSentForPeriod(period: Period, forced?: string): Async<SentMap
   const [version, setVersion] = useState(0);
   useEffect(() => onSentChanged(() => setVersion(v => v + 1)), []);
   return useAsync(() => fetchSentForPeriod(period), [period.from, period.to], forced, undefined, version);
+}
+
+/**
+ * Every follow-up email in a period, for Reports' Attendance emails card
+ * (0095 `email_log`). Revalidated on a send, so the card counts a send made
+ * while Reports stayed mounted -- without blanking while it re-reads.
+ */
+export function useEmailLog(period: Period, forced?: string): Async<EmailLogRow[]> {
+  const [version, setVersion] = useState(0);
+  useEffect(() => onSentChanged(() => setVersion(v => v + 1)), []);
+  return useAsync(() => fetchEmailLog({ period }), [period.from, period.to], forced, undefined, version);
+}
+
+/**
+ * Every follow-up email one member has been sent, for the member record's
+ * Emails tab. The record stays mounted UNDER the send it opens (Reach out),
+ * so it hears the send rather than waiting for a remount.
+ */
+export function useMemberEmails(memberId: string | null, forced?: string): Async<EmailLogRow[]> {
+  const [version, setVersion] = useState(0);
+  useEffect(() => onSentChanged(() => setVersion(v => v + 1)), []);
+  return useAsync(() => (memberId ? fetchEmailLog({ memberId }) : Promise.resolve([])),
+    [memberId], forced, undefined, version);
 }
 
 /**

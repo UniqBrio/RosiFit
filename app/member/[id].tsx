@@ -26,6 +26,8 @@ import {
   memberDayNames, addressesInOrder, type MemberTab,
 } from '../../src/components/memberDialog';
 import { TabStrip } from '../../src/components/TabStrip';
+import { MemberEmails } from '../../src/components/MemberEmails';
+import { sendAddress } from '../../src/data/sendReport';
 import { attendancePct, primaryEmail, hasEmailOnFile, type Member } from '../../src/data/mock';
 import { emailStateWord, isDeliveryFailure } from '../../src/data/emailStatus';
 import { streakReading } from '../../src/data/streak';
@@ -350,7 +352,10 @@ export default function MemberDetail() {
       } else {
         // What the send REPORTED as sent, never what it was asked to send.
         recordSent(week, outcome.result.results.filter(r => r.status === 'sent').map(r => r.member_id));
-        setSendResult(outcome.result);
+        // The address beside each name, for the result's export -- the same
+        // hand-over the course's Send Communication makes (16-Oct-2026).
+        setSendResult(outcome.result,
+          Object.fromEntries(flaggedHere.map(x => [x.id, sendAddress(x)])));
       }
       closeSendBatchKey(batchName);
       setTriggerPrompt(false);
@@ -669,7 +674,7 @@ export default function MemberDetail() {
           readOnlyNote={memberCourseNote} />
       </View>
 
-      </>) : <HerDetails m={m} />}
+      </>) : tab === 'emails' ? <MemberEmails memberId={m.id} /> : <HerDetails m={m} />}
     </FormDialog>
   );
 }

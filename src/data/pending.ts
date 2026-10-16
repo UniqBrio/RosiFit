@@ -38,15 +38,23 @@ let sendResult: import('./api').SendResult | null = null;
 /** The per-recipient outcome of a send, on its way to the result screen.
  *  Kept whole: "sent" is claimed per address, never for the batch, and an
  *  excluded member is named with her reason rather than dropped. */
-export const setSendResult = (r: import('./api').SendResult) => {
+export const setSendResult = (r: import('./api').SendResult, emails: Record<string, string> = {}) => {
   sendResult = r;
+  sendEmails = emails;
   // A send either ran or was refused as already submitted; it is never both.
   // Clearing the other here is what stops a 409 from an earlier attempt
   // leaving its banner over a result that really did just send.
   sendAlready = null;
 };
 export const peekSendResult = (): import('./api').SendResult | null => sendResult;
-export const clearSendResult = () => { sendResult = null; };
+export const clearSendResult = () => { sendResult = null; sendEmails = {}; };
+
+/** The address each member of that send was written to, by member id, for the
+ *  result's export (16-Oct-2026: "there can be many members with same name but
+ *  email ids will be different"). Carried from the draft, which already holds
+ *  every record; the send function's answer does not include it. */
+let sendEmails: Record<string, string> = {};
+export const peekSendEmails = (): Record<string, string> => sendEmails;
 
 /**
  * A send the server REFUSED as already submitted, on its way to the same

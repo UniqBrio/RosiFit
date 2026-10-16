@@ -22,6 +22,7 @@ import { sendFollowUps } from '../../src/data/api';
 import { fetchBatchByClientKey } from '../../src/data/repository';
 import { attemptSend, closeSendBatchKey, openSendBatchKey, sendBatchName } from '../../src/data/sendBatch';
 import { setSendAlready, setSendResult } from '../../src/data/pending';
+import { sendAddress } from '../../src/data/sendReport';
 import { firstTicked, sendPreview } from '../../src/data/sendPreview';
 import { MessagePreview } from '../../src/components/MessagePreview';
 
@@ -287,7 +288,10 @@ function SendDraftBody() {
         // mark on the member's row has to mean an email left, not that one was
         // tried.
         recordSent(week, outcome.result.results.filter(r => r.status === 'sent').map(r => r.member_id));
-        setSendResult(outcome.result);
+        // The address beside each name, for the result's export: two members
+        // can share a name, never an address (16-Oct-2026).
+        setSendResult(outcome.result,
+          Object.fromEntries(flagged.map(m => [m.id, sendAddress(m)])));
       }
       // Both of these are terminal and both are SHOWN, so the key is released:
       // holding it would refuse every later send for this period while the tab

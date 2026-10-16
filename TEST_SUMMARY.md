@@ -926,6 +926,139 @@ all found by a person using the app, which is three for three, and RC-108's proc
 ## Gate run - 2026-10-16 - VERDICT: FAIL
 
 Steps: 8 pass, 5 fail, 0 blocked.
+Time: 1m 32s total - slowest G7 Unit + pure specs (59.3s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (87ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (71ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (70ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (122ms)
+- **G5 Types** - PASS (11.8s)
+- **G6 Lint** - FAIL (20.0s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (59.3s)
+- **G8 Functional / integration** - FAIL (181ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (93ms)
+- **G10 Backward compatibility (fixtures)** - PASS (171ms)
+- **G11 Wide tables are configurable** - PASS (96ms)
+- **G12 Installable as an application** - PASS (110ms)
+- **G13 Approved design still being built** - PASS (72ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+**Note (Attendance emails in Reports, member Emails tab, 0095 email_log — requests/2026-10-16-attendance-email-report-and-member-email-history.md):**
+ONE MIGRATION, APPLIED TO PRODUCTION 16-Oct-2026 after the requester's go-ahead on the raw SQL:
+supabase/migrations/0095_email_log.sql, a new read-only SECURITY DEFINER function `email_log` that
+is active app users only, keyset-paged, and changes no table, index, policy or data. Its production
+body md5 dc0cd2e8… is identical to the harness replay (docs/registers/ENVIRONMENTS.md). It merges
+the same day, per D-10.
+Gate: G1–G3, G6 and G8 are the same pre-existing FAILs as the 2026-10-08 run, all outside this diff.
+G7 and G9 pass (no new test-ID violation). `npm run check` passes 7/7.
+`bash db/harness/test.sh`: 1,394 PASS, and spec 72 passes 20/20. Two FAILs, both pre-existing and
+both reproduced with 0095 removed from the replay: 39_staff_are_not_restricted ("not one of the four
+functions still asks is_super_admin()", got 1) and 53_harness_body_matches_production (update_member
+md5 c1d122a0… vs production 6cb2a236…). Neither touches email.
+**Spec re-pointed, under the owner-approved reversal exemption (CLAUDE.md):** in
+`src/components/memberDialog.test.ts`, the MEMBER_TABS keys and labels gain `emails` / `Emails`. The
+requester chose a third Emails tab on 16-Oct-2026, which directly conflicts with the pinned
+two-tab list. Nothing else in that test changed; the first-tab order it guards still holds.
+FAIL-FIRST: supabase/tests/72_email_log.sql - replayed without 0095, it stops at its first call: function "public.email_log(date, date, uuid, uuid, int)" does not exist; with 0095, 20/20 pass.
+FAIL-FIRST: src/data/sendReport.test.ts "every send path hands the addresses to the result" - against the pre-change app/member/[id].tsx, it failed (setSendResult without sendAddress); restored, 11/11 pass.
+NOT OBSERVED FAILING: src/data/emailLog.test.ts - every case is new behaviour for a new module, so there is no earlier version to fail against. Its column-mapping case is anchored to 0095's returns-table list.
+
+---
+
+## Gate run - 2026-10-16 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 1m 29s total - slowest G7 Unit + pure specs (55.6s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (73ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (71ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (62ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (98ms)
+- **G5 Types** - PASS (11.1s)
+- **G6 Lint** - FAIL (21.4s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (55.6s)
+- **G8 Functional / integration** - FAIL (178ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (78ms)
+- **G10 Backward compatibility (fixtures)** - PASS (159ms)
+- **G11 Wide tables are configurable** - PASS (77ms)
+- **G12 Installable as an application** - PASS (102ms)
+- **G13 Approved design still being built** - PASS (62ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+**Note (send export gains an Email column — requests/2026-10-16-send-export-email-column.md):**
+G1–G3, G6 and G8 are the same pre-existing FAILs as the 2026-10-08 run, all outside this diff. G7
+passes. `npm run check` passes 7/7.
+
+**Spec re-pointed, under the owner-approved reversal exemption (CLAUDE.md):** `src/data/sendReport.test.ts`
+(merged in #75) pinned the Members sheet as Member / Status / Reason and each row without an address.
+The requester asked for an Email column ("there can me many members with same name but email ids will
+be different"), so those two expectations conflict directly with the ask. The only changes are an
+`email: ''` key on each expected row, the added Email column in the expected sheet, and the status
+cell moving from B3 to C3. No assertion was removed or loosened. Four tests are appended.
+FAIL-FIRST: src/data/sendReport.test.ts "two members with one name are told apart by their email" - with the email dropped from each row, it failed (1 of 10); restored, 10/10 pass.
+FAIL-FIRST: src/data/sendReport.test.ts "the address named is the PRIMARY one" - with sendAddress falling back to the first address when none is primary, it failed (1 of 10); restored, 10/10 pass.
+
+---
+
+## Gate run - 2026-10-16 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
 Time: 1m 36s total - slowest G7 Unit + pure specs (58.1s).
 Application steps ran in .
 
