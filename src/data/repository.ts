@@ -23,6 +23,8 @@ import { SUBJECT_MIN, SUBJECT_MAX, BODY_MIN, COURSE_NAME_MIN, COURSE_NAME_MAX } 
 import { bucketFixture, type BucketMetrics, type MemberMetric } from './buckets';
 import type { SentMap } from './sent';
 import type { BatchSummary } from './sendBatch';
+import type { EmailLogRow } from './emailLog';
+import { emailLogFixture } from './emailLogFixture';
 import { metricsPage, splitBuckets, METRICS_BUCKETS_RPC, type BucketMetricRow } from './periodMetrics';
 import { duringWrite } from './inFlight';
 import { sharedMemberRead, invalidateMemberReads } from './memberStore';
@@ -2609,6 +2611,50 @@ export async function fetchBatchByClientKey(clientBatchId: string): Promise<Batc
     createdAt: (data.created_at as string | null) ?? null,
   };
 }
+
+// ------------------------------------------------------------- email log
+/**
+ * Every follow-up email for a period, or every one a member has ever been
+ * sent -- with when it was sent, delivered, bounced or reported as spam
+ * (0095 `email_log`). Reports' Attendance emails card reads the first; the
+ * member record's Emails tab reads the second.
+ *
+ * PAGED like every list read here (T-042): `email_log` is keyset-paged on
+ * message_id, so a month with more than 1,000 emails is read in full rather
+ * than cut off at the server's ceiling.
+ */
+export async function fetchEmailLog(
+  scope: { period: Period } | { memberId: string },
+): Promise<EmailLogRow[]> {
+  if (!isConfigured) {
+    const todayIso = businessTodayIso();
+    if ('memberId' in scope) return emailLogFixture(todayIso).filter(r => r.memberId === scope.memberId);
+    const anchor = scope.period.to < todayIso ? scope.period.to : todayIso;
+    const { from, to } = businessDayBounds(scope.period.from, scope.period.to);
+    return emailLogFixture(anchor).filter(r => r.batchAt >= from && r.batchAt <= to);
+  }
+  const args = 'memberId' in scope
+    ? { p_member_id: scope.memberId }
+    : { p_from: scope.period.from, p_to: scope.period.to };
+  const rows = await paged<EmailLogDbRow>('the email log', () => metricsPage<EmailLogDbRow>(
+    (after, limit) => supabase.rpc('email_log', { ...args, p_after: after, p_limit: limit })), 'message_id');
+  return rows.map(r => ({
+    messageId: r.message_id, batchId: r.batch_id, batchAt: r.batch_at, sentBy: r.sent_by,
+    memberId: r.member_id, memberName: r.member_name ?? '(removed member)', email: r.to_email,
+    fromEmail: r.from_email, course: r.course_name, branch: r.branch_name, subject: r.subject,
+    status: r.status as EmailLogRow['status'], reason: r.reason, sentAt: r.sent_at,
+    deliveredAt: r.delivered_at, bouncedAt: r.bounced_at, bounceType: r.bounce_type,
+    complainedAt: r.complained_at,
+  }));
+}
+
+type EmailLogDbRow = {
+  message_id: string; batch_id: string; batch_at: string; sent_by: string | null;
+  member_id: string; member_name: string | null; to_email: string | null; from_email: string | null;
+  course_name: string | null; branch_name: string | null; subject: string | null;
+  status: string; reason: string | null; sent_at: string | null; delivered_at: string | null;
+  bounced_at: string | null; bounce_type: string | null; complained_at: string | null;
+};
 
 export type Preferences = { theme_mode: 'light' | 'dark' | 'system'; accent_key: string; accent_hue: number };
 

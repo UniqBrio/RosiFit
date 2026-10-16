@@ -56,6 +56,9 @@ export function attendanceTone(pct: number | null): Extract<StatusKey, 'present'
 export const MEMBER_TABS = [
   { key: 'week', label: 'This week' },
   { key: 'details', label: 'Details' },
+  // Every follow-up email the member has been sent, and what happened to it
+  // (16-Oct-2026, on request) -- src/components/MemberEmails.tsx.
+  { key: 'emails', label: 'Emails' },
 ] as const;
 
 export type MemberTab = typeof MEMBER_TABS[number]['key'];

@@ -21,6 +21,7 @@ import { membersInPeriod } from '../../src/data/joined';
 import { reportSheets, reportFileName } from '../../src/data/reportSheets';
 import { buildReportWorkbook } from '../../src/data/reportXlsx';
 import { downloadBlob } from '../../src/data/csv';
+import { AttendanceEmailsCard } from '../../src/components/AttendanceEmailsCard';
 
 /**
  * The member and course report.
@@ -377,6 +378,11 @@ export default function Reports() {
               reversal is on the record instead of silent. */}
         </>
       )}
+
+      {/* ATTENDANCE EMAILS (16-Oct-2026): every follow-up send in the same
+          period, with its own Export. Outside the attendance branch above,
+          so it renders -- and fails -- on its own. */}
+      <AttendanceEmailsCard range={range} forced={forced} />
 
       <View style={{
         marginTop: SPACE.lg, padding: 15, borderRadius: RADIUS.md,

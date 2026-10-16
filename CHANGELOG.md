@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased — Attendance emails in Reports; every member's emails on their record
+
+**Reports has a new Attendance emails section**, below the attendance chart and on the same period.
+It shows how many follow-up emails were sent, delivered, bounced, failed or left out in that period,
+then each send with its date, time and course. **Export** saves an Excel file named with the period.
+It has one sheet with a row per send and one with a row per email: member, email address, date,
+status, reason, and when it was sent, delivered or bounced.
+
+**The member record has a new Emails tab**, next to This week and Details. It lists every follow-up
+email the member has been sent, newest first: whether it was delivered, bounced, failed or never
+sent, the address it went to, and when each of those happened.
+
+**An export from Reach out now includes email addresses.** The Result dialog's export after a Reach
+out send had left the Email column blank.
+
 ## Unreleased — Export a bulk email send; the import template says it never deletes
 
 **The Result dialog after a bulk email now has Export full list.** It saves an Excel file named

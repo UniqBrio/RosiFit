@@ -135,3 +135,15 @@ test('the send function reads the primary address, which is what sendAddress nam
   const load = fs.readFileSync(path.join(process.cwd(), 'supabase/functions/send-followups/load.ts'), 'utf8');
   assert.match(load, /from\('member_emails'\)[\s\S]{0,120}\.eq\('is_primary', true\)/);
 });
+
+/* Both places a send starts -- a course's Send Communication and a member's
+   Reach out -- hand the addresses to the result. Reach out did not, at first,
+   and its export had a blank Email column. */
+test('every send path hands the addresses to the result', () => {
+  for (const file of ['app/send/index.tsx', 'app/member/[id].tsx']) {
+    const src = fs.readFileSync(path.join(process.cwd(), file), 'utf8');
+    const calls = src.match(/setSendResult\([^;]*;/g) ?? [];
+    assert.ok(calls.length > 0, `${file} sets a send result`);
+    for (const c of calls) assert.match(c, /sendAddress/, `${file}: ${c.replace(/\s+/g, ' ')}`);
+  }
+});

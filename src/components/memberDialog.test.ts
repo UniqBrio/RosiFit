@@ -50,8 +50,8 @@ test('no figure at all is its own answer, never "absent"', () => {
 test('the card opens on her week, and the record is the second panel', () => {
   // The first tab is the panel the card has always shown. If this ever
   // reverses, the same tap starts showing a different thing.
-  assert.deepEqual(MEMBER_TABS.map(t => t.key), ['week', 'details']);
-  assert.deepEqual(MEMBER_TABS.map(t => t.label), ['This week', 'Details']);
+  assert.deepEqual(MEMBER_TABS.map(t => t.key), ['week', 'details', 'emails']);
+  assert.deepEqual(MEMBER_TABS.map(t => t.label), ['This week', 'Details', 'Emails']);
 });
 
 test('her status carries a word and an icon, never a colour alone', () => {
