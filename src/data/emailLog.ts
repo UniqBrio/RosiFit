@@ -262,19 +262,36 @@ export function emailLogSheets(rows: EmailLogRow[]): Sheet[] {
       name: SHEET_EMAIL_MESSAGES,
       header: ['Date', 'Time', 'Course', 'Branch', 'Member', 'Email', 'Status', 'Reason',
                'Sent at', 'Delivered at', 'Bounced at', 'Bounce type', 'Marked as spam at',
-               'Subject', 'From', 'Sent by'],
+               'Subject', 'From', 'Sent by', 'What happened'],
       rows: sends.flatMap(s => s.rows.map(r => [
         academyDay(r.batchAt), academyClock(r.batchAt), r.course ?? '', r.branch ?? '',
         r.memberName, r.email ?? '', emailOutcome(r), r.reason ?? '',
         academyStamp(r.sentAt), academyStamp(r.deliveredAt), academyStamp(r.bouncedAt),
         r.bounceType ?? '', academyStamp(r.complainedAt),
         r.subject ?? '', r.fromEmail ?? '', r.sentBy ?? '',
+        // The whole story in words, in the order it happened -- the same lines
+        // the member's Emails tab prints, so the file and the app agree.
+        emailTimeline(r).join(' · '),
       ])),
     },
   ];
 }
 
 /** Dated in its name: the period it covers. */
+/**
+ * ONE SEND, exported on its own (16-Oct-2026: "on clicking each and export it
+ * should export whole info of emails sent on that day for the course"). Named
+ * for its course and the academy day and minute it went out, so two sends of
+ * one course on one day are two files.
+ */
+export function sendFileName(s: Pick<SendSummary, 'courses' | 'at'>): string {
+  const f = academyFields(s.at);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const when = f ? `${f.y}-${pad(f.mo + 1)}-${pad(f.d)}-${pad(f.h)}${pad(f.mi)}` : 'send';
+  const course = coursesText(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'no-course';
+  return `rosifit-attendance-emails-${course}-${when}.xlsx`;
+}
+
 export function emailLogFileName(from: string, to: string): string {
   return from === to
     ? `rosifit-attendance-emails-${from}.xlsx`

@@ -925,6 +925,84 @@ all found by a person using the app, which is three for three, and RC-108's proc
 
 ## Gate run - 2026-10-16 - VERDICT: FAIL
 
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 1m 35s total - slowest G7 Unit + pure specs (59.9s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (116ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (114ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (79ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (126ms)
+- **G5 Types** - PASS (11.8s)
+- **G6 Lint** - FAIL (21.9s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (59.9s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+```
+
+- **G8 Functional / integration** - FAIL (189ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (77ms)
+- **G10 Backward compatibility (fixtures)** - PASS (156ms)
+- **G11 Wide tables are configurable** - PASS (75ms)
+- **G12 Installable as an application** - PASS (101ms)
+- **G13 Approved design still being built** - PASS (66ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+**Note (Reports gets an Emails button; each send opens and exports alone — requests/2026-10-16-reports-emails-button-and-per-send-export.md):**
+`npm run check` passes 7/7. G1–G3, G6 and G8 are the same pre-existing FAILs as the 2026-10-08 run.
+G7's only failures are `src/data/pinPepperMigration.test.ts` "G" cases, the fixture race reported on
+#76: `world()` seeds recovery answers with an un-awaited `forEach(async …)`. The file is not touched
+here, and the two-line fix still awaits the owner's call because test files are append-only.
+New spec `src/components/reportsEmailsView.test.ts` (4). One test appended to `src/data/emailLog.test.ts`.
+FAIL-FIRST: src/components/reportsEmailsView.test.ts - against the merged reports.tsx (card at the foot, no Emails button), its three Reports cases failed (0 of 3); with the change, 4/4 pass.
+NOT OBSERVED FAILING: src/data/emailLog.test.ts "one send exports alone" - new behaviour (sendFileName, the What happened column) with no earlier version to fail against.
+
+---
+
+## Gate run - 2026-10-16 - VERDICT: FAIL
+
 Steps: 8 pass, 5 fail, 0 blocked.
 Time: 1m 32s total - slowest G7 Unit + pure specs (59.3s).
 Application steps ran in .

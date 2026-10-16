@@ -5,7 +5,7 @@ import path from 'node:path';
 import {
   emailOutcome, emailTimeline, countEmails, groupSends, countsText, coursesText,
   emailLogSheets, emailLogFileName, academyStamp, academyDay, newestFirst, OUTCOME_LOOK,
-  EMAIL_OUTCOMES, SHEET_EMAIL_SENDS, SHEET_EMAIL_MESSAGES, type EmailLogRow,
+  EMAIL_OUTCOMES, SHEET_EMAIL_SENDS, SHEET_EMAIL_MESSAGES, sendFileName, type EmailLogRow,
 } from './emailLog';
 import { emailLogFixture } from './emailLogFixture';
 import { STATUS } from '../theme/tokens';
@@ -144,4 +144,33 @@ test('the repository reads every column email_log returns', () => {
   assert.ok(cols.length >= 18, `read the column list (${cols.length})`);
   for (const c of cols) assert.ok(repo.includes(`r.${c}`), `fetchEmailLog maps ${c}`);
   assert.match(repo, /supabase\.rpc\('email_log'/);
+});
+
+// ------------------------------------------- one send, on its own (16-Oct-2026)
+/* "On clicking each and export it should export whole info of emails sent on
+   that day for the course make sure every detail is present." */
+test('one send exports alone: only its own emails, every detail, named for its course and time', () => {
+  const rows = [
+    row({ messageId: '1', batchId: 'a', memberName: 'Priya', email: 'priya@example.com', deliveredAt: '2026-10-14T12:30:09.000Z' }),
+    row({ messageId: '2', batchId: 'a', memberName: 'Kavya', email: 'kavya@example.com', status: 'failed', sentAt: null, reason: 'Throttling' }),
+    row({ messageId: '3', batchId: 'b', batchAt: '2026-10-10T12:30:00.000Z', course: 'Postnatal Core' }),
+  ];
+  const send = groupSends(rows).find(s => s.batchId === 'a')!;
+  const [sends, emails] = emailLogSheets(send.rows);
+  assert.equal(sends.rows.length, 1, 'the one send');
+  assert.equal(emails.rows.length, 2, 'only its own emails');
+  const col = (h: string) => emails.header.indexOf(h);
+  for (const h of ['Date', 'Time', 'Course', 'Branch', 'Member', 'Email', 'Status', 'Reason', 'Sent at',
+                   'Delivered at', 'Bounced at', 'Bounce type', 'Marked as spam at', 'Subject', 'From',
+                   'Sent by', 'What happened']) {
+    assert.ok(col(h) >= 0, `every detail: ${h}`);
+  }
+  const kavya = emails.rows.find(r => r[col('Member')] === 'Kavya')!;
+  assert.equal(kavya[col('What happened')], 'Failed 14 Oct 2026, 6:00 PM: Throttling');
+  const priya = emails.rows.find(r => r[col('Member')] === 'Priya')!;
+  assert.equal(priya[col('What happened')], 'Sent 14 Oct 2026, 6:00 PM · Delivered 14 Oct 2026, 6:00 PM');
+
+  assert.equal(sendFileName(send), 'rosifit-attendance-emails-yoga-flow-2026-10-14-1800.xlsx');
+  assert.equal(sendFileName({ courses: [], at: '2026-10-14T18:40:00.000Z' }),
+    'rosifit-attendance-emails-no-course-2026-10-15-0010.xlsx', 'academy day, not UTC');
 });

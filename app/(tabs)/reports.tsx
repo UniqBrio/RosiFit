@@ -55,6 +55,11 @@ export default function Reports() {
   const { state: forced } = useLocalSearchParams<{ state?: string }>();
 
   const [scope, setScope] = useState<ReportScope>('Courses');
+  /* THE EMAILS VIEW (16-Oct-2026). The Attendance emails card first sat at the
+     foot of the page, under every course's bar -- built and working, and
+     unfound: "under reports nothing is built". It is now a third button
+     beside Members and Courses, so it is on screen the moment Reports opens. */
+  const [emailsView, setEmailsView] = useState(false);
   // The period is a CONTROL, not a caption. It used to be a hardcoded string
   // that changed with the scope, so the report claimed a range nobody chose
   // and no query had run over.
@@ -169,7 +174,7 @@ export default function Reports() {
   return (
     <Screen header={
       <ScreenHeader title="Reports" subtitle={`${range.label} · uploaded sessions only`}
-        right={ready && rows.length > 0 ? (
+        right={ready && rows.length > 0 && !emailsView ? (
           /* THE export control. It was one of two -- an identical full-width
              button sat under the legend and made the same call on the same
              rows -- and it is now the only one. */
@@ -221,11 +226,11 @@ export default function Reports() {
       </DropdownRow>
 
       <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.md }}>
-        {REPORT_SCOPES.map(s => {
-          const on = scope === s;
+        {([...REPORT_SCOPES, 'Emails'] as const).map(s => {
+          const on = s === 'Emails' ? emailsView : !emailsView && scope === s;
           return (
             <Pressable key={s} testID={`reports-scope-${s.toLowerCase()}`}
-              onPress={() => setScope(s)}
+              onPress={() => { if (s === 'Emails') setEmailsView(true); else { setEmailsView(false); setScope(s); } }}
               accessibilityRole="radio" accessibilityState={{ selected: on }}
               style={{
                 flex: 1, minHeight: TAP_MIN, alignItems: 'center', justifyContent: 'center',
@@ -239,6 +244,10 @@ export default function Reports() {
         })}
       </View>
 
+      {/* ATTENDANCE EMAILS (16-Oct-2026): every follow-up send in the same
+          period, with its own Export. Its own read, so it renders -- and
+          fails -- without the attendance report. */}
+      {emailsView ? <AttendanceEmailsCard range={range} forced={forced} /> : (<>
       {followUp.state === 'loading' ? (
         <View style={{ marginTop: SPACE.lg }}><Skeleton lines={6} /></View>
       ) : followUp.state === 'error' ? (
@@ -379,11 +388,6 @@ export default function Reports() {
         </>
       )}
 
-      {/* ATTENDANCE EMAILS (16-Oct-2026): every follow-up send in the same
-          period, with its own Export. Outside the attendance branch above,
-          so it renders -- and fails -- on its own. */}
-      <AttendanceEmailsCard range={range} forced={forced} />
-
       <View style={{
         marginTop: SPACE.lg, padding: 15, borderRadius: RADIUS.md,
         backgroundColor: theme.surface2, borderWidth: 1, borderColor: theme.line,
@@ -393,6 +397,7 @@ export default function Reports() {
           excluded from every figure.
         </Muted>
       </View>
+      </>)}
     </Screen>
   );
 }
