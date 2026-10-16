@@ -923,6 +923,65 @@ all found by a person using the app, which is three for three, and RC-108's proc
 
 ---
 
+## Gate run - 2026-10-16 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 1m 21s total - slowest G7 Unit + pure specs (53.1s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (65ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (70ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (67ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (93ms)
+- **G5 Types** - PASS (9.8s)
+- **G6 Lint** - FAIL (16.7s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (53.1s)
+- **G8 Functional / integration** - FAIL (254ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (86ms)
+- **G10 Backward compatibility (fixtures)** - PASS (164ms)
+- **G11 Wide tables are configurable** - PASS (90ms)
+- **G12 Installable as an application** - PASS (124ms)
+- **G13 Approved design still being built** - PASS (67ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+**Note (export failed & bounced; import never deletes — requests/2026-10-16-export-failed-bounced-and-import-never-deletes.md):**
+the five FAILs are the same five as the 2026-10-08 run and none is in this diff — G1–G3 read
+framework theme artifacts this app does not carry, G6 is one unused-directive warning in
+`scripts/conformance.mjs`, G8 has no `test:functional` script. `npm run check` is green (7/7);
+`src/data/sendProblems.test.ts` (4) is new and one test is appended to `src/data/memberXlsx.test.ts`.
+
+FAIL-FIRST: src/data/sendProblems.test.ts - with the bounce filter removed (every exclusion exported), "failed and bounced are exported; sent and every other exclusion are not" failed (1 of 4); restored, 4/4 pass.
+FAIL-FIRST: src/data/memberXlsx.test.ts "the instructions say importing never deletes an existing member" - against the pre-change memberXlsx.ts it failed (no such line on the sheet); restored, 33/33 pass.
+
+---
+
 ## Gate run - 2026-10-08 - VERDICT: FAIL
 
 Steps: 8 pass, 5 fail, 0 blocked.

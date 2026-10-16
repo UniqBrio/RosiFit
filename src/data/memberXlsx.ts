@@ -156,6 +156,10 @@ export async function buildMemberTemplate(opts: TemplateOptions): Promise<ArrayB
   info.addRow(['How to use this file']).font = { bold: true };
   info.addRow(['', `Fill in the "${SHEET_DATA}" sheet, one member per row. "${MEMBER_IMPORT_REQUIRED}" and "Email" are both required.`]);
   info.addRow(['', `Up to ${MEMBER_IMPORT_MAX_ROWS} members per file. Blank rows are ignored.`]);
+  // Said first and in bold: the question a person asks before choosing a file
+  // is whether everybody left out of it disappears. Nobody does --
+  // bulk_import_members only ever inserts (0028).
+  info.addRow(['', 'Importing never deletes anyone. It only adds the new members in this file — every member already in RosiFit stays in the app, even if this file leaves them out.']).font = { bold: true };
   info.addRow(['', 'A member already on the register is skipped, never changed — edit the member in the app instead.']);
   info.addRow(['', 'No joining date is asked for — every member this file imports joins today.']);
   info.addRow(['', 'THE COURSE IS PER ROW. One file can carry members for as many courses as you run — pick each row’s course from the dropdown.']);

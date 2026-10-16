@@ -10,6 +10,8 @@ import { SPACE, RADIUS, STATUS, statusSurface } from '../../src/theme/tokens';
 import { flaggedMembers } from '../../src/data/mock';
 import { isReachable, emailExclusionReason } from '../../src/data/followup';
 import { peekSendAlready, peekSendResult } from '../../src/data/pending';
+import { sendProblems, sendProblemsCsv, sendProblemsFileName } from '../../src/data/sendProblems';
+import { downloadCsv } from '../../src/data/csv';
 
 /**
  * The last step: RESULT, per member. "Sent" is claimed per address, never for
@@ -49,6 +51,22 @@ function SendResultBody() {
     ? result.results.filter(r => r.status === 'excluded').map(r => ({ id: r.member_id, name: r.name, reason: r.reason }))
     : fallbackFlagged.filter(m => !isReachable(m))
         .map(m => ({ id: m.id, name: m.name, reason: emailExclusionReason(m) }));
+
+  /* The members this send did not reach -- failed, or held back because the
+     address had bounced -- as a file to work through (16-Oct-2026). Built
+     from the rows on screen, so the file and the dialog cannot disagree. */
+  const problems = sendProblems([
+    ...failed.map(m => ({ member_id: m.id, name: m.name, status: 'failed' as const, reason: m.reason })),
+    ...excluded.map(m => ({ member_id: m.id, name: m.name, status: 'excluded' as const, reason: m.reason })),
+  ]);
+  const exportProblems = () => {
+    try {
+      downloadCsv(sendProblemsFileName(new Date()), sendProblemsCsv(problems));
+      flash(`Exported ${problems.length} ${problems.length === 1 ? 'member' : 'members'} · CSV, opens in Excel`);
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'The list could not be exported.', 'warn');
+    }
+  };
 
   const ink = (k: keyof typeof STATUS) => theme.isDark ? STATUS[k].fgDark : STATUS[k].fgLight;
   const okInk = ink('present'); const badInk = ink('absent');
@@ -121,12 +139,18 @@ function SendResultBody() {
       onClose={close}
       /* One way out, not a Cancel/Save pair: nothing here is being decided.
          Closing returns to the screen the send was started from, which is
-         still mounted underneath. */
+         still mounted underneath. Export sits beside it only when there is
+         somebody to export -- a button that saves an empty file is noise. */
       footer={(
         <View style={{
+          gap: SPACE.md,
           padding: SPACE.lg, borderTopWidth: 1, borderTopColor: theme.line,
           backgroundColor: theme.shell,
         }}>
+          {problems.length > 0 ? (
+            <Button testID="result-export-problems" variant="secondary"
+              label={`Export failed & bounced (${problems.length})`} onPress={exportProblems} />
+          ) : null}
           <Button testID="result-done" label="Done" onPress={close} />
         </View>
       )}
