@@ -50,3 +50,13 @@ status and downlable fiel should contain date in its name"
 - The file name carries the LOCAL date and time of the send: `rosifit-email-send-YYYY-MM-DD-HHMM.csv`
   (the minute keeps two sends on one day as two files).
 - `src/data/sendProblems.ts` → `src/data/sendReport.ts`; its spec moves with it (see TEST_SUMMARY).
+
+## Follow-up, same day — as an Excel sheet
+
+**Asked (verbatim):** "excel sheet would be good"
+
+**What changes:** the export saves an `.xlsx` workbook instead of a CSV:
+`rosifit-email-send-YYYY-MM-DD-HHMM.xlsx`. It has two sheets, **Summary** (the send's date and time,
+Total members, Sent, Failed, Bounced, Excluded) and **Members** (Member, Status, Reason; the header
+row is frozen). It is built by `buildReportWorkbook` (reportXlsx.ts), the builder the Reports export
+uses. No new dependency: exceljs 4.4.0 is already pinned.

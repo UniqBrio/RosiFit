@@ -925,6 +925,68 @@ all found by a person using the app, which is three for three, and RC-108's proc
 
 ## Gate run - 2026-10-16 - VERDICT: FAIL
 
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 1m 36s total - slowest G7 Unit + pure specs (58.1s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (71ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (70ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (65ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (101ms)
+- **G5 Types** - PASS (12.2s)
+- **G6 Lint** - FAIL (24.4s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (58.1s)
+- **G8 Functional / integration** - FAIL (170ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (81ms)
+- **G10 Backward compatibility (fixtures)** - PASS (167ms)
+- **G11 Wide tables are configurable** - PASS (76ms)
+- **G12 Installable as an application** - PASS (114ms)
+- **G13 Approved design still being built** - PASS (62ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+**Note (send export becomes an Excel workbook — follow-up on requests/2026-10-16-export-failed-bounced-and-import-never-deletes.md):**
+G1–G3, G6 and G8 are the same pre-existing FAILs as the 2026-10-08 run and are outside this diff. G7
+PASSES in this run. A `npm run check` run just before it had one unit failure that I did not capture
+by name. The next full run passed 2283/2283, which matches the `pinPepperMigration` flake recorded
+in the previous entry.
+
+**Spec reshaped, not overwritten:** in `src/data/sendReport.test.ts` (unmerged, this branch), the
+CSV assertion becomes a workbook assertion, and the file-name assertion moves from `.csv` to `.xlsx`.
+The requester changed the format ("excel sheet would be good"), so the old assertions now directly
+contradict the ask (CLAUDE.md, owner-approved reversal exemption). Every other assertion stands.
+FAIL-FIRST: src/data/sendReport.test.ts - with the file name put back to .csv, "the file name carries the local date and time of the send" failed (1 of 6); restored, 6/6 pass.
+
+---
+
+## Gate run - 2026-10-16 - VERDICT: FAIL
+
 Steps: 7 pass, 6 fail, 0 blocked.
 Time: 1m 25s total - slowest G7 Unit + pure specs (55.4s).
 Application steps ran in .

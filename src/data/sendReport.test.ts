@@ -2,7 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { sendReportRows, sendReportCounts, sendReportCsv, sendReportFileName, isBounceReason } from './sendReport';
+import {
+  sendReportRows, sendReportCounts, sendReportSheets, sendReportFileName, isBounceReason,
+  SHEET_SEND_SUMMARY, SHEET_SEND_MEMBERS,
+} from './sendReport';
+import { buildReportWorkbook } from './reportXlsx';
+import { excel } from './memberXlsx';
 import { emailExclusionReason } from './followup';
 import type { Member } from './mock';
 
@@ -41,23 +46,31 @@ test('the counts add up to the total', () => {
   assert.equal(c.Sent + c.Failed + c.Bounced + c.Excluded, c.total);
 });
 
-test('the CSV carries the totals, then one line per member', () => {
+test('the workbook has a Summary of the totals, then the Members list', async () => {
   const at = new Date(2026, 9, 16, 17, 5);
-  const csv = sendReportCsv(sendReportRows([row('Asha', 'sent'), row('Bina, R', 'failed', 'Throttling')]), at);
-  assert.equal(csv, '﻿' + [
-    'Email send,2026-10-16 17:05',
-    'Total members,2', 'Sent,1', 'Failed,1', 'Bounced,0', 'Excluded,0',
-    '',
-    'Member,Status,Reason',
-    'Asha,Sent,',
-    '"Bina, R",Failed,Throttling',
-  ].join('\r\n') + '\r\n');
+  const sheets = sendReportSheets(sendReportRows([row('Asha', 'sent'), row('Bina, R', 'failed', 'Throttling')]), at);
+  assert.deepEqual(sheets, [
+    { name: SHEET_SEND_SUMMARY, header: ['Email send', '2026-10-16 17:05'], rows: [
+      ['Total members', '2'], ['Sent', '1'], ['Failed', '1'], ['Bounced', '0'], ['Excluded', '0'],
+    ] },
+    { name: SHEET_SEND_MEMBERS, header: ['Member', 'Status', 'Reason'], rows: [
+      ['Asha', 'Sent', ''], ['Bina, R', 'Failed', 'Throttling'],
+    ] },
+  ]);
+
+  // And it opens in Excel as those two sheets, in that order.
+  const wb = new (await excel()).Workbook();
+  await wb.xlsx.load(await buildReportWorkbook(sheets));
+  assert.deepEqual(wb.worksheets.map(w => w.name), [SHEET_SEND_SUMMARY, SHEET_SEND_MEMBERS]);
+  const members = wb.getWorksheet(SHEET_SEND_MEMBERS)!;
+  assert.equal(String(members.getCell('A3').value), 'Bina, R');
+  assert.equal(String(members.getCell('B3').value), 'Failed');
 });
 
 test('the file name carries the local date and time of the send', () => {
-  assert.equal(sendReportFileName(new Date(2026, 9, 16, 9, 7)), 'rosifit-email-send-2026-10-16-0907.csv');
+  assert.equal(sendReportFileName(new Date(2026, 9, 16, 9, 7)), 'rosifit-email-send-2026-10-16-0907.xlsx');
   // Just after midnight is still that day, whatever the UTC date is.
-  assert.equal(sendReportFileName(new Date(2026, 9, 17, 0, 30)), 'rosifit-email-send-2026-10-17-0030.csv');
+  assert.equal(sendReportFileName(new Date(2026, 9, 17, 0, 30)), 'rosifit-email-send-2026-10-17-0030.xlsx');
 });
 
 /* A bounce is recognised by its reason, so both places that word one are

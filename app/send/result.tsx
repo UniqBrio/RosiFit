@@ -10,8 +10,11 @@ import { SPACE, RADIUS, STATUS, statusSurface } from '../../src/theme/tokens';
 import { flaggedMembers } from '../../src/data/mock';
 import { isReachable, emailExclusionReason } from '../../src/data/followup';
 import { peekSendAlready, peekSendResult } from '../../src/data/pending';
-import { sendReportRows, sendReportCsv, sendReportFileName } from '../../src/data/sendReport';
-import { downloadCsv } from '../../src/data/csv';
+import { sendReportRows, sendReportSheets, sendReportFileName } from '../../src/data/sendReport';
+import { buildReportWorkbook } from '../../src/data/reportXlsx';
+import { downloadBlob } from '../../src/data/csv';
+
+const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 /**
  * The last step: RESULT, per member. "Sent" is claimed per address, never for
@@ -52,20 +55,21 @@ function SendResultBody() {
     : fallbackFlagged.filter(m => !isReachable(m))
         .map(m => ({ id: m.id, name: m.name, reason: emailExclusionReason(m) }));
 
-  /* The WHOLE send as a file -- every member with a status, the totals above
-     them, dated in its name (16-Oct-2026). Built from the rows on screen, so
-     the file and the dialog cannot disagree. The time is the one this dialog
-     opened at, read once, like the result itself. */
+  /* The WHOLE send as an Excel file -- every member with a status, the
+     totals on their own sheet, dated in its name (16-Oct-2026). Built from
+     the rows on screen, so the file and the dialog cannot disagree. The time
+     is the one this dialog opened at, read once, like the result itself. */
   const [sentAt] = useState(() => new Date());
   const report = sendReportRows([
     ...sent.map(m => ({ member_id: m.id, name: m.name, status: 'sent' as const })),
     ...failed.map(m => ({ member_id: m.id, name: m.name, status: 'failed' as const, reason: m.reason })),
     ...excluded.map(m => ({ member_id: m.id, name: m.name, status: 'excluded' as const, reason: m.reason })),
   ]);
-  const exportReport = () => {
+  const exportReport = async () => {
     try {
-      downloadCsv(sendReportFileName(sentAt), sendReportCsv(report, sentAt));
-      flash(`Exported ${report.length} ${report.length === 1 ? 'member' : 'members'} · CSV, opens in Excel`);
+      const bytes = await buildReportWorkbook(sendReportSheets(report, sentAt));
+      downloadBlob(sendReportFileName(sentAt), new Blob([bytes], { type: XLSX }));
+      flash(`Exported ${report.length} ${report.length === 1 ? 'member' : 'members'} · Excel`);
     } catch (err) {
       flash(err instanceof Error ? err.message : 'The list could not be exported.', 'warn');
     }

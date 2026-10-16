@@ -20,11 +20,18 @@
  * the send function's (`suppressionReason`, send-loop.ts) and the offline
  * fixtures' (`emailExclusionReason`, followup.ts).
  *
- * Pure on purpose, like csvFormat.ts: no `document`, so it is tested under
- * scripts/tsconfig.json with nothing to mock.
+ * AN EXCEL WORKBOOK, not a CSV -- the requester's third word on it, the same
+ * day: "excel sheet would be good". Two sheets: Summary (when, and the
+ * totals) and Members (the full list). Built by reportXlsx.ts'
+ * `buildReportWorkbook`, the one the Reports export uses, so the two files
+ * look and behave alike.
+ *
+ * Pure on purpose: this module only shapes the sheets -- no exceljs and no
+ * `document` -- so it is tested under scripts/tsconfig.json with nothing to
+ * mock.
  */
 import type { SendResult } from './sendBatch';
-import { toCsv } from './csvFormat';
+import type { Sheet } from './reportSheets';
 
 type ResultRow = SendResult['results'][number];
 
@@ -63,22 +70,26 @@ const pad = (n: number) => String(n).padStart(2, '0');
 const localDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const localTime = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
-/** The totals first, then one line per member. */
-export function sendReportCsv(rows: SendReportRow[], sentAt: Date): string {
+export const SHEET_SEND_SUMMARY = 'Summary';
+export const SHEET_SEND_MEMBERS = 'Members';
+
+/** Summary first -- when, and how many of each -- then one line per member. */
+export function sendReportSheets(rows: SendReportRow[], sentAt: Date): Sheet[] {
   const c = sendReportCounts(rows);
-  return toCsv(['Email send', `${localDate(sentAt)} ${localTime(sentAt)}`], [
-    ['Total members', String(c.total)],
-    ['Sent', String(c.Sent)],
-    ['Failed', String(c.Failed)],
-    ['Bounced', String(c.Bounced)],
-    ['Excluded', String(c.Excluded)],
-    [],
-    ['Member', 'Status', 'Reason'],
-    ...rows.map(r => [r.name, r.status, r.reason]),
-  ]);
+  return [
+    { name: SHEET_SEND_SUMMARY, header: ['Email send', `${localDate(sentAt)} ${localTime(sentAt)}`], rows: [
+      ['Total members', String(c.total)],
+      ['Sent', String(c.Sent)],
+      ['Failed', String(c.Failed)],
+      ['Bounced', String(c.Bounced)],
+      ['Excluded', String(c.Excluded)],
+    ] },
+    { name: SHEET_SEND_MEMBERS, header: ['Member', 'Status', 'Reason'],
+      rows: rows.map(r => [r.name, r.status, r.reason]) },
+  ];
 }
 
 /** Dated, and timed to the minute so two sends on one day are two files. */
 export function sendReportFileName(sentAt: Date): string {
-  return `rosifit-email-send-${localDate(sentAt)}-${localTime(sentAt).replace(':', '')}.csv`;
+  return `rosifit-email-send-${localDate(sentAt)}-${localTime(sentAt).replace(':', '')}.xlsx`;
 }
