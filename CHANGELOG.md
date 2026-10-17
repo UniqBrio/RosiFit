@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — Reports: an Emails button, and each send opens and exports on its own
+
+**Reports now has an Emails button** next to Members and Courses. Before this, the Attendance emails
+section sat at the very bottom of Reports, below every course, and was easy to miss.
+**Each send now has Show emails and Export this send.** Show emails lists every email in that send:
+the member, the address, and whether it was delivered, bounced, failed or never sent, and when.
+Export this send saves an Excel file of just that send, named with its course, date and time, with
+every detail of each email, including a "What happened" column in plain words.
+
 ## Unreleased — Attendance emails in Reports; every member's emails on their record
 
 **Reports has a new Attendance emails section**, below the attendance chart and on the same period.

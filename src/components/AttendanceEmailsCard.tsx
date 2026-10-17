@@ -8,7 +8,8 @@ import { SPACE, RADIUS, STATUS } from '../theme/tokens';
 import { useEmailLog } from '../data/hooks';
 import {
   groupSends, countEmails, coursesText, academyDay, academyClock, emailLogSheets, emailLogFileName,
-  OUTCOME_LOOK, type SendCounts, type EmailOutcome,
+  sendFileName, emailOutcome, emailTimeline, OUTCOME_LOOK,
+  type SendCounts, type EmailOutcome, type EmailLogRow,
 } from '../data/emailLog';
 import { buildReportWorkbook } from '../data/reportXlsx';
 import { downloadBlob } from '../data/csv';
@@ -40,11 +41,31 @@ export function AttendanceEmailsCard({ range, forced }: { range: Period; forced?
   const log = useEmailLog(range, forced);
   const [showAll, setShowAll] = useState(false);
   const [busy, setBusy] = useState(false);
+  /* ONE SEND, opened and exported on its own (16-Oct-2026): "on clicking each
+     and export it should export whole info of emails sent on that day for the
+     course make sure every detail is present". */
+  const [open, setOpen] = useState<string | null>(null);
+  const [busySend, setBusySend] = useState<string | null>(null);
 
   const rows = log.data ?? [];
   const sends = groupSends(rows);
   const total = countEmails(rows);
   const shown = showAll ? sends : sends.slice(0, FIRST_SENDS);
+
+  const exportSend = async (batchId: string) => {
+    const send = sends.find(x => x.batchId === batchId);
+    if (!send || busySend) return;
+    setBusySend(batchId);
+    try {
+      const bytes = await buildReportWorkbook(emailLogSheets(send.rows));
+      downloadBlob(sendFileName(send), new Blob([bytes], { type: XLSX }));
+      flash(`Exported ${send.rows.length} ${send.rows.length === 1 ? 'email' : 'emails'} · ${coursesText(send)}, ${academyDay(send.at)} · Excel`);
+    } catch (err) {
+      flash(err instanceof Error ? err.message : 'This send could not be exported.', 'warn');
+    } finally {
+      setBusySend(null);
+    }
+  };
 
   const exportLog = async () => {
     if (busy || rows.length === 0) return;
@@ -112,31 +133,70 @@ export function AttendanceEmailsCard({ range, forced }: { range: Period; forced?
           </Text>
 
           <View style={{ marginTop: SPACE.md, gap: SPACE.sm }}>
-            {shown.map(s => (
+            {shown.map(s => {
+              const isOpen = open === s.batchId;
+              return (
               <View key={s.batchId} testID={`reports-emails-send-${s.batchId}`}
-                accessible
-                accessibilityLabel={`${academyDay(s.at)} ${academyClock(s.at)}. ${coursesText(s)}. ${s.counts.sent} sent, ${s.counts.delivered} delivered, ${s.counts.bounced} bounced, ${s.counts.failed} failed, ${s.counts.excluded} excluded.`}
                 style={{
                   padding: SPACE.md, borderRadius: RADIUS.md,
                   backgroundColor: theme.surface2, borderWidth: 1, borderColor: theme.line,
                 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: SPACE.sm }}>
-                  <Text style={{ fontSize: 12.5, fontWeight: '800', color: theme.fgStrong, fontVariant: ['tabular-nums'] }}>
-                    {academyDay(s.at)}
+                <View accessible
+                  accessibilityLabel={`${academyDay(s.at)} ${academyClock(s.at)}. ${coursesText(s)}. ${s.counts.sent} sent, ${s.counts.delivered} delivered, ${s.counts.bounced} bounced, ${s.counts.failed} failed, ${s.counts.excluded} excluded.`}>
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: SPACE.sm }}>
+                    <Text style={{ fontSize: 12.5, fontWeight: '800', color: theme.fgStrong, fontVariant: ['tabular-nums'] }}>
+                      {academyDay(s.at)}
+                    </Text>
+                    <Text style={{ fontSize: 11, color: theme.muted, fontVariant: ['tabular-nums'] }}>
+                      {academyClock(s.at)}
+                    </Text>
+                  </View>
+                  <Text numberOfLines={2} style={{ fontSize: 12.5, fontWeight: '700', color: theme.fg, marginTop: 2 }}>
+                    {coursesText(s)}
                   </Text>
-                  <Text style={{ fontSize: 11, color: theme.muted, fontVariant: ['tabular-nums'] }}>
-                    {academyClock(s.at)}
-                  </Text>
+                  <CountChips counts={s.counts} style={{ marginTop: 6 }} />
+                  {s.sentBy ? (
+                    <Text style={{ fontSize: 10.5, color: theme.muted, marginTop: 5 }}>{`Sent by ${s.sentBy}`}</Text>
+                  ) : null}
                 </View>
-                <Text numberOfLines={2} style={{ fontSize: 12.5, fontWeight: '700', color: theme.fg, marginTop: 2 }}>
-                  {coursesText(s)}
-                </Text>
-                <CountChips counts={s.counts} style={{ marginTop: 6 }} />
-                {s.sentBy ? (
-                  <Text style={{ fontSize: 10.5, color: theme.muted, marginTop: 5 }}>{`Sent by ${s.sentBy}`}</Text>
+
+                <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.sm }}>
+                  <Pressable testID={`reports-emails-open-${s.batchId}`} onPress={() => setOpen(isOpen ? null : s.batchId)}
+                    accessibilityRole="button" accessibilityState={{ expanded: isOpen }}
+                    accessibilityLabel={`${isOpen ? 'Hide' : 'Show'} the ${s.rows.length} emails of this send`}
+                    style={({ pressed }) => ({
+                      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+                      minHeight: 40, borderRadius: 11, borderWidth: 1, borderColor: theme.lineStrong,
+                      backgroundColor: theme.control, opacity: pressed ? 0.7 : 1,
+                    })}>
+                    <Icon name={isOpen ? 'expand_less' : 'expand_more'} size={16} color={theme.accentInk} />
+                    <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.accentInk }}>
+                      {isOpen ? 'Hide emails' : `Show ${s.rows.length} ${s.rows.length === 1 ? 'email' : 'emails'}`}
+                    </Text>
+                  </Pressable>
+                  <Pressable testID={`reports-emails-export-${s.batchId}`} onPress={() => { void exportSend(s.batchId); }}
+                    accessibilityRole="button" accessibilityState={{ busy: busySend === s.batchId }}
+                    accessibilityLabel={`Export every detail of this send's ${s.rows.length} emails as a spreadsheet`}
+                    style={({ pressed }) => ({
+                      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+                      minHeight: 40, borderRadius: 11, borderWidth: 1, borderColor: theme.lineStrong,
+                      backgroundColor: theme.control, opacity: pressed ? 0.7 : 1,
+                    })}>
+                    <Icon name="download" size={16} color={theme.accentInk} />
+                    <Text style={{ fontSize: 11.5, fontWeight: '800', color: theme.accentInk }}>
+                      {busySend === s.batchId ? 'Exporting…' : 'Export this send'}
+                    </Text>
+                  </Pressable>
+                </View>
+
+                {isOpen ? (
+                  <View testID={`reports-emails-list-${s.batchId}`} style={{ marginTop: SPACE.sm, gap: 6 }}>
+                    {s.rows.map(r => <EmailLine key={r.messageId} r={r} />)}
+                  </View>
                 ) : null}
               </View>
-            ))}
+              );
+            })}
           </View>
 
           {sends.length > FIRST_SENDS ? (
@@ -150,6 +210,40 @@ export function AttendanceEmailsCard({ range, forced }: { range: Period; forced?
           ) : null}
         </>
       )}
+    </View>
+  );
+}
+
+/**
+ * One email of an opened send: who, which address, what happened and when --
+ * the same words the member's Emails tab uses, and the same facts the export
+ * carries in columns.
+ */
+function EmailLine({ r }: { r: EmailLogRow }) {
+  const { theme } = useTheme();
+  const outcome = emailOutcome(r);
+  const look = OUTCOME_LOOK[outcome];
+  const ink = theme.isDark ? STATUS[look.tone].fgDark : STATUS[look.tone].fgLight;
+  return (
+    <View accessible
+      accessibilityLabel={`${r.memberName}. ${r.email ?? 'No address'}. ${outcome}. ${emailTimeline(r).join('. ')}`}
+      style={{
+        padding: SPACE.sm, borderRadius: RADIUS.md,
+        backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.line,
+      }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <Icon name={look.icon} size={15} color={ink} />
+        <Text numberOfLines={1} style={{ flex: 1, fontSize: 12.5, fontWeight: '700', color: theme.fgStrong }}>
+          {r.memberName}
+        </Text>
+        <Text style={{ fontSize: 11, fontWeight: '800', color: ink }}>{outcome}</Text>
+      </View>
+      <Text numberOfLines={1} style={{ fontSize: 11.5, color: theme.fg, marginTop: 2 }}>
+        {[r.email ?? 'No address', r.branch].filter(Boolean).join(' · ')}
+      </Text>
+      {emailTimeline(r).map(line => (
+        <Text key={line} style={{ fontSize: 11, color: theme.muted, marginTop: 2, lineHeight: 15 }}>{line}</Text>
+      ))}
     </View>
   );
 }
