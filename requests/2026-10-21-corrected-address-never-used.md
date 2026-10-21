@@ -35,3 +35,7 @@ dependencies remain, each named to the requester:
 
 Plus one item outside the repo: the AWS SNS topic still delivers SES events to Singapore's
 `ses-feedback`. The requester must remove that subscription in the AWS console.
+
+**Applied:** 0096 was applied to production (Mumbai) on 21-Oct-2026 on the requester's "go" and
+verified by read-back: the 3 members' corrected addresses are now primary
+(docs/registers/ENVIRONMENTS.md).

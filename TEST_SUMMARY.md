@@ -972,10 +972,13 @@ exit 1
 _Merge blocked. Every FAIL above must resolve. No partial merges._
 
 **Note (a corrected address was never used: bounced primary — requests/2026-10-21-corrected-address-never-used.md):**
-ONE MIGRATION, NOT APPLIED: supabase/migrations/0096_working_address_replaces_bounced_primary.sql
-(data-only: promotes the newest working address over a bounced primary, demoting rather than
-deleting; unsubscribed and spam-reported primaries are untouched; 3 members in production,
-read-only 21-Oct-2026). Under D-10 it merges on the day it is applied, after the go-ahead on the SQL.
+ONE MIGRATION, APPLIED TO PRODUCTION 21-Oct-2026 on the owner's "go":
+supabase/migrations/0096_working_address_replaces_bounced_primary.sql (data-only: promotes the
+newest working address over a bounced primary, demoting rather than deleting; unsubscribed and
+spam-reported primaries are untouched). The 3 members were repaired and verified by read-back
+(docs/registers/ENVIRONMENTS.md). It merges the same day, per D-10.
+`bash db/harness/test.sh`: all 78 specs ran. Spec 73 passes 9/9. The only FAILs are the
+pre-existing 39 and 53, which fail on main too.
 `npm run check` passes 7/7. Gate: G1–G3, G6 and G8 are the same pre-existing FAILs as the
 2026-10-08 run; G7 and G9 pass.
 **Specs re-pointed, under the owner-approved reversal exemption (CLAUDE.md):** the requester
