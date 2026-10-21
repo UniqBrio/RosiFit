@@ -144,14 +144,14 @@ test('a status the database knows and this app does not reads as UNSENDABLE', ()
   assert.equal(followup.isReachable(m), false);
 });
 
-test('a member holding one dead address and one live one is still reachable', () => {
+test('a member whose PRIMARY is dead is not reachable, even holding a live second address', () => {
   const m = member([
     { address: 'dead@b.com', primary: true, status: 'bounced' },
     { address: 'live@b.com', primary: false, status: 'unknown' },
   ]);
-  assert.equal(followup.isReachable(m), true,
-    'isReachable is "can a follow-up leave", not "is the primary one well" — '
-    + 'it is the predicate the send itself splits on, so it may not be stricter than the send.');
+  assert.equal(followup.isReachable(m), false,
+    'isReachable is "can a follow-up leave" -- and send-followups writes only to the PRIMARY '
+    + '(load.ts is_primary = true), so it may be neither looser nor stricter than the send (17-Oct-2026).');
 });
 
 test('no addresses at all is the fourth state, and it is not the same as a suppressed one', () => {

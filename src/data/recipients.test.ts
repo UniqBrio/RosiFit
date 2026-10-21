@@ -58,13 +58,14 @@ test('an empty address list is no address', () => {
   assert.equal(recipientSplit([member({ emails: [] })]).recipients.length, 0);
 });
 
-test('a non-primary address still counts as reachable', () => {
-  // She can be written to. Which address is primary is a different question
-  // from whether one exists.
+test('a non-primary address alone does not count as reachable', () => {
+  // The send reads only the PRIMARY address (load.ts is_primary = true), so a
+  // member holding no primary is excluded there as "No email on file" -- and
+  // the draft must say the same (17-Oct-2026).
   const { recipients } = recipientSplit([
     member({ emails: [{ address: 'x@y.com', primary: false }] }),
   ]);
-  assert.equal(recipients.length, 1);
+  assert.equal(recipients.length, 0);
 });
 
 test('order is preserved inside each half', () => {

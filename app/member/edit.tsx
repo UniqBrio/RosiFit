@@ -25,6 +25,7 @@ import { offersStaffResubscribe, resubscribeOutcomeMessage, type ResubscribeSour
 import { StaffResubscribeDialog } from '../../src/components/StaffResubscribeDialog';
 import {
   emailUsable, emailStateWord, isDeliveryFailure, suppressedOnRecord, normalizeEmail,
+  promoteWorkingOverBounced,
   entryRefusal,
 } from '../../src/data/emailStatus';
 import { namesADisplayName } from '../../src/data/refusalCase';
@@ -161,7 +162,7 @@ export default function MemberEdit() {
   const today = businessTodayIso();
   const [aliases, setAliases] = useState<string[]>(existing?.aliases ?? []);
   const [aliasDraft, setAliasDraft] = useState('');
-  const [emails, setEmails] = useState(existing?.emails ?? []);
+  const [emails, setEmails] = useState(() => promoteWorkingOverBounced(existing?.emails ?? []));
   const [emailDraft, setEmailDraft] = useState('');
   // Turn Follow-ups Back On (0084): which address the dialog is open for.
   const [resubscribing, setResubscribing] = useState<{ id: string; address: string } | null>(null);
@@ -219,7 +220,10 @@ export default function MemberEdit() {
     setCourse(existing.course);
     setBranch(existing.branch);
     setAliases(existing.aliases);
-    setEmails(existing.emails);
+    // A working address takes over from a BOUNCED primary as the form opens
+    // (promoteWorkingOverBounced, emailStatus.ts): the send writes only to the
+    // primary, so a corrected address left behind a dead one is never used.
+    setEmails(promoteWorkingOverBounced(existing.emails));
     // Seeded HERE and not by useState, for the same reason as every field
     // above it, and under the same once-only guard: a refetch landing behind
     // a pick must not undo the pick. A stored 'paused' seeds the Inactive
@@ -567,7 +571,11 @@ export default function MemberEdit() {
     // the FIRST address becomes primary; there is always exactly one.
     // 'unknown' is what create_member (0016) and update_member (0027) insert,
     // so the row this form draws says the same thing the database will hold.
-    setEmails(p => [...p, { address: e, primary: p.length === 0, status: 'unknown' }]);
+    // ...and a new address takes over from a BOUNCED primary as it is added,
+    // which is the case that went wrong on 12-13 Oct 2026: the corrected
+    // address was saved as a SECOND address and the send kept skipping the
+    // member with "Primary email has bounced".
+    setEmails(p => promoteWorkingOverBounced([...p, { address: e, primary: p.length === 0, status: 'unknown' as const }]));
     setEmailDraft('');
   };
 
@@ -588,7 +596,7 @@ export default function MemberEdit() {
     setRefusal(null);
     // the primary address goes first; both RPCs make the first one primary,
     // so the ORDER here is the meaning
-    const addresses = [...emails].sort((a, b) => Number(b.primary) - Number(a.primary))
+    const addresses = promoteWorkingOverBounced(emails).sort((a, b) => Number(b.primary) - Number(a.primary))
       .map(e => e.address);
     // null means she follows the offering's days, which is not the same as
     // an empty list -- and a row still on its seeded default is one of the

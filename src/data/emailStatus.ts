@@ -83,6 +83,46 @@ export const isDeliveryFailure = (status?: EmailStatus): boolean =>
   status === 'bounced';
 
 /**
+ * THE ADDRESS A FOLLOW-UP IS WRITTEN TO: the PRIMARY one, and only that one.
+ *
+ * `send-followups` reads `member_emails` with `is_primary = true`
+ * (supabase/functions/send-followups/load.ts) and never looks past it. Every
+ * screen that says whether a member "will be emailed" has to ask the same
+ * question of the same row, or the screen and the send disagree -- which is
+ * exactly what happened on 17-Oct-2026: three Postnatal members had a
+ * corrected address added beside a bounced PRIMARY one, the course's Bounced
+ * filter counted them as fine because "an address works", and the send
+ * skipped all three with "Primary email has bounced".
+ */
+export function sendingAddress<T extends { primary: boolean }>(rows: readonly T[]): T | undefined {
+  return rows.find(r => r.primary);
+}
+
+/**
+ * A WORKING ADDRESS TAKES OVER FROM A BOUNCED PRIMARY.
+ *
+ * When the primary has BOUNCED and the member also holds a usable address, the
+ * newest usable one becomes primary: a bounce is the mail system saying the
+ * address is dead, and the address the operator added beside it is the fix.
+ * The bounced row stays on the list (it is history, and it cannot be made
+ * primary again here), it just stops being the one mail goes to.
+ *
+ * ONLY A BOUNCE. An unsubscribed or spam-reported primary is the member's own
+ * decision, and silently moving mail to another of their addresses would
+ * resume contact with someone who said stop -- so those are left exactly as
+ * they are, and making another address primary stays a deliberate tap.
+ */
+export function promoteWorkingOverBounced<T extends { address: string; primary: boolean; status?: EmailStatus }>(
+  rows: T[],
+): T[] {
+  const primary = sendingAddress(rows);
+  if (!primary || !isDeliveryFailure(primary.status)) return rows;
+  const working = [...rows].reverse().find(r => r.address.trim() !== '' && emailUsable(r));
+  if (!working) return rows;
+  return rows.map(r => ({ ...r, primary: r === working }));
+}
+
+/**
  * An address as the database stores it, trimmed and lower-cased.
  *
  * THE SAME NORMALISATION THE WRITE PATH APPLIES, which is the only reason this
