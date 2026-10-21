@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — Ready for Supabase's 30 October database permission change
+
+**Nothing changes on screen.** From 30 October 2026 Supabase no longer gives new database tables and
+functions their access permissions automatically. RosiFit already writes its own permissions for
+almost everything; two small helpers that tidy member names and email addresses were relying on the
+automatic ones. They now have their own, so renaming a member or adding a display name keeps working on
+any new or rebuilt copy of the database, and the automated tests now also run against a database set
+up the new way.
+
 ## Unreleased — A corrected email address is now the one that gets used
 
 **Members whose address had bounced and was then corrected kept being skipped.** The corrected address

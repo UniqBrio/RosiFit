@@ -59,6 +59,67 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 ---
 
+## RC-124 — two grants the app writes through existed only because the platform handed them out          Tracker: T-145 · Sources: Supabase 30-Oct-2026 default-privilege change, production catalog read 21-Oct-2026
+**Date:** 21-Oct-2026  ·  **Severity:** S2  ·  **Modules:** `members`, `member_aliases`, schema default privileges, `db/harness/`
+
+**Symptom** — none in production yet. From 30-Oct-2026 Supabase stops granting anything automatically
+on objects newly created in `public`. Replaying every migration under those defaults
+(`HARNESS_PLATFORM_DEFAULTS=2026-10-30`) made 6 spec files fail with `permission denied for function
+normalize_name`: on a project created after the change, a signed-in rename of a member, or a new
+display name, through the Data API, fails outright.
+
+**Root cause** — `members.name_normalized` is GENERATED from `normalize_name()` (0006) and
+`member_alias_normalize()` is a SECURITY INVOKER trigger calling `normalize_name()` and
+`normalize_email()` (0011). PostgreSQL checks EXECUTE against the WRITING role in both places, so the
+helpers are load-bearing for `authenticated` and `service_role`. No migration ever granted them: 0069
+revoked PUBLIC and anon and recorded that authenticated "keeps them through its own direct grant" — the
+grant Supabase's old default had made, not one written down.
+
+**Why it shipped** — the harness shim reproduced only the platform production was created on, where
+the default supplies the grant, so every replay had it. KL-008 already said privilege assertions are
+answered by the shim; the shim could answer only for one platform.
+
+**Class** — every privilege held only by default. Swept by diffing a fresh replay under the new
+defaults against production's effective privileges (tables, functions, sequences, column grants):
+tables — none (34/34 identical, every one granted in its creating migration or 0015); functions — these
+2 load-bearing, plus 18 held by default that no caller uses (12 trigger functions; `audit_redact`,
+`week_bounds`, `email_log`, `reinstate_member_email`, `staff_resubscribe_member_email`,
+`member_email_opt_out_before`, for some role), left as T-145 (a); sequences — the 4 identity sequences'
+anon/authenticated grants, unused. Every `.from()`/`.rpc()` in `src/`, `app/` and
+`supabase/functions/` already had an explicit grant. Separately found: a per-schema default entry
+cannot remove PostgreSQL's global EXECUTE-to-PUBLIC on new functions, so Supabase's documented
+`… in schema public revoke execute on functions from public` is a no-op; all 72 functions carry their
+own PUBLIC revoke, now required by a test.
+
+**Fix** — `supabase/migrations/0097_data_api_grants_stated_not_inherited.sql`: grants EXECUTE on the two
+helpers to authenticated and service_role; sets the project's own default for new tables and sequences
+to nothing for anon, authenticated and service_role (the platform's new behaviour, now, so a new object
+gets the same grants on every project); STATES the function default production has
+(`service_role` only — RC-042's entry, spec 19); revokes the identity sequences from anon and
+authenticated. Deliberately not changed: any RLS policy, any table grant, the unused default grants in
+Class, the supabase_admin entries.
+
+**Files** — `supabase/migrations/0097_…`, `supabase/tests/74_data_api_grants_stated_not_inherited.sql`,
+`src/data/dataApiGrants.test.ts`, `db/harness/001_platform_defaults_2026_10_30.sql`,
+`db/harness/reset.sh`, `db/harness/test.sh`, `.github/workflows/ci.yml`, `ci/github-actions-ci.yml`.
+
+**Proof** — `supabase/tests/74_data_api_grants_stated_not_inherited.sql`, 26/26 in both harness modes;
+without 0097 it fails in both (2026-10-30: the helper, rename, alias and service_role writes; legacy:
+the new-table default, the sequence grants, an accepted `setval`).
+
+**Prevention** — `rung: src/data/dataApiGrants.test.ts` — every table and RPC the client or an Edge
+Function calls must be granted to the role it runs as, by name, in a migration; no default may grant
+beyond 0097's stated one; every function is revoked from PUBLIC by name; a table created from 0097 on
+enables and forces RLS and is granted in its own file. And CI job `db-harness-2026-10-30` runs the whole
+SQL suite on the new platform's defaults.
+
+**Verify** — not yet: 0097 is not applied. The reads to take after it are in T-145's Status.
+
+**Process check** — would a correctly functioning process have caught this? No: the rehearsal is
+defined as the harness, and the harness could stand in for one platform only. It now stands in for two.
+
+---
+
 ## RC-123 — Gmail's Unsubscribe could be lost, and an opt-out had no way back and several ways round          Tracker: T-143 · Sources: academy request 01-Oct-2026, code-reviewer + permission-reviewer
 **Date:** 01-Oct-2026  ·  **Severity:** S2  ·  **Modules:** `send-followups`, `unsubscribe`, `member_emails`, member Edit form
 

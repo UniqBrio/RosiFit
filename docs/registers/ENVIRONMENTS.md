@@ -31,6 +31,12 @@ finds the server binaries by searching the platform bin directories rather than 
 Debian and Ubuntu link only the *client* tools into `/usr/bin`, which is how a complete Postgres 16
 came to be recorded as absent (TD-010, ADR 013).
 
+`HARNESS_PLATFORM_DEFAULTS=2026-10-30` replays against the default privileges Supabase gives a
+project created from 30-Oct-2026 (nothing granted automatically to anon, authenticated or
+service_role) instead of the ones production was created with; CI runs the suite both ways
+(`db-harness`, `db-harness-2026-10-30`). Only the second can show a grant the migrations never
+wrote down (T-145, RC-124).
+
 `PGHOST`, `PGPORT` and `PGUSER` override the defaults. When `PGHOST` names a TCP host, `start.sh`
 confirms that server is reachable and starts nothing — which is how the `db-harness` job in
 `.github/workflows/ci.yml` runs *the same command* against `services: postgres:16`. The suite

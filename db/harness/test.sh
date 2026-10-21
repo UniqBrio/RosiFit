@@ -9,6 +9,9 @@ PGHOST="${PGHOST:-/tmp}"; PGPORT="${PGPORT:-5433}"; PGUSER="${PGUSER:-postgres}"
 export PGHOST PGPORT PGUSER
 PG="psql -h $PGHOST -p $PGPORT -U $PGUSER -X -q -v ON_ERROR_STOP=1"
 fail=0; pass=0
+# Which platform the replay stands in for -- see reset.sh. Printed so a log
+# says which of the two suites it is.
+echo "platform defaults: ${HARNESS_PLATFORM_DEFAULTS:-legacy}"
 for f in supabase/tests/*.sql; do
   [ -e "$f" ] || continue
   ./db/harness/reset.sh >/dev/null 2>&1 || { echo "MIGRATIONS FAILED"; ./db/harness/reset.sh; exit 1; }
