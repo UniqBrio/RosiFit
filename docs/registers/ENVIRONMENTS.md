@@ -619,3 +619,23 @@ to `lbyqipunsbzkcvdrxach` (Mumbai, production) only.
 - The screens (Reports → Attendance emails, the member Emails tab) are on branch
   `claude/nifty-ride-axo1up` and merge with this record, per D-10.
 
+## 21-Oct-2026 — 0096 applied to production (Mumbai): a working address replaces a bounced primary — ✅ VERIFIED
+
+The owner gave the go-ahead in session ("go") after the raw SQL and a read-only dry run naming the 3
+affected members were shown. Applied to `lbyqipunsbzkcvdrxach` (Mumbai, production) only.
+
+- **Before (read immediately prior):** 3 live members (Postnatal: Anju k coimbatore, Anish s chennai
+  aug, Keerthana mettur oct) had a BOUNCED primary and a corrected, usable second address added
+  12-13 Oct. The 17-Oct send skipped all three with "Primary email has bounced". 1 further member
+  had an UNSUBSCRIBED primary beside a usable address; out of scope by design.
+- **Applied:** `0096_working_address_replaces_bounced_primary` through the migration ledger, the file
+  byte-identical to commit a5dc80b (md5 91e73010…).
+- **After (read back):** each of the 3 now has the corrected address as its one live primary
+  (`unknown`). The bounced address is still on record as `bounced`, not primary. 0 members are left
+  with a bounced primary beside a working address. The unsubscribed-primary member is unchanged.
+  0 members have two live primaries. The ledger row is present, and 6 audit rows were written by
+  `audit_member_email` (2 per member).
+- **Effect:** the next follow-up send writes to the corrected addresses. The app change (the Edit
+  form promotes a working address; the screens follow the send's primary-only rule) is on branch
+  `claude/nifty-ride-axo1up` and merges with this record, per D-10.
+

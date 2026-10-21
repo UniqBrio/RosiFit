@@ -33,12 +33,15 @@
  *        immediately above this one, it means something different -- no
  *        address exists, so the answer is to add one -- and the two must not
  *        be merged.
- *   Out: a member holding a usable address, even if they also hold a dead one.
- *        Their email can be used; listing them would be noise in a section
- *        whose whole job is "who needs attention".
+ *   Out: a member whose PRIMARY address is usable, even if they also hold a
+ *        dead one. The primary is the only address a follow-up goes to, so
+ *        their email can be used; listing them would be noise.
+ *   In (since 17-Oct-2026): a member whose primary is dead even though another
+ *        address works -- the send skips them, so the section must not.
  */
 import {
   emailUsable, emailStateWord, normalizeEmail, type EmailStatus,
+  sendingAddress,
 } from './emailStatus';
 import { type Member } from './mock';
 
@@ -145,8 +148,14 @@ export function emailIssueFor<T extends IssueInput>(m: T): EmailIssue<T> | undef
     status: effectiveStatus(e.address, history, e.status),
   }));
 
-  // Any address that can still be written to means there is no issue to raise.
-  if (read.some(r => emailUsable({ status: r.status }))) return undefined;
+  /* No issue when the address a follow-up GOES TO can be written to. That is
+     the PRIMARY one (sendingAddress, emailStatus.ts), because it is the only
+     row send-followups reads. This was "any usable address", so a member with
+     a bounced primary and a working second address was left out of Bounced
+     while the send skipped them (17-Oct-2026). */
+  const to = sendingAddress(m.emails);
+  const toRead = to ? read[m.emails.indexOf(to)] : undefined;
+  if (toRead && toRead.address.trim() !== '' && emailUsable({ status: toRead.status })) return undefined;
 
   /* Severity first, and A NAMED ADDRESS SECOND, which is not a tidy-up.
      An address row can hold an empty string -- the bulk import has written

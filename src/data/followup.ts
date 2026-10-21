@@ -13,7 +13,7 @@
  * it counts cannot disagree.
  */
 import type { Member, FollowUpRule, FollowUpCandidate } from './mock';
-import { emailUsable } from './emailStatus';
+import { emailUsable, sendingAddress } from './emailStatus';
 import { isActiveOn } from './inactiveFrom';
 import { iso } from './period';
 import { businessTodayIso } from './businessDate';
@@ -155,8 +155,14 @@ export function recipientSplit(flagged: Member[]):
  * in its module body, so a value import back would close a require cycle and
  * mock would run before they exist. Type imports are erased and are fine.
  */
-export const isReachable = (m: Member): boolean =>
-  m.emails.some(e => e.address.trim() !== '' && emailUsable(e));
+export const isReachable = (m: Member): boolean => {
+  /* THE PRIMARY ADDRESS, as the send reads it (sendingAddress, emailStatus.ts).
+     This used to be "ANY usable address", which is not what send-followups
+     does: a member with a bounced primary and a working second address read
+     as reachable here and was skipped by the send (17-Oct-2026). */
+  const to = sendingAddress(m.emails);
+  return !!to && to.address.trim() !== '' && emailUsable(to);
+};
 
 /**
  * WHY a member the rule flagged is not being written to.

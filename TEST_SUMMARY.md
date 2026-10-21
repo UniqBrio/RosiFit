@@ -923,6 +923,78 @@ all found by a person using the app, which is three for three, and RC-108's proc
 
 ---
 
+## Gate run - 2026-10-21 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 1m 24s total - slowest G7 Unit + pure specs (52.3s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (68ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (67ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (67ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (113ms)
+- **G5 Types** - PASS (10.4s)
+- **G6 Lint** - FAIL (20.3s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (52.3s)
+- **G8 Functional / integration** - FAIL (166ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (73ms)
+- **G10 Backward compatibility (fixtures)** - PASS (148ms)
+- **G11 Wide tables are configurable** - PASS (74ms)
+- **G12 Installable as an application** - PASS (108ms)
+- **G13 Approved design still being built** - PASS (70ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+**Note (a corrected address was never used: bounced primary — requests/2026-10-21-corrected-address-never-used.md):**
+ONE MIGRATION, APPLIED TO PRODUCTION 21-Oct-2026 on the owner's "go":
+supabase/migrations/0096_working_address_replaces_bounced_primary.sql (data-only: promotes the
+newest working address over a bounced primary, demoting rather than deleting; unsubscribed and
+spam-reported primaries are untouched). The 3 members were repaired and verified by read-back
+(docs/registers/ENVIRONMENTS.md). It merges the same day, per D-10.
+`bash db/harness/test.sh`: all 78 specs ran. Spec 73 passes 9/9. The only FAILs are the
+pre-existing 39 and 53, which fail on main too.
+`npm run check` passes 7/7. Gate: G1–G3, G6 and G8 are the same pre-existing FAILs as the
+2026-10-08 run; G7 and G9 pass.
+**Specs re-pointed, under the owner-approved reversal exemption (CLAUDE.md):** the requester
+approved making the screens follow the send's rule ("go ahead", 21-Oct-2026). Two assertions
+directly contradicted what send-followups does, because it reads only `is_primary = true`:
+- `src/data/memberEmailStatus.test.ts`: a dead PRIMARY beside a live second address now expects
+  `isReachable` false (was true).
+- `src/data/recipients.test.ts`: a member holding only a non-primary address now expects 0 recipients
+  (was 1).
+In each, only the expected value, the test's name and its comment changed. Nothing was removed.
+New specs: `src/data/bouncedPrimary.test.ts` (11) and `supabase/tests/73_working_address_replaces_bounced_primary.sql` (9).
+FAIL-FIRST: src/data/bouncedPrimary.test.ts - against the pre-change emailStatus/followup/emailIssues/edit.tsx, 6 of 11 failed (no sendingAddress, isReachable true for a bounced primary, no promotion); with the change, 11/11 pass.
+FAIL-FIRST: supabase/tests/73_working_address_replaces_bounced_primary.sql - run without 0096, it failed at "a bounced primary with a working address beside it: the working one is now primary" (got fix.dead@example.com); with 0096, 9/9 pass.
+
+---
+
 ## Gate run - 2026-10-16 - VERDICT: FAIL
 
 Steps: 7 pass, 6 fail, 0 blocked.

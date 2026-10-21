@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — A corrected email address is now the one that gets used
+
+**Members whose address had bounced and was then corrected kept being skipped.** The corrected address
+was saved as a second address, and emails only ever go to the primary one, so the old bounced address
+stayed in charge. Now:
+- Adding a working address to a member whose primary address bounced makes the new one primary.
+- The three members already caught by this are repaired.
+- The course's **Bounced** filter and "will be emailed" now follow the same rule as sending, so they
+  can no longer say a member is fine while the send skips them.
+
 ## Unreleased — Reports: an Emails button, and each send opens and exports on its own
 
 **Reports now has an Emails button** next to Members and Courses. Before this, the Attendance emails
