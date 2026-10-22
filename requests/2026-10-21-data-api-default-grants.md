@@ -51,4 +51,5 @@ for `supabase/tests/19_trigger_function_grants.sql`;
 (c) a global `alter default privileges for role postgres revoke execute on functions from public`,
 which also reaches functions postgres creates in other schemas (extension installs).
 
-**Production:** NOT applied. 0097 needs the owner's go-ahead on its raw SQL (CLAUDE.md).
+**Production:** applied 22-Oct-2026 to Mumbai on the owner's "go" (ledger `20261022033557`) and
+verified by read-back (docs/registers/ENVIRONMENTS.md). The three open decisions above are unchanged.

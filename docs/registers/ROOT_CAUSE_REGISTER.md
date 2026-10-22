@@ -113,7 +113,11 @@ beyond 0097's stated one; every function is revoked from PUBLIC by name; a table
 enables and forces RLS and is granted in its own file. And CI job `db-harness-2026-10-30` runs the whole
 SQL suite on the new platform's defaults.
 
-**Verify** — not yet: 0097 is not applied. The reads to take after it are in T-145's Status.
+**Verify** — 0097 applied to production 22-Oct-2026 (ledger `20261022033557`) and read back: both
+helpers executable by authenticated and service_role, not anon; the table and sequence defaults grant
+nobody; the function default is `{postgres=X,service_role=X}`; no public sequence usable by anon or
+authenticated; anon holds 0 table grants and executes 0 functions; 62 policies and forced RLS
+unchanged (docs/registers/ENVIRONMENTS.md, 22-Oct-2026).
 
 **Process check** — would a correctly functioning process have caught this? No: the rehearsal is
 defined as the harness, and the harness could stand in for one platform only. It now stands in for two.
