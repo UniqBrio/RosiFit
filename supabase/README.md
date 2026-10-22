@@ -32,6 +32,13 @@ The same suite runs in CI against `services: postgres:16` — the `db-harness` j
 `.github/workflows/ci.yml`. `PGHOST`, `PGPORT` and `PGUSER` point the scripts at any
 server, which is what lets one command work in both places.
 
+`HARNESS_PLATFORM_DEFAULTS=2026-10-30 npm run test:db` runs the same suite against the default
+privileges of a Supabase project created from 30-Oct-2026, when the platform stopped granting new
+`public` objects to anon, authenticated and service_role automatically
+(`db/harness/001_platform_defaults_2026_10_30.sql`). A migration that only works because the old
+default handed out a grant fails there. Every table, function and RPC therefore carries its own
+grants, to service_role included (0097, `src/data/dataApiGrants.test.ts`).
+
 `db/harness/000_local_shim.sql` recreates the pieces Supabase provides
 (the roles, `auth.users`, `auth.uid()`, `storage.*`) so `supabase/migrations/`
 can be executed verbatim. **It is never applied to Supabase.**

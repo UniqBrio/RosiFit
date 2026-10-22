@@ -1,3 +1,11 @@
+## 0097: DATA API GRANTS STATED, NOT INHERITED (SUPABASE 30-OCT-2026 CHANGE) — 21-Oct-2026
+
+`requests/2026-10-21-data-api-default-grants.md`, T-145, RC-124. From 30-Oct-2026 Supabase grants nothing automatically on new `public` objects. 0097 grants normalize_name/normalize_email to authenticated + service_role (load-bearing for the writing role: generated column + invoker trigger), sets the table/sequence defaults to nothing for anon/authenticated/service_role, states the function default (service_role only, spec 19), and closes the 4 identity sequences to anon/authenticated. APPLIED to production 22-Oct-2026 (Mumbai, ledger `20261022033557`) on the owner's go; read back clean (docs/registers/ENVIRONMENTS.md).
+NEW HARNESS MODE: `HARNESS_PLATFORM_DEFAULTS=2026-10-30` (db/harness/001_platform_defaults_2026_10_30.sql) replays against the new platform defaults; CI job `db-harness-2026-10-30`. Default (`legacy`) is unchanged.
+FAIL-FIRST: full suite in the 2026-10-30 mode WITHOUT 0097: `permission denied for function normalize_name` in 34, 35, 48, 50, 58, 73; 19's default-ACL pin got NULL. supabase/tests/74 without 0097 fails in both modes (2026-10-30: helper, rename, alias and service_role writes; legacy: new-table default, sequence grants, an accepted setval). src/data/dataApiGrants.test.ts without 0097 fails its default-privilege test; with 0097, mutation-checked by deleting two real grants from a copy of the tree (both named).
+DB, each spec on its own fresh local Postgres 16.15 rebuild, BOTH modes: 1429 PASS (baseline 1403 + 26 from 74), 2 FAIL, both pre-existing and identical on the unchanged tree: 39 "not one of the four functions still asks is_super_admin()" and 53 "update_member ... byte-identical to production" (T-120/T-132 class). No other spec changed; no assertion removed or loosened.
+GATES: `npm run check` ALL 7 PASS (test:unit 2324 tests, 0 fail; check:edge skipped loudly, no Deno, no Edge change). audit:all stops at audit:rules on 13 pre-existing violations (RC-047..RC-119), none new; RC-124 declares its rung.
+
 ## 0094: ROSIFIT HAS NO GRACE PERIOD — 12-Oct-2026
 
 `requests/2026-10-12-no-grace-period.md`. Owner: "Grace period is not required", clarified as remove it entirely. 0094 sets app_subscription.grace_days 14 -> 0 (re-runnable; missing row or a 0-row update stops it); not recorded in renewal_history, because spec 70 (merged, append-only) pins a replayed row's history as empty. APPLIED to production (Mumbai) 12-Oct-2026 on the owner's go-ahead, verified by read-back (docs/registers/ENVIRONMENTS.md). The Subscription screen's Grace period row is removed; the offline fixture's grace days -> 0.
@@ -920,6 +928,56 @@ and the count beside it dropped by one" is asserted by reading `app/course/[id].
 three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
 preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
 all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-10-21 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 42.4s total - slowest G7 Unit + pure specs (30.8s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (49ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (50ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (44ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (64ms)
+- **G5 Types** - PASS (7.1s)
+- **G6 Lint** - FAIL (3.9s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (30.8s)
+- **G8 Functional / integration** - FAIL (129ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (53ms)
+- **G10 Backward compatibility (fixtures)** - PASS (112ms)
+- **G11 Wide tables are configurable** - PASS (52ms)
+- **G12 Installable as an application** - PASS (70ms)
+- **G13 Approved design still being built** - PASS (46ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

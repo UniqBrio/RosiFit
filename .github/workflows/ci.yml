@@ -204,3 +204,47 @@ jobs:
       # A step name cannot go stale if it does not carry a count.
       - name: Migrations replay clean and the spec suite runs
         run: npm run test:db
+
+  # ---- The SQL suite, on a platform created after 30-Oct-2026 ------------------------------
+  # The same command against the default privileges Supabase gives a project from 30-Oct-2026:
+  # nothing granted automatically to anon, authenticated or service_role
+  # (db/harness/001_platform_defaults_2026_10_30.sql, T-145, 0097). The job above replays
+  # against the platform production was created on, where a grant this repository never wrote
+  # down is handed out anyway -- so only this job can show it is missing. That is how 0097's
+  # normalize_name / normalize_email grants were found.
+  #
+  # A SEPARATE job, not a matrix on the one above, so that job keeps its check name.
+  db-harness-2026-10-30:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      HARNESS_PLATFORM_DEFAULTS: '2026-10-30'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install psql 16
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-16
+
+      - name: Migrations replay clean and the spec suite runs (2026-10-30 platform defaults)
+        run: npm run test:db

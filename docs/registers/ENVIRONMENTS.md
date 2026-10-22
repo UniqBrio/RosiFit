@@ -31,6 +31,12 @@ finds the server binaries by searching the platform bin directories rather than 
 Debian and Ubuntu link only the *client* tools into `/usr/bin`, which is how a complete Postgres 16
 came to be recorded as absent (TD-010, ADR 013).
 
+`HARNESS_PLATFORM_DEFAULTS=2026-10-30` replays against the default privileges Supabase gives a
+project created from 30-Oct-2026 (nothing granted automatically to anon, authenticated or
+service_role) instead of the ones production was created with; CI runs the suite both ways
+(`db-harness`, `db-harness-2026-10-30`). Only the second can show a grant the migrations never
+wrote down (T-145, RC-124).
+
 `PGHOST`, `PGPORT` and `PGUSER` override the defaults. When `PGHOST` names a TCP host, `start.sh`
 confirms that server is reachable and starts nothing — which is how the `db-harness` job in
 `.github/workflows/ci.yml` runs *the same command* against `services: postgres:16`. The suite
@@ -638,4 +644,31 @@ affected members were shown. Applied to `lbyqipunsbzkcvdrxach` (Mumbai, producti
 - **Effect:** the next follow-up send writes to the corrected addresses. The app change (the Edit
   form promotes a working address; the screens follow the send's primary-only rule) is on branch
   `claude/nifty-ride-axo1up` and merges with this record, per D-10.
+
+## 22-Oct-2026 — 0097 applied to production (Mumbai): Data API grants stated, not inherited — ✅ VERIFIED
+
+The owner gave the go-ahead in session ("go") after the raw SQL of 0097 was shown. Applied to
+`lbyqipunsbzkcvdrxach` (Mumbai, production, PG 17.11) only. T-145, RC-124.
+
+- **Before (read immediately prior):** every object 0097 names owned by `postgres`; session ran as
+  `postgres`. `normalize_name`/`normalize_email` = `{postgres=X,authenticated=X,service_role=X}` (held
+  only by the old default). Default ACL (postgres, public): `f={postgres=X,service_role=X}`,
+  `r={postgres=arwdDxtm,service_role=arwdDxtm}`, `S={postgres=rwU,anon=rwU,authenticated=rwU,service_role=rwU}`;
+  no global entry. The 4 identity sequences each `{postgres,anon,authenticated,service_role}=rwU`.
+  Ledger ended at 0096.
+- **Applied:** `0097_data_api_grants_stated_not_inherited` through the migration ledger
+  (`20261022033557`), the file byte-identical to commit 61ec60a (blob 7f77bac, md5 38f30966…).
+- **After (read back):** both helpers executable by authenticated and service_role, not anon. Default
+  ACL `f={postgres=X,service_role=X}` (unchanged, now stated), `r={postgres=arwdDxtm}`,
+  `S={postgres=rwU}`. No public sequence usable by anon or authenticated; service_role keeps the
+  identity sequences. anon: 0 table grants, 0 executable functions. service_role SELECT+INSERT on all
+  34 tables. 62 policies, RLS enabled and forced on every table — unchanged.
+- **Effect:** nothing changes for existing objects or the running app. From here a new table or
+  sequence in `public` starts with no grant to anyone, on this project exactly as on one created after
+  30-Oct-2026, and each migration states its own grants.
+- **Not yet observed:** a member rename from the app on production (no live write was made to verify).
+- **Rollback, if ever needed** (permissions only, no data): `alter default privileges for role postgres
+  in schema public grant all on tables to service_role;`, `... grant all on sequences to anon,
+  authenticated, service_role;` and `grant usage, select, update on sequence <the 4> to anon,
+  authenticated;`. The helper grants pre-existed and must NOT be revoked.
 
