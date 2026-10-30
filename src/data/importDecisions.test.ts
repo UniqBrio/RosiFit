@@ -235,24 +235,24 @@ test('the unusable rows are the unmatched or possible rows a member record canno
 
 test('the note names the name, says nobody was created, and says what to do next', () => {
   const { title, body } = unusableWords(['m']);
-  assert.match(title, /^1 name could not become a new member$/);
+  assert.match(title, /^Participant Skipped – Invalid Name$/);
   assert.match(body, /“m”/);
-  assert.match(body, /“m” is too short to be a member’s name/);
-  assert.match(body, /between 2 and 120 characters/);
-  assert.match(body, /nobody new was created/i);
+  assert.match(body, /The participant “m” was skipped because the name contains only 1 character/);
+  assert.match(body, /Member names must contain at least 2 characters/);
+  assert.match(body, /Attendance for this participant was not recorded/i);
   // NOT "Add display name to existing member": that button is on a member
   // card, and a held name never became a member, so it has no card.
   assert.doesNotMatch(body, /Add display name to existing member/);
-  assert.match(body, /add it under Google Meet display names on that member’s Edit page/);
-  assert.match(unusableWords(['x'.repeat(121)]).body, /is too long to be/);
-  assert.match(unusableWords(['m', 'x'.repeat(121)]).body, /are too short or too long to be/);
-  assert.match(unusableWords(['m', 'k']).title, /^2 names could not become new members$/);
+  assert.match(body, /add “m” as a Google Meet display name on the member’s Edit page/);
+  assert.match(unusableWords(['x'.repeat(121)]).body, /contains 121 characters\. Member names must contain at most 120/);
+  assert.match(unusableWords(['m', 'x'.repeat(121)]).body, /Member names must contain between 2 and 120 characters/);
+  assert.match(unusableWords(['m', 'k']).title, /^Participants Skipped – Invalid Names$/);
 });
 
 test('the batch row sentence names the unusable names, and is silent when there are none', () => {
   assert.equal(unusableSentence([]), null);
   assert.match(unusableSentence(['m']) ?? '', /“m”/);
-  assert.match(unusableSentence(['m']) ?? '', /Edit page so later files land on that member/);
+  assert.match(unusableSentence(['m']) ?? '', /Attendance for this participant was not recorded/);
 });
 
 test('the unusable-name words are written about the member, never a pronoun', () => {
@@ -286,8 +286,8 @@ test('the next step works after the day has landed: reset the day, then upload a
   // A completed import's fingerprint refuses the same file ("already
   // imported") until the day's marks are reset (0057 reverts the import).
   const { body } = unusableWords(['m']);
-  assert.match(body, /files with that name land on that member/);
-  assert.match(body, /reset their marks, and upload the files again/);
+  assert.match(body, /All other valid participants were imported successfully/);
+  assert.match(body, /re-import the day’s attendance after resetting that day’s marks/);
   assert.doesNotMatch(body, /upload this file again and the attendance lands/);
 });
 

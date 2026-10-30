@@ -119,10 +119,26 @@ export function unusableNames(rows: DecisionRow[]): string[] {
 /** Quoted, because a one-letter name in a list reads as a typo. */
 const quoted = (names: string[]) => names.map(n => `“${n}”`).join(', ');
 
-/** Too short, too long, or (a mix) both -- the reader is told which. */
-function whatIsWrong(names: string[]): string {
-  const short = names.filter(n => [...n.replace(/^ +| +$/g, '')].length < NAME_MIN).length;
-  return short === names.length ? 'too short' : short === 0 ? 'too long' : 'too short or too long';
+const chars = (n: string) => [...n.replace(/^ +| +$/g, '')].length;
+
+/**
+ * Why, and the rule it broke, in the requester's words (30-Oct-2026). One
+ * name says its own length; several say which side of the bound they fell.
+ */
+function reason(names: string[]): string {
+  const short = names.filter(n => chars(n) < NAME_MIN).length;
+  const rule = short === names.length ? `at least ${NAME_MIN} characters`
+    : short === 0 ? `at most ${NAME_MAX} characters`
+    : `between ${NAME_MIN} and ${NAME_MAX} characters`;
+  if (names.length === 1) {
+    const len = chars(names[0]);
+    const has = short ? `only ${len} ${len === 1 ? 'character' : 'characters'}` : `${len} characters`;
+    return `because the name contains ${has}. Member names must contain ${rule}.`;
+  }
+  const has = short === names.length ? `fewer than ${NAME_MIN} characters`
+    : short === 0 ? `more than ${NAME_MAX} characters`
+    : `fewer than ${NAME_MIN} or more than ${NAME_MAX} characters`;
+  return `because each name contains ${has}. Member names must contain ${rule}.`;
 }
 
 /**
@@ -135,24 +151,24 @@ function whatIsWrong(names: string[]): string {
  * marks are reset (0057), so the note says so.
  */
 export function unusableWords(names: string[]): { title: string; body: string } {
-  const n = names.length;
-  const one = n === 1;
+  const one = names.length === 1;
+  const who = one ? 'this participant' : 'these participants';
   return {
-    title: `${n} ${one ? 'name could not become a new member' : 'names could not become new members'}`,
-    body: `${quoted(names)} ${one ? 'is' : 'are'} ${whatIsWrong(names)} to be a member’s name `
-      + `(a name needs between ${NAME_MIN} and ${NAME_MAX} characters), and no member of this course `
-      + `uses ${one ? 'it' : 'any of them'} as a display name. ${one ? 'This row was' : 'These rows were'} `
-      + `held back: nobody new was created and no attendance was recorded for ${one ? 'it' : 'them'}. `
-      + `If a member joined the call under ${one ? 'that name' : 'one of these names'}, add it under `
-      + 'Google Meet display names on that member’s Edit page; from then on, files with that name land on '
-      + 'that member. To record this day as well, select every member on the course for this day, '
-      + 'reset their marks, and upload the files again.',
+    title: one ? 'Participant Skipped – Invalid Name' : 'Participants Skipped – Invalid Names',
+    body: `The ${one ? 'participant' : 'participants'} ${quoted(names)} ${one ? 'was' : 'were'} skipped `
+      + `${reason(names)}\n`
+      + `\n• Attendance for ${who} was not recorded.`
+      + '\n• All other valid participants were imported successfully.'
+      + `\n• If ${one ? 'this participant is an existing member' : 'one of these participants is an existing member'}, `
+      + `add ${one ? quoted(names) : 'the name'} as a Google Meet display name on the member’s Edit page `
+      + 'and re-import the day’s attendance after resetting that day’s marks.',
   };
 }
 
 /** The same fact in one sentence, for a batch result row that has no room for a note. */
 export function unusableSentence(names: string[]): string | null {
   if (names.length === 0) return null;
-  return `Held back, ${whatIsWrong(names)} to be a member’s name: ${quoted(names)}. `
-    + `Add ${names.length === 1 ? 'it' : 'each one'} as a display name on the member’s Edit page so later files land on that member.`;
+  const one = names.length === 1;
+  return `${one ? 'Participant skipped – invalid name' : 'Participants skipped – invalid names'}: `
+    + `${quoted(names)}. Attendance for ${one ? 'this participant' : 'these participants'} was not recorded.`;
 }
