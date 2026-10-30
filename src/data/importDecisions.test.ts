@@ -323,22 +323,29 @@ test('not imported: the held rows of a file, by reason', () => {
 });
 
 test('not imported: the note names each reason with its count, and agrees in number', () => {
-  assert.equal(notImportedNote({ invalidName: 1, ambiguous: 0, fileFailed: 0 }), '1 invalid name.');
+  assert.equal(notImportedNote({ invalidName: 1, ambiguous: 0, fileFailed: 0 }), '1 with an invalid name.');
   assert.equal(notImportedNote({ invalidName: 2, ambiguous: 1, fileFailed: 9 }),
-    '2 invalid names · 1 matching more than one member · 9 in a file that did not import.');
-  assert.equal(notImportedNote({ invalidName: 0, ambiguous: 0, fileFailed: 9 }), '9 in a file that did not import.');
+    '2 with invalid names · 1 matching more than one member · 9 whose file did not import.');
+  // Summed across files, so the reason must read right for one file or several.
+  assert.equal(notImportedNote({ invalidName: 0, ambiguous: 0, fileFailed: 14 }), '14 whose file did not import.');
 });
 
 test('not imported: nothing held says so, never a bare zero with no sentence', () => {
   assert.equal(notImportedNote({ invalidName: 0, ambiguous: 0, fileFailed: 0 }), NO_ONE_LEFT_OUT);
-  assert.match(NO_ONE_LEFT_OUT, /^Every participant was imported/);
+  // Scoped to what the tile counts: staff, repeats and files that never ran
+  // are not in it, so "every participant was imported" would be false.
+  assert.equal(NO_ONE_LEFT_OUT, 'There are no names to fix.');
+  assert.equal(notImportedNote({ invalidName: 0, ambiguous: 0, fileFailed: 0 }, { someFilesDidNotRun: true }),
+    'There are no names to fix in the files that imported.');
 });
 
 test('the result screen draws the third count on both paths, keyed, beside the other two', () => {
   const src = read(SCREEN);
   const tiles = src.match(/<Landed testID="upload-not-imported"/g) ?? [];
   assert.equal(tiles.length, 2);
-  assert.match(src, /notImportedNote\(batch\.notImported\)/);
+  assert.match(src, /notImportedNote\(batch\.notImported, \{ someFilesDidNotRun: batch\.files > batch\.imported \}\)/);
+  // A zero is not an alert: the tile wears the all-clear ink and glyph then.
+  assert.equal((src.match(/ink=\{notImportedTotal\((batch\.notImported|outcome\.not_imported)\) \? warnInk : okInk\}/g) ?? []).length, 2);
   assert.match(src, /notImportedNote\(outcome\.not_imported\)/);
 });
 

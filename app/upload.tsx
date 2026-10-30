@@ -1555,9 +1555,10 @@ function UploadBody() {
               word="No email" ink={dangerInk}
               note="Marked present, listed under No email on the course." />
             {/* THE THIRD COUNT: who did not land, and why (30-Oct-2026). */}
-            <Landed testID="upload-not-imported" n={notImportedTotal(batch.notImported)} icon="block"
-              word="Not imported" ink={warnInk}
-              note={notImportedNote(batch.notImported)} />
+            <Landed testID="upload-not-imported" n={notImportedTotal(batch.notImported)}
+              icon={notImportedTotal(batch.notImported) ? 'block' : 'check_circle'}
+              word="Not imported" ink={notImportedTotal(batch.notImported) ? warnInk : okInk}
+              note={notImportedNote(batch.notImported, { someFilesDidNotRun: batch.files > batch.imported })} />
           </View>
 
           {/* One row per REGISTER the upload touched, plus one per file it
@@ -1634,8 +1635,10 @@ function UploadBody() {
             <Landed testID="upload-no-email" n={outcome.no_email} icon="mail_off"
               word="No email" ink={dangerInk}
               note="Marked present, listed under No email on the course." />
-            <Landed testID="upload-not-imported" n={notImportedTotal(outcome.not_imported)} icon="block"
-              word="Not imported" ink={warnInk}
+            {/* A zero is not an alert: the all-clear ink and glyph then. */}
+            <Landed testID="upload-not-imported" n={notImportedTotal(outcome.not_imported)}
+              icon={notImportedTotal(outcome.not_imported) ? 'block' : 'check_circle'}
+              word="Not imported" ink={notImportedTotal(outcome.not_imported) ? warnInk : okInk}
               note={notImportedNote(outcome.not_imported)} />
           </View>
 

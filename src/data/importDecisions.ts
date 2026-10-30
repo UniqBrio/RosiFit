@@ -188,7 +188,12 @@ export type NotImported = {
   fileFailed: number;
 };
 
-export const NO_ONE_LEFT_OUT = 'Every participant was imported.';
+/**
+ * The zero, scoped to what the tile counts. Not "every participant was
+ * imported": staff, repeated names and files that never ran are not in this
+ * count, and the screen names them in their own notes.
+ */
+export const NO_ONE_LEFT_OUT = 'There are no names to fix.';
 
 /** The rows of one committed file that were held back, by reason. */
 export function notImportedOf(rows: DecisionRow[]): NotImported {
@@ -209,12 +214,17 @@ export function sumNotImported(all: NotImported[]): NotImported {
   }), { invalidName: 0, ambiguous: 0, fileFailed: 0 });
 }
 
-/** The sentence under the count: each reason with its own number. */
-export function notImportedNote(n: NotImported): string {
+/**
+ * The sentence under the count: each reason with its own number, all three
+ * counting people. `someFilesDidNotRun` scopes the zero on a batch where a
+ * file was set aside, already imported or lost -- those add nothing here.
+ */
+export function notImportedNote(n: NotImported, opts: { someFilesDidNotRun?: boolean } = {}): string {
   const parts = [
-    n.invalidName ? `${n.invalidName} invalid ${n.invalidName === 1 ? 'name' : 'names'}` : null,
+    n.invalidName ? `${n.invalidName} with ${n.invalidName === 1 ? 'an invalid name' : 'invalid names'}` : null,
     n.ambiguous ? `${n.ambiguous} matching more than one member` : null,
-    n.fileFailed ? `${n.fileFailed} in a file that did not import` : null,
+    n.fileFailed ? `${n.fileFailed} whose file did not import` : null,
   ].filter(Boolean);
-  return parts.length ? `${parts.join(' · ')}.` : NO_ONE_LEFT_OUT;
+  if (parts.length) return `${parts.join(' · ')}.`;
+  return opts.someFilesDidNotRun ? 'There are no names to fix in the files that imported.' : NO_ONE_LEFT_OUT;
 }
