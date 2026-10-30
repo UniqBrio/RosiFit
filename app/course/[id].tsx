@@ -2413,19 +2413,22 @@ const MemberCard = memo(function MemberCard({ member, tint, weekLabel, noEmail, 
    * TWO READINGS, NOT ONE, since her status carries a date (0045).
    *
    *   `inactive`      -- where she stood on the day THE STRIP IS SHOWING.
-   *                      This is what the pill draws, because the rest of
-   *                      the card is about that day and a pill answering for
-   *                      today beside chips answering for 17 August is two
-   *                      different questions wearing one row.
+   *                      Spoken in the labels when it differs from today; no
+   *                      longer drawn on the pill (30-Oct-2026, below).
    *   `inactiveToday` -- where she stands NOW. This is what the tap is
    *                      about: a control on a past week that flipped the
    *                      state as it was three weeks ago would undo every
    *                      change made since, which is not what anybody
    *                      pressing it means.
    *
-   * They differ only for a member whose date falls between the two days, and
-   * where they differ the pill says so rather than letting the reader assume
-   * the word is about today -- see the label and the confirmation below.
+   * They differ only for a member whose date falls between the two days.
+   *
+   * THE PILL DRAWS `inactiveToday` (owner's decision, 30-Oct-2026). It drew
+   * the strip's day while its tap acted on today, so on any other day the two
+   * disagreed: a pill reading "Active" opened "Mark active". And the
+   * day-scoped roster lists only members active THAT day, so a past day's pill
+   * could only ever read "Active". A control's word is what it controls; the
+   * dated line under the name still says when the status changes.
    */
   const statusDay = dayIso ?? todayIso;
   const inactive = !isActiveOn(member, statusDay);
@@ -2474,7 +2477,7 @@ const MemberCard = memo(function MemberCard({ member, tint, weekLabel, noEmail, 
    * this changes only which ink they are drawn in, and the pair is measured
    * like every other (guardrail 2 -- scripts/check-contrast.ts).
    */
-  const statusInk = inactive ? dangerInk : okInk;
+  const statusInk = inactiveToday ? dangerInk : okInk;
   const box = statusSurface(statusInk);
   // The threshold the canvas paints the miss line at. A READING aid, not the
   // follow-up rule: the rule lives in one place (src/data/followup) and this
@@ -2660,7 +2663,7 @@ const MemberCard = memo(function MemberCard({ member, tint, weekLabel, noEmail, 
         <Pressable testID={`course-member-${member.id}`}
           onPress={() => router.push({ pathname: '/member/[id]', params: { id: member.id } })}
           accessibilityRole="button"
-          accessibilityLabel={`${member.name}, ${inactive ? 'inactive' : 'active'}. ${
+          accessibilityLabel={`${member.name}, ${inactiveToday ? 'inactive' : 'active'}. ${
             noEmail ? 'No email on file, not in follow-up'
               : emailIssue ? `${emailIssue.address || 'Address not recorded'}, ${emailIssue.word}`
               : member.emails[0]?.address ?? ''
@@ -2752,10 +2755,10 @@ const MemberCard = memo(function MemberCard({ member, tint, weekLabel, noEmail, 
              "is active" over a pill that will mark her active again is the
              control nobody can read, arriving from the other direction. */
           accessibilityLabel={[
+            `${member.name} is ${inactiveToday ? 'inactive' : 'active'}.`,
             readingIsHistoric && dayIso
               ? `${member.name} ${wasOrWillBe} ${inactive ? 'inactive' : 'active'} on ${dayInWords(dayIso)}.`
-                + ` Today: ${inactiveToday ? 'inactive' : 'active'}.`
-              : `${member.name} is ${inactive ? 'inactive' : 'active'}.`,
+              : '',
             pending ? `Due to become inactive on ${dateInWords(pending)}.` : '',
             inactiveToday ? 'Mark active.' : 'Mark inactive from today.',
           ].filter(Boolean).join(' ')}
@@ -2766,9 +2769,9 @@ const MemberCard = memo(function MemberCard({ member, tint, weekLabel, noEmail, 
             backgroundColor: box.bg, borderWidth: 1, borderColor: box.border,
             opacity: pressed || saving ? 0.6 : 1,
           })}>
-          <Icon name={inactive ? 'pause_circle' : 'check_circle'} size={13} color={statusInk} />
+          <Icon name={inactiveToday ? 'pause_circle' : 'check_circle'} size={13} color={statusInk} />
           <Text style={{ fontSize: 9.5, fontWeight: '800', color: statusInk }}>
-            {inactive ? 'Inactive' : 'Active'}
+            {inactiveToday ? 'Inactive' : 'Active'}
           </Text>
         </Pressable>
 
@@ -3051,14 +3054,14 @@ const MemberCard = memo(function MemberCard({ member, tint, weekLabel, noEmail, 
         open={confirmStatus && !inactiveToday}
         onClose={() => setConfirmStatus(false)}
         /* TODAY's reading, in the title, the body and the button -- the
-           three places the decision is stated. The pill above may be drawing
-           a past day (0045); the act is always about now, and the body's
-           first sentence says which day it is about whenever those two
-           differ, rather than leaving the reader to notice. */
+           three places the decision is stated, and the reading the pill
+           draws. The strip may be on another day (0045); the act is always
+           about now, and the body's first sentence names that day's status
+           whenever the two differ, rather than leaving the reader to notice. */
         title={inactiveToday ? `Mark ${member.name} active?` : `Mark ${member.name} inactive?`}
         body={[
           readingIsHistoric && dayIso
-            ? `The pill is showing ${dayInWords(dayIso)}, when ${member.name} ${wasOrWillBe} `
+            ? `On ${dayInWords(dayIso)}, ${member.name} ${wasOrWillBe} `
               + `${inactive ? 'inactive' : 'active'}. Today: `
               + `${inactiveToday ? 'inactive' : 'active'}, and this changes that.`
             : '',

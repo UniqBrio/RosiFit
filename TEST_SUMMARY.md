@@ -1,3 +1,10 @@
+## COURSE ROSTER: THE STATUS PILL SHOWS TODAY, THE STATUS ITS TAP CHANGES — 30-Oct-2026
+
+T-147, RC-126. Owner report: tapping "Active" offered "Mark active", and vice versa. The pill drew the strip day's status; the tap acts on today's. OWNER-APPROVED BEHAVIOUR REVERSAL (30-Oct-2026, chosen of two options): the pill draws today's status. No existing assertion modified; "the roster pill reads the DAY" still passes (`inactive` is still computed for labels and the day-scoped roster) but its message no longer describes the pill.
+FAIL-FIRST: src/components/memberInactiveFromField.test.ts, 3 appended -- all 3 fail against the pre-fix tree ("the pill draws today's status", "the card and the pill tell a screen reader the same status", "the confirmation no longer claims the pill is showing another day"); 21/21 after.
+GATES: `npm run check` ALL 7 PASS. No migration.
+NOT LOOKED AT: the pill in either theme in a running app. Same tokens (dangerInk/okInk via statusSurface) as before; only which reading selects them changed.
+
 ## ATTENDANCE UPLOAD: A NAME NO MEMBER RECORD CAN CARRY IS HELD, NOT FATAL — 30-Oct-2026
 
 T-146, RC-125. Postnatal · Main, 29 Oct: participant "m" (meeting kjh-nzhr-mvi) was filed `add_as_new`; `members_full_name_check` (2..120) failed the day's one transaction, all 14 files. Client-only fix in src/data/importDecisions.ts + app/upload.tsx; twin in app/member/edit.tsx (Save gated on name.trim().length > 0 only) fixed with the same isMemberName (src/data/memberImport.ts).

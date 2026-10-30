@@ -212,3 +212,32 @@ test('a departure is pending against the day on screen, not against today', () =
     'read against today it contradicted the pill beside it: on the 1 Oct card an '
     + 'Inactive member also drew "Inactive from 1 October 2026"');
 });
+
+/* ---------------------------------------- the pill says what the tap does */
+
+// OWNER-APPROVED REVERSAL, 30-Oct-2026: "when user click on active tag to
+// mark as inactive its showing Mark active instead of mark inactive and vice
+// versa". The pill drew the strip's day and the tap acted on today, so on
+// any day but today they could disagree -- and the day-scoped roster only
+// lists members active THAT day, so a past day's pill could only ever read
+// "Active", even for a member inactive today whose tap offered "Mark active".
+// The owner chose: the pill shows TODAY. The dated line under the name still
+// says when the status changes.
+test('the pill draws today\'s status -- the one its tap changes', () => {
+  const src = read(ROSTER);
+  assert.match(src, /const statusInk = inactiveToday \? dangerInk : okInk/);
+  assert.match(src, /<Icon name=\{inactiveToday \? 'pause_circle' : 'check_circle'\} size=\{13\} color=\{statusInk\} \/>/);
+  assert.match(src, /\{inactiveToday \? 'Inactive' : 'Active'\}/);
+  assert.doesNotMatch(src, /\{inactive \? 'Inactive' : 'Active'\}/,
+    'the strip-day reading must not come back onto the pill');
+});
+
+test('the card and the pill tell a screen reader the same status', () => {
+  const src = read(ROSTER);
+  assert.match(src, /accessibilityLabel=\{`\$\{member\.name\}, \$\{inactiveToday \? 'inactive' : 'active'\}\. \$\{/);
+  assert.match(src, /`\$\{member\.name\} is \$\{inactiveToday \? 'inactive' : 'active'\}\.`/);
+});
+
+test('the confirmation no longer claims the pill is showing another day', () => {
+  assert.doesNotMatch(read(ROSTER), /The pill is showing/);
+});
