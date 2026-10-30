@@ -32,6 +32,7 @@ import { namesADisplayName } from '../../src/data/refusalCase';
 import { inactiveFromProblem, dateInWords, dayBefore } from '../../src/data/inactiveFrom';
 import { activeFromProblem } from '../../src/data/joined';
 import { DATE_FORMAT_EXAMPLE } from '../../src/data/memberDate';
+import { isMemberName, NAME_MIN, NAME_MAX } from '../../src/data/memberImport';
 
 /** The format note that sits under a date field on this form. One string, so
  *  the two ends of the membership window cannot come to word it differently. */
@@ -419,8 +420,9 @@ export default function MemberEdit() {
   // requests/2026-09-06-add-member-email-required.md, both forms). A member
   // with no offering cannot be enrolled, and an unenrolled member is expected
   // at no session and appears in no follow-up list -- so the offering is
-  // required too, and the form says which piece is missing.
-  const valid = name.trim().length > 0 && !!offering && emails.length > 0
+  // required too, and the form says which piece is missing. The name is held
+  // to members_full_name_check here, not by the INSERT (RC-023, RC-125).
+  const valid = isMemberName(name) && !!offering && emails.length > 0
     && !inactiveFromError && !activeFromError
     /* The box holds an address that has already bounced. Save is BLOCKED rather
        than quietly dropping the draft: a form that flashed "saved" and then
@@ -730,6 +732,7 @@ export default function MemberEdit() {
   /** The one line under the footer: what is missing, or what will be saved. */
   const hint = !name.trim()
       ? 'Member name and an email address are required'
+      : !isMemberName(name) ? `A member name needs ${NAME_MIN} to ${NAME_MAX} characters`
       : !course ? 'Choose the course to join'
       : !offering ? `Choose the branch — ${course} runs at ${branchOptions.length || 'no'} of them`
       : draftRefusal ? draftRefusal.title

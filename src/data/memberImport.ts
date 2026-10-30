@@ -92,6 +92,18 @@ export const MEMBER_IMPORT_MAX_BYTES = 5 * 1024 * 1024;
  */
 export const NAME_MIN = 2;
 export const NAME_MAX = 120;
+/**
+ * Can this be a member's name? This is members_full_name_check itself,
+ * `length(btrim(full_name)) between 2 and 120`, measured the way Postgres
+ * measures it: btrim with no argument trims spaces only, and length() counts
+ * characters, not UTF-16 units. Every writer of a member's name asks it --
+ * the attendance upload (importDecisions.ts) and the member form -- so the
+ * database is never the first to say no (RC-023, RC-125).
+ */
+export function isMemberName(name: string): boolean {
+  const n = [...name.replace(/^ +| +$/g, '')].length;
+  return n >= NAME_MIN && n <= NAME_MAX;
+}
 /** A display name is a name, so it is bounded the same way. */
 export const ALIAS_MAX = 120;
 /** The RFC 5321 ceiling for a whole address. */

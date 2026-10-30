@@ -30,7 +30,10 @@ import {
 } from '../src/data/uploadBatch';
 import { iso } from '../src/data/period';
 import { businessTodayIso } from '../src/data/businessDate';
-import { autoDecisions, heldNames, heldWords, heldSentence } from '../src/data/importDecisions';
+import {
+  autoDecisions, heldNames, heldWords, heldSentence,
+  unusableRows, unusableNames, unusableWords, unusableSentence,
+} from '../src/data/importDecisions';
 import {
   alreadyImportedWords, nothingChanged, noChangeWords, changeSummary,
   type ImportChanges, type OutcomeWords,
@@ -105,6 +108,9 @@ type Outcome = {
   /** names two or more members of this course already hold, HELD BACK:
    *  nobody created, nobody marked on a guess (src/data/importDecisions.ts) */
   ambiguous: string[];
+  /** names no member record can carry (members_full_name_check), HELD BACK
+   *  rather than failing the day's transaction (src/data/importDecisions.ts) */
+  unusable: string[];
   /** names Meet wrote more than once, counted once */
   duplicates: string[];
   /** the file this one corrected, when the day already had one */
@@ -738,15 +744,18 @@ function UploadBody() {
       setOutcome({
         session_date: staged.day,
         with_email: c.matched ?? 0,
-        // Not `ambiguous`: a held row lands nowhere, so it is counted nowhere.
-        no_email: (c.noEmail ?? 0) + (c.possible ?? 0) + (c.unmatched ?? 0),
+        // Not `ambiguous`, and not an unusable name: a held row lands
+        // nowhere, so it is counted nowhere.
+        no_email: (c.noEmail ?? 0) + (c.possible ?? 0) + (c.unmatched ?? 0) - unusableRows(preview.rows).length,
         imported: result.present_or_extra,
         dropped: preview.dropped_names ?? [],
         staff: preview.staff_names ?? [],
         // Absent from a project still on the older function, and read as
         // "nothing to say" rather than "none": the note simply does not draw.
-        other_course: preview.other_course_names ?? [],
+        // A held name is not "added as somebody new" -- nobody was (RC-125).
+        other_course: (preview.other_course_names ?? []).filter(n => !unusableNames(preview.rows).includes(n)),
         ambiguous: heldNames(preview.rows),
+        unusable: unusableNames(preview.rows),
         duplicates: staged.duplicates,
         supersedes: staged.supersedes?.file_name ?? null,
         // Absent until the migration that returns it is applied, which is why
@@ -1001,7 +1010,9 @@ function UploadBody() {
         const result = await csvCommit(preview.import_id, autoDecisions(preview.rows));
         wrote = true;
         const c = preview.counts;
-        const noChange = nothingChanged(result.changes ?? null, result.overridden ?? null);
+        // A held name is news even when every other mark stood (RC-125).
+        const noChange = nothingChanged(result.changes ?? null, result.overridden ?? null)
+          && unusableRows(preview.rows).length === 0;
         rows.push({
           fileName: source.name, day: st.day,
           kind: noChange ? 'unchanged' : 'imported',
@@ -1014,11 +1025,12 @@ function UploadBody() {
                 st.supersedes ? `Replaced ${st.supersedes.file_name}.` : null,
                 overrideSummary(result.overridden ?? null),
                 heldSentence(heldNames(preview.rows)),
+                unusableSentence(unusableNames(preview.rows)),
                 merged,
               ].filter(Boolean).join(' '),
           files: source.fileNames.length,
           withEmail: c.matched ?? 0,
-          noEmail: (c.noEmail ?? 0) + (c.possible ?? 0) + (c.unmatched ?? 0),
+          noEmail: (c.noEmail ?? 0) + (c.possible ?? 0) + (c.unmatched ?? 0) - unusableRows(preview.rows).length,
         });
       } catch (err) {
         /* Same distinction as the single-file commit, said on this file's own
@@ -1058,7 +1070,10 @@ function UploadBody() {
    * false when the server did not send the counts at all, so an older project
    * gets the result it always got rather than a claim nobody measured.
    */
-  const noChange = nothingChanged(outcome?.changes ?? null, outcome?.override ?? null);
+  // "Every name in this file was already marked" is false while a name was
+  // held back, so a held name keeps the ordinary result and its note (RC-125).
+  const noChange = nothingChanged(outcome?.changes ?? null, outcome?.override ?? null)
+    && !outcome?.unusable.length;
   const noChangeText = outcome && noChange && outcome.changes
     ? noChangeWords(outcome.changes, { day: outcome.session_date, course: chosen, label: dayLabel })
     : null;
@@ -1645,6 +1660,15 @@ function UploadBody() {
               body={heldWords(outcome.ambiguous).body} />
           ) : null}
 
+          {/* A NAME NO MEMBER RECORD CAN CARRY ("m", 29-Oct-2026). Held back
+              rather than created, so one stray participant no longer fails the
+              whole day; named here, with where to add it as a display name. */}
+          {outcome.unusable.length > 0 ? (
+            <Note testID="upload-unusable" ink={warnInk} icon="person_off"
+              title={unusableWords(outcome.unusable).title}
+              body={unusableWords(outcome.unusable).body} />
+          ) : null}
+
           {/* WHO RAN THE CLASS. Named, because leaving the instructor off the
               register silently is how somebody concludes the import missed
               her. */}
@@ -1918,6 +1942,7 @@ function fixtureOutcome(day: string, source: { text: string }, supersedes: Super
     staff: [],
     other_course: [],
     ambiguous: heldNames(MATCH_ROWS.map(r => ({ row: r.row, kind: r.kind, raw_name: r.raw, candidates: [] }))),
+    unusable: unusableNames(MATCH_ROWS.map(r => ({ row: r.row, kind: r.kind, raw_name: r.raw, candidates: [] }))),
     duplicates: [...new Set(dedupeRows(parseMeetCsv(source.text).rows).duplicates)],
     supersedes: supersedes?.file_name ?? null,
     // The fixtures describe a register being replaced; they do not invent

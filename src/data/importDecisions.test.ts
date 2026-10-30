@@ -156,3 +156,148 @@ test('a held row is not counted as a member with no address, on either commit pa
   // counted nowhere on the landed side.
   assert.doesNotMatch(read(SCREEN), /c\.ambiguous/);
 });
+
+// =====================================================================
+// A NAME NO MEMBER RECORD CAN CARRY -- Postnatal · Main, 29-Oct-2026.
+//
+// Fourteen Meet files for one day failed together with
+//   new row for relation "members" violates check constraint
+//   "members_full_name_check"
+// One participant joined as "m" (meeting kjh-nzhr-mvi, 5 minutes in call).
+// Nobody on the course holds that name, so the row came back `unmatched`
+// and was filed `add_as_new` -- and members.full_name is
+// length(btrim(full_name)) between 2 and 120 (0006). The insert failed, the
+// day's ONE transaction rolled back, and every other name in all fourteen
+// files went unrecorded with it. Until the minutes floor was removed, a
+// five-minute "m" never reached the matcher, which is why no earlier day
+// failed this way.
+// =====================================================================
+import { unusableRows, unusableNames, unusableWords, unusableSentence } from './importDecisions';
+import { isMemberName } from './memberImport';
+
+test('29 Oct: a one-letter name nobody holds is held back, not filed as a new member', () => {
+  assert.deepEqual(autoDecisions([row(9, 'unmatched', 'm')]), [{ row: 9, action: 'skip' }]);
+});
+
+test('the same holds for a fuzzy hit and for a name only another course holds', () => {
+  assert.deepEqual(autoDecisions([
+    row(1, 'possible', 'm', [cand('m9')]),
+    row(2, 'unmatched', 'm', [cand('m-prenatal')]),
+  ]).map(d => d.action), ['skip', 'skip']);
+});
+
+test('the bounds are the database\'s own: 2 to 120 characters after trimming spaces', () => {
+  assert.equal(isMemberName('m'), false);
+  assert.equal(isMemberName('  m  '), false);
+  assert.equal(isMemberName(''), false);
+  assert.equal(isMemberName('Mo'), true);
+  assert.equal(isMemberName('x'.repeat(120)), true);
+  assert.equal(isMemberName('x'.repeat(121)), false);
+});
+
+test('a name is measured in characters, as Postgres length() counts them, not UTF-16 units', () => {
+  // One emoji is ONE character to members_full_name_check and TWO to .length.
+  assert.equal(isMemberName('\u{1F642}'), false);
+  assert.equal(isMemberName('\u{1F642}'.repeat(120)), true);
+});
+
+test('a one-letter name that IS a member\'s display name still lands on that member', () => {
+  // matched via the alias table: no record is created, so no check applies.
+  assert.deepEqual(autoDecisions([row(3, 'matched', 'm', [cand('m1')]), row(4, 'noEmail', 'k', [cand('m2')])]), []);
+});
+
+test('the rest of the 29 Oct file still imports: only the unusable row is held', () => {
+  const rows = [
+    row(1, 'matched', 'Gayathri Ramesh', [cand('m1')]),
+    row(2, 'unmatched', 'Sri Lekha'),
+    row(3, 'unmatched', 'm'),
+    row(4, 'noEmail', 'saranya ramasamy', [cand('m4')]),
+  ];
+  assert.deepEqual(autoDecisions(rows), [
+    { row: 2, action: 'add_as_new', confirm_different_person: false },
+    { row: 3, action: 'skip' },
+  ]);
+});
+
+test('the unusable rows are the unmatched or possible rows a member record cannot carry', () => {
+  const rows = [
+    row(1, 'unmatched', 'm'),
+    row(2, 'matched', 'k', [cand('m1')]),
+    row(3, 'possible', 'z', [cand('m2')]),
+    row(4, 'unmatched', 'Sri Lekha'),
+    row(5, 'ambiguous', 'q', [cand('m3'), cand('m4')]),
+  ];
+  assert.deepEqual(unusableRows(rows).map(r => r.row), [1, 3]);
+  assert.deepEqual(unusableNames([...rows, row(6, 'unmatched', 'm')]), ['m', 'z']);
+  // ambiguous is already held, and named, by heldNames -- never twice.
+  assert.deepEqual(heldNames(rows), ['q']);
+});
+
+test('the note names the name, says nobody was created, and says what to do next', () => {
+  const { title, body } = unusableWords(['m']);
+  assert.match(title, /^1 name could not become a new member$/);
+  assert.match(body, /“m”/);
+  assert.match(body, /“m” is too short to be a member’s name/);
+  assert.match(body, /between 2 and 120 characters/);
+  assert.match(body, /nobody new was created/i);
+  // NOT "Add display name to existing member": that button is on a member
+  // card, and a held name never became a member, so it has no card.
+  assert.doesNotMatch(body, /Add display name to existing member/);
+  assert.match(body, /add it under Google Meet display names on that member’s Edit page/);
+  assert.match(unusableWords(['x'.repeat(121)]).body, /is too long to be/);
+  assert.match(unusableWords(['m', 'x'.repeat(121)]).body, /are too short or too long to be/);
+  assert.match(unusableWords(['m', 'k']).title, /^2 names could not become new members$/);
+});
+
+test('the batch row sentence names the unusable names, and is silent when there are none', () => {
+  assert.equal(unusableSentence([]), null);
+  assert.match(unusableSentence(['m']) ?? '', /“m”/);
+  assert.match(unusableSentence(['m']) ?? '', /Edit page so later files land on that member/);
+});
+
+test('the unusable-name words are written about the member, never a pronoun', () => {
+  const all = [unusableWords(['m']).title, unusableWords(['m']).body, unusableWords(['m', 'k']).body,
+    unusableSentence(['m']) ?? ''].join(' ');
+  assert.doesNotMatch(all, /\b(she|her|hers|herself|he|him|his)\b/i);
+});
+
+test('the result screen names the unusable names, on both commit paths', () => {
+  const src = read(SCREEN);
+  assert.match(src, /testID="upload-unusable"/);
+  assert.match(src, /unusableSentence\(unusableNames\(preview\.rows\)\)/);
+});
+
+test('an unusable row is not counted as a member with no address, on either commit path', () => {
+  const src = read(SCREEN);
+  const counts = src.match(/noEmail \?\? 0\) \+ \(c\.possible \?\? 0\) \+ \(c\.unmatched \?\? 0\)[^,\n]*/g) ?? [];
+  assert.equal(counts.length, 2);
+  for (const c of counts) assert.match(c, /- unusableRows\(preview\.rows\)\.length/);
+});
+
+test('the member form asks the same question before Save, and says why Save is held', () => {
+  const src = read('app/member/edit.tsx');
+  assert.match(src, /import \{[^}]*\bisMemberName\b[^}]*\} from '\.\.\/\.\.\/src\/data\/memberImport'/);
+  assert.match(src, /const valid = isMemberName\(name\)/);
+  assert.match(src, /!isMemberName\(name\) \? `A member name needs \$\{NAME_MIN\} to \$\{NAME_MAX\} characters`/);
+});
+
+// Code review, same day. Three ways the held name could still mislead.
+test('the next step works after the day has landed: reset the day, then upload again', () => {
+  // A completed import's fingerprint refuses the same file ("already
+  // imported") until the day's marks are reset (0057 reverts the import).
+  const { body } = unusableWords(['m']);
+  assert.match(body, /files with that name land on that member/);
+  assert.match(body, /reset their marks, and upload the files again/);
+  assert.doesNotMatch(body, /upload this file again and the attendance lands/);
+});
+
+test('a held name is never also reported as added to this course from another course', () => {
+  const src = read(SCREEN);
+  assert.match(src, /other_course: \(preview\.other_course_names \?\? \[\]\)\.filter\(n => !unusableNames\(preview\.rows\)\.includes\(n\)\)/);
+});
+
+test('a held name is never hidden behind "nothing to update", on either commit path', () => {
+  const src = read(SCREEN);
+  assert.match(src, /nothingChanged\(result\.changes \?\? null, result\.overridden \?\? null\)\s*&& unusableRows\(preview\.rows\)\.length === 0/);
+  assert.match(src, /nothingChanged\(outcome\?\.changes \?\? null, outcome\?\.override \?\? null\)\s*&& !outcome\?\.unusable\.length/);
+});
