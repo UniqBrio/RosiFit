@@ -49,7 +49,7 @@ import { offersUpload } from '../../src/data/uploadWindow';
 import { dayLoad, dayStatusKey, type DayLoad } from '../../src/data/dayLoad';
 import { membersOnDay, joinedLaterNote } from '../../src/data/joined';
 import {
-  isActiveOn, pendingInactiveFrom, pendingActiveAgainFrom, dateInWords,
+  isActiveOn, pendingInactiveFrom, statusNote, dateInWords,
   membersActiveOn, membersInactiveOn, leftEarlierNote,
 } from '../../src/data/inactiveFrom';
 import type { AttendanceRow } from '../../src/data/mock';
@@ -2274,7 +2274,7 @@ function rosterItems(c: {
   if (inactiveListed.length > 0) {
     push('inactive', SPACE.xl, (
       <View testID="course-inactive-section">
-        {/* The heading wears the same ink as the pills under it, for
+        {/* The heading wears the Inactive pills' ink, for
                   the reason the No email heading wears its section's: a
                   grey heading over red tags reads as two different facts. */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
@@ -2412,10 +2412,10 @@ const MemberCard = memo(function MemberCard({ member, tint, weekLabel, noEmail, 
    *
    * TWO READINGS, NOT ONE, since her status carries a date (0045).
    *
-   *   `inactive`      -- where she stood on the day THE STRIP IS SHOWING.
+   *   `inactive`      -- the status on the day THE STRIP IS SHOWING.
    *                      Spoken in the labels when it differs from today; no
    *                      longer drawn on the pill (30-Oct-2026, below).
-   *   `inactiveToday` -- where she stands NOW. This is what the tap is
+   *   `inactiveToday` -- the status NOW. This is what the tap is
    *                      about: a control on a past week that flipped the
    *                      state as it was three weeks ago would undo every
    *                      change made since, which is not what anybody
@@ -2434,24 +2434,18 @@ const MemberCard = memo(function MemberCard({ member, tint, weekLabel, noEmail, 
   const inactive = !isActiveOn(member, statusDay);
   const inactiveToday = !isActiveOn(member, todayIso);
   /**
-   * The day she is DUE off, when it has not arrived: what "Active" leaves out.
-   *
-   * Read against the day the CARD is about, not against today. Read against
-   * today it contradicted the pill beside it: on the 1 Oct date card a member
-   * inactive from 1 Oct drew an "Inactive" pill and, underneath,
-   * "Inactive from 1 October 2026" -- a line promising a departure that,
-   * on the day being shown, had already happened. A departure is only
-   * pending while the day on screen is before it.
+   * The line under the name that DATES the pill's status: "Inactive since
+   * 30 October 2026", "Inactive from 5 November 2026 -- in the follow-up rule
+   * until then", and the two Active mirrors (statusNote). Read against TODAY,
+   * the day the pill draws (30-Oct-2026). Read against the strip's day it
+   * explained a different day from the pill beside it: a member put back
+   * today sat under Inactive on an earlier day with an Active pill and no
+   * line saying why.
    */
-  const pending = pendingInactiveFrom(member, statusDay);
-  /**
-   * ...and the day they are due BACK, read against the same day and drawn for
-   * the same reason (0072). While a return is scheduled the pill says
-   * "Inactive", truthfully, and would go on saying it right up to the day;
-   * this is what stops that being a surprise to whoever set it.
-   */
-  const pendingReturn = pendingActiveAgainFrom(member, statusDay);
-  /** The pill is about another day than the tap is. Said, never assumed. */
+  const note = statusNote(member, todayIso);
+  /** A departure still to come, which marking inactive now would bring forward to today. */
+  const pending = pendingInactiveFrom(member, todayIso);
+  /** The strip's day reads differently from today. Said in the labels, never assumed. */
   const readingIsHistoric = inactive !== inactiveToday;
   /**
    * "was", or "will be". The strip runs Monday to Sunday, so on a Monday
@@ -2718,24 +2712,13 @@ const MemberCard = memo(function MemberCard({ member, tint, weekLabel, noEmail, 
             }}>
               {missLine({ weekLabel, missed: member.missed, reading: run })}
             </Text>
-            {/* A departure that has not happened yet -- the one fact the
-                pill's word cannot carry. It reads "Active", truthfully, and
-                would go on reading it right up to the day; this is what
-                stops that being a surprise. Only when there IS one, so no
-                card gains a line for a member nobody is leaving. */}
-            {pending ? (
-              <Text numberOfLines={1} testID={`course-member-pending-${member.id}`}
+            {/* The date the pill's status runs from or to -- the one fact
+                its word cannot carry. Only when the record carries a date, so
+                no card gains a line for a member nobody is moving. */}
+            {note ? (
+              <Text numberOfLines={2} testID={`course-member-pending-${member.id}`}
                 style={{ fontSize: 11, marginTop: 1, color: theme.dim }}>
-                {`Inactive from ${dateInWords(pending)}`}
-              </Text>
-            ) : null}
-            {/* The mirror line, and the two can never both be drawn: the
-                database allows each date only beside its own side of the
-                pill, so a record carrying one carries no other. */}
-            {pendingReturn ? (
-              <Text numberOfLines={1} testID={`course-member-returning-${member.id}`}
-                style={{ fontSize: 11, marginTop: 1, color: theme.dim }}>
-                {`Active from ${dateInWords(pendingReturn)}`}
+                {note}
               </Text>
             ) : null}
           </View>
@@ -2759,7 +2742,7 @@ const MemberCard = memo(function MemberCard({ member, tint, weekLabel, noEmail, 
             readingIsHistoric && dayIso
               ? `${member.name} ${wasOrWillBe} ${inactive ? 'inactive' : 'active'} on ${dayInWords(dayIso)}.`
               : '',
-            pending ? `Due to become inactive on ${dateInWords(pending)}.` : '',
+            note ? `${note}.` : '',
             inactiveToday ? 'Mark active.' : 'Mark inactive from today.',
           ].filter(Boolean).join(' ')}
           hitSlop={6}
@@ -3061,9 +3044,9 @@ const MemberCard = memo(function MemberCard({ member, tint, weekLabel, noEmail, 
         title={inactiveToday ? `Mark ${member.name} active?` : `Mark ${member.name} inactive?`}
         body={[
           readingIsHistoric && dayIso
-            ? `On ${dayInWords(dayIso)}, ${member.name} ${wasOrWillBe} `
-              + `${inactive ? 'inactive' : 'active'}. Today: `
-              + `${inactiveToday ? 'inactive' : 'active'}, and this changes that.`
+            // Opens only while active today, so the strip's day is the inactive one.
+            ? `On ${dayInWords(dayIso)}, ${member.name} ${wasOrWillBe} inactive. `
+              + 'Today: active, and this changes that.'
             : '',
           /* A date already set is what this tap would OVERWRITE, and the one
              thing nobody would guess from a button reading "Mark inactive".

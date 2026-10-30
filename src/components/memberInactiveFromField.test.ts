@@ -175,10 +175,10 @@ test('a departure still to come is stated on the card, not left to the day it ha
   const src = read(ROSTER);
   // Against `statusDay`, not `todayIso` -- see the pending-tense test below,
   // which is why that argument changed.
-  assert.match(src, /const pending = pendingInactiveFrom\(member, statusDay\)/);
+  assert.match(src, /const pending = pendingInactiveFrom\(member, todayIso\)/);
   assert.match(src, /course-member-pending-\$\{member\.id\}/,
     'the scheduled date needs its own testID or nothing can assert it is drawn');
-  assert.match(src, /\{`Inactive from \$\{dateInWords\(pending\)\}`\}/,
+  assert.match(src, /\{note\}/,
     'the pill reads "Active", truthfully, and would go on reading it right up to the day');
 });
 
@@ -208,7 +208,7 @@ test('the day-scoped roster drops a member who was off the register that day', (
 });
 
 test('a departure is pending against the day on screen, not against today', () => {
-  assert.match(read(ROSTER), /const pending = pendingInactiveFrom\(member, statusDay\)/,
+  assert.match(read(ROSTER), /const pending = pendingInactiveFrom\(member, todayIso\)/,
     'read against today it contradicted the pill beside it: on the 1 Oct card an '
     + 'Inactive member also drew "Inactive from 1 October 2026"');
 });
@@ -240,4 +240,26 @@ test('the card and the pill tell a screen reader the same status', () => {
 
 test('the confirmation no longer claims the pill is showing another day', () => {
   assert.doesNotMatch(read(ROSTER), /The pill is showing/);
+});
+
+// Code review of the reversal, same day: the line under the name still read
+// the strip's day, so beside a pill reading today it explained the wrong day
+// -- a member put back today sat under "Inactive" on an earlier day with an
+// "Active" pill and nothing saying why, and the label said "Due to become
+// inactive on" a day that had already come.
+test('the line under the name dates the status the pill shows: today\'s', () => {
+  const src = read(ROSTER);
+  assert.match(src, /const note = statusNote\(member, todayIso\)/);
+  assert.match(src, /testID=\{`course-member-pending-\$\{member\.id\}`\}[\s\S]{0,120}\{note\}/);
+  assert.doesNotMatch(src, /pendingActiveAgainFrom\(member, statusDay\)/);
+});
+
+test('the pill\'s label says the same dated fact, never "due" for a day already come', () => {
+  const src = read(ROSTER);
+  assert.match(src, /note \? `\$\{note\}\.` : ''/);
+  assert.doesNotMatch(src, /Due to become inactive on/);
+});
+
+test('the overwrite warning is about today: a departure still to come from today', () => {
+  assert.match(read(ROSTER), /const pending = pendingInactiveFrom\(member, todayIso\)/);
 });

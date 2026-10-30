@@ -66,7 +66,9 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 **Root cause** — The roster pill drew one reading and its tap acted on another. Since 0045 the pill showed the status on the week strip's selected day (`inactive`, against `statusDay`), while the write, the dialog choice, the title and the button all use today's (`inactiveToday`). On any day but today the two can differ, and the day-scoped roster lists only members active THAT day, so on a past day the pill could only ever read "Active", even for a member inactive today whose tap then offered "Mark active".
 
-**Fix** — Owner's decision (30-Oct-2026, of two offered): the pill draws today's status, the one its tap changes: word, glyph, ink, and both screen-reader labels. The strip day's status is still spoken in the pill's label and the confirmation body when it differs ("On 29 October 2026, … was active. Today: inactive …"), and the dated line under the name ("Inactive from …") is unchanged. Writes are still "from today", so a tap on a past week cannot undo later changes.
+**Fix** — Owner's decision (30-Oct-2026, of two offered): the pill draws today's status, the one its tap changes: word, glyph, ink, and both screen-reader labels. The strip day's status is still spoken in the pill's label, and in the Mark-inactive confirmation when it differs ("On 29 October 2026, … was inactive. Today: active, and this changes that."). Writes are still "from today", so a tap on a past week cannot undo later changes.
+
+**Follow-up from code review (same day)** — The line under the name still read the strip's day, so beside a pill reading today it explained the wrong day: a member put back today sat under the Inactive heading on an earlier day with an Active pill and no line saying why, a pending return on a future strip day showed no line, and the pill's label said "Due to become inactive on" a day already come. The line is now `statusNote(member, todayIso)` — "Inactive since …", "Inactive from … — in the follow-up rule until then", "Active from … — out of the follow-up rule until then", "Active since …" — and the label says the same; the overwrite warning reads the pending departure against today. Not changed, said here: the Active/Inactive filter chips and the Inactive section still group by the strip's day (they are the day's register, by earlier request), so on a past day a card under Inactive can carry an Active pill — its dated line now says since when.
 
 **Files** — `app/course/[id].tsx`, `src/components/memberInactiveFromField.test.ts` (appended).
 
@@ -74,7 +76,7 @@ No → one line, done. Yes → the framework-update workflow ran, and here is wh
 
 **Recurrence risk** — Swept the pill's other readers: `grep -n "inactive ?" "app/course/[id].tsx"` (the card's label was the only other status reading of `inactive`; moved too). The Members tab and member page draw status without a strip day (`grep -rn "isActiveOn" app` matches only this file).
 
-**Prevention** — `rung: src/components/memberInactiveFromField.test.ts` — 3 appended tests, all observed failing before the fix. The existing "the roster pill reads the DAY" test still passes (`inactive` is still computed for the labels and the day-scoped roster), but its message no longer describes the pill; left unmodified under the append-only rule.
+**Prevention** — `rung: src/components/memberInactiveFromField.test.ts` — 6 appended tests, all observed failing before their fix; 3 existing assertions re-pointed under the owner-approved-reversal exemption (TEST_SUMMARY). The existing "the roster pill reads the DAY" test still passes (`inactive` is still computed for the labels and the day-scoped roster), but its message no longer describes the pill; left unmodified under the append-only rule.
 
 **Process check** — No. The two-reading design was deliberate (0045) and specified; the conflict between a day-scoped pill and a today-scoped tap was a product question, now answered by the owner.
 
