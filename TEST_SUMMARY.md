@@ -1,3 +1,10 @@
+## UPLOAD RESULT: A THIRD COUNT, "NOT IMPORTED", WITH ITS REASONS — 30-Oct-2026
+
+Requester: "show the count in ui on upload of attendance how many with mail and without mail how many failed reason". Beside With email / No email, both result screens (one file, several files) now draw "Not imported": the count of participants who did not land, and a sentence per reason -- invalid name (unusableRows), matching more than one member (ambiguous, held), and, for several files, every row of a file the server REFUSED (answeredByServer; a lost answer counts nothing, as it may have landed). Staff and repeated names are not failures and keep their own notes.
+FAIL-FIRST: src/data/importDecisions.test.ts, 6 appended -- all 6 fail against the pre-change tree; 40/40 after.
+GATES: `npm run check` ALL 7 PASS. No migration.
+LOOKED AT: local web export against an in-browser stand-in API with the two 29 Oct Meet files -- several files dark (760px) and one file light at phone width (390px): three tiles side by side, readable at 390px.
+
 ## COURSE ROSTER: THE STATUS PILL SHOWS TODAY, THE STATUS ITS TAP CHANGES — 30-Oct-2026
 
 T-147, RC-126. Owner report: tapping "Active" offered "Mark active", and vice versa. The pill drew the strip day's status; the tap acts on today's. OWNER-APPROVED BEHAVIOUR REVERSAL (30-Oct-2026, chosen of two options): the pill draws today's status. No existing assertion modified; "the roster pill reads the DAY" still passes (`inactive` is still computed for labels and the day-scoped roster) but its message no longer describes the pill.

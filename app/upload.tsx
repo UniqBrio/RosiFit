@@ -33,6 +33,7 @@ import { businessTodayIso } from '../src/data/businessDate';
 import {
   autoDecisions, heldNames, heldWords, heldSentence,
   unusableRows, unusableNames, unusableWords, unusableSentence,
+  notImportedOf, notImportedNote, notImportedTotal, sumNotImported, type NotImported,
 } from '../src/data/importDecisions';
 import {
   alreadyImportedWords, nothingChanged, noChangeWords, changeSummary,
@@ -43,7 +44,7 @@ import {
   stageWords, stillWorkingWords, WAITING_NOTE, STILL_WORKING_MS, type UploadStage,
 } from '../src/data/uploadProgress';
 import {
-  fixtureModeRefusal, commitFailureText, previewFailureText,
+  fixtureModeRefusal, commitFailureText, previewFailureText, answeredByServer,
 } from '../src/data/uploadSafety';
 
 /**
@@ -111,6 +112,8 @@ type Outcome = {
   /** names no member record can carry (members_full_name_check), HELD BACK
    *  rather than failing the day's transaction (src/data/importDecisions.ts) */
   unusable: string[];
+  /** participants who did not land on the register, by reason */
+  not_imported: NotImported;
   /** names Meet wrote more than once, counted once */
   duplicates: string[];
   /** the file this one corrected, when the day already had one */
@@ -213,6 +216,8 @@ type BatchRow = {
   files: number;
   withEmail: number;
   noEmail: number;
+  /** participants of this row who did not land on the register, by reason */
+  notImported: NotImported;
 };
 
 type BatchResult = {
@@ -225,6 +230,7 @@ type BatchResult = {
   days: number;
   withEmail: number;
   noEmail: number;
+  notImported: NotImported;
 };
 
 /**
@@ -251,6 +257,7 @@ function assembleBatch(rows: BatchRow[], order: string[]): BatchResult {
     days: new Set(landed.map(r => r.day)).size,
     withEmail: sorted.reduce((n, r) => n + r.withEmail, 0),
     noEmail: sorted.reduce((n, r) => n + r.noEmail, 0),
+    notImported: sumNotImported(sorted.map(r => r.notImported)),
   };
 }
 
@@ -756,6 +763,7 @@ function UploadBody() {
         other_course: (preview.other_course_names ?? []).filter(n => !unusableNames(preview.rows).includes(n)),
         ambiguous: heldNames(preview.rows),
         unusable: unusableNames(preview.rows),
+        not_imported: notImportedOf(preview.rows),
         duplicates: staged.duplicates,
         supersedes: staged.supersedes?.file_name ?? null,
         // Absent until the migration that returns it is applied, which is why
@@ -894,6 +902,7 @@ function UploadBody() {
     const other: BatchRow[] = plan.setAside.map(s => ({
       fileName: s.fileName, day: null, kind: 'setAside' as const,
       note: s.reason, files: 1, withEmail: 0, noEmail: 0,
+      notImported: { invalidName: 0, ambiguous: 0, fileFailed: 0 },
     }));
 
     // Every file was set aside. Nothing to preview and nothing to ask: the
@@ -919,7 +928,7 @@ function UploadBody() {
           other.push({
             fileName: source.name, day: group.day, kind: 'already',
             note: previewed.words.lines[0], files: source.fileNames.length,
-            withEmail: 0, noEmail: 0,
+            withEmail: 0, noEmail: 0, notImported: { invalidName: 0, ambiguous: 0, fileFailed: 0 },
           });
         } else {
           staged.push({ source, staged: previewed.staged });
@@ -1000,7 +1009,7 @@ function UploadBody() {
             fileName: source.name, day: st.day, kind: 'imported',
             note: [`${o.imported} marked present.`, merged].filter(Boolean).join(' '),
             files: source.fileNames.length,
-            withEmail: o.with_email, noEmail: o.no_email,
+            withEmail: o.with_email, noEmail: o.no_email, notImported: o.not_imported,
           });
           wrote = true;
           continue;
@@ -1031,6 +1040,7 @@ function UploadBody() {
           files: source.fileNames.length,
           withEmail: c.matched ?? 0,
           noEmail: (c.noEmail ?? 0) + (c.possible ?? 0) + (c.unmatched ?? 0) - unusableRows(preview.rows).length,
+          notImported: notImportedOf(preview.rows),
         });
       } catch (err) {
         /* Same distinction as the single-file commit, said on this file's own
@@ -1042,6 +1052,10 @@ function UploadBody() {
           note: commitFailureText(err),
           files: source.fileNames.length,
           withEmail: 0, noEmail: 0,
+          // A REFUSAL wrote nothing, so every row the file carried is not
+          // imported. A lost answer may have landed: it is counted nowhere.
+          notImported: { invalidName: 0, ambiguous: 0,
+            fileFailed: answeredByServer(err) ? (st.preview?.rows.length ?? 0) : 0 },
         });
       }
     }
@@ -1540,6 +1554,10 @@ function UploadBody() {
             <Landed testID="upload-no-email" n={batch.noEmail} icon="mail_off"
               word="No email" ink={dangerInk}
               note="Marked present, listed under No email on the course." />
+            {/* THE THIRD COUNT: who did not land, and why (30-Oct-2026). */}
+            <Landed testID="upload-not-imported" n={notImportedTotal(batch.notImported)} icon="block"
+              word="Not imported" ink={warnInk}
+              note={notImportedNote(batch.notImported)} />
           </View>
 
           {/* One row per REGISTER the upload touched, plus one per file it
@@ -1616,6 +1634,9 @@ function UploadBody() {
             <Landed testID="upload-no-email" n={outcome.no_email} icon="mail_off"
               word="No email" ink={dangerInk}
               note="Marked present, listed under No email on the course." />
+            <Landed testID="upload-not-imported" n={notImportedTotal(outcome.not_imported)} icon="block"
+              word="Not imported" ink={warnInk}
+              note={notImportedNote(outcome.not_imported)} />
           </View>
 
           {/* ADDED, UPDATED, SKIPPED -- the requester's three words, over a
@@ -1943,6 +1964,7 @@ function fixtureOutcome(day: string, source: { text: string }, supersedes: Super
     other_course: [],
     ambiguous: heldNames(MATCH_ROWS.map(r => ({ row: r.row, kind: r.kind, raw_name: r.raw, candidates: [] }))),
     unusable: unusableNames(MATCH_ROWS.map(r => ({ row: r.row, kind: r.kind, raw_name: r.raw, candidates: [] }))),
+    not_imported: notImportedOf(MATCH_ROWS.map(r => ({ row: r.row, kind: r.kind, raw_name: r.raw, candidates: [] }))),
     duplicates: [...new Set(dedupeRows(parseMeetCsv(source.text).rows).duplicates)],
     supersedes: supersedes?.file_name ?? null,
     // The fixtures describe a register being replaced; they do not invent

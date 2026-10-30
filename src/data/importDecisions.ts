@@ -172,3 +172,49 @@ export function unusableSentence(names: string[]): string | null {
   return `${one ? 'Participant skipped – invalid name' : 'Participants skipped – invalid names'}: `
     + `${quoted(names)}. Attendance for ${one ? 'this participant' : 'these participants'} was not recorded.`;
 }
+
+/**
+ * THE THIRD COUNT, beside With email and No email (30-Oct-2026): "how many
+ * failed, and the reason". How many participants did NOT land on the
+ * register, by why. Staff and repeated names are not counted here -- neither
+ * is a failure, and each keeps its own note on the screen.
+ */
+export type NotImported = {
+  /** too short or too long for a member's name (unusableRows) */
+  invalidName: number;
+  /** matching more than one member of the course, held back (heldNames) */
+  ambiguous: number;
+  /** every row of a file the server REFUSED; a lost answer is not counted */
+  fileFailed: number;
+};
+
+export const NO_ONE_LEFT_OUT = 'Every participant was imported.';
+
+/** The rows of one committed file that were held back, by reason. */
+export function notImportedOf(rows: DecisionRow[]): NotImported {
+  return {
+    invalidName: unusableRows(rows).length,
+    ambiguous: rows.filter(r => r.kind === 'ambiguous').length,
+    fileFailed: 0,
+  };
+}
+
+export const notImportedTotal = (n: NotImported) => n.invalidName + n.ambiguous + n.fileFailed;
+
+export function sumNotImported(all: NotImported[]): NotImported {
+  return all.reduce((t, n) => ({
+    invalidName: t.invalidName + n.invalidName,
+    ambiguous: t.ambiguous + n.ambiguous,
+    fileFailed: t.fileFailed + n.fileFailed,
+  }), { invalidName: 0, ambiguous: 0, fileFailed: 0 });
+}
+
+/** The sentence under the count: each reason with its own number. */
+export function notImportedNote(n: NotImported): string {
+  const parts = [
+    n.invalidName ? `${n.invalidName} invalid ${n.invalidName === 1 ? 'name' : 'names'}` : null,
+    n.ambiguous ? `${n.ambiguous} matching more than one member` : null,
+    n.fileFailed ? `${n.fileFailed} in a file that did not import` : null,
+  ].filter(Boolean);
+  return parts.length ? `${parts.join(' · ')}.` : NO_ONE_LEFT_OUT;
+}

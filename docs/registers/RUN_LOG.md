@@ -88,6 +88,7 @@ should start by reading this table rather than by guessing which part felt slow.
 
 | ID | Action | Type | Scale | Started | Ended | Total | Stages | Gate | Verdict | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
+| R-059 | Upload result: a Not imported count with reasons beside With email / No email | CHANGE | scoped | 2026-10-30 10:38 | 2026-10-30 10:41 | 4m elapsed · active: no marks | - | 42.4s | PASS | Upload result: Not imported count with reasons |
 | R-058 | Course roster status pill: Active opened Mark active (pill drew strip day, tap acted on today) | BUG | micro | 2026-10-30 10:07 | 2026-10-30 10:07 | 11s elapsed · active: no marks | - | 42.4s | PASS | RC-126/T-147: pill shows today |
 | R-057 | Attendance upload: a Meet name no member record can carry ("m") failed the whole day (members_full_name_check) | BUG | scoped | 2026-10-30 04:23 | 2026-10-30 04:29 | 6m active · 6m elapsed | verify 6m | 42.4s | PASS | RC-125/T-146: unusable Meet name held, not fatal; member form twin fixed |
 | R-056 | T-145: Data API grants stated, not inherited (Supabase 30-Oct-2026 default change), 0097 | CHANGE | scoped | 2026-10-21 10:54 | 2026-10-21 11:42 | 48m elapsed · active: no marks | - | 42.4s | FAIL | back-filled start; gate FAIL on the 5 pre-existing steps only (G1-G3 no design/tokens.json ADR 004; G6 conformance.mjs warning; G8 no functional runner TD-006); start = scratchpad creation, the earliest measured mark, after discovery had begun |

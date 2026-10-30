@@ -301,3 +301,52 @@ test('a held name is never hidden behind "nothing to update", on either commit p
   assert.match(src, /nothingChanged\(result\.changes \?\? null, result\.overridden \?\? null\)\s*&& unusableRows\(preview\.rows\)\.length === 0/);
   assert.match(src, /nothingChanged\(outcome\?\.changes \?\? null, outcome\?\.override \?\? null\)\s*&& !outcome\?\.unusable\.length/);
 });
+
+// =====================================================================
+// THE THIRD COUNT (30-Oct-2026): "show the count in ui on upload of
+// attendance how many with mail and without mail how many failed reason".
+// Beside With email and No email: how many participants did NOT land on the
+// register, and why. Staff and repeated names are not failures and keep
+// their own notes; a file the server refused counts every row it carried.
+// =====================================================================
+import { notImportedOf, notImportedTotal, notImportedNote, NO_ONE_LEFT_OUT } from './importDecisions';
+
+test('not imported: the held rows of a file, by reason', () => {
+  const rows = [
+    row(1, 'matched', 'Gayathri Ramesh', [cand('m1')]),
+    row(2, 'unmatched', 'm'),
+    row(3, 'ambiguous', 'vishnu priya', [cand('m2'), cand('m3')]),
+    row(4, 'unmatched', 'Sri Lekha'),
+  ];
+  assert.deepEqual(notImportedOf(rows), { invalidName: 1, ambiguous: 1, fileFailed: 0 });
+  assert.equal(notImportedTotal(notImportedOf(rows)), 2);
+});
+
+test('not imported: the note names each reason with its count, and agrees in number', () => {
+  assert.equal(notImportedNote({ invalidName: 1, ambiguous: 0, fileFailed: 0 }), '1 invalid name.');
+  assert.equal(notImportedNote({ invalidName: 2, ambiguous: 1, fileFailed: 9 }),
+    '2 invalid names · 1 matching more than one member · 9 in a file that did not import.');
+  assert.equal(notImportedNote({ invalidName: 0, ambiguous: 0, fileFailed: 9 }), '9 in a file that did not import.');
+});
+
+test('not imported: nothing held says so, never a bare zero with no sentence', () => {
+  assert.equal(notImportedNote({ invalidName: 0, ambiguous: 0, fileFailed: 0 }), NO_ONE_LEFT_OUT);
+  assert.match(NO_ONE_LEFT_OUT, /^Every participant was imported/);
+});
+
+test('the result screen draws the third count on both paths, keyed, beside the other two', () => {
+  const src = read(SCREEN);
+  const tiles = src.match(/<Landed testID="upload-not-imported"/g) ?? [];
+  assert.equal(tiles.length, 2);
+  assert.match(src, /notImportedNote\(batch\.notImported\)/);
+  assert.match(src, /notImportedNote\(outcome\.not_imported\)/);
+});
+
+test('a file the server refused counts every row it carried; a lost answer counts nothing', () => {
+  const src = read(SCREEN);
+  assert.match(src, /fileFailed: answeredByServer\(err\) \? \(st\.preview\?\.rows\.length \?\? 0\) : 0/);
+});
+
+test('the batch total is the sum of its rows', () => {
+  assert.match(read(SCREEN), /notImported: sumNotImported\(sorted\.map\(r => r\.notImported\)\)/);
+});
