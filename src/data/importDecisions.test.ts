@@ -345,7 +345,8 @@ test('the result screen draws the third count on both paths, keyed, beside the o
   assert.equal(tiles.length, 2);
   assert.match(src, /notImportedNote\(batch\.notImported, \{ someFilesDidNotRun: batch\.files > batch\.imported \}\)/);
   // A zero is not an alert: the tile wears the all-clear ink and glyph then.
-  assert.equal((src.match(/ink=\{notImportedTotal\((batch\.notImported|outcome\.not_imported)\) \? warnInk : okInk\}/g) ?? []).length, 2);
+  assert.match(src, /ink=\{notImportedTotal\(outcome\.not_imported\) \? warnInk : okInk\}/);
+  assert.match(src, /ink=\{batchAllClear \? okInk : warnInk\}/);
   assert.match(src, /notImportedNote\(outcome\.not_imported\)/);
 });
 
@@ -356,4 +357,21 @@ test('a file the server refused counts every row it carried; a lost answer count
 
 test('the batch total is the sum of its rows', () => {
   assert.match(read(SCREEN), /notImported: sumNotImported\(sorted\.map\(r => r\.notImported\)\)/);
+});
+
+// Code review of the third count, same day.
+test('the three tiles wrap on a narrow phone rather than squeezing to ~60px each', () => {
+  const src = read(SCREEN);
+  assert.match(src, /flex: 1, minWidth: 140, padding: SPACE\.lg/);
+  assert.equal((src.match(/flexDirection: 'row', flexWrap: 'wrap', gap: SPACE\.sm, marginTop: SPACE\.md/g) ?? []).length, 2);
+});
+
+test('a held row of any kind keeps "Nothing to update" from claiming every name was marked', () => {
+  const src = read(SCREEN);
+  assert.match(src, /&& notImportedTotal\(notImportedOf\(preview\.rows\)\) === 0;/);
+  assert.match(src, /&& !\(outcome && notImportedTotal\(outcome\.not_imported\)\);/);
+});
+
+test('the all-clear look is only for a batch where every file ran', () => {
+  assert.match(read(SCREEN), /const batchAllClear = !!batch && notImportedTotal\(batch\.notImported\) === 0 && batch\.files === batch\.imported;/);
 });

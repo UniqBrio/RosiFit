@@ -1021,7 +1021,8 @@ function UploadBody() {
         const c = preview.counts;
         // A held name is news even when every other mark stood (RC-125).
         const noChange = nothingChanged(result.changes ?? null, result.overridden ?? null)
-          && unusableRows(preview.rows).length === 0;
+          && unusableRows(preview.rows).length === 0
+          && notImportedTotal(notImportedOf(preview.rows)) === 0;
         rows.push({
           fileName: source.name, day: st.day,
           kind: noChange ? 'unchanged' : 'imported',
@@ -1086,8 +1087,13 @@ function UploadBody() {
    */
   // "Every name in this file was already marked" is false while a name was
   // held back, so a held name keeps the ordinary result and its note (RC-125).
+  // ...and any row held back for another reason: the Not imported tile
+  // beside it would contradict "every name was already marked".
   const noChange = nothingChanged(outcome?.changes ?? null, outcome?.override ?? null)
-    && !outcome?.unusable.length;
+    && !outcome?.unusable.length
+    && !(outcome && notImportedTotal(outcome.not_imported));
+  /** Nothing held back AND every file ran: only then the all-clear look. */
+  const batchAllClear = !!batch && notImportedTotal(batch.notImported) === 0 && batch.files === batch.imported;
   const noChangeText = outcome && noChange && outcome.changes
     ? noChangeWords(outcome.changes, { day: outcome.session_date, course: chosen, label: dayLabel })
     : null;
@@ -1547,7 +1553,7 @@ function UploadBody() {
           {/* THE SAME TWO COUNTS, over the whole upload. The requester's
               "with email and no email" does not stop being the question
               because four files answered it instead of one. */}
-          <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.md }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.sm, marginTop: SPACE.md }}>
             <Landed testID="upload-with-email" n={batch.withEmail} icon="mail"
               word="With email" ink={okInk}
               note="On the register, and counted for follow-up." />
@@ -1556,8 +1562,8 @@ function UploadBody() {
               note="Marked present, listed under No email on the course." />
             {/* THE THIRD COUNT: who did not land, and why (30-Oct-2026). */}
             <Landed testID="upload-not-imported" n={notImportedTotal(batch.notImported)}
-              icon={notImportedTotal(batch.notImported) ? 'block' : 'check_circle'}
-              word="Not imported" ink={notImportedTotal(batch.notImported) ? warnInk : okInk}
+              icon={batchAllClear ? 'check_circle' : 'block'}
+              word="Not imported" ink={batchAllClear ? okInk : warnInk}
               note={notImportedNote(batch.notImported, { someFilesDidNotRun: batch.files > batch.imported })} />
           </View>
 
@@ -1628,7 +1634,7 @@ function UploadBody() {
               now -- the answer to "they should be landing in respective
               sections" is a sentence under the number, not something to go
               and check. */}
-          <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.md }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACE.sm, marginTop: SPACE.md }}>
             <Landed testID="upload-with-email" n={outcome.with_email} icon="mail"
               word="With email" ink={okInk}
               note="On the register, and counted for follow-up." />
@@ -1852,7 +1858,9 @@ function Landed({ testID, n, icon, word, ink, note }: {
   return (
     <View testID={testID} accessible accessibilityLabel={`${n} ${word}. ${note}`}
       style={{
-        flex: 1, padding: SPACE.lg, borderRadius: RADIUS.md,
+        // minWidth: three tiles in ~296px would be ~60px each; the third
+        // wraps to its own row on a narrow phone instead.
+        flex: 1, minWidth: 140, padding: SPACE.lg, borderRadius: RADIUS.md,
         backgroundColor: box.bg, borderWidth: 1, borderColor: box.border,
       }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -1955,7 +1963,9 @@ function fixtureOutcome(day: string, source: { text: string }, supersedes: Super
   const kinds = MATCH_ROWS.map(r => r.kind);
   const withEmail = kinds.filter(k => k === 'matched').length;
   // An ambiguous row is held, not landed, so it is in neither count.
-  const newMembers = kinds.filter(k => k === 'possible' || k === 'unmatched').length;
+  // ...and neither is a name no record can carry, which Not imported counts.
+  const newMembers = kinds.filter(k => k === 'possible' || k === 'unmatched').length
+    - unusableRows(MATCH_ROWS.map(r => ({ row: r.row, kind: r.kind, raw_name: r.raw, candidates: [] }))).length;
   const noEmail = kinds.filter(k => k === 'noEmail').length + newMembers;
   return {
     session_date: day,
