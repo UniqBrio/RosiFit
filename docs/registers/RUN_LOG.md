@@ -88,6 +88,7 @@ should start by reading this table rather than by guessing which part felt slow.
 
 | ID | Action | Type | Scale | Started | Ended | Total | Stages | Gate | Verdict | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|
+| R-060 | On filtering no email the inactive member list is also showing up investigate why? -> hide it, and apply the same rule to all filters | CHANGE | micro | 2026-11-13 08:16 | 2026-11-13 08:33 | 17m active · 17m elapsed | ground 49s · build 11m · verify 4m · gate 0s | 40.4s | FAIL | gate rung for rung identical to an unchanged HEAD worktree (G1 G2 G3 G6 G8 fail there too); G7 passed on rerun, its one failure was the pinPepperMigration flake, which fails 1 in 12 on the unchanged tree; npm run check 7/7; browser-checked both themes 18/18 |
 | R-059 | Upload result: a Not imported count with reasons beside With email / No email | CHANGE | scoped | 2026-10-30 10:38 | 2026-10-30 10:41 | 4m elapsed · active: no marks | - | 42.4s | PASS | Upload result: Not imported count with reasons |
 | R-058 | Course roster status pill: Active opened Mark active (pill drew strip day, tap acted on today) | BUG | micro | 2026-10-30 10:07 | 2026-10-30 10:07 | 11s elapsed · active: no marks | - | 42.4s | PASS | RC-126/T-147: pill shows today |
 | R-057 | Attendance upload: a Meet name no member record can carry ("m") failed the whole day (members_full_name_check) | BUG | scoped | 2026-10-30 04:23 | 2026-10-30 04:29 | 6m active · 6m elapsed | verify 6m | 42.4s | PASS | RC-125/T-146: unusable Meet name held, not fatal; member form twin fixed |

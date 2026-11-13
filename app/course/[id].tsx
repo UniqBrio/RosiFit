@@ -136,7 +136,7 @@ const FILTER_EMPTY: Record<string, string> = {
      emptied the list, said as a good thing, because that is what it is. */
   bounced: 'No address on this roster has bounced',
   unsubscribed: 'Nobody on this roster has unsubscribed',
-  /* Only ever shown when the section below is EMPTY too -- with members
+  /* Only ever shown when the section below is EMPTY or HIDDEN too -- with members
      under the Inactive heading the register's emptiness is the choice
      working, not a dead end, and the body below says so instead. */
   active: 'Nobody is on the register that day',
@@ -516,9 +516,8 @@ function CourseDetailBody() {
   /* The SAME search over the section below, because a member somebody is
      looking for by name is no less findable for having gone inactive -- and a
      search that emptied the roster while leaving the inactive list whole would
-     read as the search having failed. The reading filters deliberately do NOT
-     reach it: Present, Absent and Yet to mark are readings of the day's
-     register, and these members are not on it. */
+     read as the search having failed. The filters do not NARROW it -- they
+     either leave it shown or hide it whole (`showsInactive`, below). */
   const inactiveShown = useMemo(
     () => narrowToSearch(inactiveOnDay, appliedQuery), [inactiveOnDay, appliedQuery]);
 
@@ -555,9 +554,9 @@ function CourseDetailBody() {
     () => rosterFilterCounts(searched, rosterScope, inactiveShown),
     [searched, rosterScope, inactiveShown]);
 
-  /* The inactive section, once the filter has had its say. Only *Active* and
-     *Inactive* reach it (src/data/rosterFilter says why); every other choice
-     leaves it whole, which is what it did before these two options existed. */
+  /* The inactive section, once the filter has had its say: shown with nothing
+     ticked or with *Inactive* ticked, hidden under every other choice
+     (src/data/rosterFilter says why). */
   const inactiveListed = useMemo(
     () => (showsInactive(showKeys) ? inactiveShown : []), [inactiveShown, showKeys]);
   // What the field prints, and what the notes below say in words. Several
@@ -689,8 +688,8 @@ function CourseDetailBody() {
   /* The cards are drawn only past every state the header draws instead:
      loading, failed, nobody enrolled, nobody joined by the day, nobody on the
      register, nothing matching the search, nothing matching the filter. The
-     Inactive section is NOT behind this gate -- it never was: a filtered-away
-     register still lists the members off it (rosterItems). */
+     Inactive section is NOT behind this gate -- it never was: a register
+     filtered away by *Inactive* still lists the members off it (rosterItems). */
   const rosterReady = followUp.state !== 'loading' && followUp.state !== 'error'
     && scoped.length > 0 && joinedByDay.length > 0 && onDay.length > 0
     && searched.length > 0 && shown.length > 0;
@@ -1638,7 +1637,10 @@ function CourseDetailBody() {
                 line, not folded into the one above: a reader who sees a
                 count drop needs to know WHICH fact took the row out, and
                 "joined later" and "was inactive" are opposite answers. */}
-            {leftEarlier ? (
+            {/* Gated with the section it points at: it says the members "are
+                listed under Inactive below", which is untrue while a filter
+                hides that section (13-Nov-2026). */}
+            {leftEarlier && showsInactive(showKeys) ? (
               <Text testID="course-left-earlier" style={{
                 fontSize: 11.5, color: theme.muted,
               }}>{leftEarlier}</Text>
@@ -1752,10 +1754,20 @@ function CourseDetailBody() {
                members are listed under Inactive below rather than nowhere, so
                this says where they went instead of leaving a reader to work
                out why a course with members shows none. */
+            /* WHILE A FILTER HIDES THAT SECTION (13-Nov-2026) "listed under
+               Inactive below" points at nothing, so the body says how to
+               bring them back instead, and the button does it. */
             <View style={{ marginTop: SPACE.md }}>
-              <EmptyState
-                title={`Nobody was on the register on ${chosen ? dayLabel(chosen.iso) : 'that day'}`}
-                body={`All ${joinedByDay.length} ${joinedByDay.length === 1 ? 'member' : 'members'} of this course were inactive that day, so there is no attendance to show for it. They are listed under Inactive below, and the pill on a card puts a member back on the register.`} />
+              {showsInactive(showKeys) ? (
+                <EmptyState
+                  title={`Nobody was on the register on ${chosen ? dayLabel(chosen.iso) : 'that day'}`}
+                  body={`All ${joinedByDay.length} ${joinedByDay.length === 1 ? 'member' : 'members'} of this course were inactive that day, so there is no attendance to show for it. They are listed under Inactive below, and the pill on a card puts a member back on the register.`} />
+              ) : (
+                <EmptyState
+                  title={`Nobody was on the register on ${chosen ? dayLabel(chosen.iso) : 'that day'}`}
+                  body={`${joinedByDay.length === 1 ? 'The 1 member of this course was' : `All ${joinedByDay.length} members of this course were`} inactive that day, so there is no attendance to show for it. ${joinedByDay.length === 1 ? 'The member is' : 'They are'} listed under Inactive, which the filter is hiding; tick Inactive, or show all members, to see ${joinedByDay.length === 1 ? 'the member' : 'them'}.`}
+                  action="Show all members" onAction={() => setRosterShow([])} />
+              )}
             </View>
           ) : searched.length === 0 ? (
             /* SEARCHED away, not absent. The count it offers to bring back is
@@ -2256,7 +2268,8 @@ function rosterItems(c: {
               OUTSIDE the states above, not inside the last of them: a day on
               which every member was inactive draws an empty state AND this
               section, and a search that matches only an inactive member still
-              finds them. Placing it in the list branch would have made the
+              finds them (with no filter ticked, or *Inactive* ticked -- every
+              other filter hides the section). Placing it in the list branch would have made the
               section disappear in exactly the cases it is most needed.
 
               WHY A SECTION AND NOT A SORT. The 08-Sep rule -- a member off the

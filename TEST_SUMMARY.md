@@ -1,3 +1,11 @@
+## COURSE ROSTER: ANY FILTER BUT INACTIVE HIDES THE INACTIVE SECTION — 13-Nov-2026
+
+Requester: "On filtering no email the inactive member list is also showing up investigate why?" -> "hide it, and apply the same rule to all filters". Cause: `showsInactive` (src/data/rosterFilter.ts) hid the section only for Active-without-Inactive; every other filter left it whole, by an earlier written decision. Now the section shows only with nothing ticked or with Inactive ticked. The "left earlier" note ("…listed under Inactive below") is gated with it, and the all-inactive empty state gets a body for when a filter hides the list, with "Show all members". `requests/2026-11-13-roster-filter-hides-inactive-section.md`.
+FAIL-FIRST: src/data/rosterFilter.test.ts, 4 appended -- "every filter but Inactive hides the Inactive section" fails against the pre-change rule (40/41); 42/42 after. src/components/rosterWindowed.test.ts, 2 appended (screen wiring: the section and the left-earlier note ask `showsInactive`; the empty state's two bodies). No existing assertion modified.
+GATES: `npm run check` ALL 7 PASS (2361 unit). No migration. An earlier `check` run failed 1 test in pinPepperMigration.test.ts ("G: Singapore unreachable during recovery", 500 vs 503) -- imports nothing touched here; the same test failed 1 in 12 runs alone on the UNCHANGED tree: the known timing flake.
+REVIEW: code-reviewer REQUEST CHANGES -> fixed: the left-earlier note pointed at the hidden section; stale comments (516, 689, 139, 2266); `showsInactive(['all'])` now agrees with `narrowRoster`; screen-wiring spec added. Recorded, not fixed: a search that matches ONLY an inactive member, under a filter other than Inactive, now shows "No member matches that" with "Clear search" as the way out; the member is hidden by the filter, not unmatched. Under Active alone it already did this before the change. copy-gate REQUEST CHANGES -> both taken: singular grammar ("The 1 member … was"), and "listed under Inactive, which the filter is hiding" in place of "the Inactive list". Out of scope, logged: the shipped sibling body reads "All 1 member … were".
+LOOKED AT: local web export on fixtures, course c4 (one member, inactive, no email), Chromium, DARK and LIGHT set through the app's own Appearance switch: no filter -> section and note show; No email -> both hidden, the new body shows; No email + Inactive -> section shows; Present -> hidden; no page errors. 18/18 checks.
+
 ## UPLOAD RESULT: A THIRD COUNT, "NOT IMPORTED", WITH ITS REASONS — 30-Oct-2026
 
 Requester: "show the count in ui on upload of attendance how many with mail and without mail how many failed reason". Beside With email / No email, both result screens (one file, several files) now draw "Not imported": the count of participants who did not land, and a sentence per reason -- invalid name (unusableRows), matching more than one member (ambiguous, held), and, for several files, every row of a file the server REFUSED (answeredByServer; a lost answer counts nothing, as it may have landed). Staff and repeated names are not failures and keep their own notes.
@@ -956,6 +964,179 @@ and the count beside it dropped by one" is asserted by reading `app/course/[id].
 three predicates and by proving the arithmetic in `emailIssues.test.ts` case 16 — not by looking.
 preview-smoke-verifier remains unreachable from this environment. RC-106, RC-107 and RC-108 were
 all found by a person using the app, which is three for three, and RC-108's process check says so.
+
+---
+
+## Gate run - 2026-11-13 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 40.4s total - slowest G7 Unit + pure specs (24.1s).
+Application steps ran in .
+
+> **This run was avoidable.** The tree is byte-identical to the previous gate run, so this verdict was already known. The gate verifies a TREE, not a change: corrections landing in one commit share one verification, and only the last run describes what ships. Corrections in SEPARATE commits each need their own, so every commit is independently bisectable.
+
+- **G1 Theme artifacts in sync** - FAIL (40ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (43ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (45ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (67ms)
+- **G5 Types** - PASS (6.8s)
+- **G6 Lint** - FAIL (8.9s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (24.1s)
+- **G8 Functional / integration** - FAIL (101ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (41ms)
+- **G10 Backward compatibility (fixtures)** - PASS (80ms)
+- **G11 Wide tables are configurable** - PASS (37ms)
+- **G12 Installable as an application** - PASS (53ms)
+- **G13 Approved design still being built** - PASS (36ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-11-13 - VERDICT: FAIL
+
+Steps: 7 pass, 6 fail, 0 blocked.
+Time: 37.2s total - slowest G7 Unit + pure specs (22.3s).
+Application steps ran in .
+
+> **This run was avoidable.** The tree is byte-identical to the previous gate run, so this verdict was already known. The gate verifies a TREE, not a change: corrections landing in one commit share one verification, and only the last run describes what ships. Corrections in SEPARATE commits each need their own, so every commit is independently bisectable.
+
+- **G1 Theme artifacts in sync** - FAIL (38ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (34ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (40ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (55ms)
+- **G5 Types** - PASS (5.9s)
+- **G6 Lint** - FAIL (8.4s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - FAIL (22.3s)
+
+```
+# Subtest: a failed remarks load is reported, not rendered as emptiness
+ok 28 - a failed remarks load is reported, not rendered as emptiness
+# Subtest: THE SEVEN CELLS SURVIVE A FAILED WEEK
+ok 102 - THE SEVEN CELLS SURVIVE A FAILED WEEK
+# Subtest: the banner wears the failed status, not a colour of its own
+ok 110 - the banner wears the failed status, not a colour of its own
+# Subtest: the roster card states a failed week rather than guessing at it
+ok 112 - the roster card states a failed week rather than guessing at it
+# Subtest: a form asked for a record answers a failed read
+ok 181 - a form asked for a record answers a failed read
+# Subtest: a record asked for and not found is said, not treated as Add
+ok 182 - a record asked for and not found is said, not treated as Add
+# Subtest: a failed save survives the collapse — it is drawn outside both branches
+ok 195 - a failed save survives the collapse — it is drawn outside both branches
+# Subtest: a ring is never a colour alone, and nothing expected is a dash
+```
+
+- **G8 Functional / integration** - FAIL (120ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (46ms)
+- **G10 Backward compatibility (fixtures)** - PASS (98ms)
+- **G11 Wide tables are configurable** - PASS (37ms)
+- **G12 Installable as an application** - PASS (72ms)
+- **G13 Approved design still being built** - PASS (47ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
+
+---
+
+## Gate run - 2026-11-13 - VERDICT: FAIL
+
+Steps: 8 pass, 5 fail, 0 blocked.
+Time: 35.5s total - slowest G7 Unit + pure specs (21.1s).
+Application steps ran in .
+
+- **G1 Theme artifacts in sync** - FAIL (39ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G2 Contrast (all tokens, both themes)** - FAIL (39ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G3 Theme assets present per theme** - FAIL (33ms)
+
+```
+Error: ENOENT: no such file or directory, open '/home/user/RosiFit/design/tokens.json'
+```
+
+- **G4 No hard-coded colours** - PASS (81ms)
+- **G5 Types** - PASS (5.9s)
+- **G6 Lint** - FAIL (8.0s)
+
+```
+✖ 1 problem (0 errors, 1 warning)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+```
+
+- **G7 Unit + pure specs** - PASS (21.1s)
+- **G8 Functional / integration** - FAIL (107ms)
+
+```
+exit 1
+```
+
+- **G9 Automation addressability** - PASS (40ms)
+- **G10 Backward compatibility (fixtures)** - PASS (78ms)
+- **G11 Wide tables are configurable** - PASS (47ms)
+- **G12 Installable as an application** - PASS (56ms)
+- **G13 Approved design still being built** - PASS (32ms)
+
+_Merge blocked. Every FAIL above must resolve. No partial merges._
 
 ---
 

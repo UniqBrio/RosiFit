@@ -77,3 +77,27 @@ test('the header container is lifted while a filter panel is open, so the panel 
   assert.match(block, /ListHeaderComponentStyle=\{\{ zIndex: branchOpen \|\| showOpen \? 40 : 0 \}\}/,
     'the header container must lift with the panel chain');
 });
+
+/* ---------------------------------------------------------------------------
+ * ANY FILTER BUT INACTIVE HIDES THE INACTIVE SECTION (13-Nov-2026).
+ * "On filtering no email the inactive member list is also showing up" ->
+ * "hide it, and apply the same rule to all filters". The rule itself is
+ * pinned in src/data/rosterFilter.test.ts; these pin that the screen asks it,
+ * everywhere the screen points at the section.
+ * ------------------------------------------------------------------------- */
+test('the Inactive section is listed only when showsInactive says so', () => {
+  assert.match(code, /const inactiveListed = useMemo\(\s*\(\) => \(showsInactive\(showKeys\) \? inactiveShown : \[\]\)/,
+    'the section must be drawn from the filter decision, not from inactiveShown directly');
+});
+
+test('nothing on screen says "listed under Inactive below" while a filter hides it', () => {
+  assert.match(code, /\{leftEarlier && showsInactive\(showKeys\) \? \(/,
+    'the left-earlier note points at the section, so it is gated with it');
+  const at = code.indexOf('Nobody was on the register on');
+  assert.ok(at > 0);
+  const branch = code.slice(code.lastIndexOf('showsInactive(showKeys) ?', at), at + 1200);
+  assert.match(branch, /listed under Inactive below/, 'the shipped body, while the section shows');
+  assert.match(branch, /which the filter is hiding/, 'and a body that says the filter hides it, while it does');
+  assert.match(branch, /action="Show all members" onAction=\{\(\) => setRosterShow\(\[\]\)\}/,
+    'with the way back');
+});

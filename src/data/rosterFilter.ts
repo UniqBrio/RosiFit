@@ -265,29 +265,25 @@ export function rosterFilterPhrase(labels: string[], allLabel: string): string {
 /**
  * Whether the INACTIVE section below the roster belongs to this choice.
  *
- * The section is not part of the day's register, and the three reading filters
- * deliberately never reached it -- Present, Absent and Yet to mark are
- * readings of a register these members are not on, so narrowing by one of them
- * left the section whole. That stays exactly as it was.
+ * ONLY WHEN NOTHING IS TICKED, OR *INACTIVE* IS (13-Nov-2026). Every other
+ * choice hides it -- "hide it, and apply the same rule to all filters", asked
+ * after ticking *No email* still listed 344 inactive members, every one of
+ * them with an address. The section used to be left whole by every filter but
+ * *Active*, on the reasoning that Present, Absent and Yet to mark are readings
+ * of a register these members are not on. True, and the conclusion was still
+ * wrong: somebody who ticked a filter and is shown a list the filter never
+ * reached has been given an answer to a question they did not ask.
  *
- * *Active* and *Inactive* are the two that DO speak about it, because it is
- * the half of the split they name:
+ *   Nothing ticked   -> the section shows: no filter, nothing narrowed.
+ *   Inactive ticked  -> the section shows, whatever else is ticked. Several
+ *                       ticks are an OR, and every member in the section
+ *                       answers *Inactive*.
+ *   Anything else    -> the section is hidden.
  *
- *   Inactive ticked  -> the section shows (and the register above it empties,
- *                       on its own, because every card in it is active).
- *   Active ticked, Inactive not -> the section is hidden. Somebody who asked
- *                       for the active members and is still shown a list of
- *                       inactive ones has been given an answer to a question
- *                       they did not ask.
- *   Neither ticked   -> unchanged, whatever else is ticked.
- *
- * Both ticked is everybody, which falls out of the first line rather than
- * needing a case of its own.
+ * `all` reads as nothing ticked, as it does in `narrowRoster`.
  */
 export function showsInactive(keys: RosterFilterKey[]): boolean {
-  if (keys.includes('inactive')) return true;
-  if (keys.includes('active')) return false;
-  return true;
+  return keys.length === 0 || keys.includes('all') || keys.includes('inactive');
 }
 
 /**

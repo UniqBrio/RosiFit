@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — Filtering a course's roster no longer lists the inactive members underneath
+
+**Ticking a filter now shows only the members you asked for.** On a course's Attendance tab, ticking
+*No email* (or Present, Absent, Yet to mark, Bounced, Unsubscribed or Active) used to leave the whole
+*Inactive* list at the bottom of the screen. That list now shows only when no filter is ticked, or when
+*Inactive* is ticked.
+
 ## Unreleased — Ready for Supabase's 30 October database permission change
 
 **Nothing changes on screen.** From 30 October 2026 Supabase no longer gives new database tables and

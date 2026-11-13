@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import {
   ROSTER_FILTERS, ALL_MEMBERS, rosterFilterKey, rosterFilterLabel,
   rosterReading, matchesRosterFilter, narrowRoster, rosterFilterCounts, isRecordFact,
-  ROSTER_FILTER_OPTIONS, rosterFilterKeys, rosterFilterPhrase,
+  ROSTER_FILTER_OPTIONS, rosterFilterKeys, rosterFilterPhrase, showsInactive,
   type RosterScope,
 } from './rosterFilter';
 import type { AttendanceRow, Member } from './mock';
@@ -414,4 +414,33 @@ test('the predicate covers the whole union, so growing it cannot go unnoticed', 
     assert.equal(isRecordFact(f.key), !READINGS.has(f.key),
       `${f.key} is unclassified: decide whether it reads the day or the record`);
   }
+});
+
+/* ------------------------------------- the Inactive section (13-Nov-2026)
+   "On filtering no email the inactive member list is also showing up" ->
+   "hide it, and apply the same rule to all filters". The section shows with
+   nothing ticked or with Inactive ticked, and under no other choice. */
+
+test('the Inactive section shows with nothing ticked', () => {
+  assert.equal(showsInactive([]), true);
+});
+
+test('every filter but Inactive hides the Inactive section', () => {
+  for (const f of ROSTER_FILTER_OPTIONS) {
+    if (f.key === 'inactive') continue;
+    assert.equal(showsInactive([f.key]), false,
+      `${f.label} ticked must not list inactive members the filter never reached`);
+  }
+});
+
+test('Inactive ticked shows the section, whatever else is ticked beside it', () => {
+  assert.equal(showsInactive(['inactive']), true);
+  for (const f of ROSTER_FILTER_OPTIONS) {
+    assert.equal(showsInactive([f.key, 'inactive']), true,
+      `${f.label} or Inactive is an OR, and every member in the section answers Inactive`);
+  }
+});
+
+test('"all" reads as nothing ticked for the Inactive section, as it does for narrowRoster', () => {
+  assert.equal(showsInactive(['all']), true);
 });

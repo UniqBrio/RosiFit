@@ -401,6 +401,11 @@ Under the search box, one line says which day the cards are about —
 later or were inactive on that day, the screen says that too, on its own line, rather than
 letting the count drop silently.
 
+Members who were inactive on that day are listed under **Inactive**, at the very bottom.
+That list shows when no **Show** filter is ticked, or when **Inactive** is ticked. Ticking
+any other filter (No email, Present, Absent and so on) hides it, so the screen shows only
+the members you asked for.
+
 Each member card carries:
 
 - Member name, avatar and email address (or *No email on file*)
